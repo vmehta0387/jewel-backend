@@ -26,6 +26,11 @@ export interface UserResponse {
     companyName: string;
     companyCode: string;
   } | null;
+  managedCompanies: {
+    id: string;
+    companyName: string;
+    companyCode: string;
+  }[];
   branch: {
     id: string;
     name: string;
@@ -86,7 +91,7 @@ export class UsersService {
     const search = query.search?.trim();
     if (search) {
       usersQuery.andWhere(
-        '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search)',
+        '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR EXISTS (SELECT 1 FROM companies managedCompany WHERE managedCompany.account_manager_id = user.id AND managedCompany.company_name LIKE :search))',
         { search: `%${search}%` },
       );
     }
@@ -111,7 +116,8 @@ export class UsersService {
     }
 
     const users = await usersQuery.getMany();
-    return users.map((user) => this.toResponse(user));
+    const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
+    return users.map((user) => this.toResponse(user, managedCompaniesMap.get(user.id) || []));
   }
 
   async findOne(id: string): Promise<UserResponse> {
@@ -124,7 +130,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return this.toResponse(user);
+    const managedCompaniesMap = await this.getManagedCompaniesMap([user.id]);
+    return this.toResponse(user, managedCompaniesMap.get(user.id) || []);
   }
 
   async create(dto: CreateUserDto): Promise<UserResponse> {
@@ -290,7 +297,46 @@ export class UsersService {
     return email.trim().toLowerCase();
   }
 
-  private toResponse(user: User): UserResponse {
+  private async getManagedCompaniesMap(
+    userIds: string[],
+  ): Promise<Map<string, { id: string; companyName: string; companyCode: string }[]>> {
+    const map = new Map<string, { id: string; companyName: string; companyCode: string }[]>();
+
+    if (userIds.length === 0) {
+      return map;
+    }
+
+    const companies = await this.companyRepo
+      .createQueryBuilder('company')
+      .select(['company.id AS id', 'company.companyName AS companyName', 'company.companyCode AS companyCode', 'company.accountManagerId AS accountManagerId'])
+      .where('company.accountManagerId IN (:...userIds)', { userIds })
+      .orderBy('company.companyName', 'ASC')
+      .getRawMany<{
+        id: string;
+        companyName: string;
+        companyCode: string;
+        accountManagerId: string;
+      }>();
+
+    for (const company of companies) {
+      if (!map.has(company.accountManagerId)) {
+        map.set(company.accountManagerId, []);
+      }
+
+      map.get(company.accountManagerId).push({
+        id: company.id,
+        companyName: company.companyName,
+        companyCode: company.companyCode,
+      });
+    }
+
+    return map;
+  }
+
+  private toResponse(
+    user: User,
+    managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+  ): UserResponse {
     return {
       id: user.id,
       email: user.email,
@@ -309,6 +355,7 @@ export class UsersService {
             companyCode: user.company.companyCode,
           }
         : null,
+      managedCompanies,
       branch: user.branch
         ? {
             id: user.branch.id,

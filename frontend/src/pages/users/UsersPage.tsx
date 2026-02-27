@@ -101,14 +101,32 @@ export default function UsersPage() {
       {
         key: 'scope',
         label: 'Company / Branch',
-        render: (_: unknown, row: UserRecord) => (
-          <div>
-            <p className="text-sm text-gray-900">
-              {row.company ? `${row.company.companyName} (${row.company.companyCode})` : '-'}
-            </p>
-            <p className="text-xs text-gray-500">{row.branch ? `${row.branch.name} (${row.branch.code})` : '-'}</p>
-          </div>
-        ),
+        render: (_: unknown, row: UserRecord) => {
+          const managedCompanies = row.managedCompanies || [];
+          const showManagedCompanies = row.role === 'INTERNAL_REP' && managedCompanies.length > 0;
+
+          const companyText = row.company
+            ? `${row.company.companyName} (${row.company.companyCode})`
+            : showManagedCompanies
+              ? `${managedCompanies
+                  .slice(0, 2)
+                  .map((company) => `${company.companyName} (${company.companyCode})`)
+                  .join(', ')}${managedCompanies.length > 2 ? ` +${managedCompanies.length - 2} more` : ''}`
+              : '-';
+
+          const branchText = row.branch
+            ? `${row.branch.name} (${row.branch.code})`
+            : showManagedCompanies
+              ? 'Assigned as account manager'
+              : '-';
+
+          return (
+            <div>
+              <p className="text-sm text-gray-900">{companyText}</p>
+              <p className="text-xs text-gray-500">{branchText}</p>
+            </div>
+          );
+        },
       },
       {
         key: 'taskPermissions',

@@ -24,6 +24,7 @@ export interface UserRecord {
   isActive: boolean;
   taskPermissions: TaskPermission[];
   company: UserCompanySummary | null;
+  managedCompanies: UserCompanySummary[];
   branch: UserBranchSummary | null;
   createdAt: string;
   updatedAt: string;
