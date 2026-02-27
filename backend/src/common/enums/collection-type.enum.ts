@@ -1,0 +1,6 @@
+export enum CollectionType {
+  ENGAGEMENT = 'ENGAGEMENT',
+  ETERNITY = 'ETERNITY',
+  FLORAL = 'FLORAL',
+  WEDDING_BANDS = 'WEDDING_BANDS',
+}
