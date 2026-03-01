@@ -51,6 +51,10 @@ export class CreateCompanyDto {
 
   @IsOptional()
   @IsString()
+  streetAddress2?: string;
+
+  @IsOptional()
+  @IsString()
   city?: string;
 
   @IsOptional()
@@ -148,6 +152,10 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsString()
   streetAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  streetAddress2?: string;
 
   @IsOptional()
   @IsString()

@@ -283,6 +283,7 @@ export class CompaniesService {
       name: mainBranchName?.trim() || `${company.companyName} Main Branch`,
       code: branchCode,
       streetAddress: company.streetAddress,
+      streetAddress2: company.streetAddress2,
       city: company.city,
       stateProvince: company.stateProvince,
       postalCode: company.postalCode,

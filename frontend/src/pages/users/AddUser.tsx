@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -46,6 +46,17 @@ function roleNeedsBranch(role: UserRole): boolean {
 
 export default function AddUser() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const roleParam = searchParams.get('role');
+  const presetCompanyId = searchParams.get('companyId') || '';
+  const presetBranchId = searchParams.get('branchId') || '';
+  const presetRole = (
+    USER_ROLE_OPTIONS.some((option) => option.value === roleParam)
+      ? roleParam
+      : presetBranchId
+        ? 'SALES_REP'
+        : 'COMPANY_ADMIN'
+  ) as UserRole;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
@@ -55,12 +66,12 @@ export default function AddUser() {
     lastName: '',
     email: '',
     password: '',
-    role: 'COMPANY_ADMIN',
-    companyId: '',
-    branchId: '',
+    role: presetRole,
+    companyId: presetCompanyId,
+    branchId: presetBranchId,
     phone: '',
     isActive: true,
-    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE.COMPANY_ADMIN,
+    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
   });
 
   useEffect(() => {

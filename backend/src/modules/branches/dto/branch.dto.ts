@@ -1,4 +1,31 @@
-import { IsBoolean, IsEmail, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsEmail, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+
+export class BranchPricingSlabDto {
+  @IsNumber()
+  minCost: number;
+
+  @IsNumber()
+  maxCost: number;
+
+  @IsNumber()
+  multiplier: number;
+}
+
+export class NewBranchManagerDto {
+  @IsString()
+  firstName: string;
+
+  @IsString()
+  lastName: string;
+
+  @IsEmail()
+  email: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+}
 
 export class CreateBranchDto {
   @IsString()
@@ -13,6 +40,10 @@ export class CreateBranchDto {
   @IsOptional()
   @IsString()
   streetAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  streetAddress2?: string;
 
   @IsOptional()
   @IsString()
@@ -37,6 +68,25 @@ export class CreateBranchDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  branchManagerId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewBranchManagerDto)
+  newBranchManager?: NewBranchManagerDto;
+
+  @IsOptional()
+  @IsBoolean()
+  enableSlabPricing?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BranchPricingSlabDto)
+  pricingSlabs?: BranchPricingSlabDto[];
 
   @IsOptional()
   @IsNumber()
@@ -64,6 +114,10 @@ export class UpdateBranchDto {
 
   @IsOptional()
   @IsString()
+  streetAddress2?: string;
+
+  @IsOptional()
+  @IsString()
   city?: string;
 
   @IsOptional()
@@ -85,6 +139,25 @@ export class UpdateBranchDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  branchManagerId?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewBranchManagerDto)
+  newBranchManager?: NewBranchManagerDto;
+
+  @IsOptional()
+  @IsBoolean()
+  enableSlabPricing?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BranchPricingSlabDto)
+  pricingSlabs?: BranchPricingSlabDto[];
 
   @IsOptional()
   @IsNumber()

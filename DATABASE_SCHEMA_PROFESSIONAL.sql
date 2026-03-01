@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS pricing_rules;
 DROP TABLE IF EXISTS collection_pricing_overrides;
+DROP TABLE IF EXISTS branch_pricing_slabs;
 DROP TABLE IF EXISTS branches;
 DROP TABLE IF EXISTS company_pricing_slabs;
 DROP TABLE IF EXISTS users;
@@ -24,6 +25,7 @@ CREATE TABLE companies (
     
     -- Structured Address Fields
     street_address VARCHAR(255),
+    street_address_2 VARCHAR(255),
     city VARCHAR(100),
     state_province VARCHAR(100),
     postal_code VARCHAR(20),
@@ -100,6 +102,7 @@ CREATE TABLE branches (
     
     -- Structured Address
     street_address VARCHAR(255),
+    street_address_2 VARCHAR(255),
     city VARCHAR(100),
     state_province VARCHAR(100),
     postal_code VARCHAR(20),
@@ -108,8 +111,10 @@ CREATE TABLE branches (
     -- Contact
     email VARCHAR(255),
     phone VARCHAR(50),
+    branch_manager_id VARCHAR(36) NULL,
     
     branch_multiplier DECIMAL(5,2) DEFAULT 1.00,
+    enable_slab_pricing BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -118,12 +123,32 @@ CREATE TABLE branches (
     INDEX idx_company (company_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Branch Pricing Slabs Table
+CREATE TABLE branch_pricing_slabs (
+    id VARCHAR(36) PRIMARY KEY,
+    branch_id VARCHAR(36) NOT NULL,
+    min_cost DECIMAL(10,2) NOT NULL,
+    max_cost DECIMAL(10,2) NOT NULL,
+    multiplier DECIMAL(5,2) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE,
+    INDEX idx_branch (branch_id),
+    INDEX idx_cost_range (min_cost, max_cost)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Foreign Keys
 ALTER TABLE users
     ADD CONSTRAINT fk_user_company FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL;
 
+ALTER TABLE users
+    ADD CONSTRAINT fk_user_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE SET NULL;
+
 ALTER TABLE companies
     ADD CONSTRAINT fk_company_account_manager FOREIGN KEY (account_manager_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE branches
+    ADD CONSTRAINT fk_branch_manager FOREIGN KEY (branch_manager_id) REFERENCES users(id) ON DELETE SET NULL;
 
 -- Sample Data
 -- Default password for seeded users: Admin@123

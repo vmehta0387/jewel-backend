@@ -29,6 +29,9 @@ export class Company {
   @Column({ name: 'street_address', nullable: true })
   streetAddress: string;
 
+  @Column({ name: 'street_address_2', nullable: true })
+  streetAddress2: string;
+
   @Column({ nullable: true })
   city: string;
 

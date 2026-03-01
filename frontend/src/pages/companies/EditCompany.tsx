@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -16,6 +16,7 @@ export default function EditCompany() {
     companyCode: '',
     accountManagerId: '',
     streetAddress: '',
+    streetAddress2: '',
     city: '',
     stateProvince: '',
     postalCode: '',
@@ -37,7 +38,8 @@ export default function EditCompany() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountManagers, setAccountManagers] = useState<any[]>([]);
-
+  const [companyBranches, setCompanyBranches] = useState<any[]>([]);
+  const [companyUsers, setCompanyUsers] = useState<any[]>([]);
   const [slabs, setSlabs] = useState<any[]>([]);
   const [collectionOverrides, setCollectionOverrides] = useState<any[]>([]);
 
@@ -50,13 +52,35 @@ export default function EditCompany() {
     try {
       const response = await api.get('/users', { params: { role: 'INTERNAL_REP' } });
       const data = response.data || [];
-      setAccountManagers(data.map((u: any) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })));
+      setAccountManagers(data.map((user: any) => ({ id: user.id, name: `${user.firstName} ${user.lastName}` })));
     } catch (error) {
       console.error(error);
+      setAccountManagers([]);
+    }
+  };
+
+  const fetchCompanyResources = async (companyId: string) => {
+    try {
+      const [branchesResponse, usersResponse] = await Promise.all([
+        api.get('/branches', { params: { companyId, limit: 200, status: 'ALL' } }),
+        api.get('/users', { params: { companyId, status: 'ALL' } }),
+      ]);
+
+      setCompanyBranches(branchesResponse.data.data || []);
+      setCompanyUsers(usersResponse.data || []);
+    } catch (error) {
+      console.error(error);
+      setCompanyBranches([]);
+      setCompanyUsers([]);
     }
   };
 
   const fetchCompany = async () => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await api.get(`/companies/${id}`);
       const data = response.data;
@@ -65,6 +89,7 @@ export default function EditCompany() {
         companyCode: data.companyCode || '',
         accountManagerId: data.accountManagerId || '',
         streetAddress: data.streetAddress || '',
+        streetAddress2: data.streetAddress2 || '',
         city: data.city || '',
         stateProvince: data.stateProvince || '',
         postalCode: data.postalCode || '',
@@ -82,17 +107,20 @@ export default function EditCompany() {
         enableSlabPricing: data.enableSlabPricing || false,
         enableCollectionPricing: data.enableCollectionPricing || false,
       });
-      setSlabs((data.pricingSlabs || []).map((s: any) => ({
-        minCost: parseFloat(s.minCost),
-        maxCost: parseFloat(s.maxCost),
-        multiplier: parseFloat(s.multiplier)
+      setSlabs((data.pricingSlabs || []).map((slab: any) => ({
+        minCost: parseFloat(slab.minCost),
+        maxCost: parseFloat(slab.maxCost),
+        multiplier: parseFloat(slab.multiplier),
       })));
-      setCollectionOverrides((data.collectionPricingOverrides || []).map((c: any) => ({
-        collectionType: c.collectionType,
-        multiplier: parseFloat(c.multiplier)
+      setCollectionOverrides((data.collectionPricingOverrides || []).map((override: any) => ({
+        collectionType: override.collectionType,
+        multiplier: parseFloat(override.multiplier),
       })));
+
+      await fetchCompanyResources(data.id);
     } catch (error) {
       console.error(error);
+      setErrors({ submit: 'Failed to load company details' });
     } finally {
       setLoading(false);
     }
@@ -102,11 +130,9 @@ export default function EditCompany() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
-    
     if (formData.primaryEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.primaryEmail)) {
       newErrors.primaryEmail = 'Invalid email format';
     }
-
     if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
       newErrors.defaultMultiplier = 'Multiplier must be between 1 and 10';
     }
@@ -115,20 +141,21 @@ export default function EditCompany() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     if (!validateForm()) {
       return;
     }
 
     setIsSubmitting(true);
-    
+
     try {
       const payload = {
         companyName: formData.companyName,
         accountManagerId: formData.accountManagerId,
         streetAddress: formData.streetAddress,
+        streetAddress2: formData.streetAddress2,
         city: formData.city,
         stateProvince: formData.stateProvince,
         postalCode: formData.postalCode,
@@ -164,7 +191,7 @@ export default function EditCompany() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => navigate('/companies')}>Back</Button>
         <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
@@ -182,7 +209,7 @@ export default function EditCompany() {
             <Input
               label="Company Name *"
               value={formData.companyName}
-              onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, companyName: event.target.value })}
               placeholder="Brilliant Jewelers Inc."
               error={errors.companyName}
               required
@@ -198,11 +225,11 @@ export default function EditCompany() {
               <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 value={formData.accountManagerId}
-                onChange={(e) => setFormData({ ...formData, accountManagerId: e.target.value })}
+                onChange={(event) => setFormData({ ...formData, accountManagerId: event.target.value })}
               >
                 <option value="">Select Account Manager</option>
-                {accountManagers.map(mgr => (
-                  <option key={mgr.id} value={mgr.id}>{mgr.name}</option>
+                {accountManagers.map((manager) => (
+                  <option key={manager.id} value={manager.id}>{manager.name}</option>
                 ))}
               </select>
             </div>
@@ -215,21 +242,21 @@ export default function EditCompany() {
               label="Primary Email"
               type="email"
               value={formData.primaryEmail}
-              onChange={(e) => setFormData({ ...formData, primaryEmail: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, primaryEmail: event.target.value })}
               placeholder="contact@company.com"
               error={errors.primaryEmail}
             />
             <Input
               label="Primary Phone"
               value={formData.primaryPhone}
-              onChange={(e) => setFormData({ ...formData, primaryPhone: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, primaryPhone: event.target.value })}
               placeholder="+1-555-0100"
             />
             <div className="col-span-2">
               <Input
                 label="Website"
                 value={formData.website}
-                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                onChange={(event) => setFormData({ ...formData, website: event.target.value })}
                 placeholder="www.company.com"
               />
             </div>
@@ -242,32 +269,40 @@ export default function EditCompany() {
               <Input
                 label="Street Address"
                 value={formData.streetAddress}
-                onChange={(e) => setFormData({ ...formData, streetAddress: e.target.value })}
+                onChange={(event) => setFormData({ ...formData, streetAddress: event.target.value })}
                 placeholder="123 Main Street"
+              />
+            </div>
+            <div className="col-span-2">
+              <Input
+                label="Address Line 2"
+                value={formData.streetAddress2}
+                onChange={(event) => setFormData({ ...formData, streetAddress2: event.target.value })}
+                placeholder="Suite 300"
               />
             </div>
             <Input
               label="City"
               value={formData.city}
-              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, city: event.target.value })}
               placeholder="New York"
             />
             <Input
               label="State/Province"
               value={formData.stateProvince}
-              onChange={(e) => setFormData({ ...formData, stateProvince: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, stateProvince: event.target.value })}
               placeholder="NY"
             />
             <Input
               label="Postal Code"
               value={formData.postalCode}
-              onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, postalCode: event.target.value })}
               placeholder="10001"
             />
             <Input
               label="Country"
               value={formData.country}
-              onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+              onChange={(event) => setFormData({ ...formData, country: event.target.value })}
               placeholder="USA"
             />
           </div>
@@ -282,7 +317,7 @@ export default function EditCompany() {
                   name="shipToType"
                   value="MAIN_ADDRESS"
                   checked={formData.shipToType === 'MAIN_ADDRESS'}
-                  onChange={(e) => setFormData({ ...formData, shipToType: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipToType: event.target.value })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm font-medium text-gray-700">Same as Company Address</span>
@@ -293,7 +328,7 @@ export default function EditCompany() {
                   name="shipToType"
                   value="MAIN_BRANCH"
                   checked={formData.shipToType === 'MAIN_BRANCH'}
-                  onChange={(e) => setFormData({ ...formData, shipToType: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipToType: event.target.value })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm font-medium text-gray-700">Ship to Main Branch</span>
@@ -304,45 +339,45 @@ export default function EditCompany() {
                   name="shipToType"
                   value="CUSTOM"
                   checked={formData.shipToType === 'CUSTOM'}
-                  onChange={(e) => setFormData({ ...formData, shipToType: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipToType: event.target.value })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm font-medium text-gray-700">Custom Shipping Address</span>
               </label>
             </div>
-            
+
             {formData.shipToType === 'CUSTOM' && (
               <div className="grid grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
                     label="Street Address"
                     value={formData.shipStreetAddress}
-                    onChange={(e) => setFormData({ ...formData, shipStreetAddress: e.target.value })}
+                    onChange={(event) => setFormData({ ...formData, shipStreetAddress: event.target.value })}
                     placeholder="456 Shipping Lane"
                   />
                 </div>
                 <Input
                   label="City"
                   value={formData.shipCity}
-                  onChange={(e) => setFormData({ ...formData, shipCity: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipCity: event.target.value })}
                   placeholder="Los Angeles"
                 />
                 <Input
                   label="State/Province"
                   value={formData.shipStateProvince}
-                  onChange={(e) => setFormData({ ...formData, shipStateProvince: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipStateProvince: event.target.value })}
                   placeholder="CA"
                 />
                 <Input
                   label="Postal Code"
                   value={formData.shipPostalCode}
-                  onChange={(e) => setFormData({ ...formData, shipPostalCode: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipPostalCode: event.target.value })}
                   placeholder="90001"
                 />
                 <Input
                   label="Country"
                   value={formData.shipCountry}
-                  onChange={(e) => setFormData({ ...formData, shipCountry: e.target.value })}
+                  onChange={(event) => setFormData({ ...formData, shipCountry: event.target.value })}
                   placeholder="USA"
                 />
               </div>
@@ -360,7 +395,7 @@ export default function EditCompany() {
                 min="1"
                 max="10"
                 value={formData.defaultMultiplier}
-                onChange={(e) => setFormData({ ...formData, defaultMultiplier: parseFloat(e.target.value) || 0 })}
+                onChange={(event) => setFormData({ ...formData, defaultMultiplier: parseFloat(event.target.value) || 0 })}
                 placeholder="1.5"
                 className="max-w-xs"
                 error={errors.defaultMultiplier}
@@ -374,14 +409,14 @@ export default function EditCompany() {
                 <input
                   type="checkbox"
                   checked={formData.enableSlabPricing}
-                  onChange={(e) => setFormData({ ...formData, enableSlabPricing: e.target.checked })}
+                  onChange={(event) => setFormData({ ...formData, enableSlabPricing: event.target.checked })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm font-medium text-gray-700">Enable Cost-Based Slab Pricing</span>
               </label>
               <p className="text-xs text-gray-500 ml-6 mt-1">Override default multiplier based on cost ranges</p>
             </div>
-            
+
             {formData.enableSlabPricing && (
               <div className="ml-6 p-4 bg-gray-50 rounded-lg">
                 <PricingSlabTable slabs={slabs} setSlabs={setSlabs} />
@@ -393,7 +428,7 @@ export default function EditCompany() {
                 <input
                   type="checkbox"
                   checked={formData.enableCollectionPricing}
-                  onChange={(e) => setFormData({ ...formData, enableCollectionPricing: e.target.checked })}
+                  onChange={(event) => setFormData({ ...formData, enableCollectionPricing: event.target.checked })}
                   className="w-4 h-4 text-primary-600"
                 />
                 <span className="text-sm font-medium text-gray-700">Enable Collection-Based Pricing</span>
@@ -409,6 +444,130 @@ export default function EditCompany() {
           </div>
         </Card>
 
+        <Card title="Branches & Pricing">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">Create and manage branches from this company context.</p>
+              <Button type="button" onClick={() => navigate(`/branches/add?companyId=${id}`)}>
+                + Add Branch
+              </Button>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Branch</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Manager</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Pricing</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Status</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companyBranches.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                        No branches created for this company yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    companyBranches.map((branch) => (
+                      <tr key={branch.id} className="border-t">
+                        <td className="px-4 py-2">
+                          <div className="font-medium text-gray-900">{branch.name}</div>
+                          <div className="text-xs text-gray-500">{branch.code}</div>
+                        </td>
+                        <td className="px-4 py-2">
+                          {branch.branchManager ? `${branch.branchManager.firstName} ${branch.branchManager.lastName}` : '-'}
+                        </td>
+                        <td className="px-4 py-2">
+                          {branch.enableSlabPricing
+                            ? `${branch.pricingSlabCount || 0} slab tier${branch.pricingSlabCount === 1 ? '' : 's'}`
+                            : `${parseFloat(branch.branchMultiplier || 1).toFixed(2)}x default`}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className={`px-2 py-1 rounded-full text-xs ${branch.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {branch.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/branches/edit/${branch.id}`)}
+                            className="text-primary-600 hover:text-primary-800 font-medium"
+                          >
+                            Manage Branch
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Company Users">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">Manage users mapped to this company.</p>
+              <Button type="button" onClick={() => navigate(`/users/add?companyId=${id}`)}>
+                + Add User
+              </Button>
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Name</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Role</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Branch</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Status</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companyUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                        No users mapped to this company.
+                      </td>
+                    </tr>
+                  ) : (
+                    companyUsers.map((user) => (
+                      <tr key={user.id} className="border-t">
+                        <td className="px-4 py-2">
+                          <div className="font-medium text-gray-900">{user.firstName} {user.lastName}</div>
+                          <div className="text-xs text-gray-500">{user.email}</div>
+                        </td>
+                        <td className="px-4 py-2">{user.role}</td>
+                        <td className="px-4 py-2">{user.branch ? `${user.branch.name} (${user.branch.code})` : '-'}</td>
+                        <td className="px-4 py-2">
+                          <span className={`px-2 py-1 rounded-full text-xs ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {user.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/users/edit/${user.id}`)}
+                            className="text-primary-600 hover:text-primary-800 font-medium"
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Card>
+
         <div className="flex gap-3 sticky bottom-0 bg-white py-4 border-t">
           <Button type="submit" size="lg" disabled={isSubmitting}>
             {isSubmitting ? 'Updating...' : 'Update Company'}
@@ -421,4 +580,3 @@ export default function EditCompany() {
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query, Request, UseGuards } from '@nestjs/common';
 import { BranchesService } from './branches.service';
-import { CreateBranchDto, UpdateBranchDto, UpdateBranchStatusDto } from './dto/branch.dto';
+import { BranchPricingSlabDto, CreateBranchDto, UpdateBranchDto, UpdateBranchStatusDto } from './dto/branch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -58,5 +58,11 @@ export class BranchesController {
   @Roles(UserRole.SUPER_ADMIN)
   updateStatus(@Param('id') id: string, @Body() dto: UpdateBranchStatusDto) {
     return this.branchesService.updateStatus(id, dto.isActive);
+  }
+
+  @Post(':id/pricing-slabs')
+  @Roles(UserRole.SUPER_ADMIN)
+  updatePricingSlabs(@Param('id') id: string, @Body() slabs: BranchPricingSlabDto[]) {
+    return this.branchesService.updatePricingSlabs(id, slabs);
   }
 }

@@ -14,6 +14,7 @@ export default function AddCompany() {
     companyCode: '',
     accountManagerId: '',
     streetAddress: '',
+    streetAddress2: '',
     city: '',
     stateProvince: '',
     postalCode: '',
@@ -268,6 +269,14 @@ export default function AddCompany() {
                 value={formData.streetAddress}
                 onChange={(e) => setFormData({ ...formData, streetAddress: e.target.value })}
                 placeholder="123 Main Street"
+              />
+            </div>
+            <div className="col-span-2">
+              <Input
+                label="Address Line 2"
+                value={formData.streetAddress2}
+                onChange={(e) => setFormData({ ...formData, streetAddress2: e.target.value })}
+                placeholder="Suite 300"
               />
             </div>
             <Input

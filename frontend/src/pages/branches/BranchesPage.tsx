@@ -60,9 +60,19 @@ export default function BranchesPage() {
       render: (val: string, row: any) => <span>{val ? `${val}, ${row.country || ''}` : '-'}</span>,
     },
     {
-      key: 'branchMultiplier',
-      label: 'Multiplier',
-      render: (val: number) => `${val}x`,
+      key: 'branchManager',
+      label: 'Branch Manager',
+      render: (_: any, row: any) => (
+        <span>{row.branchManager ? `${row.branchManager.firstName} ${row.branchManager.lastName}` : '-'}</span>
+      ),
+    },
+    {
+      key: 'pricing',
+      label: 'Pricing',
+      render: (_: any, row: any) =>
+        row.enableSlabPricing
+          ? `${row.pricingSlabCount || 0} slab tier${row.pricingSlabCount === 1 ? '' : 's'}`
+          : `${parseFloat(row.branchMultiplier || 1).toFixed(2)}x default`,
     },
     {
       key: 'isActive',
@@ -118,7 +128,7 @@ export default function BranchesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Branches</h1>
           <p className="text-sm text-gray-600 mt-1">
             {isSuperAdmin
-              ? 'Manage company branches and branch-level pricing multipliers'
+              ? 'Manage company branches, branch managers, and branch-level pricing'
               : 'View branches for your assigned companies'}
           </p>
         </div>
