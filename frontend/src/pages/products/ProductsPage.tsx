@@ -378,7 +378,7 @@ function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string
 }
 
 export default function ProductsPage() {
-  const [rows, setRows] = useState<DesignRow[]>([]);
+  const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
   const [savingDesign, setSavingDesign] = useState(false);
@@ -578,8 +578,8 @@ export default function ProductsPage() {
       });
     } catch (error: any) {
       setRowsError(error?.response?.data?.message || 'Unable to load designs from server.');
-      setRows(designSeed);
-      setSelectedId((current) => current || designSeed[0]?.id || '');
+      setRows([]);
+      setSelectedId('');
     } finally {
       setRowsLoading(false);
     }
@@ -1046,82 +1046,103 @@ export default function ProductsPage() {
       tags: selectedTags,
       imageUrls: galleryUrls,
     };
+    const createPayload = {
+      ...basePayload,
+      metals: metalRows.map((row) => ({
+        goldColour: row.goldColour.trim() || undefined,
+        netWt: parseNum(row.netWt),
+        wastagePercent: parseNum(row.wastagePercent),
+        wastageWt: parseNum(row.wastageWt),
+        totalWt: parseNum(row.totalWt),
+        pricePerGm: parseNum(row.pricePerGm),
+        components: parseNum(row.components),
+      })),
+      gemstones: gemRows.map((row) => ({
+        stone: row.stone.trim() || undefined,
+        shape: row.shape.trim() || undefined,
+        size: row.size.trim() || undefined,
+        cut: row.cut.trim() || undefined,
+        color: row.color.trim() || undefined,
+        quality: row.quality.trim() || undefined,
+        stoneType: row.settingType.trim() || undefined,
+        wtPerPcs: parseNum(row.wtPerPcs),
+        pcs: parseNum(row.pcs),
+        wtInCts: parseNum(row.wtInCts),
+        pricePerCt: parseNum(row.pricePerCt),
+      })),
+      labors: laborRows.map((row) => ({
+        laborHead: row.laborHead.trim() || undefined,
+        laborPerUnit: parseNum(row.laborPerUnit),
+        unitQty: parseNum(row.unitQty),
+        laborValue: parseNum(row.laborValue),
+      })),
+      findings: FINDING_FEATURE_ENABLED
+        ? findingRows.map((row) => ({
+            findingHead: row.findingHead.trim() || undefined,
+            pricePerUnit: parseNum(row.pricePerUnit),
+            units: parseNum(row.units),
+            totalWeight: parseNum(row.totalWeight),
+            findingValue: parseNum(row.findingValue),
+          }))
+        : [],
+      processStages: processRows
+        .filter((row) => row.stage.trim())
+        .map((row) => ({
+          processStage: row.stage.trim(),
+          netWeight: parseNum(row.netWeight),
+          duration: parseNum(row.duration),
+          durationType: 'MINUTES',
+          remarks: row.remarks.trim() || undefined,
+        })),
+      pricingTiers: pricingRows
+        .filter((row) => row.title.trim())
+        .map((row) => ({
+          name: row.title.trim(),
+          incrementBy: 'PERCENTAGE',
+          value: parseNum(row.rate),
+          sellingPrice: parseNum(row.rate),
+          unit: 'PCS',
+          weightBy: 'TOTAL',
+        })),
+      vendors: vendorRows
+        .filter((row) => row.supplier.trim())
+        .map((row) => ({
+          supplierName: row.supplier.trim(),
+          stockType: row.stockType.trim() || undefined,
+          supplierStyleNo: row.supplierStyleNo.trim() || undefined,
+        })),
+      relevantDesignIds: relevantSelection,
+    };
 
     setSavingDesign(true);
     try {
       if (editingId) {
-        const response = await api.put(`/products/${editingId}`, basePayload);
-        const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-        setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
-        setSelectedId(saved.id);
+        const canUpdate = /^[0-9a-fA-F-]{36}$/.test(editingId);
+        if (canUpdate) {
+          try {
+            const response = await api.put(`/products/${editingId}`, basePayload);
+            const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+            setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+            setSelectedId(saved.id);
+          } catch (error: any) {
+            const message = String(error?.response?.data?.message || '');
+            const isNotFound =
+              error?.response?.status === 404 || /product design not found/i.test(message);
+            if (!isNotFound) {
+              throw error;
+            }
+            const response = await api.post('/products', createPayload);
+            const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+            setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+            setSelectedId(saved.id);
+          }
+        } else {
+          const response = await api.post('/products', createPayload);
+          const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+          setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+          setSelectedId(saved.id);
+        }
       } else {
-        const createPayload = {
-          ...basePayload,
-          metals: metalRows.map((row) => ({
-            goldColour: row.goldColour.trim() || undefined,
-            netWt: parseNum(row.netWt),
-            wastagePercent: parseNum(row.wastagePercent),
-            wastageWt: parseNum(row.wastageWt),
-            totalWt: parseNum(row.totalWt),
-            pricePerGm: parseNum(row.pricePerGm),
-            components: parseNum(row.components),
-          })),
-          gemstones: gemRows.map((row) => ({
-            stone: row.stone.trim() || undefined,
-            shape: row.shape.trim() || undefined,
-            size: row.size.trim() || undefined,
-            cut: row.cut.trim() || undefined,
-            color: row.color.trim() || undefined,
-            quality: row.quality.trim() || undefined,
-            stoneType: row.settingType.trim() || undefined,
-            wtPerPcs: parseNum(row.wtPerPcs),
-            pcs: parseNum(row.pcs),
-            wtInCts: parseNum(row.wtInCts),
-            pricePerCt: parseNum(row.pricePerCt),
-          })),
-          labors: laborRows.map((row) => ({
-            laborHead: row.laborHead.trim() || undefined,
-            laborPerUnit: parseNum(row.laborPerUnit),
-            unitQty: parseNum(row.unitQty),
-            laborValue: parseNum(row.laborValue),
-          })),
-          findings: FINDING_FEATURE_ENABLED
-            ? findingRows.map((row) => ({
-                findingHead: row.findingHead.trim() || undefined,
-                pricePerUnit: parseNum(row.pricePerUnit),
-                units: parseNum(row.units),
-                totalWeight: parseNum(row.totalWeight),
-                findingValue: parseNum(row.findingValue),
-              }))
-            : [],
-          processStages: processRows
-            .filter((row) => row.stage.trim())
-            .map((row) => ({
-              processStage: row.stage.trim(),
-              netWeight: parseNum(row.netWeight),
-              duration: parseNum(row.duration),
-              durationType: 'MINUTES',
-              remarks: row.remarks.trim() || undefined,
-            })),
-          pricingTiers: pricingRows
-            .filter((row) => row.title.trim())
-            .map((row) => ({
-              name: row.title.trim(),
-              incrementBy: 'PERCENTAGE',
-              value: parseNum(row.rate),
-              sellingPrice: parseNum(row.rate),
-              unit: 'PCS',
-              weightBy: 'TOTAL',
-            })),
-          vendors: vendorRows
-            .filter((row) => row.supplier.trim())
-            .map((row) => ({
-              supplierName: row.supplier.trim(),
-              stockType: row.stockType.trim() || undefined,
-              supplierStyleNo: row.supplierStyleNo.trim() || undefined,
-            })),
-          relevantDesignIds: relevantSelection,
-        };
         const response = await api.post('/products', createPayload);
         const saved = mapApiDesignToRow(response.data as ApiDesignRow);
         setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
