@@ -65,6 +65,7 @@ interface NormalizedMetalRow {
 }
 
 interface NormalizedGemstoneRow {
+  packetId: string | null;
   stone: string | null;
   shape: string | null;
   size: string | null;
@@ -1309,6 +1310,7 @@ export class ProductsService {
       const amount = row.amount !== undefined ? this.toNumber(row.amount) : wtInCts * pricePerCt;
 
       return {
+        packetId: this.optionalText(row.packetId),
         stone: this.optionalText(row.stone),
         shape: this.optionalText(row.shape),
         size: this.optionalText(row.size),
@@ -1603,6 +1605,7 @@ export class ProductsService {
 
   private toGemstoneDtos(rows: DesignGemstone[]): DesignGemstoneDto[] {
     return rows.map((row) => ({
+      packetId: row.packetId || undefined,
       stone: row.stone || undefined,
       shape: row.shape || undefined,
       size: row.size || undefined,

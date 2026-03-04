@@ -390,7 +390,7 @@ export default function ProductsPage() {
   const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DesignForm>(defaultForm);
-  const [filters, setFilters] = useState({ jewelryGroup: '', collection: '', jewelrySize: '', tags: '', stone: '', shape: '', stage: '', status: 'Active', goldColour: '' });
+  const [filters, setFilters] = useState({ jewelryGroup: '', collection: '', jewelrySize: '', tags: '', stone: '', shape: '', stage: '', status: '', goldColour: '' });
   const [metalRows, setMetalRows] = useState<MetalRow[]>([{
     id: makeId(),
     goldColour: '22 karat-Rose-Gold',
@@ -975,53 +975,237 @@ export default function ProductsPage() {
     setShowAddModal(true);
   };
 
-  const openEdit = (row: DesignRow) => {
+  const openEdit = async (row: DesignRow) => {
     setEditingId(row.id);
     setSelectedId(row.id);
-    setForm({
-      designNo: row.designNo,
-      jewelryGroup: row.jewelryGroup,
-      collection: row.collection,
-      stage: row.stage,
-      diamondType: row.diamondType || '',
-      diamondSpread: row.diamondSpread || '',
-      jewelrySize: row.jewelrySize,
-      otherWeight: '',
-      tags: row.tags.join(', '),
-      designStatus: row.status,
-      drawerLocation: '',
-      designDescription: '',
-      remarks: row.remarks,
-    });
-    setMetalRows([{
-      id: makeId(),
-      goldColour: row.goldColour,
-      netWt: '5',
-      wastagePercent: '0',
-      wastageWt: '0',
-      totalWt: '5',
-      pricePerGm: '100.83',
-      components: '1',
-    }]);
-    setGemRows([{
-      id: makeId(),
-      packetId: '',
-      stone: row.stoneInfo,
-      shape: '',
-      size: '',
-      cut: '',
-      color: '',
-      quality: '',
-      settingType: '',
-      wtPerPcs: '0',
-      pcs: '10',
-      wtInCts: '0',
-      pricePerCt: '100',
-    }]);
-    setTagPicker('');
-    setGalleryUrls(row.imageUrls || []);
-    setShowGalleryPicker(false);
-    setShowAddModal(true);
+
+    const asInput = (value: unknown): string => {
+      if (value === null || value === undefined) return '';
+      return String(value);
+    };
+    const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+    const resolvePacketForGem = (gem: any): string => {
+      const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
+      if (direct) return direct;
+
+      const match = packetOptions.find((packet) =>
+        normalized(packet.stone) === normalized(gem?.stone) &&
+        normalized(packet.shape) === normalized(gem?.shape) &&
+        normalized(packet.size) === normalized(gem?.size) &&
+        normalized(packet.cut) === normalized(gem?.cut) &&
+        normalized(packet.color) === normalized(gem?.color) &&
+        normalized(packet.quality) === normalized(gem?.quality),
+      );
+      return match?.id || '';
+    };
+
+    try {
+      const canLoadDetails = /^[0-9a-fA-F-]{36}$/.test(row.id);
+      const detail = canLoadDetails ? (await api.get(`/products/${row.id}`)).data : null;
+
+      if (!detail) {
+        throw new Error('Design details not available');
+      }
+
+      const tags = normalizeStringArray(detail.tags);
+      const imageUrls = normalizeStringArray(detail.imageUrls).map(resolvePublicAssetUrl);
+      const metals = Array.isArray(detail.metals) ? detail.metals : [];
+      const gemstones = Array.isArray(detail.gemstones) ? detail.gemstones : [];
+      const labors = Array.isArray(detail.labors) ? detail.labors : [];
+      const findings = Array.isArray(detail.findings) ? detail.findings : [];
+      const processStages = Array.isArray(detail.processStages) ? detail.processStages : [];
+      const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
+      const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
+
+      setForm({
+        designNo: detail.designNo || row.designNo,
+        jewelryGroup: detail.jewelryGroup || row.jewelryGroup,
+        collection: detail.collection || row.collection,
+        stage: detail.stage || row.stage || '',
+        diamondType: detail.diamondType || '',
+        diamondSpread: detail.diamondSpread || '',
+        jewelrySize: detail.jewelrySize || row.jewelrySize || '',
+        otherWeight: '',
+        tags: tags.join(', '),
+        designStatus: detail.designStatus || row.status || '',
+        drawerLocation: detail.drawerLocation || '',
+        designDescription: detail.designDescription || '',
+        remarks: detail.remarks || row.remarks || '',
+      });
+
+      setMetalRows(
+        metals.length > 0
+          ? metals.map((item: any) => ({
+              id: item.id || makeId(),
+              goldColour: item.goldColour || '',
+              netWt: asInput(item.netWt),
+              wastagePercent: asInput(item.wastagePercent),
+              wastageWt: asInput(item.wastageWt),
+              totalWt: asInput(item.totalWt),
+              pricePerGm: asInput(item.pricePerGm),
+              components: asInput(item.components),
+            }))
+          : [{
+              id: makeId(),
+              goldColour: row.goldColour || '',
+              netWt: '',
+              wastagePercent: '',
+              wastageWt: '',
+              totalWt: '',
+              pricePerGm: '',
+              components: '',
+            }],
+      );
+
+      setGemRows(
+        gemstones.length > 0
+          ? gemstones.map((item: any) => ({
+              id: item.id || makeId(),
+              packetId: resolvePacketForGem(item),
+              stone: item.stone || '',
+              shape: item.shape || '',
+              size: item.size || '',
+              cut: item.cut || '',
+              color: item.color || '',
+              quality: item.quality || '',
+              settingType: item.stoneType || '',
+              wtPerPcs: asInput(item.wtPerPcs),
+              pcs: asInput(item.pcs),
+              wtInCts: asInput(item.wtInCts),
+              pricePerCt: asInput(item.pricePerCt),
+            }))
+          : [{
+              id: makeId(),
+              packetId: '',
+              stone: '',
+              shape: '',
+              size: '',
+              cut: '',
+              color: '',
+              quality: '',
+              settingType: '',
+              wtPerPcs: '',
+              pcs: '',
+              wtInCts: '',
+              pricePerCt: '',
+            }],
+      );
+
+      setLaborRows(
+        labors.length > 0
+          ? labors.map((item: any) => ({
+              id: item.id || makeId(),
+              laborHead: item.laborHead || '',
+              laborPerUnit: asInput(item.laborPerUnit),
+              unitQty: asInput(item.unitQty),
+              laborValue: asInput(item.laborValue),
+            }))
+          : [{
+              id: makeId(),
+              laborHead: 'Setting',
+              laborPerUnit: '',
+              unitQty: '',
+              laborValue: '',
+            }],
+      );
+
+      setFindingRows(
+        FINDING_FEATURE_ENABLED
+          ? findings.map((item: any) => ({
+              id: item.id || makeId(),
+              findingHead: item.findingHead || '',
+              pricePerUnit: asInput(item.pricePerUnit),
+              units: asInput(item.units),
+              totalWeight: asInput(item.totalWeight),
+              findingValue: asInput(item.findingValue),
+            }))
+          : [],
+      );
+
+      setProcessRows(
+        processStages.length > 0
+          ? processStages.map((item: any) => ({
+              id: item.id || makeId(),
+              stage: item.processStage || '',
+              netWeight: asInput(item.netWeight),
+              duration: asInput(item.duration),
+              remarks: item.remarks || '',
+            }))
+          : [],
+      );
+
+      setPricingRows(
+        pricingTiers.length > 0
+          ? pricingTiers.map((item: any) => ({
+              id: item.id || makeId(),
+              title: item.name || '',
+              qty: asInput(item.value),
+              rate: asInput(item.sellingPrice ?? item.value),
+            }))
+          : [],
+      );
+
+      setVendorRows(
+        vendors.length > 0
+          ? vendors.map((item: any) => ({
+              id: item.id || makeId(),
+              supplier: item.supplierName || '',
+              stockType: item.stockType || '',
+              supplierStyleNo: item.supplierStyleNo || '',
+            }))
+          : [],
+      );
+
+      setTagPicker('');
+      setGalleryUrls(imageUrls);
+      setShowGalleryPicker(false);
+      setShowAddModal(true);
+    } catch {
+      setForm({
+        designNo: row.designNo,
+        jewelryGroup: row.jewelryGroup,
+        collection: row.collection,
+        stage: row.stage,
+        diamondType: row.diamondType || '',
+        diamondSpread: row.diamondSpread || '',
+        jewelrySize: row.jewelrySize,
+        otherWeight: '',
+        tags: row.tags.join(', '),
+        designStatus: row.status,
+        drawerLocation: '',
+        designDescription: '',
+        remarks: row.remarks,
+      });
+      setMetalRows([{
+        id: makeId(),
+        goldColour: row.goldColour,
+        netWt: '',
+        wastagePercent: '',
+        wastageWt: '',
+        totalWt: '',
+        pricePerGm: '',
+        components: '',
+      }]);
+      setGemRows([{
+        id: makeId(),
+        packetId: '',
+        stone: row.stoneInfo,
+        shape: '',
+        size: '',
+        cut: '',
+        color: '',
+        quality: '',
+        settingType: '',
+        wtPerPcs: '',
+        pcs: '',
+        wtInCts: '',
+        pricePerCt: '',
+      }]);
+      setTagPicker('');
+      setGalleryUrls(row.imageUrls || []);
+      setShowGalleryPicker(false);
+      setShowAddModal(true);
+    }
   };
 
   const saveDesign = async () => {
@@ -1058,6 +1242,7 @@ export default function ProductsPage() {
         components: parseNum(row.components),
       })),
       gemstones: gemRows.map((row) => ({
+        packetId: row.packetId || undefined,
         stone: row.stone.trim() || undefined,
         shape: row.shape.trim() || undefined,
         size: row.size.trim() || undefined,
@@ -1120,7 +1305,7 @@ export default function ProductsPage() {
         const canUpdate = /^[0-9a-fA-F-]{36}$/.test(editingId);
         if (canUpdate) {
           try {
-            const response = await api.put(`/products/${editingId}`, basePayload);
+            const response = await api.put(`/products/${editingId}`, createPayload);
             const saved = mapApiDesignToRow(response.data as ApiDesignRow);
             setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
             setSelectedId(saved.id);

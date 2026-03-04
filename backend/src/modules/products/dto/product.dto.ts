@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   IsUrl,
   Max,
   Min,
@@ -67,6 +68,10 @@ export class DesignMetalDto {
 }
 
 export class DesignGemstoneDto {
+  @IsUUID()
+  @IsOptional()
+  packetId?: string;
+
   @IsString()
   @IsOptional()
   stone?: string;

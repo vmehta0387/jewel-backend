@@ -4,7 +4,7 @@
   "scripts": {
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/main.js",
     "build": "nest build",
     "db:upgrade": "node scripts/apply-sql-upgrades.js"
   },

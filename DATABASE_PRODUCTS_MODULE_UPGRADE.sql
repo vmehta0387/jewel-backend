@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS design_metals (
 CREATE TABLE IF NOT EXISTS design_gemstones (
   id VARCHAR(36) PRIMARY KEY,
   design_id VARCHAR(36) NOT NULL,
+  packet_id VARCHAR(36) NULL,
   stone VARCHAR(100) NULL,
   shape VARCHAR(100) NULL,
   size VARCHAR(100) NULL,
