@@ -140,6 +140,7 @@ export class ProductsService {
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     const scope = await this.resolveScope(dto.companyId, dto.branchId, requester);
     const designNo = this.normalizeDesignNo(dto.designNo);
     const version = this.normalizeVersion(dto.version);
@@ -415,6 +416,7 @@ export class ProductsService {
   }
 
   async update(id: string, dto: UpdateProductDto, requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
 
     const targetCompanyId = dto.companyId !== undefined ? dto.companyId : design.companyId || undefined;
@@ -532,6 +534,7 @@ export class ProductsService {
   }
 
   async updateStatus(id: string, isActive: boolean, requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     design.isActive = isActive;
     design.updatedBy = requester.id;
@@ -548,6 +551,7 @@ export class ProductsService {
   }
 
   async remove(id: string, requester: AuthUser): Promise<{ deleted: boolean }> {
+    this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     await this.designRepo.remove(design);
     return { deleted: true };
@@ -558,6 +562,7 @@ export class ProductsService {
     designIds: string[],
     requester: AuthUser,
   ): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     await this.setRelevantDesignLinks(design, designIds, requester);
 
@@ -566,6 +571,7 @@ export class ProductsService {
   }
 
   async replaceProcessStages(id: string, rows: DesignProcessStageDto[], requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replaceProcessStageRows(id, rows || []);
     await this.addHistory(id, 'PROCESS_UPDATED', 'Process stages updated successfully.', requester.id);
@@ -573,6 +579,7 @@ export class ProductsService {
   }
 
   async replacePricingTiers(id: string, rows: DesignPricingTierDto[], requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replacePricingTierRows(id, rows || []);
     await this.addHistory(id, 'PRICING_UPDATED', 'Pricing tiers updated successfully.', requester.id);
@@ -580,6 +587,7 @@ export class ProductsService {
   }
 
   async replaceVendors(id: string, rows: DesignVendorDto[], requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replaceVendorRows(id, rows || []);
     await this.addHistory(id, 'VENDOR_UPDATED', 'Vendor list updated successfully.', requester.id);
@@ -587,6 +595,7 @@ export class ProductsService {
   }
 
   async uploadStlFile(id: string, dto: UploadStlFileDto, requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
 
     await this.stlFileRepo.save(
@@ -611,6 +620,10 @@ export class ProductsService {
     files: Array<{ originalname?: string; mimetype?: string; buffer?: Buffer }>,
     request: any,
   ): Promise<{ files: Array<{ fileName: string; url: string }> }> {
+    const requester: AuthUser | undefined = request?.user;
+    if (requester) {
+      this.assertDesignWriteAccess(requester);
+    }
     if (!files || files.length === 0) {
       throw new BadRequestException('At least one image file is required.');
     }
@@ -649,7 +662,7 @@ export class ProductsService {
   }
 
   async getHistory(id: string, requester: AuthUser): Promise<any[]> {
-    await this.getDesignForWrite(id, requester);
+    await this.getDesignForRead(id, requester);
 
     const history = await this.historyRepo.find({
       where: { designId: id },
@@ -741,7 +754,8 @@ export class ProductsService {
     };
   }
 
-  async createPacket(dto: CreateStonePacketDto): Promise<StonePacket> {
+  async createPacket(dto: CreateStonePacketDto, requester: AuthUser): Promise<StonePacket> {
+    this.assertDesignWriteAccess(requester);
     const packetName = this.normalizePacketName(dto.packetName);
     const existing = await this.packetRepo.findOne({ where: { packetName } });
     if (existing) {
@@ -780,7 +794,8 @@ export class ProductsService {
     return this.packetRepo.save(packet);
   }
 
-  async updatePacket(id: string, dto: UpdateStonePacketDto): Promise<StonePacket> {
+  async updatePacket(id: string, dto: UpdateStonePacketDto, requester: AuthUser): Promise<StonePacket> {
+    this.assertDesignWriteAccess(requester);
     const packet = await this.packetRepo.findOne({ where: { id } });
     if (!packet) {
       throw new NotFoundException('Packet not found');
@@ -811,7 +826,8 @@ export class ProductsService {
     return this.packetRepo.save(packet);
   }
 
-  async updatePacketStatus(id: string, isActive: boolean): Promise<StonePacket> {
+  async updatePacketStatus(id: string, isActive: boolean, requester: AuthUser): Promise<StonePacket> {
+    this.assertDesignWriteAccess(requester);
     const packet = await this.packetRepo.findOne({ where: { id } });
     if (!packet) {
       throw new NotFoundException('Packet not found');
@@ -921,6 +937,7 @@ export class ProductsService {
   }
 
   async createMaster(dto: CreateDesignMasterDto, requester: AuthUser): Promise<DesignMaster> {
+    this.assertDesignWriteAccess(requester);
     const value = this.normalizeMasterValue(dto.value);
     const aliasName = this.normalizeMasterAlias(dto.aliasName, value);
     const description = this.optionalText(dto.description);
@@ -1043,6 +1060,7 @@ export class ProductsService {
   }
 
   async updateMaster(id: string, dto: UpdateDesignMasterDto, requester: AuthUser): Promise<DesignMaster> {
+    this.assertDesignWriteAccess(requester);
     const master = await this.designMasterRepo.findOne({ where: { id } });
     if (!master) {
       throw new NotFoundException('Master value not found');
@@ -1125,6 +1143,7 @@ export class ProductsService {
   }
 
   async updateMasterStatus(id: string, isActive: boolean, requester: AuthUser): Promise<DesignMaster> {
+    this.assertDesignWriteAccess(requester);
     const master = await this.designMasterRepo.findOne({ where: { id } });
     if (!master) {
       throw new NotFoundException('Master value not found');
@@ -1136,6 +1155,16 @@ export class ProductsService {
   }
 
   private async getDesignForWrite(id: string, requester: AuthUser): Promise<Design> {
+    this.assertDesignWriteAccess(requester);
+    const design = await this.designRepo.findOne({ where: { id } });
+    if (!design) {
+      throw new NotFoundException('Product design not found');
+    }
+    this.assertReadScope(design, requester);
+    return design;
+  }
+
+  private async getDesignForRead(id: string, requester: AuthUser): Promise<Design> {
     const design = await this.designRepo.findOne({ where: { id } });
     if (!design) {
       throw new NotFoundException('Product design not found');
@@ -1146,6 +1175,10 @@ export class ProductsService {
 
   private assertReadScope(design: Design, requester: AuthUser): void {
     if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (this.isDesignReadOnlyUser(requester)) {
       return;
     }
 
@@ -1167,6 +1200,7 @@ export class ProductsService {
     inputBranchId: string | undefined,
     requester: AuthUser,
   ): Promise<ScopeResult> {
+    this.assertDesignWriteAccess(requester);
     let companyId = inputCompanyId?.trim() || null;
     let branchId = inputBranchId?.trim() || null;
 
@@ -1233,6 +1267,16 @@ export class ProductsService {
       return;
     }
 
+    if (this.isDesignReadOnlyUser(requester)) {
+      if (normalizedCompanyId) {
+        qb.andWhere('design.companyId = :companyId', { companyId: normalizedCompanyId });
+      }
+      if (normalizedBranchId) {
+        qb.andWhere('design.branchId = :branchId', { branchId: normalizedBranchId });
+      }
+      return;
+    }
+
     if (!requester.companyId) {
       throw new ForbiddenException('User is not assigned to a company');
     }
@@ -1256,6 +1300,24 @@ export class ProductsService {
 
     if (normalizedBranchId) {
       qb.andWhere('design.branchId = :scopeBranchId', { scopeBranchId: normalizedBranchId });
+    }
+  }
+
+  private isDesignWriteUser(requester: AuthUser): boolean {
+    return (
+      requester.role === UserRole.SUPER_ADMIN ||
+      requester.role === UserRole.COMPANY_ADMIN ||
+      requester.role === UserRole.BRANCH_MANAGER
+    );
+  }
+
+  private isDesignReadOnlyUser(requester: AuthUser): boolean {
+    return !this.isDesignWriteUser(requester);
+  }
+
+  private assertDesignWriteAccess(requester: AuthUser): void {
+    if (!this.isDesignWriteUser(requester)) {
+      throw new ForbiddenException('You have read-only access for designs');
     }
   }
 

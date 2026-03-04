@@ -63,8 +63,8 @@ export class ProductsController {
   }
 
   @Post('packets')
-  createPacket(@Body() dto: CreateStonePacketDto) {
-    return this.productsService.createPacket(dto);
+  createPacket(@Body() dto: CreateStonePacketDto, @Request() req: { user: AuthUser }) {
+    return this.productsService.createPacket(dto, req.user);
   }
 
   @Post('gallery-files')
@@ -74,13 +74,21 @@ export class ProductsController {
   }
 
   @Put('packets/:id')
-  updatePacket(@Param('id') id: string, @Body() dto: UpdateStonePacketDto) {
-    return this.productsService.updatePacket(id, dto);
+  updatePacket(
+    @Param('id') id: string,
+    @Body() dto: UpdateStonePacketDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.updatePacket(id, dto, req.user);
   }
 
   @Patch('packets/:id/status')
-  updatePacketStatus(@Param('id') id: string, @Body() dto: UpdateStonePacketStatusDto) {
-    return this.productsService.updatePacketStatus(id, dto.isActive);
+  updatePacketStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateStonePacketStatusDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.updatePacketStatus(id, dto.isActive, req.user);
   }
 
   @Get('masters')

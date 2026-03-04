@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import api from '../../services/api';
+import { getStoredUser } from '../../utils/auth';
 
 type ModalType = 'info' | 'relevant' | 'stl' | 'process' | 'history' | 'pricing' | 'vendor' | null;
 
@@ -378,6 +379,19 @@ function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string
 }
 
 export default function ProductsPage() {
+  const currentUser = useMemo(() => getStoredUser(), []);
+  const isDesignReadOnlyUser = useMemo(() => {
+    if (!currentUser) {
+      return false;
+    }
+
+    return (
+      currentUser.role !== 'SUPER_ADMIN' &&
+      currentUser.role !== 'COMPANY_ADMIN' &&
+      currentUser.role !== 'BRANCH_MANAGER'
+    );
+  }, [currentUser]);
+
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
@@ -928,6 +942,10 @@ export default function ProductsPage() {
   }, [findingRows, gemRows, laborRows, metalRows]);
 
   const openAdd = () => {
+    if (isDesignReadOnlyUser) {
+      window.alert('You have read-only access for designs.');
+      return;
+    }
     setEditingId(null);
     setForm({
       ...defaultForm,
@@ -976,6 +994,12 @@ export default function ProductsPage() {
   };
 
   const openEdit = async (row: DesignRow) => {
+    if (isDesignReadOnlyUser) {
+      setSelectedId(row.id);
+      setModal('info');
+      return;
+    }
+
     setEditingId(row.id);
     setSelectedId(row.id);
 
@@ -1209,6 +1233,11 @@ export default function ProductsPage() {
   };
 
   const saveDesign = async () => {
+    if (isDesignReadOnlyUser) {
+      window.alert('You have read-only access for designs.');
+      return;
+    }
+
     if (savingDesign) return;
     if (!form.designNo.trim() || !form.jewelryGroup.trim()) {
       window.alert('Design No and Jewelry Group are required.');
@@ -1345,6 +1374,11 @@ export default function ProductsPage() {
   };
 
   const deleteDesign = async (id: string) => {
+    if (isDesignReadOnlyUser) {
+      window.alert('You have read-only access for designs.');
+      return;
+    }
+
     if (deletingId) return;
     const confirmed = window.confirm('Delete this design? This action cannot be undone.');
     if (!confirmed) return;
@@ -1434,7 +1468,9 @@ export default function ProductsPage() {
           <Button type="button" variant="secondary" onClick={() => setShowFilters((prev) => !prev)}>
             {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
-          <Button type="button" onClick={openAdd}>+ Add New</Button>
+          {!isDesignReadOnlyUser ? (
+            <Button type="button" onClick={openAdd}>+ Add New</Button>
+          ) : null}
           <Button type="button" variant="secondary" onClick={exportPdf}>Export as PDF</Button>
           <Button type="button" variant="secondary" onClick={exportCsv}>Export as Excel</Button>
         </div>
@@ -1550,21 +1586,25 @@ export default function ProductsPage() {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
-                      <Action label="Edit" onClick={() => openEdit(row)} />
-                      <Action label="REL" onClick={() => { setSelectedId(row.id); setModal('relevant'); }} />
-                      <Action label="STL" onClick={() => { setSelectedId(row.id); setModal('stl'); }} />
-                      <Action label="PR" onClick={() => { setSelectedId(row.id); setModal('process'); }} />
                       <Action label="HS" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
-                      <Action label="$" onClick={() => { setSelectedId(row.id); setModal('pricing'); }} />
-                      <Action label="VN" onClick={() => { setSelectedId(row.id); setModal('vendor'); }} />
-                      <button
-                        type="button"
-                        className="h-7 rounded bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => deleteDesign(row.id)}
-                        disabled={deletingId === row.id}
-                      >
-                        {deletingId === row.id ? '...' : 'DEL'}
-                      </button>
+                      {!isDesignReadOnlyUser ? (
+                        <>
+                          <Action label="Edit" onClick={() => openEdit(row)} />
+                          <Action label="REL" onClick={() => { setSelectedId(row.id); setModal('relevant'); }} />
+                          <Action label="STL" onClick={() => { setSelectedId(row.id); setModal('stl'); }} />
+                          <Action label="PR" onClick={() => { setSelectedId(row.id); setModal('process'); }} />
+                          <Action label="$" onClick={() => { setSelectedId(row.id); setModal('pricing'); }} />
+                          <Action label="VN" onClick={() => { setSelectedId(row.id); setModal('vendor'); }} />
+                          <button
+                            type="button"
+                            className="h-7 rounded bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => deleteDesign(row.id)}
+                            disabled={deletingId === row.id}
+                          >
+                            {deletingId === row.id ? '...' : 'DEL'}
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -1575,7 +1615,11 @@ export default function ProductsPage() {
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
           <p>Showing {filteredRows.length} of {rows.length} entries</p>
-          <p className="text-xs text-blue-700">Tip: Click a Design No or use the Edit button in Action to edit an existing design.</p>
+          <p className="text-xs text-blue-700">
+            {isDesignReadOnlyUser
+              ? 'Tip: Click View to inspect an existing design.'
+              : 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'}
+          </p>
         </div>
       </Card>
 

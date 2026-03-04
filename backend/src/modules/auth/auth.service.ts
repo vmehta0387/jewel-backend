@@ -21,7 +21,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
-      companyId: user.companyId || null,
+      companyId: this.resolveCompanyId(user),
       branchId: user.branchId || null,
       taskPermissions: user.taskPermissions || [],
     };
@@ -33,7 +33,10 @@ export class AuthService {
   }
 
   async me(userId: string): Promise<AuthUser> {
-    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
+    const user = await this.userRepo.findOne({
+      where: { id: userId, isActive: true },
+      relations: ['branch'],
+    });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -44,6 +47,7 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.userRepo.findOne({
       where: { email: normalizedEmail, isActive: true },
+      relations: ['branch'],
     });
 
     if (!user) {
@@ -71,9 +75,13 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      companyId: user.companyId || null,
+      companyId: this.resolveCompanyId(user),
       branchId: user.branchId || null,
       taskPermissions: user.taskPermissions || [],
     };
+  }
+
+  private resolveCompanyId(user: User): string | null {
+    return user.companyId || user.branch?.companyId || null;
   }
 }
