@@ -32,6 +32,7 @@ import {
 } from './dto/product.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { Design } from './entities/design.entity';
 import { DesignFinding } from './entities/design-finding.entity';
 import { DesignGemstone } from './entities/design-gemstone.entity';
@@ -140,7 +141,7 @@ export class ProductsService {
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
-    this.assertDesignWriteAccess(requester);
+    this.assertDesignCreateAccess(requester);
     const scope = await this.resolveScope(dto.companyId, dto.branchId, requester);
     const designNo = this.normalizeDesignNo(dto.designNo);
     const version = this.normalizeVersion(dto.version);
@@ -622,7 +623,7 @@ export class ProductsService {
   ): Promise<{ files: Array<{ fileName: string; url: string }> }> {
     const requester: AuthUser | undefined = request?.user;
     if (requester) {
-      this.assertDesignWriteAccess(requester);
+      this.assertDesignCreateAccess(requester);
     }
     if (!files || files.length === 0) {
       throw new BadRequestException('At least one image file is required.');
@@ -1200,7 +1201,6 @@ export class ProductsService {
     inputBranchId: string | undefined,
     requester: AuthUser,
   ): Promise<ScopeResult> {
-    this.assertDesignWriteAccess(requester);
     let companyId = inputCompanyId?.trim() || null;
     let branchId = inputBranchId?.trim() || null;
 
@@ -1311,6 +1311,22 @@ export class ProductsService {
     );
   }
 
+  private canCreateDesign(requester: AuthUser): boolean {
+    if (this.isDesignWriteUser(requester)) {
+      return true;
+    }
+
+    return this.hasDesignEntriesPermission(requester);
+  }
+
+  private hasDesignEntriesPermission(requester: AuthUser): boolean {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return true;
+    }
+
+    return (requester.taskPermissions || []).includes(TaskPermission.DESIGN_ENTRIES);
+  }
+
   private isDesignReadOnlyUser(requester: AuthUser): boolean {
     return !this.isDesignWriteUser(requester);
   }
@@ -1318,6 +1334,12 @@ export class ProductsService {
   private assertDesignWriteAccess(requester: AuthUser): void {
     if (!this.isDesignWriteUser(requester)) {
       throw new ForbiddenException('You have read-only access for designs');
+    }
+  }
+
+  private assertDesignCreateAccess(requester: AuthUser): void {
+    if (!this.canCreateDesign(requester)) {
+      throw new ForbiddenException('You do not have permission to add designs');
     }
   }
 

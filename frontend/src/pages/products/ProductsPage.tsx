@@ -380,17 +380,28 @@ function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string
 
 export default function ProductsPage() {
   const currentUser = useMemo(() => getStoredUser(), []);
-  const isDesignReadOnlyUser = useMemo(() => {
+  const canModifyExistingDesigns = useMemo(() => {
     if (!currentUser) {
       return false;
     }
 
     return (
-      currentUser.role !== 'SUPER_ADMIN' &&
-      currentUser.role !== 'COMPANY_ADMIN' &&
-      currentUser.role !== 'BRANCH_MANAGER'
+      currentUser.role === 'SUPER_ADMIN' ||
+      currentUser.role === 'COMPANY_ADMIN' ||
+      currentUser.role === 'BRANCH_MANAGER'
     );
   }, [currentUser]);
+  const canCreateDesign = useMemo(() => {
+    if (!currentUser) {
+      return false;
+    }
+
+    if (canModifyExistingDesigns) {
+      return true;
+    }
+
+    return currentUser.taskPermissions.includes('DESIGN_ENTRIES');
+  }, [canModifyExistingDesigns, currentUser]);
 
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -942,8 +953,8 @@ export default function ProductsPage() {
   }, [findingRows, gemRows, laborRows, metalRows]);
 
   const openAdd = () => {
-    if (isDesignReadOnlyUser) {
-      window.alert('You have read-only access for designs.');
+    if (!canCreateDesign) {
+      window.alert('You do not have permission to add designs.');
       return;
     }
     setEditingId(null);
@@ -994,7 +1005,7 @@ export default function ProductsPage() {
   };
 
   const openEdit = async (row: DesignRow) => {
-    if (isDesignReadOnlyUser) {
+    if (!canModifyExistingDesigns) {
       setSelectedId(row.id);
       setModal('info');
       return;
@@ -1233,8 +1244,13 @@ export default function ProductsPage() {
   };
 
   const saveDesign = async () => {
-    if (isDesignReadOnlyUser) {
-      window.alert('You have read-only access for designs.');
+    if (editingId) {
+      if (!canModifyExistingDesigns) {
+        window.alert('You have read-only access for existing designs.');
+        return;
+      }
+    } else if (!canCreateDesign) {
+      window.alert('You do not have permission to add designs.');
       return;
     }
 
@@ -1374,7 +1390,7 @@ export default function ProductsPage() {
   };
 
   const deleteDesign = async (id: string) => {
-    if (isDesignReadOnlyUser) {
+    if (!canModifyExistingDesigns) {
       window.alert('You have read-only access for designs.');
       return;
     }
@@ -1468,7 +1484,7 @@ export default function ProductsPage() {
           <Button type="button" variant="secondary" onClick={() => setShowFilters((prev) => !prev)}>
             {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
-          {!isDesignReadOnlyUser ? (
+          {canCreateDesign ? (
             <Button type="button" onClick={openAdd}>+ Add New</Button>
           ) : null}
           <Button type="button" variant="secondary" onClick={exportPdf}>Export as PDF</Button>
@@ -1587,7 +1603,7 @@ export default function ProductsPage() {
                     <div className="flex flex-wrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="HS" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
-                      {!isDesignReadOnlyUser ? (
+                      {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
                           <Action label="REL" onClick={() => { setSelectedId(row.id); setModal('relevant'); }} />
@@ -1616,9 +1632,9 @@ export default function ProductsPage() {
         <div className="mt-3 space-y-1 text-sm text-gray-600">
           <p>Showing {filteredRows.length} of {rows.length} entries</p>
           <p className="text-xs text-blue-700">
-            {isDesignReadOnlyUser
-              ? 'Tip: Click View to inspect an existing design.'
-              : 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'}
+            {canModifyExistingDesigns
+              ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
+              : 'Tip: Click View to inspect an existing design.'}
           </p>
         </div>
       </Card>
