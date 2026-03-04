@@ -5,7 +5,8 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
-    "build": "nest build"
+    "build": "nest build",
+    "db:upgrade": "node scripts/apply-sql-upgrades.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

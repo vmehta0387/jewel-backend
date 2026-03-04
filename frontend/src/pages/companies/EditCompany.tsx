@@ -7,6 +7,18 @@ import PricingSlabTable from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable from '../../components/forms/CollectionPricingTable';
 import api from '../../services/api';
 
+type QuickUserRole = 'COMPANY_ADMIN' | 'BRANCH_MANAGER' | 'SALES_REP';
+
+const QUICK_USER_ROLE_OPTIONS: { value: QuickUserRole; label: string }[] = [
+  { value: 'COMPANY_ADMIN', label: 'Company Admin' },
+  { value: 'BRANCH_MANAGER', label: 'Branch Manager' },
+  { value: 'SALES_REP', label: 'Sales Rep' },
+];
+
+function quickRoleNeedsBranch(role: QuickUserRole): boolean {
+  return role === 'BRANCH_MANAGER' || role === 'SALES_REP';
+}
+
 export default function EditCompany() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -37,11 +49,38 @@ export default function EditCompany() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [showCreateBranchForm, setShowCreateBranchForm] = useState(false);
+  const [showCreateUserForm, setShowCreateUserForm] = useState(false);
   const [accountManagers, setAccountManagers] = useState<any[]>([]);
   const [companyBranches, setCompanyBranches] = useState<any[]>([]);
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
   const [slabs, setSlabs] = useState<any[]>([]);
   const [collectionOverrides, setCollectionOverrides] = useState<any[]>([]);
+  const [newBranchData, setNewBranchData] = useState({
+    name: '',
+    code: '',
+    streetAddress: '',
+    streetAddress2: '',
+    city: '',
+    stateProvince: '',
+    postalCode: '',
+    country: '',
+    email: '',
+    phone: '',
+    branchMultiplier: 1,
+  });
+  const [newUserData, setNewUserData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    phone: '',
+    role: 'COMPANY_ADMIN' as QuickUserRole,
+    branchId: '',
+    isActive: true,
+  });
 
   useEffect(() => {
     fetchCompany();
@@ -183,6 +222,156 @@ export default function EditCompany() {
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Network error. Please try again.' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const validateBranchCreation = () => {
+    const nextErrors: Record<string, string> = {};
+
+    if (!newBranchData.name.trim()) nextErrors.newBranchName = 'Branch name is required';
+    if (!newBranchData.code.trim()) nextErrors.newBranchCode = 'Branch code is required';
+    if (newBranchData.branchMultiplier < 1 || newBranchData.branchMultiplier > 10) {
+      nextErrors.newBranchMultiplier = 'Multiplier must be between 1 and 10';
+    }
+    if (newBranchData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newBranchData.email)) {
+      nextErrors.newBranchEmail = 'Invalid email format';
+    }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      ['newBranchName', 'newBranchCode', 'newBranchMultiplier', 'newBranchEmail', 'newBranchSubmit'].forEach((key) => {
+        delete next[key];
+      });
+      return { ...next, ...nextErrors };
+    });
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const validateUserCreation = () => {
+    const nextErrors: Record<string, string> = {};
+
+    if (!newUserData.firstName.trim()) nextErrors.newUserFirstName = 'First name is required';
+    if (!newUserData.lastName.trim()) nextErrors.newUserLastName = 'Last name is required';
+    if (!newUserData.email.trim()) nextErrors.newUserEmail = 'Email is required';
+    if (newUserData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUserData.email)) {
+      nextErrors.newUserEmail = 'Invalid email format';
+    }
+    if (!newUserData.password.trim()) {
+      nextErrors.newUserPassword = 'Password is required';
+    } else if (newUserData.password.trim().length < 8) {
+      nextErrors.newUserPassword = 'Password must be at least 8 characters';
+    }
+    if (quickRoleNeedsBranch(newUserData.role) && !newUserData.branchId) {
+      nextErrors.newUserBranch = 'Branch is required for this role';
+    }
+
+    setErrors((prev) => {
+      const next = { ...prev };
+      ['newUserFirstName', 'newUserLastName', 'newUserEmail', 'newUserPassword', 'newUserBranch', 'newUserSubmit'].forEach((key) => {
+        delete next[key];
+      });
+      return { ...next, ...nextErrors };
+    });
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleCreateBranch = async () => {
+    if (!id || !validateBranchCreation()) {
+      return;
+    }
+
+    setIsCreatingBranch(true);
+    try {
+      await api.post('/branches', {
+        companyId: id,
+        name: newBranchData.name.trim(),
+        code: newBranchData.code.toUpperCase().replace(/\s+/g, ''),
+        streetAddress: newBranchData.streetAddress.trim() || null,
+        streetAddress2: newBranchData.streetAddress2.trim() || null,
+        city: newBranchData.city.trim() || null,
+        stateProvince: newBranchData.stateProvince.trim() || null,
+        postalCode: newBranchData.postalCode.trim() || null,
+        country: newBranchData.country.trim() || null,
+        email: newBranchData.email.trim() || null,
+        phone: newBranchData.phone.trim() || null,
+        branchMultiplier: newBranchData.branchMultiplier,
+      });
+
+      setNewBranchData({
+        name: '',
+        code: '',
+        streetAddress: '',
+        streetAddress2: '',
+        city: '',
+        stateProvince: '',
+        postalCode: '',
+        country: '',
+        email: '',
+        phone: '',
+        branchMultiplier: 1,
+      });
+      await fetchCompanyResources(id);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.newBranchSubmit;
+        return next;
+      });
+      setShowCreateBranchForm(false);
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      setErrors((prev) => ({
+        ...prev,
+        newBranchSubmit: Array.isArray(message) ? message.join(', ') : message || 'Failed to create branch',
+      }));
+    } finally {
+      setIsCreatingBranch(false);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!id || !validateUserCreation()) {
+      return;
+    }
+
+    setIsCreatingUser(true);
+    try {
+      await api.post('/users', {
+        firstName: newUserData.firstName.trim(),
+        lastName: newUserData.lastName.trim(),
+        email: newUserData.email.trim().toLowerCase(),
+        password: newUserData.password,
+        role: newUserData.role,
+        companyId: id,
+        branchId: quickRoleNeedsBranch(newUserData.role) ? newUserData.branchId : null,
+        phone: newUserData.phone.trim() || null,
+        isActive: newUserData.isActive,
+      });
+
+      setNewUserData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        phone: '',
+        role: 'COMPANY_ADMIN',
+        branchId: '',
+        isActive: true,
+      });
+      await fetchCompanyResources(id);
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.newUserSubmit;
+        return next;
+      });
+      setShowCreateUserForm(false);
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      setErrors((prev) => ({
+        ...prev,
+        newUserSubmit: Array.isArray(message) ? message.join(', ') : message || 'Failed to create user',
+      }));
+    } finally {
+      setIsCreatingUser(false);
     }
   };
 
@@ -448,10 +637,93 @@ export default function EditCompany() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Create and manage branches from this company context.</p>
-              <Button type="button" onClick={() => navigate(`/branches/add?companyId=${id}`)}>
-                + Add Branch
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => setShowCreateBranchForm((prev) => !prev)}>
+                  {showCreateBranchForm ? 'Cancel' : '+ Quick Add Branch'}
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(`/branches/add?companyId=${id}`)}>
+                  Open Full Branch Form
+                </Button>
+              </div>
             </div>
+
+            {showCreateBranchForm && (
+              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Branch Name *"
+                    value={newBranchData.name}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, name: event.target.value })}
+                    error={errors.newBranchName}
+                    placeholder="Downtown Branch"
+                  />
+                  <Input
+                    label="Branch Code *"
+                    value={newBranchData.code}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, code: event.target.value.toUpperCase().replace(/\s+/g, '') })}
+                    error={errors.newBranchCode}
+                    placeholder="DOWNTOWN"
+                  />
+                  <Input
+                    label="Branch Email"
+                    type="email"
+                    value={newBranchData.email}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, email: event.target.value })}
+                    error={errors.newBranchEmail}
+                    placeholder="branch@company.com"
+                  />
+                  <Input
+                    label="Branch Phone"
+                    value={newBranchData.phone}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, phone: event.target.value })}
+                    placeholder="+1-555-0100"
+                  />
+                  <Input
+                    label="Branch Multiplier *"
+                    type="number"
+                    min="1"
+                    max="10"
+                    step="0.01"
+                    value={newBranchData.branchMultiplier}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, branchMultiplier: parseFloat(event.target.value) || 0 })}
+                    error={errors.newBranchMultiplier}
+                  />
+                  <Input
+                    label="City"
+                    value={newBranchData.city}
+                    onChange={(event) => setNewBranchData({ ...newBranchData, city: event.target.value })}
+                    placeholder="New York"
+                  />
+                  <div className="col-span-2">
+                    <Input
+                      label="Street Address"
+                      value={newBranchData.streetAddress}
+                      onChange={(event) => setNewBranchData({ ...newBranchData, streetAddress: event.target.value })}
+                      placeholder="123 Main Street"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Input
+                      label="Address Line 2"
+                      value={newBranchData.streetAddress2}
+                      onChange={(event) => setNewBranchData({ ...newBranchData, streetAddress2: event.target.value })}
+                      placeholder="Suite 300"
+                    />
+                  </div>
+                </div>
+                {errors.newBranchSubmit && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{errors.newBranchSubmit}</div>
+                )}
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={handleCreateBranch} disabled={isCreatingBranch}>
+                    {isCreatingBranch ? 'Creating...' : 'Create Branch'}
+                  </Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowCreateBranchForm(false)} disabled={isCreatingBranch}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="min-w-full text-sm">
@@ -513,10 +785,126 @@ export default function EditCompany() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Manage users mapped to this company.</p>
-              <Button type="button" onClick={() => navigate(`/users/add?companyId=${id}`)}>
-                + Add User
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => setShowCreateUserForm((prev) => !prev)}>
+                  {showCreateUserForm ? 'Cancel' : '+ Quick Add User'}
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(`/users/add?companyId=${id}`)}>
+                  Open Full User Form
+                </Button>
+              </div>
             </div>
+
+            {showCreateUserForm && (
+              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="First Name *"
+                    value={newUserData.firstName}
+                    onChange={(event) => setNewUserData({ ...newUserData, firstName: event.target.value })}
+                    error={errors.newUserFirstName}
+                    placeholder="John"
+                  />
+                  <Input
+                    label="Last Name *"
+                    value={newUserData.lastName}
+                    onChange={(event) => setNewUserData({ ...newUserData, lastName: event.target.value })}
+                    error={errors.newUserLastName}
+                    placeholder="Doe"
+                  />
+                  <Input
+                    label="Email *"
+                    type="email"
+                    value={newUserData.email}
+                    onChange={(event) => setNewUserData({ ...newUserData, email: event.target.value })}
+                    error={errors.newUserEmail}
+                    placeholder="john@company.com"
+                  />
+                  <Input
+                    label="Temporary Password *"
+                    type="password"
+                    value={newUserData.password}
+                    onChange={(event) => setNewUserData({ ...newUserData, password: event.target.value })}
+                    error={errors.newUserPassword}
+                    placeholder="Minimum 8 characters"
+                  />
+                  <Input
+                    label="Phone"
+                    value={newUserData.phone}
+                    onChange={(event) => setNewUserData({ ...newUserData, phone: event.target.value })}
+                    placeholder="+1-555-0100"
+                  />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                      value={newUserData.role}
+                      onChange={(event) => {
+                        const nextRole = event.target.value as QuickUserRole;
+                        setNewUserData({
+                          ...newUserData,
+                          role: nextRole,
+                          branchId: quickRoleNeedsBranch(nextRole) ? newUserData.branchId : '',
+                        });
+                      }}
+                    >
+                      {QUICK_USER_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {quickRoleNeedsBranch(newUserData.role) && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
+                      <select
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
+                          errors.newUserBranch ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        value={newUserData.branchId}
+                        onChange={(event) => setNewUserData({ ...newUserData, branchId: event.target.value })}
+                      >
+                        <option value="">Select Branch</option>
+                        {companyBranches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name} ({branch.code})
+                          </option>
+                        ))}
+                      </select>
+                      {errors.newUserBranch && <p className="mt-1 text-sm text-red-600">{errors.newUserBranch}</p>}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-7">
+                    <input
+                      id="quick-user-active"
+                      type="checkbox"
+                      checked={newUserData.isActive}
+                      onChange={(event) => setNewUserData({ ...newUserData, isActive: event.target.checked })}
+                      className="w-4 h-4 text-primary-600"
+                    />
+                    <label htmlFor="quick-user-active" className="text-sm text-gray-700 font-medium">
+                      Active user
+                    </label>
+                  </div>
+                </div>
+
+                {errors.newUserSubmit && (
+                  <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{errors.newUserSubmit}</div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" onClick={handleCreateUser} disabled={isCreatingUser}>
+                    {isCreatingUser ? 'Creating...' : 'Create User'}
+                  </Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowCreateUserForm(false)} disabled={isCreatingUser}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="min-w-full text-sm">

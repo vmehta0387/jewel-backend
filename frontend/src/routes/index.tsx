@@ -9,6 +9,7 @@ import BranchesPage from '../pages/branches/BranchesPage';
 import AddBranch from '../pages/branches/AddBranch';
 import EditBranch from '../pages/branches/EditBranch';
 import ProductsPage from '../pages/products/ProductsPage';
+import DesignMastersPage from '../pages/masters/DesignMastersPage';
 import OrdersPage from '../pages/orders/OrdersPage';
 import ProtectedRoute from '../components/auth/ProtectedRoute';
 import UsersPage from '../pages/users/UsersPage';
@@ -53,7 +54,10 @@ export const router = createBrowserRouter([
           },
           {
             element: <ProtectedRoute requiredTaskPermissions={['DESIGN_ENTRIES']} />,
-            children: [{ path: '/products', element: <ProductsPage /> }],
+            children: [
+              { path: '/products', element: <ProductsPage /> },
+              { path: '/masters/design', element: <DesignMastersPage /> },
+            ],
           },
           {
             element: <ProtectedRoute requiredTaskPermissions={['ORDER_ENTRIES']} />,

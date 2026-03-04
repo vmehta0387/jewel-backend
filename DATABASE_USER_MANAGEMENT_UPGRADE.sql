@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS branch_pricing_slabs (
   INDEX idx_branch (branch_id),
   INDEX idx_cost_range (min_cost, max_cost),
   CONSTRAINT fk_branch_slab_branch FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 UPDATE users
 SET task_permissions = '["COMPANY_MANAGEMENT","BRANCH_MANAGEMENT","USER_MANAGEMENT","DESIGN_ENTRIES","ORDER_ENTRIES","ORDER_APPROVALS","PRICING_CONFIGURATION","VIEW_REPORTS"]'

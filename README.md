@@ -84,6 +84,7 @@ Use the seeded super admin account:
 If you already have an existing database from older builds, run:
 ```bash
 mysql -u root -p jewelry_platform < DATABASE_USER_MANAGEMENT_UPGRADE.sql
+mysql -u root -p jewelry_platform < DATABASE_PRODUCTS_MODULE_UPGRADE.sql
 ```
 
 ## Client Review Deployment
@@ -125,10 +126,20 @@ Recommended stack for review:
 - PUT /api/users/:id
 - PATCH /api/users/:id/status
 
-### Products
-- GET /api/ring-styles
-- POST /api/ring-styles/:id/configure
-- GET /api/configurations/:shareableLink
+### Products (Design Management)
+- GET /api/products
+- GET /api/products/packets
+- POST /api/products
+- GET /api/products/:id
+- PUT /api/products/:id
+- PATCH /api/products/:id/status
+- DELETE /api/products/:id
+- GET /api/products/:id/history
+- POST /api/products/:id/relevant-designs
+- POST /api/products/:id/process-stages
+- POST /api/products/:id/pricing-tiers
+- POST /api/products/:id/vendors
+- POST /api/products/:id/stl-files
 
 ### Pricing
 - POST /api/pricing/calculate
