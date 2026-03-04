@@ -561,7 +561,7 @@ export default function ProductsPage() {
       const response = await api.get('/products', {
         params: {
           page: 1,
-          limit: 500,
+          limit: 200,
           status: 'ALL',
         },
       });
