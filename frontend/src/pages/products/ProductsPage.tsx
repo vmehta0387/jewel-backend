@@ -50,6 +50,27 @@ interface DesignRow {
   modifiedAt: string;
 }
 
+interface ApiDesignRow {
+  id: string;
+  designNo?: string;
+  version?: string;
+  jewelryGroup?: string;
+  jewelrySize?: string | null;
+  diamondType?: string | null;
+  diamondSpread?: string | null;
+  goldColour?: string | null;
+  collection?: string | null;
+  stoneInfo?: string | null;
+  totalValue?: number | string | null;
+  tags?: unknown;
+  stage?: string | null;
+  designStatus?: string | null;
+  remarks?: string | null;
+  imageUrls?: unknown;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 interface DesignForm {
   designNo: string;
   jewelryGroup: string;
@@ -166,6 +187,79 @@ const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2
 const parseNum = (value: string): number => {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
+};
+const parseNumericValue = (value: number | string | null | undefined): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const normalizeDateTimeValue = (value: string | null | undefined): string => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 19).replace('T', ' ');
+};
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const publicAssetsBaseUrl = apiBaseUrl.replace(/\/api$/, '');
+const resolvePublicAssetUrl = (rawUrl: string): string => {
+  const url = rawUrl.trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) {
+    return url;
+  }
+  if (!publicAssetsBaseUrl) {
+    return url;
+  }
+  if (url.startsWith('/')) {
+    return `${publicAssetsBaseUrl}${url}`;
+  }
+  return `${publicAssetsBaseUrl}/${url}`;
+};
+const normalizeStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        return normalizeStringArray(JSON.parse(trimmed));
+      } catch {
+        return [trimmed];
+      }
+    }
+    return [trimmed];
+  }
+
+  return [];
+};
+const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
+  const imageUrls = normalizeStringArray(design.imageUrls).map(resolvePublicAssetUrl);
+  const tags = normalizeStringArray(design.tags);
+  return {
+    id: design.id,
+    designNo: design.designNo || '',
+    version: design.version || 'V1',
+    jewelryGroup: design.jewelryGroup || '',
+    jewelrySize: design.jewelrySize || 'N/A',
+    diamondType: design.diamondType || '-',
+    diamondSpread: design.diamondSpread || '-',
+    goldColour: design.goldColour || 'N/A',
+    collection: design.collection || 'General',
+    stoneInfo: design.stoneInfo || 'N/A',
+    price: parseNumericValue(design.totalValue),
+    tags,
+    stage: design.stage || '',
+    status: design.designStatus || '',
+    remarks: design.remarks || '',
+    imageUrls,
+    createdAt: normalizeDateTimeValue(design.createdAt) || '',
+    modifiedAt: normalizeDateTimeValue(design.updatedAt) || '',
+  };
 };
 const formatMoney = (value: number): string => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -284,12 +378,16 @@ function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string
 }
 
 export default function ProductsPage() {
-  const [rows, setRows] = useState<DesignRow[]>(designSeed);
+  const [rows, setRows] = useState<DesignRow[]>([]);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [rowsError, setRowsError] = useState<string | null>(null);
+  const [savingDesign, setSavingDesign] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
-  const [selectedId, setSelectedId] = useState<string>(designSeed[0]?.id ?? '');
+  const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DesignForm>(defaultForm);
   const [filters, setFilters] = useState({ jewelryGroup: '', collection: '', jewelrySize: '', tags: '', stone: '', shape: '', stage: '', status: 'Active', goldColour: '' });
@@ -453,6 +551,37 @@ export default function ProductsPage() {
       window.alert(error?.response?.data?.message || 'Unable to upload images.');
     } finally {
       setGalleryUploading(false);
+    }
+  };
+
+  const fetchDesignRows = async (preferredSelectedId?: string) => {
+    setRowsLoading(true);
+    setRowsError(null);
+    try {
+      const response = await api.get('/products', {
+        params: {
+          page: 1,
+          limit: 500,
+          status: 'ALL',
+        },
+      });
+      const mappedRows = ((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow);
+      setRows(mappedRows);
+      setSelectedId((current) => {
+        if (preferredSelectedId && mappedRows.some((row) => row.id === preferredSelectedId)) {
+          return preferredSelectedId;
+        }
+        if (current && mappedRows.some((row) => row.id === current)) {
+          return current;
+        }
+        return mappedRows[0]?.id || '';
+      });
+    } catch (error: any) {
+      setRowsError(error?.response?.data?.message || 'Unable to load designs from server.');
+      setRows(designSeed);
+      setSelectedId((current) => current || designSeed[0]?.id || '');
+    } finally {
+      setRowsLoading(false);
     }
   };
 
@@ -745,6 +874,7 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
+    fetchDesignRows();
     fetchMasterOptions();
     fetchPacketOptions();
   }, []);
@@ -894,34 +1024,140 @@ export default function ProductsPage() {
     setShowAddModal(true);
   };
 
-  const saveDesign = () => {
-    if (!form.designNo.trim() || !form.jewelryGroup.trim()) return;
-    const next: DesignRow = {
-      id: editingId ?? makeId(),
+  const saveDesign = async () => {
+    if (savingDesign) return;
+    if (!form.designNo.trim() || !form.jewelryGroup.trim()) {
+      window.alert('Design No and Jewelry Group are required.');
+      return;
+    }
+
+    const basePayload = {
       designNo: form.designNo.trim(),
-      version: 'V1',
       jewelryGroup: form.jewelryGroup.trim(),
-      jewelrySize: form.jewelrySize.trim() || 'N/A',
-      diamondType: form.diamondType.trim() || '-',
-      diamondSpread: form.diamondSpread.trim() || '-',
-      goldColour: metalRows[0]?.goldColour || 'N/A',
-      collection: form.collection.trim() || 'General',
-      stoneInfo: gemRows[0]?.stone || 'N/A',
-      price: costTotals.total,
-      tags: form.tags.split(',').map((item) => item.trim()).filter(Boolean),
-      stage: form.stage,
-      status: form.designStatus,
-      remarks: form.remarks,
+      collection: form.collection.trim() || undefined,
+      stage: form.stage.trim() || undefined,
+      diamondType: form.diamondType.trim() || undefined,
+      diamondSpread: form.diamondSpread.trim() || undefined,
+      jewelrySize: form.jewelrySize.trim() || undefined,
+      designStatus: form.designStatus.trim() || undefined,
+      drawerLocation: form.drawerLocation.trim() || undefined,
+      designDescription: form.designDescription.trim() || undefined,
+      remarks: form.remarks.trim() || undefined,
+      tags: selectedTags,
       imageUrls: galleryUrls,
-      createdAt: selected?.createdAt ?? new Date().toISOString().slice(0, 19).replace('T', ' '),
-      modifiedAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
     };
-    if (editingId) setRows((prev) => prev.map((item) => (item.id === editingId ? next : item)));
-    else setRows((prev) => [next, ...prev]);
-    setSelectedId(next.id);
-    setEditingId(null);
-    setShowGalleryPicker(false);
-    setShowAddModal(false);
+
+    setSavingDesign(true);
+    try {
+      if (editingId) {
+        const response = await api.put(`/products/${editingId}`, basePayload);
+        const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+        setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+        setSelectedId(saved.id);
+      } else {
+        const createPayload = {
+          ...basePayload,
+          metals: metalRows.map((row) => ({
+            goldColour: row.goldColour.trim() || undefined,
+            netWt: parseNum(row.netWt),
+            wastagePercent: parseNum(row.wastagePercent),
+            wastageWt: parseNum(row.wastageWt),
+            totalWt: parseNum(row.totalWt),
+            pricePerGm: parseNum(row.pricePerGm),
+            components: parseNum(row.components),
+          })),
+          gemstones: gemRows.map((row) => ({
+            stone: row.stone.trim() || undefined,
+            shape: row.shape.trim() || undefined,
+            size: row.size.trim() || undefined,
+            cut: row.cut.trim() || undefined,
+            color: row.color.trim() || undefined,
+            quality: row.quality.trim() || undefined,
+            stoneType: row.settingType.trim() || undefined,
+            wtPerPcs: parseNum(row.wtPerPcs),
+            pcs: parseNum(row.pcs),
+            wtInCts: parseNum(row.wtInCts),
+            pricePerCt: parseNum(row.pricePerCt),
+          })),
+          labors: laborRows.map((row) => ({
+            laborHead: row.laborHead.trim() || undefined,
+            laborPerUnit: parseNum(row.laborPerUnit),
+            unitQty: parseNum(row.unitQty),
+            laborValue: parseNum(row.laborValue),
+          })),
+          findings: FINDING_FEATURE_ENABLED
+            ? findingRows.map((row) => ({
+                findingHead: row.findingHead.trim() || undefined,
+                pricePerUnit: parseNum(row.pricePerUnit),
+                units: parseNum(row.units),
+                totalWeight: parseNum(row.totalWeight),
+                findingValue: parseNum(row.findingValue),
+              }))
+            : [],
+          processStages: processRows
+            .filter((row) => row.stage.trim())
+            .map((row) => ({
+              processStage: row.stage.trim(),
+              netWeight: parseNum(row.netWeight),
+              duration: parseNum(row.duration),
+              durationType: 'MINUTES',
+              remarks: row.remarks.trim() || undefined,
+            })),
+          pricingTiers: pricingRows
+            .filter((row) => row.title.trim())
+            .map((row) => ({
+              name: row.title.trim(),
+              incrementBy: 'PERCENTAGE',
+              value: parseNum(row.rate),
+              sellingPrice: parseNum(row.rate),
+              unit: 'PCS',
+              weightBy: 'TOTAL',
+            })),
+          vendors: vendorRows
+            .filter((row) => row.supplier.trim())
+            .map((row) => ({
+              supplierName: row.supplier.trim(),
+              stockType: row.stockType.trim() || undefined,
+              supplierStyleNo: row.supplierStyleNo.trim() || undefined,
+            })),
+          relevantDesignIds: relevantSelection,
+        };
+        const response = await api.post('/products', createPayload);
+        const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+        setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        setSelectedId(saved.id);
+      }
+
+      setEditingId(null);
+      setShowGalleryPicker(false);
+      setShowAddModal(false);
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to save design.');
+    } finally {
+      setSavingDesign(false);
+    }
+  };
+
+  const deleteDesign = async (id: string) => {
+    if (deletingId) return;
+    const confirmed = window.confirm('Delete this design? This action cannot be undone.');
+    if (!confirmed) return;
+
+    setDeletingId(id);
+    try {
+      await api.delete(`/products/${id}`);
+      setRows((prev) => {
+        const next = prev.filter((item) => item.id !== id);
+        if (selectedId === id) {
+          setSelectedId(next[0]?.id || '');
+        }
+        return next;
+      });
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to delete design.');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
@@ -1043,6 +1279,12 @@ export default function ProductsPage() {
           <span className="rounded border border-gray-300 bg-white px-2 py-2 text-xs font-semibold text-gray-500">Q</span>
           <input className="w-64 rounded border border-gray-300 px-3 py-2 text-sm" placeholder="Search designs" value={search} onChange={(event) => setSearch(event.target.value)} />
         </div>
+        {rowsLoading ? (
+          <p className="mb-3 text-sm text-blue-700">Loading designs...</p>
+        ) : null}
+        {rowsError ? (
+          <p className="mb-3 text-sm text-red-600">{rowsError}</p>
+        ) : null}
 
         <div className="overflow-x-auto border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
@@ -1109,7 +1351,14 @@ export default function ProductsPage() {
                       <Action label="HS" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       <Action label="$" onClick={() => { setSelectedId(row.id); setModal('pricing'); }} />
                       <Action label="VN" onClick={() => { setSelectedId(row.id); setModal('vendor'); }} />
-                      <button type="button" className="h-7 rounded bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700" onClick={() => setRows((prev) => prev.filter((item) => item.id !== row.id))}>DEL</button>
+                      <button
+                        type="button"
+                        className="h-7 rounded bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => deleteDesign(row.id)}
+                        disabled={deletingId === row.id}
+                      >
+                        {deletingId === row.id ? '...' : 'DEL'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1815,7 +2064,9 @@ export default function ProductsPage() {
             </div>
 
             <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 pt-3 shadow-[0_-6px_18px_rgba(15,23,42,0.08)]">
-              <Button type="button" onClick={saveDesign}>Save</Button>
+              <Button type="button" onClick={saveDesign} disabled={savingDesign}>
+                {savingDesign ? 'Saving...' : 'Save'}
+              </Button>
               <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); }}>Close</Button>
             </div>
           </div>
