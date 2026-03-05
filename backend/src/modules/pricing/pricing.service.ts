@@ -10,12 +10,14 @@ import {
 import {
   CreateGlobalBasePriceDto,
   FindGlobalBasePricesQueryDto,
+  FindGlobalBasePriceReferenceOptionsQueryDto,
   UpdateGlobalBasePriceDto,
 } from './dto/pricing.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Design } from '../products/entities/design.entity';
 import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
+import { DesignMaster, DesignMasterType } from '../products/entities/design-master.entity';
 
 interface GlobalRateMaps {
   metalRates: Map<string, number>;
@@ -36,6 +38,8 @@ export class PricingService {
     private readonly metalRepo: Repository<DesignMetal>,
     @InjectRepository(DesignGemstone)
     private readonly gemstoneRepo: Repository<DesignGemstone>,
+    @InjectRepository(DesignMaster)
+    private readonly designMasterRepo: Repository<DesignMaster>,
   ) {}
 
   async findGlobalBasePrices(query: FindGlobalBasePricesQueryDto): Promise<any> {
@@ -70,6 +74,72 @@ export class PricingService {
       page,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async findGlobalBasePriceReferenceOptions(
+    query: FindGlobalBasePriceReferenceOptionsQueryDto,
+  ): Promise<{ data: string[] }> {
+    const masterType = this.resolveReferenceMasterType(query.category);
+
+    const [masters, configuredRates, currentRate] = await Promise.all([
+      this.designMasterRepo.find({
+        where: { masterType, isActive: true },
+        order: { value: 'ASC' },
+      }),
+      this.globalBasePriceRepo.find({
+        where: { category: query.category },
+        select: ['id', 'referenceValue'],
+      }),
+      query.excludeId
+        ? this.globalBasePriceRepo.findOne({
+            where: { id: query.excludeId },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    const excludedReferenceValues = new Set(
+      configuredRates
+        .filter((row) => !query.excludeId || row.id !== query.excludeId)
+        .map((row) => this.normalizeLookup(row.referenceValue))
+        .filter((value): value is string => !!value),
+    );
+
+    const seen = new Set<string>();
+    const options: string[] = [];
+
+    if (
+      currentRate &&
+      currentRate.category === query.category &&
+      typeof currentRate.referenceValue === 'string'
+    ) {
+      const normalizedCurrent = this.normalizeLookup(currentRate.referenceValue);
+      const trimmedCurrent = currentRate.referenceValue.trim();
+      if (
+        normalizedCurrent &&
+        trimmedCurrent &&
+        !excludedReferenceValues.has(normalizedCurrent) &&
+        !seen.has(normalizedCurrent)
+      ) {
+        seen.add(normalizedCurrent);
+        options.push(trimmedCurrent);
+      }
+    }
+
+    masters.forEach((master) => {
+      const normalizedValue = this.normalizeLookup(master.value);
+      const trimmedValue = (master.value || '').trim();
+      if (!normalizedValue || !trimmedValue) {
+        return;
+      }
+      if (excludedReferenceValues.has(normalizedValue) || seen.has(normalizedValue)) {
+        return;
+      }
+
+      seen.add(normalizedValue);
+      options.push(trimmedValue);
+    });
+
+    return { data: options };
   }
 
   async createGlobalBasePrice(dto: CreateGlobalBasePriceDto, requester: AuthUser): Promise<any> {
@@ -490,6 +560,13 @@ export class PricingService {
   private normalizeCurrency(value?: string): string {
     const normalized = (value || 'USD').trim().toUpperCase();
     return normalized.length > 0 ? normalized : 'USD';
+  }
+
+  private resolveReferenceMasterType(category: GlobalBasePriceCategory): DesignMasterType {
+    if (category === GlobalBasePriceCategory.METAL) {
+      return DesignMasterType.GOLD_COLOUR;
+    }
+    return DesignMasterType.DIAMOND_TYPE;
   }
 
   private roundMoney(value: number): number {

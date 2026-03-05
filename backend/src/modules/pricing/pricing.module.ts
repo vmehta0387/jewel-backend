@@ -10,6 +10,7 @@ import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
 import { DesignLabor } from '../products/entities/design-labor.entity';
 import { DesignFinding } from '../products/entities/design-finding.entity';
+import { DesignMaster } from '../products/entities/design-master.entity';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { DesignFinding } from '../products/entities/design-finding.entity';
       DesignGemstone,
       DesignLabor,
       DesignFinding,
+      DesignMaster,
     ]),
     AuthModule,
   ],
@@ -29,4 +31,3 @@ import { DesignFinding } from '../products/entities/design-finding.entity';
   exports: [PricingService],
 })
 export class PricingModule {}
-

@@ -820,6 +820,7 @@ export class ProductsService {
     const existing = await this.packetRepo.findOne({ where: { packetName } });
     if (existing) {
       if (!existing.isActive) {
+        const nextWeight = this.requiredPositiveNumber(dto.weight, 'weight');
         existing.stockType = this.optionalText(dto.stockType) || existing.stockType || 'COMPLETED';
         existing.stone = this.optionalText(dto.stone);
         existing.shape = this.optionalText(dto.shape);
@@ -828,13 +829,15 @@ export class ProductsService {
         existing.color = this.optionalText(dto.color);
         existing.quality = this.optionalText(dto.quality);
         existing.pieces = this.toInt(dto.pieces);
-        existing.weight = this.toNumber(dto.weight);
+        existing.weight = nextWeight;
         existing.weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
         existing.isActive = true;
         return this.packetRepo.save(existing);
       }
       throw new BadRequestException('Packet name already exists');
     }
+
+    const weight = this.requiredPositiveNumber(dto.weight, 'weight');
 
     const packet = this.packetRepo.create({
       packetName,
@@ -846,7 +849,7 @@ export class ProductsService {
       color: this.optionalText(dto.color),
       quality: this.optionalText(dto.quality),
       pieces: this.toInt(dto.pieces),
-      weight: this.toNumber(dto.weight),
+      weight,
       weightUnit: this.normalizePacketWeightUnit(dto.weightUnit),
       isActive: true,
     });
@@ -880,8 +883,12 @@ export class ProductsService {
     if (dto.color !== undefined) packet.color = this.optionalText(dto.color);
     if (dto.quality !== undefined) packet.quality = this.optionalText(dto.quality);
     if (dto.pieces !== undefined) packet.pieces = this.toInt(dto.pieces);
-    if (dto.weight !== undefined) packet.weight = this.toNumber(dto.weight);
+    if (dto.weight !== undefined) packet.weight = this.requiredPositiveNumber(dto.weight, 'weight');
     if (dto.weightUnit !== undefined) packet.weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
+
+    if (packet.weight <= 0) {
+      throw new BadRequestException('Stone packet weight must be greater than 0');
+    }
 
     return this.packetRepo.save(packet);
   }
@@ -1523,18 +1530,48 @@ export class ProductsService {
   }
 
   private normalizeMetals(rows: DesignMetalDto[], globalRateMaps?: GlobalRateMaps): NormalizedMetalRow[] {
-    return rows.map((row) => {
-      const goldColour = this.optionalText(row.goldColour);
+    return rows.map((row, index) => {
+      const rowNo = index + 1;
       const netWt = this.toNumber(row.netWt);
+      const components = Math.max(0, Math.trunc(this.toNumber(row.components)));
+
+      if (netWt <= 0) {
+        throw new BadRequestException(
+          `Net Weight is required and must be greater than 0 for Metal row ${rowNo}`,
+        );
+      }
+
+      if (components <= 0) {
+        throw new BadRequestException(
+          `Number of Components is required and must be greater than 0 for Metal row ${rowNo}`,
+        );
+      }
+
+      const goldColour = this.optionalText(row.goldColour);
       const wastagePercent = this.toNumber(row.wastagePercent);
-      const wastageWt = row.wastageWt !== undefined ? this.toNumber(row.wastageWt) : (netWt * wastagePercent) / 100;
-      const totalWt = row.totalWt !== undefined ? this.toNumber(row.totalWt) : netWt + wastageWt;
+      if (wastagePercent < 0) {
+        throw new BadRequestException(
+          `Wastage Percent cannot be negative for Metal row ${rowNo}`,
+        );
+      }
+
+      const wastageWt = (netWt * wastagePercent) / 100;
+      const totalWt = netWt + wastageWt;
       const globalPricePerGm = this.resolveMetalRate(globalRateMaps, goldColour);
       const enteredPricePerGm = this.toNumber(row.pricePerGm);
+      if (globalPricePerGm === undefined && enteredPricePerGm < 0) {
+        throw new BadRequestException(
+          `Price Per Gram cannot be negative for Metal row ${rowNo}`,
+        );
+      }
       const pricePerGm =
         globalPricePerGm !== undefined ? globalPricePerGm : enteredPricePerGm;
-      const value = row.value !== undefined ? this.toNumber(row.value) : totalWt * pricePerGm;
-      const components = Math.max(0, Math.trunc(this.toNumber(row.components)));
+      if (pricePerGm < 0) {
+        throw new BadRequestException(
+          `Price Per Gram cannot be negative for Metal row ${rowNo}`,
+        );
+      }
+      const value = totalWt * pricePerGm;
 
       return {
         goldColour,
@@ -1554,17 +1591,32 @@ export class ProductsService {
     designDiamondType: string | null,
     globalRateMaps?: GlobalRateMaps,
   ): NormalizedGemstoneRow[] {
-    return rows.map((row) => {
+    return rows.map((row, index) => {
+      const rowNo = index + 1;
       const stoneType = this.optionalText(row.stoneType);
       const effectiveDiamondType = stoneType || designDiamondType;
       const wtPerPcs = this.toNumber(row.wtPerPcs);
-      const pcs = Math.max(0, Math.trunc(this.toNumber(row.pcs)));
-      const wtInCts = row.wtInCts !== undefined ? this.toNumber(row.wtInCts) : wtPerPcs * pcs;
+      const rawPcs = this.toNumber(row.pcs);
+      const pcs = Math.max(0, Math.trunc(rawPcs));
+      if (wtPerPcs < 0) {
+        throw new BadRequestException(`Wt Per Pcs cannot be negative for Stone row ${rowNo}`);
+      }
+      if (rawPcs < 0) {
+        throw new BadRequestException(`Number of Pcs cannot be negative for Stone row ${rowNo}`);
+      }
+
+      const wtInCts = wtPerPcs * pcs;
       const globalPricePerCt = this.resolveDiamondRate(globalRateMaps, effectiveDiamondType, row.size || null);
       const enteredPricePerCt = this.toNumber(row.pricePerCt);
+      if (globalPricePerCt === undefined && enteredPricePerCt < 0) {
+        throw new BadRequestException(`Price Per Ct cannot be negative for Stone row ${rowNo}`);
+      }
       const pricePerCt =
         globalPricePerCt !== undefined ? globalPricePerCt : enteredPricePerCt;
-      const amount = row.amount !== undefined ? this.toNumber(row.amount) : wtInCts * pricePerCt;
+      if (pricePerCt < 0) {
+        throw new BadRequestException(`Price Per Ct cannot be negative for Stone row ${rowNo}`);
+      }
+      const amount = wtInCts * pricePerCt;
 
       return {
         packetId: this.optionalText(row.packetId),
@@ -2045,6 +2097,19 @@ export class ProductsService {
     if (!Number.isFinite(parsed) || parsed < 0) {
       throw new BadRequestException(`${field} must be a valid number`);
     }
+    return parsed;
+  }
+
+  private requiredPositiveNumber(value: number | string | null | undefined, field: string): number {
+    if (value === undefined || value === null || Number.isNaN(Number(value))) {
+      throw new BadRequestException(`${field} is required`);
+    }
+
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new BadRequestException(`${field} must be greater than 0`);
+    }
+
     return parsed;
   }
 

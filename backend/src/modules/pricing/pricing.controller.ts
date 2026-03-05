@@ -11,6 +11,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   CreateGlobalBasePriceDto,
   FindGlobalBasePricesQueryDto,
+  FindGlobalBasePriceReferenceOptionsQueryDto,
   UpdateGlobalBasePriceDto,
   UpdateGlobalBasePriceStatusDto,
 } from './dto/pricing.dto';
@@ -25,6 +26,13 @@ export class PricingController {
   @Get('base-prices')
   findGlobalBasePrices(@Query() query: FindGlobalBasePricesQueryDto) {
     return this.pricingService.findGlobalBasePrices(query);
+  }
+
+  @Get('base-prices/reference-options')
+  findGlobalBasePriceReferenceOptions(
+    @Query() query: FindGlobalBasePriceReferenceOptionsQueryDto,
+  ) {
+    return this.pricingService.findGlobalBasePriceReferenceOptions(query);
   }
 
   @Post('base-prices')
@@ -58,4 +66,3 @@ export class PricingController {
     return this.pricingService.recalculateDesignsFromGlobalBasePrices();
   }
 }
-

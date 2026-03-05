@@ -37,6 +37,16 @@ export class FindGlobalBasePricesQueryDto {
   includeInactive?: boolean;
 }
 
+export class FindGlobalBasePriceReferenceOptionsQueryDto {
+  @IsEnum(GlobalBasePriceCategory)
+  category: GlobalBasePriceCategory;
+
+  @IsString()
+  @MaxLength(36)
+  @IsOptional()
+  excludeId?: string;
+}
+
 export class CreateGlobalBasePriceDto {
   @IsEnum(GlobalBasePriceCategory)
   category: GlobalBasePriceCategory;
@@ -118,4 +128,3 @@ export class UpdateGlobalBasePriceStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-

@@ -404,7 +404,7 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
 };
 
 const inlineMasterAddButtonClass =
-  'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-slate-300 bg-white text-[11px] font-bold leading-none text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold leading-none text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
 const FINDING_FEATURE_ENABLED = false;
 
 function Tag({ text }: { text: string }) {
@@ -825,6 +825,12 @@ export default function ProductsPage() {
     const packet = packetOptions.find((entry) => entry.id === packetId);
     setGemRows((prev) => {
       if (packet) {
+        const packetWeight = Number(packet.weight || 0);
+        if (!Number.isFinite(packetWeight) || packetWeight <= 0) {
+          window.alert('Selected stone packet weight must be greater than 0.');
+          return prev;
+        }
+
         const packetAlreadyUsed = prev.some((row) => row.id !== rowId && row.packetId === packet.id);
         if (packetAlreadyUsed) {
           window.alert('This packet is already used in another line.');
@@ -861,9 +867,10 @@ export default function ProductsPage() {
           };
         }
 
-        const totalWeight = Number(packet.weight || 0);
-        const pieces = Number(packet.pieces || 0);
+        const totalWeight = Math.max(0, Number(packet.weight || 0));
+        const pieces = Math.max(0, Number(packet.pieces || 0));
         const wtPerPcs = pieces > 0 ? totalWeight / pieces : 0;
+        const wtInCts = wtPerPcs * pieces;
 
         return {
           ...row,
@@ -877,7 +884,7 @@ export default function ProductsPage() {
           settingType: packet.stockType || '',
           wtPerPcs: wtPerPcs > 0 ? wtPerPcs.toFixed(3) : '',
           pcs: pieces > 0 ? String(pieces) : '',
-          wtInCts: totalWeight > 0 ? totalWeight.toFixed(3) : '',
+          wtInCts: wtInCts > 0 ? wtInCts.toFixed(3) : '',
         };
       });
     });
@@ -1068,6 +1075,14 @@ export default function ProductsPage() {
       window.alert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
       return;
     }
+    if (payload.pieces < 0) {
+      window.alert('Packet pieces cannot be negative.');
+      return;
+    }
+    if (payload.weight <= 0) {
+      window.alert('Stone packet weight must be greater than 0.');
+      return;
+    }
 
     setPacketSaving(true);
     try {
@@ -1179,18 +1194,17 @@ export default function ProductsPage() {
   };
 
   const getMetalWastageWt = (row: MetalRow): number =>
-    (parseNum(row.netWt) * parseNum(row.wastagePercent)) / 100;
+    (Math.max(0, parseNum(row.netWt)) * Math.max(0, parseNum(row.wastagePercent))) / 100;
 
   const getMetalTotalWt = (row: MetalRow): number =>
-    parseNum(row.netWt) + getMetalWastageWt(row);
+    Math.max(0, parseNum(row.netWt)) + getMetalWastageWt(row);
 
-  const getMetalValue = (row: MetalRow): number => getMetalTotalWt(row) * parseNum(row.pricePerGm);
-  const getGemWeight = (row: GemRow): number => {
-    const manual = parseNum(row.wtInCts);
-    if (manual > 0) return manual;
-    return parseNum(row.wtPerPcs) * parseNum(row.pcs);
-  };
-  const getGemValue = (row: GemRow): number => getGemWeight(row) * parseNum(row.pricePerCt);
+  const getMetalValue = (row: MetalRow): number =>
+    getMetalTotalWt(row) * Math.max(0, parseNum(row.pricePerGm));
+  const getGemWeight = (row: GemRow): number =>
+    Math.max(0, parseNum(row.wtPerPcs)) * Math.max(0, parseNum(row.pcs));
+  const getGemValue = (row: GemRow): number =>
+    getGemWeight(row) * Math.max(0, parseNum(row.pricePerCt));
   const getLaborValue = (row: LaborRow): number =>
     parseNum(row.unitQty) * parseNum(row.laborPerUnit);
   const getFindingValue = (row: FindingRow): number => {
@@ -1526,6 +1540,36 @@ export default function ProductsPage() {
 
     const usedMetalKeys = new Set<string>();
     for (const row of metalRows) {
+      if (!row.netWt.trim()) {
+        window.alert('Net Weight is required for all Metal rows.');
+        return;
+      }
+      if (!row.components.trim()) {
+        window.alert('Number of Components is required for all Metal rows.');
+        return;
+      }
+
+      const netWt = parseNum(row.netWt);
+      const components = parseNum(row.components);
+      const wastagePercent = parseNum(row.wastagePercent);
+      const pricePerGm = parseNum(row.pricePerGm);
+      if (netWt <= 0) {
+        window.alert('Net Weight must be greater than 0 for all Metal rows.');
+        return;
+      }
+      if (components <= 0) {
+        window.alert('Number of Components must be greater than 0 for all Metal rows.');
+        return;
+      }
+      if (wastagePercent < 0) {
+        window.alert('Wastage % cannot be negative for Metal rows.');
+        return;
+      }
+      if (pricePerGm < 0) {
+        window.alert('Per Gram Weight/Price cannot be negative for Metal rows.');
+        return;
+      }
+
       const key = normalizeLookupKey(row.goldColour);
       if (!key) continue;
       if (usedMetalKeys.has(key)) {
@@ -1536,7 +1580,25 @@ export default function ProductsPage() {
     }
 
     const usedStoneKeys = new Set<string>();
-    for (const row of gemRows) {
+    for (let index = 0; index < gemRows.length; index += 1) {
+      const row = gemRows[index];
+      const wtPerPcs = parseNum(row.wtPerPcs);
+      const pcs = parseNum(row.pcs);
+      const pricePerCt = parseNum(row.pricePerCt);
+
+      if (wtPerPcs < 0) {
+        window.alert(`Wt per Pcs cannot be negative in Stone row ${index + 1}.`);
+        return;
+      }
+      if (pcs < 0) {
+        window.alert(`Number of Pcs cannot be negative in Stone row ${index + 1}.`);
+        return;
+      }
+      if (pricePerCt < 0) {
+        window.alert(`Price per Ct cannot be negative in Stone row ${index + 1}.`);
+        return;
+      }
+
       const key = normalizeLookupKey(row.stone);
       if (!key) continue;
       if (usedStoneKeys.has(key)) {
@@ -1567,8 +1629,8 @@ export default function ProductsPage() {
         goldColour: row.goldColour.trim() || undefined,
         netWt: parseNum(row.netWt),
         wastagePercent: parseNum(row.wastagePercent),
-        wastageWt: parseNum(row.wastageWt),
-        totalWt: parseNum(row.totalWt),
+        wastageWt: getMetalWastageWt(row),
+        totalWt: getMetalTotalWt(row),
         pricePerGm: parseNum(row.pricePerGm),
         components: parseNum(row.components),
       })),
@@ -1583,7 +1645,7 @@ export default function ProductsPage() {
         stoneType: row.settingType.trim() || undefined,
         wtPerPcs: parseNum(row.wtPerPcs),
         pcs: parseNum(row.pcs),
-        wtInCts: parseNum(row.wtInCts),
+        wtInCts: getGemWeight(row),
         pricePerCt: parseNum(row.pricePerCt),
       })),
       labors: laborRows.map((row) => ({
@@ -1764,28 +1826,26 @@ export default function ProductsPage() {
         }
       }
 
-      return prev.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+      return prev.map((item) => {
+        if (item.id !== id) return item;
+
+        const updated = { ...item, [key]: value };
+        if (key === 'wtPerPcs' || key === 'pcs') {
+          const hasAnyInput =
+            updated.wtPerPcs.trim().length > 0 || updated.pcs.trim().length > 0;
+          return {
+            ...updated,
+            wtInCts: hasAnyInput ? getGemWeight(updated).toFixed(3) : '',
+          };
+        }
+
+        return updated;
+      });
     });
   };
 
   const addMetalLine = () => {
-    setMetalRows((prev) => {
-      const used = new Set(
-        prev
-          .map((row) => normalizeLookupKey(row.goldColour))
-          .filter((value) => value.length > 0),
-      );
-      const nextGoldColour = masterOptions.goldColours.find(
-        (option) => !used.has(normalizeLookupKey(option.value)),
-      );
-
-      if (!nextGoldColour) {
-        window.alert('All available metal colours are already used.');
-        return prev;
-      }
-
-      return [...prev, createMetalRow(nextGoldColour.value)];
-    });
+    setMetalRows((prev) => [...prev, createMetalRow('')]);
   };
 
   const updateLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
@@ -2149,7 +2209,7 @@ export default function ProductsPage() {
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-              <div className="rounded-xl border border-sky-200 bg-white shadow-sm">
+              <div className="rounded-xl border border-sky-200 bg-white shadow-sm [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
                 <div className="border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">General Information</div>
                 <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                   <div>
@@ -2505,7 +2565,7 @@ export default function ProductsPage() {
                   <thead className="bg-amber-50/70 text-left text-[11px] font-semibold text-amber-900">
                     <tr>
                       <th className="px-2 py-2">Gold Colour</th>
-                      <th className="px-2 py-2">Net Wt.</th>
+                      <th className="px-2 py-2">Net Wt. *</th>
                       <th className="px-2 py-2">Wastage %</th>
                       <th className="px-2 py-2">Wastage Wt.</th>
                       <th className="px-2 py-2">Total Wt.</th>
@@ -2562,8 +2622,8 @@ export default function ProductsPage() {
                             </button>
                           </div>
                         </td>
-                        <td className="px-2 py-2"><input className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
-                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
                         <td className="px-2 py-2">
                           <input
                             className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
@@ -2590,12 +2650,12 @@ export default function ProductsPage() {
                         </td>
                         <td className="px-2 py-2">
                           <div className="flex items-center gap-1">
-                            <input className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
+                            <input type="number" min="0" step="0.01" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
                             <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
                           </div>
                         </td>
                         <td className="px-2 py-2 font-semibold text-gray-700">{getMetalValue(item).toFixed(2)}</td>
-                        <td className="px-2 py-2"><input className="w-32 rounded border border-gray-300 px-2 py-1" value={item.components} onChange={(event) => updateMetalRow(item.id, 'components', event.target.value)} placeholder="Components" /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-32 rounded border border-gray-300 px-2 py-1" value={item.components} onChange={(event) => updateMetalRow(item.id, 'components', event.target.value)} placeholder="Components" /></td>
                         <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                       </tr>
                     ))}
@@ -2688,10 +2748,10 @@ export default function ProductsPage() {
                             </button>
                           </div>
                         </td>
-                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
-                        <td className="px-2 py-2"><input className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
-                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
+                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700" value={item.wtPerPcs.trim().length > 0 || item.pcs.trim().length > 0 ? getGemWeight(item).toFixed(3) : ''} placeholder="0.000" readOnly /></td>
+                        <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
                         <td className="px-2 py-2 font-semibold text-gray-700">{getGemValue(item).toFixed(2)}</td>
                         <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                       </tr>
@@ -3260,6 +3320,9 @@ export default function ProductsPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">Pieces</label>
                   <input
+                    type="number"
+                    min="0"
+                    step="1"
                     className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                     value={packetForm.pieces}
                     onChange={(event) => setPacketForm((prev) => ({ ...prev, pieces: event.target.value }))}
@@ -3269,6 +3332,9 @@ export default function ProductsPage() {
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">Weight</label>
                   <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
                     className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                     value={packetForm.weight}
                     onChange={(event) => setPacketForm((prev) => ({ ...prev, weight: event.target.value }))}

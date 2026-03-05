@@ -20,6 +20,10 @@ interface BasePriceRow {
   updatedAt: string;
 }
 
+interface ReferenceOptionResponse {
+  data?: string[];
+}
+
 const defaultForm = {
   category: 'METAL' as PriceCategory,
   referenceValue: '',
@@ -37,6 +41,8 @@ export default function PricingPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<'ALL' | PriceCategory>('ALL');
   const [form, setForm] = useState(defaultForm);
+  const [referenceOptions, setReferenceOptions] = useState<string[]>([]);
+  const [referenceOptionsLoading, setReferenceOptionsLoading] = useState(false);
 
   const filteredRows = useMemo(() => {
     if (filterCategory === 'ALL') return rows;
@@ -58,9 +64,48 @@ export default function PricingPage() {
     }
   };
 
+  const loadReferenceOptions = async (
+    category: PriceCategory,
+    excludeId?: string | null,
+  ) => {
+    setReferenceOptionsLoading(true);
+    try {
+      const response = await api.get<ReferenceOptionResponse>(
+        '/pricing/base-prices/reference-options',
+        {
+          params: {
+            category,
+            excludeId: excludeId || undefined,
+          },
+        },
+      );
+
+      const options = Array.isArray(response.data?.data)
+        ? response.data.data.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        : [];
+      setReferenceOptions(options);
+      setForm((prev) => {
+        if (!prev.referenceValue) return prev;
+        const normalizedReference = prev.referenceValue.trim().toLowerCase();
+        const exists = options.some((option) => option.trim().toLowerCase() === normalizedReference);
+        if (exists) return prev;
+        return { ...prev, referenceValue: '' };
+      });
+    } catch (error: any) {
+      setReferenceOptions([]);
+      window.alert(error?.response?.data?.message || 'Unable to load reference values.');
+    } finally {
+      setReferenceOptionsLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadRows();
   }, []);
+
+  useEffect(() => {
+    loadReferenceOptions(form.category, editingId);
+  }, [form.category, editingId]);
 
   const resetForm = () => {
     setForm(defaultForm);
@@ -117,6 +162,7 @@ export default function PricingPage() {
       }
 
       resetForm();
+      await loadReferenceOptions(defaultForm.category, null);
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to save base price.');
     } finally {
@@ -188,6 +234,7 @@ export default function PricingPage() {
                   setForm((prev) => ({
                     ...prev,
                     category: event.target.value as PriceCategory,
+                    referenceValue: prev.category !== event.target.value ? '' : prev.referenceValue,
                     subValue: prev.category !== event.target.value ? '' : prev.subValue,
                   }))
                 }
@@ -199,12 +246,26 @@ export default function PricingPage() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Reference Value*</label>
-              <input
+              <select
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                placeholder={form.category === 'METAL' ? '22 karat-Rose-Gold' : 'Lab Diamonds - EF/VVS-VS'}
                 value={form.referenceValue}
                 onChange={(event) => setForm((prev) => ({ ...prev, referenceValue: event.target.value }))}
-              />
+                disabled={referenceOptionsLoading}
+              >
+                <option value="">
+                  {referenceOptionsLoading ? 'Loading...' : 'Select Reference Value'}
+                </option>
+                {referenceOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              {!referenceOptionsLoading && referenceOptions.length === 0 ? (
+                <p className="mt-1 text-xs text-gray-500">
+                  No values available. Add more in masters or remove an existing base price entry first.
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -345,4 +406,3 @@ export default function PricingPage() {
     </div>
   );
 }
-

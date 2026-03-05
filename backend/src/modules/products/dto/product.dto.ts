@@ -32,31 +32,37 @@ export class DesignMetalDto {
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   netWt?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   wastagePercent?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   wastageWt?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   totalWt?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   pricePerGm?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   value?: number;
 
@@ -102,6 +108,7 @@ export class DesignGemstoneDto {
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   wtPerPcs?: number;
 
@@ -113,16 +120,19 @@ export class DesignGemstoneDto {
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   wtInCts?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   pricePerCt?: number;
 
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
   amount?: number;
 }
@@ -742,7 +752,7 @@ export class CreateStonePacketDto {
 
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(0.000001)
   @IsOptional()
   weight?: number;
 
@@ -792,7 +802,7 @@ export class UpdateStonePacketDto {
 
   @Type(() => Number)
   @IsNumber()
-  @Min(0)
+  @Min(0.000001)
   @IsOptional()
   weight?: number;
 
