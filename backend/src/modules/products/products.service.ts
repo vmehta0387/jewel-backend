@@ -178,7 +178,8 @@ export class ProductsService {
     }
 
     const globalRateMaps = await this.getGlobalRateMaps();
-    const normalizedMetals = this.normalizeMetals(dto.metals || [], globalRateMaps);
+    const metalCaratageRates = await this.getMetalCaratageRateMap();
+    const normalizedMetals = this.normalizeMetals(dto.metals || [], metalCaratageRates);
     const normalizedGemstones = this.normalizeGemstones(
       dto.gemstones || [],
       this.optionalText(dto.diamondType),
@@ -485,9 +486,10 @@ export class ProductsService {
 
     const existingRows = await this.getExistingRows(id);
     const globalRateMaps = await this.getGlobalRateMaps();
+    const metalCaratageRates = await this.getMetalCaratageRateMap();
     const normalizedMetals = this.normalizeMetals(
       dto.metals !== undefined ? dto.metals : this.toMetalDtos(existingRows.metals),
-      globalRateMaps,
+      metalCaratageRates,
     );
     const effectiveDiamondType =
       dto.diamondType !== undefined ? this.optionalText(dto.diamondType) : this.optionalText(design.diamondType);
@@ -1704,7 +1706,10 @@ export class ProductsService {
     }
   }
 
-  private normalizeMetals(rows: DesignMetalDto[], globalRateMaps?: GlobalRateMaps): NormalizedMetalRow[] {
+  private normalizeMetals(
+    rows: DesignMetalDto[],
+    metalCaratageRates?: Map<string, number>,
+  ): NormalizedMetalRow[] {
     return rows.map((row, index) => {
       const rowNo = index + 1;
       const netWt = this.toNumber(row.netWt);
@@ -1713,12 +1718,6 @@ export class ProductsService {
       if (netWt <= 0) {
         throw new BadRequestException(
           `Net Weight is required and must be greater than 0 for Metal row ${rowNo}`,
-        );
-      }
-
-      if (components <= 0) {
-        throw new BadRequestException(
-          `Number of Components is required and must be greater than 0 for Metal row ${rowNo}`,
         );
       }
 
@@ -1737,21 +1736,35 @@ export class ProductsService {
 
       const wastageWt = (netWt * wastagePercent) / 100;
       const totalWt = netWt + wastageWt;
-      const globalPricePerGm = this.resolveMetalRate(globalRateMaps, metalCaratage);
       const enteredPricePerGm = this.toNumber(row.pricePerGm);
-      if (globalPricePerGm === undefined && enteredPricePerGm < 0) {
+      if (enteredPricePerGm < 0) {
         throw new BadRequestException(
           `Price Per Gram cannot be negative for Metal row ${rowNo}`,
         );
       }
+      const masterPricePerGm = this.resolveMetalCaratageRate(metalCaratageRates, metalCaratage);
       const pricePerGm =
-        globalPricePerGm !== undefined ? globalPricePerGm : enteredPricePerGm;
+        enteredPricePerGm > 0
+          ? enteredPricePerGm
+          : masterPricePerGm !== undefined
+            ? masterPricePerGm
+            : enteredPricePerGm;
       if (pricePerGm < 0) {
         throw new BadRequestException(
           `Price Per Gram cannot be negative for Metal row ${rowNo}`,
         );
       }
-      const value = totalWt * pricePerGm;
+      if (pricePerGm <= 0) {
+        throw new BadRequestException(
+          `Price Per Gram must be greater than 0 for Metal row ${rowNo}. Select Metal Caratage with a valid master Price/Gms or enter manually.`,
+        );
+      }
+      const computedValue = totalWt * pricePerGm;
+      const value =
+        row.value !== undefined && row.value !== null ? this.toNumber(row.value) : computedValue;
+      if (value < 0) {
+        throw new BadRequestException(`Value cannot be negative for Metal row ${rowNo}`);
+      }
 
       return {
         metalCaratage,
@@ -1765,6 +1778,31 @@ export class ProductsService {
         components,
       };
     });
+  }
+
+  private async getMetalCaratageRateMap(): Promise<Map<string, number>> {
+    const rows = await this.designMasterRepo.find({
+      where: {
+        masterType: DesignMasterType.METAL_CARATAGE,
+        isActive: true,
+      },
+      order: {
+        updatedAt: 'DESC',
+      },
+    });
+
+    const map = new Map<string, number>();
+    rows.forEach((row) => {
+      const key = (row.value || '').trim().toLowerCase();
+      if (!key || map.has(key)) {
+        return;
+      }
+      const rate = this.toNumber(row.livePricePerGm);
+      if (rate > 0) {
+        map.set(key, rate);
+      }
+    });
+    return map;
   }
 
   private normalizeGemstones(
@@ -1797,7 +1835,14 @@ export class ProductsService {
       if (pricePerCt < 0) {
         throw new BadRequestException(`Price Per Ct cannot be negative for Stone row ${rowNo}`);
       }
-      const amount = wtInCts * pricePerCt;
+      const computedAmount = wtInCts * pricePerCt;
+      const amount =
+        row.amount !== undefined && row.amount !== null
+          ? this.toNumber(row.amount)
+          : computedAmount;
+      if (amount < 0) {
+        throw new BadRequestException(`Amount cannot be negative for Stone row ${rowNo}`);
+      }
 
       return {
         packetId: this.optionalText(row.packetId),
@@ -2643,6 +2688,22 @@ export class ProductsService {
     }
 
     return globalRateMaps.metalRates.get(lookupKey);
+  }
+
+  private resolveMetalCaratageRate(
+    metalCaratageRates: Map<string, number> | undefined,
+    metalCaratage: string | null,
+  ): number | undefined {
+    if (!metalCaratageRates || !metalCaratage) {
+      return undefined;
+    }
+
+    const lookupKey = this.normalizeLookupKey(metalCaratage);
+    if (!lookupKey) {
+      return undefined;
+    }
+
+    return metalCaratageRates.get(lookupKey);
   }
 
   private resolveDiamondRate(

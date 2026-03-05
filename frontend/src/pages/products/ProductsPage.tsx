@@ -13,6 +13,7 @@ type DesignMasterType =
   | 'TAG'
   | 'DESIGN_STATUS'
   | 'STAGE'
+  | 'METAL_CARATAGE'
   | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
@@ -29,6 +30,8 @@ interface MasterOption {
   id: string;
   value: string;
   wastagePercent?: number;
+  defaultWastagePercent?: number;
+  livePricePerGm?: number;
 }
 
 interface DesignRow {
@@ -104,7 +107,7 @@ interface MetalRow {
   wastageWt: string;
   totalWt: string;
   pricePerGm: string;
-  components: string;
+  value: string;
 }
 
 interface GemRow {
@@ -121,6 +124,7 @@ interface GemRow {
   pcs: string;
   wtInCts: string;
   pricePerCt: string;
+  amount: string;
 }
 
 interface LaborRow {
@@ -369,6 +373,7 @@ const emptyMasterOptions = {
   tags: [] as MasterOption[],
   designStatuses: [] as MasterOption[],
   stages: [] as MasterOption[],
+  metalCaratages: [] as MasterOption[],
   goldColours: [] as MasterOption[],
   diamondTypes: [] as MasterOption[],
   diamondSpreads: [] as MasterOption[],
@@ -389,6 +394,7 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   TAG: 'Tag',
   DESIGN_STATUS: 'Design Status',
   STAGE: 'Stage',
+  METAL_CARATAGE: 'Metal Caratage',
   GOLD_COLOUR: 'Metal Caratage',
   DIAMOND_TYPE: 'Diamond Type',
   DIAMOND_SPREAD: 'Diamond Spread',
@@ -516,7 +522,7 @@ export default function ProductsPage() {
     wastageWt: '',
     totalWt: '',
     pricePerGm: '',
-    components: '',
+    value: '',
   }]);
   const [gemRows, setGemRows] = useState<GemRow[]>([{
     id: makeId(),
@@ -532,6 +538,7 @@ export default function ProductsPage() {
     pcs: '10',
     wtInCts: '0',
     pricePerCt: '100',
+    amount: '',
   }]);
   const [laborRows, setLaborRows] = useState<LaborRow[]>([{
     id: makeId(),
@@ -602,6 +609,11 @@ export default function ProductsPage() {
   }, [rows]);
 
   const getMetalRate = (metalCaratage: string): number | undefined => {
+    const masterOption = getMetalMasterOption(metalCaratage);
+    const masterRate = parseNumericValue(masterOption?.livePricePerGm);
+    if (masterRate > 0) {
+      return masterRate;
+    }
     const key = normalizeLookupKey(metalCaratage);
     if (!key) return undefined;
     return metalRateLookup[key];
@@ -610,17 +622,26 @@ export default function ProductsPage() {
   const getMetalMasterOption = (metalCaratage: string): MasterOption | undefined => {
     const lookup = normalizeLookupKey(metalCaratage);
     if (!lookup) return undefined;
-    return masterOptions.goldColours.find(
-      (option) => normalizeLookupKey(option.value) === lookup,
+    return (
+      masterOptions.metalCaratages.find(
+        (option) => normalizeLookupKey(option.value) === lookup,
+      ) ||
+      masterOptions.goldColours.find(
+        (option) => normalizeLookupKey(option.value) === lookup,
+      )
     );
   };
 
   const getMetalDefaultWastage = (metalCaratage: string): string => {
     const option = getMetalMasterOption(metalCaratage);
-    if (!option || option.wastagePercent === undefined || option.wastagePercent === null) {
+    const wastagePercent =
+      option?.defaultWastagePercent !== undefined && option?.defaultWastagePercent !== null
+        ? option.defaultWastagePercent
+        : option?.wastagePercent;
+    if (wastagePercent === undefined || wastagePercent === null) {
       return '';
     }
-    return String(option.wastagePercent);
+    return String(wastagePercent);
   };
 
   const createMetalRow = (metalCaratage: string): MetalRow => {
@@ -633,7 +654,7 @@ export default function ProductsPage() {
       wastageWt: '',
       totalWt: '',
       pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
-      components: '',
+      value: '',
     };
   };
 
@@ -791,7 +812,8 @@ export default function ProductsPage() {
         tags: response.data?.tags || [],
         designStatuses: response.data?.designStatuses || [],
         stages: response.data?.stages || [],
-        goldColours: response.data?.goldColours || response.data?.metalCaratages || [],
+        metalCaratages: response.data?.metalCaratages || [],
+        goldColours: response.data?.goldColours || [],
         diamondTypes: response.data?.diamondTypes || [],
         diamondSpreads: response.data?.diamondSpreads || [],
         laborHeads: response.data?.laborHeads || [],
@@ -891,6 +913,7 @@ export default function ProductsPage() {
             wtPerPcs: '',
             pcs: '',
             wtInCts: '',
+            amount: '',
           };
         }
 
@@ -912,6 +935,7 @@ export default function ProductsPage() {
           wtPerPcs: wtPerPcs > 0 ? wtPerPcs.toFixed(3) : '',
           pcs: pieces > 0 ? String(pieces) : '',
           wtInCts: wtInCts > 0 ? wtInCts.toFixed(3) : '',
+          amount: '',
         };
       });
     });
@@ -954,7 +978,7 @@ export default function ProductsPage() {
       setForm((prev) => ({ ...prev, jewelrySize: masterValue }));
     } else if (masterType === 'STAGE') {
       setForm((prev) => ({ ...prev, stage: masterValue }));
-    } else if (masterType === 'GOLD_COLOUR') {
+    } else if (masterType === 'GOLD_COLOUR' || masterType === 'METAL_CARATAGE') {
       setMetalRows((prev) =>
         prev.length === 0
           ? [createMetalRow(masterValue)]
@@ -1184,7 +1208,7 @@ export default function ProductsPage() {
         return { ...row, pricePerGm: nextPricePerGm, wastagePercent: nextWastagePercent };
       }),
     );
-  }, [masterOptions.goldColours, metalRateLookup]);
+  }, [masterOptions.metalCaratages, masterOptions.goldColours, metalRateLookup]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1245,11 +1269,15 @@ export default function ProductsPage() {
     Math.max(0, parseNum(row.netWt)) + getMetalWastageWt(row);
 
   const getMetalValue = (row: MetalRow): number =>
-    getMetalTotalWt(row) * Math.max(0, parseNum(row.pricePerGm));
+    row.value.trim().length > 0
+      ? Math.max(0, parseNum(row.value))
+      : getMetalTotalWt(row) * Math.max(0, parseNum(row.pricePerGm));
   const getGemWeight = (row: GemRow): number =>
     Math.max(0, parseNum(row.wtPerPcs)) * Math.max(0, parseNum(row.pcs));
   const getGemValue = (row: GemRow): number =>
-    getGemWeight(row) * Math.max(0, parseNum(row.pricePerCt));
+    row.amount.trim().length > 0
+      ? Math.max(0, parseNum(row.amount))
+      : getGemWeight(row) * Math.max(0, parseNum(row.pricePerCt));
   const getLaborValue = (row: LaborRow): number =>
     parseNum(row.unitQty) * parseNum(row.laborPerUnit);
   const getFindingValue = (row: FindingRow): number => {
@@ -1305,6 +1333,7 @@ export default function ProductsPage() {
       pcs: '',
       wtInCts: '',
       pricePerCt: '',
+      amount: '',
     }]);
     setLaborRows([{
       id: makeId(),
@@ -1393,7 +1422,7 @@ export default function ProductsPage() {
                 wastageWt: asInput(item.wastageWt),
               totalWt: asInput(item.totalWt),
               pricePerGm: asInput(item.pricePerGm),
-              components: asInput(item.components),
+              value: asInput(item.value),
             }))
           : [createMetalRow(row.goldColour || '')],
       );
@@ -1414,6 +1443,7 @@ export default function ProductsPage() {
               pcs: asInput(item.pcs),
               wtInCts: asInput(item.wtInCts),
               pricePerCt: asInput(item.pricePerCt),
+              amount: asInput(item.amount),
             }))
           : [{
               id: makeId(),
@@ -1429,6 +1459,7 @@ export default function ProductsPage() {
               pcs: '',
               wtInCts: '',
               pricePerCt: '',
+              amount: '',
             }],
       );
 
@@ -1532,6 +1563,7 @@ export default function ProductsPage() {
         pcs: '',
         wtInCts: '',
         pricePerCt: '',
+        amount: '',
       }]);
       setTagPicker('');
       setGalleryUrls(row.imageUrls || []);
@@ -1575,21 +1607,13 @@ export default function ProductsPage() {
         window.alert('Net Weight is required for all Metal rows.');
         return;
       }
-      if (!row.components.trim()) {
-        window.alert('Number of Components is required for all Metal rows.');
-        return;
-      }
 
       const netWt = parseNum(row.netWt);
-      const components = parseNum(row.components);
       const wastagePercent = parseNum(row.wastagePercent);
       const pricePerGm = parseNum(row.pricePerGm);
+      const value = parseNum(row.value);
       if (netWt <= 0) {
         window.alert('Net Weight must be greater than 0 for all Metal rows.');
-        return;
-      }
-      if (components <= 0) {
-        window.alert('Number of Components must be greater than 0 for all Metal rows.');
         return;
       }
       if (wastagePercent < 0) {
@@ -1598,6 +1622,10 @@ export default function ProductsPage() {
       }
       if (pricePerGm < 0) {
         window.alert('Per Gram Weight/Price cannot be negative for Metal rows.');
+        return;
+      }
+      if (value < 0) {
+        window.alert('Metal Value cannot be negative for Metal rows.');
         return;
       }
 
@@ -1616,6 +1644,7 @@ export default function ProductsPage() {
       const wtPerPcs = parseNum(row.wtPerPcs);
       const pcs = parseNum(row.pcs);
       const pricePerCt = parseNum(row.pricePerCt);
+      const amount = parseNum(row.amount);
 
       if (wtPerPcs < 0) {
         window.alert(`Wt per Pcs cannot be negative in Stone row ${index + 1}.`);
@@ -1627,6 +1656,10 @@ export default function ProductsPage() {
       }
       if (pricePerCt < 0) {
         window.alert(`Price per Ct cannot be negative in Stone row ${index + 1}.`);
+        return;
+      }
+      if (amount < 0) {
+        window.alert(`Amount cannot be negative in Stone row ${index + 1}.`);
         return;
       }
 
@@ -1664,7 +1697,7 @@ export default function ProductsPage() {
         wastageWt: getMetalWastageWt(row),
         totalWt: getMetalTotalWt(row),
         pricePerGm: parseNum(row.pricePerGm),
-        components: parseNum(row.components),
+        value: getMetalValue(row),
       })),
       gemstones: gemRows.map((row) => ({
         packetId: row.packetId || undefined,
@@ -1679,6 +1712,7 @@ export default function ProductsPage() {
         pcs: parseNum(row.pcs),
         wtInCts: getGemWeight(row),
         pricePerCt: parseNum(row.pricePerCt),
+        amount: getGemValue(row),
       })),
       labors: laborRows.map((row) => ({
         laborHead: row.laborHead.trim() || undefined,
@@ -2630,7 +2664,6 @@ export default function ProductsPage() {
                           <th className="px-2 py-2">Total Wt.</th>
                           <th className="px-2 py-2">@(Per Gms)</th>
                           <th className="px-2 py-2">Value</th>
-                          <th className="px-2 py-2">No. Of Components *</th>
                           <th className="px-2 py-2">Action</th>
                         </tr>
                       </thead>
@@ -2645,10 +2678,18 @@ export default function ProductsPage() {
                                   onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
                                 >
                                   <option value="">Select Metal Caratage</option>
-                                  {!masterOptions.goldColours.some((option) => option.value === item.goldColour) && item.goldColour ? (
+                                  {!(
+                                    (masterOptions.metalCaratages.length > 0
+                                      ? masterOptions.metalCaratages
+                                      : masterOptions.goldColours
+                                    ).some((option) => option.value === item.goldColour)
+                                  ) && item.goldColour ? (
                                     <option value={item.goldColour}>{item.goldColour}</option>
                                   ) : null}
-                                  {masterOptions.goldColours.map((option) => {
+                                  {(masterOptions.metalCaratages.length > 0
+                                    ? masterOptions.metalCaratages
+                                    : masterOptions.goldColours
+                                  ).map((option) => {
                                     const optionKey = normalizeLookupKey(option.value);
                                     const isUsedInOtherRow =
                                       optionKey.length > 0 &&
@@ -2669,16 +2710,6 @@ export default function ProductsPage() {
                                     );
                                   })}
                                 </select>
-                                <button
-                                  type="button"
-                                  className={inlineMasterAddButtonClass}
-                                  disabled={creatingMasterType === 'GOLD_COLOUR'}
-                                  onClick={() =>
-                                    addMasterFromDesign('GOLD_COLOUR', (masterValue) => updateMetalRow(item.id, 'goldColour', masterValue))
-                                  }
-                                >
-                                  +
-                                </button>
                               </div>
                             </td>
                             <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
@@ -2713,8 +2744,17 @@ export default function ProductsPage() {
                                 <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
                               </div>
                             </td>
-                            <td className="px-2 py-2 font-semibold text-gray-700">{getMetalValue(item).toFixed(2)}</td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-32 rounded border border-gray-300 px-2 py-1" value={item.components} onChange={(event) => updateMetalRow(item.id, 'components', event.target.value)} placeholder="Components" /></td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="w-28 rounded border border-gray-300 px-2 py-1"
+                                value={item.value}
+                                onChange={(event) => updateMetalRow(item.id, 'value', event.target.value)}
+                                placeholder={getMetalValue(item).toFixed(2)}
+                              />
+                            </td>
                             <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
@@ -2723,7 +2763,6 @@ export default function ProductsPage() {
                           <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
                           <td className="px-2 py-2"></td>
                           <td className="px-2 py-2">{costTotals.metal.toFixed(2)}</td>
-                          <td className="px-2 py-2"></td>
                           <td className="px-2 py-2"></td>
                         </tr>
                       </tbody>
@@ -2811,7 +2850,17 @@ export default function ProductsPage() {
                             <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
                             <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700" value={item.wtPerPcs.trim().length > 0 || item.pcs.trim().length > 0 ? getGemWeight(item).toFixed(3) : ''} placeholder="0.000" readOnly /></td>
                             <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
-                            <td className="px-2 py-2 font-semibold text-gray-700">{getGemValue(item).toFixed(2)}</td>
+                            <td className="px-2 py-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="w-24 rounded border border-gray-300 px-2 py-1"
+                                value={item.amount}
+                                onChange={(event) => updateGemRow(item.id, 'amount', event.target.value)}
+                                placeholder={getGemValue(item).toFixed(2)}
+                              />
+                            </td>
                             <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
@@ -2827,7 +2876,7 @@ export default function ProductsPage() {
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-cyan-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '' }])}>+ Add Line</button>
+                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '', amount: '' }])}>+ Add Line</button>
                   </div>
                 </div>
               </div>
