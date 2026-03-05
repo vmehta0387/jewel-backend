@@ -184,6 +184,17 @@ interface PacketForm {
   weightUnit: 'CTS' | 'GMS';
 }
 
+interface GlobalBasePriceRow {
+  id: string;
+  category: 'METAL' | 'DIAMOND';
+  referenceValue: string;
+  subValue: string | null;
+  pricePerUnit: number;
+  unit: 'GRAM' | 'CARAT';
+  currency: string;
+  effectiveFrom: string;
+}
+
 const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const parseNum = (value: string): number => {
   const n = Number.parseFloat(value);
@@ -193,6 +204,7 @@ const parseNumericValue = (value: number | string | null | undefined): number =>
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+const normalizeLookupKey = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 const normalizeDateTimeValue = (value: string | null | undefined): string => {
   if (!value) return '';
   const parsed = new Date(value);
@@ -462,6 +474,7 @@ export default function ProductsPage() {
   const [tagPicker, setTagPicker] = useState('');
   const [packetOptions, setPacketOptions] = useState<PacketOption[]>([]);
   const [packetLoading, setPacketLoading] = useState(false);
+  const [metalRateLookup, setMetalRateLookup] = useState<Record<string, number>>({});
   const [showPacketMasterModal, setShowPacketMasterModal] = useState(false);
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
@@ -505,6 +518,26 @@ export default function ProductsPage() {
 
     return urls;
   }, [rows]);
+
+  const getMetalRate = (goldColour: string): number | undefined => {
+    const key = normalizeLookupKey(goldColour);
+    if (!key) return undefined;
+    return metalRateLookup[key];
+  };
+
+  const createMetalRow = (goldColour: string): MetalRow => {
+    const rate = getMetalRate(goldColour);
+    return {
+      id: makeId(),
+      goldColour,
+      netWt: '',
+      wastagePercent: '',
+      wastageWt: '',
+      totalWt: '',
+      pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
+      components: '',
+    };
+  };
 
   const addGalleryUrls = (urls: string[]) => {
     setGalleryUrls((prev) => {
@@ -640,6 +673,27 @@ export default function ProductsPage() {
     }
   };
 
+  const fetchGlobalBasePrices = async () => {
+    try {
+      const response = await api.get('/products/global-base-prices');
+      const data = Array.isArray(response.data?.data) ? (response.data.data as GlobalBasePriceRow[]) : [];
+      const nextLookup: Record<string, number> = {};
+
+      data.forEach((row) => {
+        if (row.category !== 'METAL') return;
+        const key = normalizeLookupKey(row.referenceValue);
+        if (!key) return;
+        if (nextLookup[key] === undefined) {
+          nextLookup[key] = parseNumericValue(row.pricePerUnit);
+        }
+      });
+
+      setMetalRateLookup(nextLookup);
+    } catch {
+      setMetalRateLookup({});
+    }
+  };
+
   const fetchPacketOptions = async () => {
     setPacketLoading(true);
     try {
@@ -742,8 +796,16 @@ export default function ProductsPage() {
     } else if (masterType === 'GOLD_COLOUR') {
       setMetalRows((prev) =>
         prev.length === 0
-          ? [{ id: makeId(), goldColour: masterValue, netWt: '', wastagePercent: '', wastageWt: '', totalWt: '', pricePerGm: '', components: '' }]
-          : prev.map((row, index) => (index === 0 ? { ...row, goldColour: masterValue } : row)),
+          ? [createMetalRow(masterValue)]
+          : prev.map((row, index) =>
+              index === 0
+                ? {
+                    ...row,
+                    goldColour: masterValue,
+                    pricePerGm: getMetalRate(masterValue) !== undefined ? getMetalRate(masterValue)!.toFixed(2) : '',
+                  }
+                : row,
+            ),
       );
     } else if (masterType === 'DIAMOND_TYPE') {
       setForm((prev) => ({ ...prev, diamondType: masterValue }));
@@ -902,7 +964,19 @@ export default function ProductsPage() {
     fetchDesignRows();
     fetchMasterOptions();
     fetchPacketOptions();
+    fetchGlobalBasePrices();
   }, []);
+
+  useEffect(() => {
+    setMetalRows((prev) =>
+      prev.map((row) => {
+        if (!row.goldColour || row.pricePerGm.trim().length > 0) return row;
+        const rate = getMetalRate(row.goldColour);
+        if (rate === undefined) return row;
+        return { ...row, pricePerGm: rate.toFixed(2) };
+      }),
+    );
+  }, [metalRateLookup]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -968,16 +1042,7 @@ export default function ProductsPage() {
     setTagPicker('');
     setGalleryUrls([]);
     setShowGalleryPicker(false);
-    setMetalRows([{
-      id: makeId(),
-      goldColour: masterOptions.goldColours[0]?.value || '',
-      netWt: '',
-      wastagePercent: '',
-      wastageWt: '',
-      totalWt: '',
-      pricePerGm: '',
-      components: '',
-    }]);
+    setMetalRows([createMetalRow(masterOptions.goldColours[0]?.value || '')]);
     setGemRows([{
       id: makeId(),
       packetId: '',
@@ -1422,6 +1487,14 @@ export default function ProductsPage() {
         if (item.id !== id) return item;
 
         const updated = { ...item, [key]: value };
+        if (key === 'goldColour') {
+          const rate = getMetalRate(value);
+          return {
+            ...updated,
+            pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
+          };
+        }
+
         if (key === 'netWt' || key === 'wastagePercent') {
           const hasAnyInput =
             updated.netWt.trim().length > 0 || updated.wastagePercent.trim().length > 0;
@@ -2087,7 +2160,15 @@ export default function ProductsPage() {
                 </table>
               </div>
               <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
-                <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setMetalRows((prev) => [...prev, { id: makeId(), goldColour: masterOptions.goldColours[0]?.value || '', netWt: '', wastagePercent: '', wastageWt: '', totalWt: '', pricePerGm: '', components: '' }])}>+ Add Line</button>
+                <button
+                  type="button"
+                  className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                  onClick={() =>
+                    setMetalRows((prev) => [...prev, createMetalRow(masterOptions.goldColours[0]?.value || '')])
+                  }
+                >
+                  + Add Line
+                </button>
               </div>
             </div>
 

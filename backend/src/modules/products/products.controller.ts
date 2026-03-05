@@ -96,6 +96,11 @@ export class ProductsController {
     return this.productsService.findMasters(query);
   }
 
+  @Get('global-base-prices')
+  findActiveGlobalBasePrices() {
+    return this.productsService.findActiveGlobalBasePrices();
+  }
+
   @Post('masters')
   createMaster(@Body() dto: CreateDesignMasterDto, @Request() req: { user: AuthUser }) {
     return this.productsService.createMaster(dto, req.user);

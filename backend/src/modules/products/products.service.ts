@@ -957,6 +957,27 @@ export class ProductsService {
     return grouped;
   }
 
+  async findActiveGlobalBasePrices(): Promise<any> {
+    const rows = await this.globalBasePriceRepo.find({
+      where: { isActive: true },
+      order: { category: 'ASC', referenceValue: 'ASC', subValue: 'ASC', effectiveFrom: 'DESC' },
+    });
+
+    return {
+      data: rows.map((row) => ({
+        id: row.id,
+        category: row.category,
+        referenceValue: row.referenceValue,
+        subValue: row.subValue,
+        pricePerUnit: this.toNumber(row.pricePerUnit),
+        unit: row.unit,
+        currency: row.currency,
+        effectiveFrom: row.effectiveFrom,
+      })),
+      total: rows.length,
+    };
+  }
+
   async createMaster(dto: CreateDesignMasterDto, requester: AuthUser): Promise<DesignMaster> {
     this.assertDesignWriteAccess(requester);
     const value = this.normalizeMasterValue(dto.value);
