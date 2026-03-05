@@ -7,12 +7,13 @@ import {
 import { mkdir, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { Brackets, DataSource, In, Repository } from 'typeorm';
 import {
   CreateStonePacketDto,
   CreateProductDto,
   CreateDesignMasterDto,
+  GetNextDesignNoQueryDto,
   DesignFindingDto,
   DesignGemstoneDto,
   DesignLaborDto,
@@ -115,6 +116,8 @@ interface GlobalRateMaps {
 @Injectable()
 export class ProductsService {
   constructor(
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     @InjectRepository(Design)
     private readonly designRepo: Repository<Design>,
     @InjectRepository(DesignMetal)
@@ -151,11 +154,27 @@ export class ProductsService {
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
     this.assertDesignCreateAccess(requester);
-    const scope = await this.resolveScope(dto.companyId, dto.branchId, requester);
-    const designNo = this.normalizeDesignNo(dto.designNo);
-    const version = this.normalizeVersion(dto.version);
+    const jewelryGroup = dto.jewelryGroup?.trim();
+    if (!jewelryGroup) {
+      throw new BadRequestException('jewelryGroup is required');
+    }
 
-    await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
+    const scope = await this.resolveScope(dto.companyId, dto.branchId, requester);
+    const version = this.normalizeVersion(dto.version);
+    const requestedDesignNo = dto.designNo?.trim();
+
+    let designNo: string;
+    if (requestedDesignNo) {
+      designNo = this.normalizeDesignNo(requestedDesignNo);
+      await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
+    } else {
+      const prefix = this.buildDesignNoPrefix(jewelryGroup);
+      designNo = await this.withDesignNoLock(scope.companyId, prefix, async () => {
+        const generatedDesignNo = await this.generateNextDesignNo(prefix, scope.companyId);
+        await this.assertUniqueDesign(generatedDesignNo, version, scope.companyId, undefined);
+        return generatedDesignNo;
+      });
+    }
 
     const globalRateMaps = await this.getGlobalRateMaps();
     const normalizedMetals = this.normalizeMetals(dto.metals || [], globalRateMaps);
@@ -178,7 +197,7 @@ export class ProductsService {
       version,
       companyId: scope.companyId,
       branchId: scope.branchId,
-      jewelryGroup: dto.jewelryGroup.trim(),
+      jewelryGroup,
       collection: this.optionalText(dto.collection),
       jewelrySize: this.optionalText(dto.jewelrySize),
       stage: this.optionalText(dto.stage),
@@ -229,6 +248,26 @@ export class ProductsService {
 
     await this.addHistory(saved.id, 'CREATED', 'Design added successfully.', requester.id);
     return this.findOne(saved.id, requester);
+  }
+
+  async getNextDesignNo(
+    query: GetNextDesignNoQueryDto,
+    requester: AuthUser,
+  ): Promise<{ designNo: string; prefix: string }> {
+    this.assertDesignCreateAccess(requester);
+    const jewelryGroup = query.jewelryGroup?.trim();
+    if (!jewelryGroup) {
+      throw new BadRequestException('jewelryGroup is required');
+    }
+
+    const scope = await this.resolveScope(query.companyId, query.branchId, requester);
+    const prefix = this.buildDesignNoPrefix(jewelryGroup);
+    const designNo = await this.generateNextDesignNo(prefix, scope.companyId);
+
+    return {
+      designNo,
+      prefix,
+    };
   }
 
   async findAll(query: FindProductsQueryDto, requester: AuthUser): Promise<any> {
@@ -1400,6 +1439,86 @@ export class ProductsService {
 
     if (existing && existing.id !== excludeId) {
       throw new BadRequestException('Design no and version already exist for this company');
+    }
+  }
+
+  private buildDesignNoPrefix(jewelryGroup: string): string {
+    const normalizedGroup = jewelryGroup.trim().toLowerCase();
+    const mappedPrefix = (() => {
+      switch (normalizedGroup) {
+        case 'ring':
+          return 'RING';
+        case 'bracelet':
+          return 'BL';
+        case 'earring':
+          return 'E';
+        case 'pendant':
+          return 'P';
+        case 'necklace':
+          return 'N';
+        case 'nose pin':
+        case 'nosepin':
+          return 'NP';
+        default:
+          return null;
+      }
+    })();
+
+    if (mappedPrefix) {
+      return mappedPrefix;
+    }
+
+    const token = jewelryGroup
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)[0];
+
+    return (token || 'DSN').slice(0, 5);
+  }
+
+  private async generateNextDesignNo(prefix: string, companyId: string | null): Promise<string> {
+    const regex = `^${prefix}-[0-9]+$`;
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select(
+        "MAX(CAST(SUBSTRING_INDEX(design.designNo, '-', -1) AS UNSIGNED))",
+        'maxSequence',
+      )
+      .where('design.designNo REGEXP :regex', { regex });
+
+    if (companyId) {
+      qb.andWhere('design.companyId = :companyId', { companyId });
+    } else {
+      qb.andWhere('design.companyId IS NULL');
+    }
+
+    const result = await qb.getRawOne<{ maxSequence?: number | string | null }>();
+    const maxSequence = Number(result?.maxSequence ?? 0);
+    const nextSequence = Number.isFinite(maxSequence) ? maxSequence + 1 : 1;
+    return `${prefix}-${String(nextSequence).padStart(4, '0')}`;
+  }
+
+  private async withDesignNoLock<T>(
+    companyId: string | null,
+    prefix: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const lockKey = `design-no:${companyId || 'global'}:${prefix}`;
+    const acquireResult: Array<Record<string, unknown>> = await this.dataSource.query(
+      'SELECT GET_LOCK(?, 10) AS acquired',
+      [lockKey],
+    );
+
+    const acquired = Number(acquireResult?.[0]?.acquired ?? 0) === 1;
+    if (!acquired) {
+      throw new BadRequestException('Unable to reserve design number. Please retry.');
+    }
+
+    try {
+      return await callback();
+    } finally {
+      await this.dataSource.query('SELECT RELEASE_LOCK(?)', [lockKey]);
     }
   }
 

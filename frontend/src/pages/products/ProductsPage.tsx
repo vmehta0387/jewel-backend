@@ -275,6 +275,45 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   };
 };
 const formatMoney = (value: number): string => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const DESIGN_GROUP_PREFIX_MAP: Record<string, string> = {
+  ring: 'RING',
+  bracelet: 'BL',
+  earring: 'E',
+  pendant: 'P',
+  necklace: 'N',
+  'nose pin': 'NP',
+  nosepin: 'NP',
+};
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const buildDesignNoPrefix = (jewelryGroup: string): string => {
+  const normalized = jewelryGroup.trim().toLowerCase();
+  if (!normalized) return 'DSN';
+  const mapped = DESIGN_GROUP_PREFIX_MAP[normalized];
+  if (mapped) return mapped;
+  const token =
+    jewelryGroup
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .trim()
+      .split(/\s+/)[0] || 'DSN';
+  return token.slice(0, 5);
+};
+const getNextDesignNo = (jewelryGroup: string, existingRows: DesignRow[]): string => {
+  const prefix = buildDesignNoPrefix(jewelryGroup);
+  const matcher = new RegExp(`^${escapeRegex(prefix)}-(\\d+)$`, 'i');
+
+  let maxNumber = 0;
+  existingRows.forEach((row) => {
+    const match = matcher.exec((row.designNo || '').trim());
+    if (!match) return;
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed > maxNumber) {
+      maxNumber = parsed;
+    }
+  });
+
+  return `${prefix}-${String(maxNumber + 1).padStart(4, '0')}`;
+};
 
 const designSeed: DesignRow[] = [
   { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07' },
@@ -373,7 +412,35 @@ function Tag({ text }: { text: string }) {
 }
 
 function Action({ label, onClick }: { label: string; onClick: () => void }) {
-  return <button type="button" className="h-7 rounded bg-blue-600 px-2 text-[11px] font-semibold text-white hover:bg-blue-700" onClick={onClick}>{label}</button>;
+  const icon =
+    label === 'View' ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    ) : label === 'Edit' ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+      </svg>
+    ) : (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 3" />
+      </svg>
+    );
+
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
 }
 
 function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string; onClose: () => void; children: React.ReactNode; size?: string }) {
@@ -420,6 +487,8 @@ export default function ProductsPage() {
   const [rowsError, setRowsError] = useState<string | null>(null);
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
+  const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -494,6 +563,8 @@ export default function ProductsPage() {
   const [inlineWeightPerUnit, setInlineWeightPerUnit] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
+  const designNoRequestSeqRef = useRef(0);
 
   const selected = useMemo(() => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const selectedTags = useMemo(
@@ -537,6 +608,45 @@ export default function ProductsPage() {
       pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
       components: '',
     };
+  };
+
+  const suggestNextDesignNo = (jewelryGroup: string): string =>
+    getNextDesignNo(jewelryGroup, rows);
+
+  const syncDesignNoFromServer = (jewelryGroup: string) => {
+    const group = jewelryGroup.trim();
+    if (!group || isDesignNoManual) return;
+
+    const requestSeq = ++designNoRequestSeqRef.current;
+    void (async () => {
+      try {
+        const response = await api.get('/products/next-design-no', {
+          params: { jewelryGroup: group },
+        });
+        const suggestedDesignNo = String(response.data?.designNo || '').trim();
+        if (!suggestedDesignNo) return;
+
+        setForm((prev) => {
+          if (designNoRequestSeqRef.current !== requestSeq) return prev;
+          if (prev.jewelryGroup !== group) return prev;
+          return { ...prev, designNo: suggestedDesignNo };
+        });
+      } catch {
+        // Keep local fallback numbering if server suggestion fails.
+      }
+    })();
+  };
+
+  const handleJewelryGroupChange = (jewelryGroup: string) => {
+    setForm((prev) => ({
+      ...prev,
+      jewelryGroup,
+      designNo: isDesignNoManual ? prev.designNo : suggestNextDesignNo(jewelryGroup),
+    }));
+
+    if (!isDesignNoManual) {
+      syncDesignNoFromServer(jewelryGroup);
+    }
   };
 
   const addGalleryUrls = (urls: string[]) => {
@@ -713,8 +823,25 @@ export default function ProductsPage() {
 
   const applyPacketToGemRow = (rowId: string, packetId: string) => {
     const packet = packetOptions.find((entry) => entry.id === packetId);
-    setGemRows((prev) =>
-      prev.map((row) => {
+    setGemRows((prev) => {
+      if (packet) {
+        const packetAlreadyUsed = prev.some((row) => row.id !== rowId && row.packetId === packet.id);
+        if (packetAlreadyUsed) {
+          window.alert('This packet is already used in another line.');
+          return prev;
+        }
+
+        const stoneKey = normalizeLookupKey(packet.stone);
+        const stoneAlreadyUsed =
+          stoneKey.length > 0 &&
+          prev.some((row) => row.id !== rowId && normalizeLookupKey(row.stone) === stoneKey);
+        if (stoneAlreadyUsed) {
+          window.alert('This stone is already used in another line.');
+          return prev;
+        }
+      }
+
+      return prev.map((row) => {
         if (row.id !== rowId) return row;
 
         if (!packet) {
@@ -752,8 +879,8 @@ export default function ProductsPage() {
           pcs: pieces > 0 ? String(pieces) : '',
           wtInCts: totalWeight > 0 ? totalWeight.toFixed(3) : '',
         };
-      }),
-    );
+      });
+    });
   };
 
   const syncTags = (tags: string[]) => {
@@ -786,7 +913,7 @@ export default function ProductsPage() {
 
   const applyCreatedMasterSelection = (masterType: DesignMasterType, masterValue: string) => {
     if (masterType === 'JEWELRY_GROUP') {
-      setForm((prev) => ({ ...prev, jewelryGroup: masterValue }));
+      handleJewelryGroupChange(masterValue);
     } else if (masterType === 'COLLECTION') {
       setForm((prev) => ({ ...prev, collection: masterValue }));
     } else if (masterType === 'JEWELRY_SIZE') {
@@ -968,6 +1095,27 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
+    setSelectedDesignIds((prev) => {
+      const validIds = new Set(rows.map((row) => row.id));
+      const next = prev.filter((id) => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [rows]);
+
+  useEffect(() => {
+    if (!showAddModal || Boolean(editingId) || isDesignNoManual) return;
+
+    setForm((prev) => {
+      if (!prev.jewelryGroup) return prev;
+      const nextDesignNo = suggestNextDesignNo(prev.jewelryGroup);
+      if (!nextDesignNo || prev.designNo === nextDesignNo) {
+        return prev;
+      }
+      return { ...prev, designNo: nextDesignNo };
+    });
+  }, [editingId, isDesignNoManual, rows, showAddModal]);
+
+  useEffect(() => {
     setMetalRows((prev) =>
       prev.map((row) => {
         if (!row.goldColour || row.pricePerGm.trim().length > 0) return row;
@@ -995,6 +1143,40 @@ export default function ProductsPage() {
       return true;
     });
   }, [filters, rows, search]);
+
+  const visibleRowIds = useMemo(() => filteredRows.map((row) => row.id), [filteredRows]);
+  const selectedVisibleCount = useMemo(
+    () => visibleRowIds.filter((id) => selectedDesignIds.includes(id)).length,
+    [selectedDesignIds, visibleRowIds],
+  );
+  const allVisibleSelected = visibleRowIds.length > 0 && selectedVisibleCount === visibleRowIds.length;
+
+  useEffect(() => {
+    if (!selectAllVisibleCheckboxRef.current) return;
+    selectAllVisibleCheckboxRef.current.indeterminate =
+      selectedVisibleCount > 0 && selectedVisibleCount < visibleRowIds.length;
+  }, [selectedVisibleCount, visibleRowIds.length]);
+
+  const toggleDesignSelection = (designId: string) => {
+    setSelectedDesignIds((prev) =>
+      prev.includes(designId) ? prev.filter((id) => id !== designId) : [...prev, designId],
+    );
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedDesignIds((prev) => {
+      if (!visibleRowIds.length) return prev;
+
+      const isAllVisibleSelected = visibleRowIds.every((id) => prev.includes(id));
+      if (isAllVisibleSelected) {
+        return prev.filter((id) => !visibleRowIds.includes(id));
+      }
+
+      const next = new Set(prev);
+      visibleRowIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  };
 
   const getMetalWastageWt = (row: MetalRow): number =>
     (parseNum(row.netWt) * parseNum(row.wastagePercent)) / 100;
@@ -1032,13 +1214,20 @@ export default function ProductsPage() {
       return;
     }
     setEditingId(null);
+    setIsDesignNoManual(false);
+    designNoRequestSeqRef.current += 1;
+    const initialJewelryGroup = masterOptions.jewelryGroups[0]?.value || defaultForm.jewelryGroup;
+    const autoDesignNo = suggestNextDesignNo(initialJewelryGroup);
     setForm({
       ...defaultForm,
+      designNo: autoDesignNo,
+      jewelryGroup: initialJewelryGroup,
       stage: masterOptions.stages[0]?.value || defaultForm.stage,
       diamondType: masterOptions.diamondTypes[0]?.value || defaultForm.diamondType,
       diamondSpread: masterOptions.diamondSpreads[0]?.value || defaultForm.diamondSpread,
       designStatus: masterOptions.designStatuses[0]?.value || defaultForm.designStatus,
     });
+    syncDesignNoFromServer(initialJewelryGroup);
     setTagPicker('');
     setGalleryUrls([]);
     setShowGalleryPicker(false);
@@ -1077,6 +1266,8 @@ export default function ProductsPage() {
     }
 
     setEditingId(row.id);
+    setIsDesignNoManual(true);
+    designNoRequestSeqRef.current += 1;
     setSelectedId(row.id);
 
     const asInput = (value: unknown): string => {
@@ -1320,13 +1511,43 @@ export default function ProductsPage() {
     }
 
     if (savingDesign) return;
-    if (!form.designNo.trim() || !form.jewelryGroup.trim()) {
-      window.alert('Design No and Jewelry Group are required.');
+    if (!form.jewelryGroup.trim()) {
+      window.alert('Jewelry Group is required.');
       return;
     }
 
+    const resolvedDesignNo =
+      form.designNo.trim() || (!editingId ? suggestNextDesignNo(form.jewelryGroup) : '');
+    const shouldSendDesignNo = Boolean(editingId) || isDesignNoManual;
+    if (shouldSendDesignNo && !resolvedDesignNo) {
+      window.alert('Design No is required.');
+      return;
+    }
+
+    const usedMetalKeys = new Set<string>();
+    for (const row of metalRows) {
+      const key = normalizeLookupKey(row.goldColour);
+      if (!key) continue;
+      if (usedMetalKeys.has(key)) {
+        window.alert('Each Metal (Gold Colour) can be used only once.');
+        return;
+      }
+      usedMetalKeys.add(key);
+    }
+
+    const usedStoneKeys = new Set<string>();
+    for (const row of gemRows) {
+      const key = normalizeLookupKey(row.stone);
+      if (!key) continue;
+      if (usedStoneKeys.has(key)) {
+        window.alert('Each Stone can be used only once.');
+        return;
+      }
+      usedStoneKeys.add(key);
+    }
+
     const basePayload = {
-      designNo: form.designNo.trim(),
+      designNo: shouldSendDesignNo ? resolvedDesignNo : undefined,
       jewelryGroup: form.jewelryGroup.trim(),
       collection: form.collection.trim() || undefined,
       stage: form.stage.trim() || undefined,
@@ -1445,6 +1666,7 @@ export default function ProductsPage() {
       }
 
       setEditingId(null);
+      setIsDesignNoManual(false);
       setShowGalleryPicker(false);
       setShowAddModal(false);
     } catch (error: any) {
@@ -1482,8 +1704,21 @@ export default function ProductsPage() {
   };
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
-    setMetalRows((prev) =>
-      prev.map((item) => {
+    setMetalRows((prev) => {
+      if (key === 'goldColour') {
+        const normalizedValue = normalizeLookupKey(value);
+        const isDuplicate =
+          normalizedValue.length > 0 &&
+          prev.some(
+            (row) => row.id !== id && normalizeLookupKey(row.goldColour) === normalizedValue,
+          );
+        if (isDuplicate) {
+          window.alert('This metal is already used in another line.');
+          return prev;
+        }
+      }
+
+      return prev.map((item) => {
         if (item.id !== id) return item;
 
         const updated = { ...item, [key]: value };
@@ -1512,12 +1747,45 @@ export default function ProductsPage() {
         }
 
         return updated;
-      }),
-    );
+      });
+    });
   };
 
   const updateGemRow = (id: string, key: keyof Omit<GemRow, 'id'>, value: string) => {
-    setGemRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+    setGemRows((prev) => {
+      if (key === 'stone') {
+        const normalizedValue = normalizeLookupKey(value);
+        const isDuplicate =
+          normalizedValue.length > 0 &&
+          prev.some((row) => row.id !== id && normalizeLookupKey(row.stone) === normalizedValue);
+        if (isDuplicate) {
+          window.alert('This stone is already used in another line.');
+          return prev;
+        }
+      }
+
+      return prev.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+    });
+  };
+
+  const addMetalLine = () => {
+    setMetalRows((prev) => {
+      const used = new Set(
+        prev
+          .map((row) => normalizeLookupKey(row.goldColour))
+          .filter((value) => value.length > 0),
+      );
+      const nextGoldColour = masterOptions.goldColours.find(
+        (option) => !used.has(normalizeLookupKey(option.value)),
+      );
+
+      if (!nextGoldColour) {
+        window.alert('All available metal colours are already used.');
+        return prev;
+      }
+
+      return [...prev, createMetalRow(nextGoldColour.value)];
+    });
   };
 
   const updateLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
@@ -1544,7 +1812,134 @@ export default function ProductsPage() {
     URL.revokeObjectURL(link.href);
   };
 
-  const exportPdf = () => window.print();
+  const exportPdf = () => {
+    if (!selectedDesignIds.length) {
+      window.alert('Please select at least one design row to export.');
+      return;
+    }
+
+    const selectedRows = selectedDesignIds
+      .map((id) => rows.find((row) => row.id === id))
+      .filter((row): row is DesignRow => Boolean(row));
+
+    if (!selectedRows.length) {
+      window.alert('No valid selected rows found for PDF export.');
+      return;
+    }
+
+    const escapeHtml = (value: string): string =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const tableRowsHtml = selectedRows
+      .map((item, index) => {
+        const cells = [
+          String(index + 1),
+          item.designNo || '-',
+          item.version || '-',
+          item.jewelryGroup || '-',
+          item.jewelrySize || '-',
+          item.diamondType || '-',
+          item.diamondSpread || '-',
+          item.goldColour || '-',
+          item.collection || '-',
+          item.stoneInfo || '-',
+          formatMoney(item.price),
+          item.tags.join(', ') || '-',
+        ]
+          .map((value) => `<td>${escapeHtml(value)}</td>`)
+          .join('');
+
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+
+    const printedAt = new Date().toLocaleString();
+    const title = `Design List Export (${selectedRows.length} selected)`;
+    const html = `
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+          h1 { margin: 0 0 6px; font-size: 20px; }
+          p.meta { margin: 0 0 16px; color: #6b7280; font-size: 12px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; vertical-align: top; }
+          th { background: #f3f4f6; font-weight: 700; }
+          @media print {
+            body { margin: 12px; }
+            @page { size: landscape; margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="meta">Printed at ${escapeHtml(printedAt)}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Design No</th>
+              <th>Version</th>
+              <th>Jewelry Group</th>
+              <th>Jewelry Size</th>
+              <th>Diamond Type</th>
+              <th>Diamond Spread</th>
+              <th>Gold Colour</th>
+              <th>Collection</th>
+              <th>Stone Info</th>
+              <th>Price</th>
+              <th>Tags</th>
+            </tr>
+          </thead>
+          <tbody>${tableRowsHtml}</tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const printFrame = document.createElement('iframe');
+    printFrame.setAttribute('aria-hidden', 'true');
+    printFrame.style.position = 'fixed';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.style.right = '-9999px';
+    printFrame.style.bottom = '-9999px';
+    document.body.appendChild(printFrame);
+
+    const cleanup = () => {
+      setTimeout(() => {
+        if (printFrame.parentNode) {
+          printFrame.parentNode.removeChild(printFrame);
+        }
+      }, 500);
+    };
+
+    const frameWindow = printFrame.contentWindow;
+    if (!frameWindow) {
+      cleanup();
+      window.alert('Unable to initialize PDF export frame.');
+      return;
+    }
+
+    frameWindow.document.open();
+    frameWindow.document.write(html);
+    frameWindow.document.close();
+
+    setTimeout(() => {
+      frameWindow.focus();
+      frameWindow.print();
+      cleanup();
+    }, 150);
+  };
 
   return (
     <div className="space-y-4">
@@ -1560,7 +1955,7 @@ export default function ProductsPage() {
           {canCreateDesign ? (
             <Button type="button" onClick={openAdd}>+ Add New</Button>
           ) : null}
-          <Button type="button" variant="secondary" onClick={exportPdf}>Export as PDF</Button>
+          <Button type="button" variant="secondary" onClick={exportPdf}>Export Selected PDF</Button>
           <Button type="button" variant="secondary" onClick={exportCsv}>Export as Excel</Button>
         </div>
       </div>
@@ -1621,7 +2016,19 @@ export default function ProductsPage() {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">#</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={selectAllVisibleCheckboxRef}
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      aria-label="Select all visible designs"
+                    />
+                    <span>#</span>
+                  </div>
+                </th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Image</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Design No.</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Version</th>
@@ -1640,7 +2047,18 @@ export default function ProductsPage() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {filteredRows.map((row, idx) => (
                 <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 text-sm text-gray-700"><div className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" />{idx + 1}</div></td>
+                  <td className="px-3 py-2 text-sm text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={selectedDesignIds.includes(row.id)}
+                        onChange={() => toggleDesignSelection(row.id)}
+                        aria-label={`Select ${row.designNo || `design ${idx + 1}`}`}
+                      />
+                      {idx + 1}
+                    </div>
+                  </td>
                   <td className="px-3 py-2">
                     {row.imageUrls?.[0] ? (
                       <img
@@ -1675,22 +2093,28 @@ export default function ProductsPage() {
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
-                      <Action label="HS" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
+                      <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
-                          <Action label="REL" onClick={() => { setSelectedId(row.id); setModal('relevant'); }} />
-                          <Action label="STL" onClick={() => { setSelectedId(row.id); setModal('stl'); }} />
-                          <Action label="PR" onClick={() => { setSelectedId(row.id); setModal('process'); }} />
-                          <Action label="$" onClick={() => { setSelectedId(row.id); setModal('pricing'); }} />
-                          <Action label="VN" onClick={() => { setSelectedId(row.id); setModal('vendor'); }} />
                           <button
                             type="button"
-                            className="h-7 rounded bg-red-600 px-2 text-[11px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            title="Delete"
+                            aria-label="Delete"
+                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => deleteDesign(row.id)}
                             disabled={deletingId === row.id}
                           >
-                            {deletingId === row.id ? '...' : 'DEL'}
+                            {deletingId === row.id ? (
+                              '...'
+                            ) : (
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18" />
+                                <path d="M8 6V4h8v2" />
+                                <path d="M19 6l-1 14H6L5 6" />
+                                <path d="M10 11v6M14 11v6" />
+                              </svg>
+                            )}
                           </button>
                         </>
                       ) : null}
@@ -1708,6 +2132,9 @@ export default function ProductsPage() {
             {canModifyExistingDesigns
               ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
               : 'Tip: Click View to inspect an existing design.'}
+          </p>
+          <p className="text-xs text-gray-500">
+            Selected rows for PDF export: {selectedDesignIds.length}
           </p>
         </div>
       </Card>
@@ -1727,7 +2154,16 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">Design No *</label>
-                    <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.designNo} onChange={(event) => setForm((prev) => ({ ...prev, designNo: event.target.value }))} placeholder="Design No" />
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.designNo}
+                      onChange={(event) => {
+                        setIsDesignNoManual(true);
+                        designNoRequestSeqRef.current += 1;
+                        setForm((prev) => ({ ...prev, designNo: event.target.value }));
+                      }}
+                      placeholder="Design No"
+                    />
                   </div>
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group *</label>
@@ -1735,7 +2171,7 @@ export default function ProductsPage() {
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                         value={form.jewelryGroup}
-                        onChange={(event) => setForm((prev) => ({ ...prev, jewelryGroup: event.target.value }))}
+                        onChange={(event) => handleJewelryGroupChange(event.target.value)}
                       >
                         <option value="">Select Jewelry Group</option>
                         {masterOptions.jewelryGroups.map((option) => (
@@ -2093,11 +2529,26 @@ export default function ProductsPage() {
                               {!masterOptions.goldColours.some((option) => option.value === item.goldColour) && item.goldColour ? (
                                 <option value={item.goldColour}>{item.goldColour}</option>
                               ) : null}
-                              {masterOptions.goldColours.map((option) => (
-                                <option key={option.id} value={option.value}>
-                                  {option.value}
-                                </option>
-                              ))}
+                              {masterOptions.goldColours.map((option) => {
+                                const optionKey = normalizeLookupKey(option.value);
+                                const isUsedInOtherRow =
+                                  optionKey.length > 0 &&
+                                  metalRows.some(
+                                    (row) =>
+                                      row.id !== item.id &&
+                                      normalizeLookupKey(row.goldColour) === optionKey,
+                                  );
+                                return (
+                                  <option
+                                    key={option.id}
+                                    value={option.value}
+                                    disabled={isUsedInOtherRow}
+                                  >
+                                    {option.value}
+                                    {isUsedInOtherRow ? ' (Used)' : ''}
+                                  </option>
+                                );
+                              })}
                             </select>
                             <button
                               type="button"
@@ -2163,9 +2614,7 @@ export default function ProductsPage() {
                 <button
                   type="button"
                   className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
-                  onClick={() =>
-                    setMetalRows((prev) => [...prev, createMetalRow(masterOptions.goldColours[0]?.value || '')])
-                  }
+                  onClick={addMetalLine}
                 >
                   + Add Line
                 </button>
@@ -2203,11 +2652,28 @@ export default function ProductsPage() {
                               onChange={(event) => applyPacketToGemRow(item.id, event.target.value)}
                             >
                               <option value="">Select Packet</option>
-                              {packetOptions.map((packet) => (
-                                <option key={packet.id} value={packet.id}>
-                                  {packet.packetName}
-                                </option>
-                              ))}
+                              {packetOptions.map((packet) => {
+                                const isCurrentPacket = item.packetId === packet.id;
+                                const packetUsedByOtherRow = gemRows.some(
+                                  (row) => row.id !== item.id && row.packetId === packet.id,
+                                );
+                                const stoneKey = normalizeLookupKey(packet.stone);
+                                const stoneUsedByOtherRow =
+                                  stoneKey.length > 0 &&
+                                  gemRows.some(
+                                    (row) =>
+                                      row.id !== item.id && normalizeLookupKey(row.stone) === stoneKey,
+                                  );
+                                const isDisabled =
+                                  !isCurrentPacket && (packetUsedByOtherRow || stoneUsedByOtherRow);
+
+                                return (
+                                  <option key={packet.id} value={packet.id} disabled={isDisabled}>
+                                    {packet.packetName}
+                                    {isDisabled ? ' (Used)' : ''}
+                                  </option>
+                                );
+                              })}
                             </select>
                             <button
                               type="button"

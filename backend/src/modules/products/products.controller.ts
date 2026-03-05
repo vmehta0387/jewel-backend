@@ -17,6 +17,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   CreateStonePacketDto,
   CreateDesignMasterDto,
+  GetNextDesignNoQueryDto,
   FindPacketsQueryDto,
   FindDesignMastersQueryDto,
   FindProductsQueryDto,
@@ -99,6 +100,14 @@ export class ProductsController {
   @Get('global-base-prices')
   findActiveGlobalBasePrices() {
     return this.productsService.findActiveGlobalBasePrices();
+  }
+
+  @Get('next-design-no')
+  getNextDesignNo(
+    @Query() query: GetNextDesignNoQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.getNextDesignNo(query, req.user);
   }
 
   @Post('masters')

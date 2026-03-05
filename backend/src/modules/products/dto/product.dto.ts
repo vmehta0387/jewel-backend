@@ -257,7 +257,8 @@ export class UploadStlFileDto {
 
 export class CreateProductDto {
   @IsString()
-  designNo: string;
+  @IsOptional()
+  designNo?: string;
 
   @IsString()
   @IsOptional()
@@ -375,6 +376,19 @@ export class CreateProductDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+}
+
+export class GetNextDesignNoQueryDto {
+  @IsString()
+  jewelryGroup: string;
+
+  @IsString()
+  @IsOptional()
+  companyId?: string;
+
+  @IsString()
+  @IsOptional()
+  branchId?: string;
 }
 
 export class UpdateProductDto {
