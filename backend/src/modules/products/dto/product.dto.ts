@@ -30,6 +30,10 @@ export class DesignMetalDto {
   @IsOptional()
   goldColour?: string;
 
+  @IsString()
+  @IsOptional()
+  metalCaratage?: string;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)

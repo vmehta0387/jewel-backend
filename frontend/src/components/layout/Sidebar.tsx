@@ -21,6 +21,11 @@ interface NavigationItem {
   allowedRoles?: UserRole[];
 }
 
+interface SidebarProps {
+  collapsed?: boolean;
+  onToggle?: () => void;
+}
+
 const navigation: NavigationItem[] = [
   { name: 'Dashboard', path: '/dashboard', icon: 'dashboard' },
   {
@@ -139,8 +144,8 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
     <span
       className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
         isActive
-          ? 'border-primary-200 bg-primary-100 text-primary-700'
-          : 'border-gray-200 bg-gray-50 text-gray-600 group-hover:border-gray-300 group-hover:text-gray-800'
+          ? 'border-white/40 bg-white/20 text-white'
+          : 'border-white/20 bg-white/10 text-white/80 group-hover:border-white/35 group-hover:bg-white/15 group-hover:text-white'
       }`}
     >
       <svg {...iconBase}>{iconBody}</svg>
@@ -148,7 +153,7 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   const location = useLocation();
   const user = getStoredUser();
 
@@ -165,25 +170,60 @@ export default function Sidebar() {
   });
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0">
-      <div className="p-6 border-b border-gray-200">
-        <h1 className="text-xl font-bold text-gray-900">Jewelry Platform</h1>
+    <div
+      className={`fixed left-0 top-0 h-screen border-r border-primary-700/60 bg-primary-600 text-white transition-all duration-300 ${
+        collapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      <div
+        className={`relative flex items-center border-b border-white/20 ${
+          collapsed ? 'justify-center px-2 py-4' : 'justify-between px-4 py-4'
+        }`}
+      >
+        <h1 className={`font-bold text-white ${collapsed ? 'text-base' : 'text-xl'}`}>
+          {collapsed ? 'JP' : 'Jewelry Platform'}
+        </h1>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 ${
+            collapsed ? 'absolute -right-3 top-4 bg-primary-600 shadow' : ''
+          }`}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <svg
+            className={`h-4 w-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+        </button>
       </div>
-      <nav className="p-4 space-y-1">
+      <nav className={`space-y-1 ${collapsed ? 'p-2' : 'p-4'}`}>
         {visibleNavigation.map((item) => {
           const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`group flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              className={`group flex rounded-lg py-3 transition-colors ${
+                collapsed ? 'justify-center px-2' : 'items-center gap-3 px-4'
+              } ${
                 isActive
-                  ? 'bg-primary-50 text-primary-700 font-medium'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  ? 'bg-white/20 text-white font-semibold shadow-sm'
+                  : 'text-white/85 hover:bg-white/10 hover:text-white'
               }`}
+              title={collapsed ? item.name : undefined}
             >
               <MenuIcon name={item.icon} isActive={isActive} />
-              <span>{item.name}</span>
+              {!collapsed ? <span>{item.name}</span> : null}
             </Link>
           );
         })}

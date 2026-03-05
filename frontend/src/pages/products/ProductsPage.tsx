@@ -28,6 +28,7 @@ type DesignMasterType =
 interface MasterOption {
   id: string;
   value: string;
+  wastagePercent?: number;
 }
 
 interface DesignRow {
@@ -172,7 +173,6 @@ interface PacketOption {
 
 interface PacketForm {
   packetName: string;
-  stockType: string;
   stone: string;
   shape: string;
   size: string;
@@ -344,7 +344,6 @@ const defaultForm: DesignForm = {
 
 const defaultPacketForm: PacketForm = {
   packetName: '',
-  stockType: 'COMPLETED',
   stone: '',
   shape: '',
   size: '',
@@ -390,7 +389,7 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   TAG: 'Tag',
   DESIGN_STATUS: 'Design Status',
   STAGE: 'Stage',
-  GOLD_COLOUR: 'Gold Colour',
+  GOLD_COLOUR: 'Metal Caratage',
   DIAMOND_TYPE: 'Diamond Type',
   DIAMOND_SPREAD: 'Diamond Spread',
   LABOR_HEAD: 'Labor Head',
@@ -443,9 +442,21 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
-function Modal({ title, onClose, children, size = 'max-w-6xl' }: { title: string; onClose: () => void; children: React.ReactNode; size?: string }) {
+function Modal({
+  title,
+  onClose,
+  children,
+  size = 'max-w-6xl',
+  zIndexClass = 'z-50',
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  size?: string;
+  zIndexClass?: string;
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]">
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]`}>
       <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl`}>
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
           <h2 className="text-base font-semibold tracking-wide text-slate-900">{title}</h2>
@@ -490,7 +501,7 @@ export default function ProductsPage() {
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [search, setSearch] = useState('');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -499,13 +510,13 @@ export default function ProductsPage() {
   const [filters, setFilters] = useState({ jewelryGroup: '', collection: '', jewelrySize: '', tags: '', stone: '', shape: '', stage: '', status: '', goldColour: '' });
   const [metalRows, setMetalRows] = useState<MetalRow[]>([{
     id: makeId(),
-    goldColour: '22 karat-Rose-Gold',
-    netWt: '5',
-    wastagePercent: '0',
-    wastageWt: '0',
-    totalWt: '5',
-    pricePerGm: '100.83',
-    components: '1',
+    goldColour: '',
+    netWt: '',
+    wastagePercent: '',
+    wastageWt: '',
+    totalWt: '',
+    pricePerGm: '',
+    components: '',
   }]);
   const [gemRows, setGemRows] = useState<GemRow[]>([{
     id: makeId(),
@@ -590,19 +601,35 @@ export default function ProductsPage() {
     return urls;
   }, [rows]);
 
-  const getMetalRate = (goldColour: string): number | undefined => {
-    const key = normalizeLookupKey(goldColour);
+  const getMetalRate = (metalCaratage: string): number | undefined => {
+    const key = normalizeLookupKey(metalCaratage);
     if (!key) return undefined;
     return metalRateLookup[key];
   };
 
-  const createMetalRow = (goldColour: string): MetalRow => {
-    const rate = getMetalRate(goldColour);
+  const getMetalMasterOption = (metalCaratage: string): MasterOption | undefined => {
+    const lookup = normalizeLookupKey(metalCaratage);
+    if (!lookup) return undefined;
+    return masterOptions.goldColours.find(
+      (option) => normalizeLookupKey(option.value) === lookup,
+    );
+  };
+
+  const getMetalDefaultWastage = (metalCaratage: string): string => {
+    const option = getMetalMasterOption(metalCaratage);
+    if (!option || option.wastagePercent === undefined || option.wastagePercent === null) {
+      return '';
+    }
+    return String(option.wastagePercent);
+  };
+
+  const createMetalRow = (metalCaratage: string): MetalRow => {
+    const rate = getMetalRate(metalCaratage);
     return {
       id: makeId(),
-      goldColour,
+      goldColour: metalCaratage,
       netWt: '',
-      wastagePercent: '',
+      wastagePercent: getMetalDefaultWastage(metalCaratage),
       wastageWt: '',
       totalWt: '',
       pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
@@ -764,7 +791,7 @@ export default function ProductsPage() {
         tags: response.data?.tags || [],
         designStatuses: response.data?.designStatuses || [],
         stages: response.data?.stages || [],
-        goldColours: response.data?.goldColours || [],
+        goldColours: response.data?.goldColours || response.data?.metalCaratages || [],
         diamondTypes: response.data?.diamondTypes || [],
         diamondSpreads: response.data?.diamondSpreads || [],
         laborHeads: response.data?.laborHeads || [],
@@ -881,7 +908,7 @@ export default function ProductsPage() {
           cut: packet.cut || '',
           color: packet.color || '',
           quality: packet.quality || '',
-          settingType: packet.stockType || '',
+          settingType: '',
           wtPerPcs: wtPerPcs > 0 ? wtPerPcs.toFixed(3) : '',
           pcs: pieces > 0 ? String(pieces) : '',
           wtInCts: wtInCts > 0 ? wtInCts.toFixed(3) : '',
@@ -936,7 +963,11 @@ export default function ProductsPage() {
                 ? {
                     ...row,
                     goldColour: masterValue,
-                    pricePerGm: getMetalRate(masterValue) !== undefined ? getMetalRate(masterValue)!.toFixed(2) : '',
+                    wastagePercent: getMetalDefaultWastage(masterValue),
+                    pricePerGm:
+                      getMetalRate(masterValue) !== undefined
+                        ? getMetalRate(masterValue)!.toFixed(2)
+                        : '',
                   }
                 : row,
             ),
@@ -1016,6 +1047,13 @@ export default function ProductsPage() {
             weightPerUnit: parseNum(inlineWeightPerUnit),
           }
         : null;
+    const defaultWastagePayload =
+      inlineMasterType === 'GOLD_COLOUR'
+        ? {
+            pricePerUnit:
+              inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
+          }
+        : null;
     const descriptionPayload = inlineMasterType === 'FINDING_HEAD' ? null : inlineMasterDescription.trim() || null;
 
     if (inlineMasterType === 'FINDING_HEAD') {
@@ -1037,6 +1075,7 @@ export default function ProductsPage() {
         aliasName,
         description: descriptionPayload,
         ...(findingPayload || {}),
+        ...(defaultWastagePayload || {}),
       });
 
       const masterValue = response.data?.value || value;
@@ -1059,7 +1098,6 @@ export default function ProductsPage() {
   const savePacketMaster = async () => {
     const payload = {
       packetName: packetForm.packetName.trim(),
-      stockType: packetForm.stockType.trim() || 'COMPLETED',
       stone: packetForm.stone.trim(),
       shape: packetForm.shape.trim(),
       size: packetForm.size.trim(),
@@ -1133,13 +1171,20 @@ export default function ProductsPage() {
   useEffect(() => {
     setMetalRows((prev) =>
       prev.map((row) => {
-        if (!row.goldColour || row.pricePerGm.trim().length > 0) return row;
+        if (!row.goldColour) return row;
         const rate = getMetalRate(row.goldColour);
-        if (rate === undefined) return row;
-        return { ...row, pricePerGm: rate.toFixed(2) };
+        const defaultWastage = getMetalDefaultWastage(row.goldColour);
+        const nextPricePerGm = row.pricePerGm.trim().length > 0 ? row.pricePerGm : rate !== undefined ? rate.toFixed(2) : '';
+        const nextWastagePercent =
+          row.wastagePercent.trim().length > 0 ? row.wastagePercent : defaultWastage;
+
+        if (nextPricePerGm === row.pricePerGm && nextWastagePercent === row.wastagePercent) {
+          return row;
+        }
+        return { ...row, pricePerGm: nextPricePerGm, wastagePercent: nextWastagePercent };
       }),
     );
-  }, [metalRateLookup]);
+  }, [masterOptions.goldColours, metalRateLookup]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1245,7 +1290,7 @@ export default function ProductsPage() {
     setTagPicker('');
     setGalleryUrls([]);
     setShowGalleryPicker(false);
-    setMetalRows([createMetalRow(masterOptions.goldColours[0]?.value || '')]);
+    setMetalRows([createMetalRow('')]);
     setGemRows([{
       id: makeId(),
       packetId: '',
@@ -1342,24 +1387,15 @@ export default function ProductsPage() {
         metals.length > 0
           ? metals.map((item: any) => ({
               id: item.id || makeId(),
-              goldColour: item.goldColour || '',
+              goldColour: item.metalCaratage || item.goldColour || '',
               netWt: asInput(item.netWt),
               wastagePercent: asInput(item.wastagePercent),
-              wastageWt: asInput(item.wastageWt),
+                wastageWt: asInput(item.wastageWt),
               totalWt: asInput(item.totalWt),
               pricePerGm: asInput(item.pricePerGm),
               components: asInput(item.components),
             }))
-          : [{
-              id: makeId(),
-              goldColour: row.goldColour || '',
-              netWt: '',
-              wastagePercent: '',
-              wastageWt: '',
-              totalWt: '',
-              pricePerGm: '',
-              components: '',
-            }],
+          : [createMetalRow(row.goldColour || '')],
       );
 
       setGemRows(
@@ -1481,16 +1517,7 @@ export default function ProductsPage() {
         designDescription: '',
         remarks: row.remarks,
       });
-      setMetalRows([{
-        id: makeId(),
-        goldColour: row.goldColour,
-        netWt: '',
-        wastagePercent: '',
-        wastageWt: '',
-        totalWt: '',
-        pricePerGm: '',
-        components: '',
-      }]);
+      setMetalRows([createMetalRow(row.goldColour)]);
       setGemRows([{
         id: makeId(),
         packetId: '',
@@ -1540,6 +1567,10 @@ export default function ProductsPage() {
 
     const usedMetalKeys = new Set<string>();
     for (const row of metalRows) {
+      if (!row.goldColour.trim()) {
+        window.alert('Metal Caratage is required for all Metal rows.');
+        return;
+      }
       if (!row.netWt.trim()) {
         window.alert('Net Weight is required for all Metal rows.');
         return;
@@ -1573,7 +1604,7 @@ export default function ProductsPage() {
       const key = normalizeLookupKey(row.goldColour);
       if (!key) continue;
       if (usedMetalKeys.has(key)) {
-        window.alert('Each Metal (Gold Colour) can be used only once.');
+        window.alert('Each Metal Caratage can be used only once.');
         return;
       }
       usedMetalKeys.add(key);
@@ -1626,6 +1657,7 @@ export default function ProductsPage() {
     const createPayload = {
       ...basePayload,
       metals: metalRows.map((row) => ({
+        metalCaratage: row.goldColour.trim() || undefined,
         goldColour: row.goldColour.trim() || undefined,
         netWt: parseNum(row.netWt),
         wastagePercent: parseNum(row.wastagePercent),
@@ -1775,7 +1807,7 @@ export default function ProductsPage() {
             (row) => row.id !== id && normalizeLookupKey(row.goldColour) === normalizedValue,
           );
         if (isDuplicate) {
-          window.alert('This metal is already used in another line.');
+          window.alert('This Metal Caratage is already used in another line.');
           return prev;
         }
       }
@@ -1786,9 +1818,24 @@ export default function ProductsPage() {
         const updated = { ...item, [key]: value };
         if (key === 'goldColour') {
           const rate = getMetalRate(value);
-          return {
+          const defaultWastage = getMetalDefaultWastage(value);
+          const withDefaults = {
             ...updated,
+            wastagePercent: defaultWastage,
             pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
+          };
+          const hasAnyInput =
+            withDefaults.netWt.trim().length > 0 || withDefaults.wastagePercent.trim().length > 0;
+          if (!hasAnyInput) {
+            return { ...withDefaults, wastageWt: '', totalWt: '' };
+          }
+
+          const wastageWt = getMetalWastageWt(withDefaults);
+          const totalWt = getMetalTotalWt(withDefaults);
+          return {
+            ...withDefaults,
+            wastageWt: wastageWt.toFixed(3),
+            totalWt: totalWt.toFixed(3),
           };
         }
 
@@ -1861,7 +1908,7 @@ export default function ProductsPage() {
   };
 
   const exportCsv = () => {
-    const csv = [['Design No', 'Version', 'Jewelry Group', 'Jewelry Size', 'Gold Colour', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
+    const csv = [['Design No', 'Version', 'Jewelry Group', 'Jewelry Size', 'Metal Caratage', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
       .map((line) => line.join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1952,7 +1999,7 @@ export default function ProductsPage() {
               <th>Jewelry Size</th>
               <th>Diamond Type</th>
               <th>Diamond Spread</th>
-              <th>Gold Colour</th>
+              <th>Metal Caratage</th>
               <th>Collection</th>
               <th>Stone Info</th>
               <th>Price</th>
@@ -2050,8 +2097,8 @@ export default function ProductsPage() {
                 <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.shape} onChange={(event) => setFilters((prev) => ({ ...prev, shape: event.target.value }))} placeholder="Shape" />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Gold Colour</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.goldColour} onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))} placeholder="Gold Colour" />
+                <label className="mb-1 block text-xs font-medium text-gray-600">Metal Caratage</label>
+                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.goldColour} onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))} placeholder="Metal Caratage" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Stage</label>
@@ -2061,9 +2108,21 @@ export default function ProductsPage() {
           </div>
         )}
 
-        <div className="mb-3 flex items-center justify-end gap-2">
-          <span className="rounded border border-gray-300 bg-white px-2 py-2 text-xs font-semibold text-gray-500">Q</span>
-          <input className="w-64 rounded border border-gray-300 px-3 py-2 text-sm" placeholder="Search designs" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <div className="mb-3 flex items-center justify-end">
+          <label className="relative w-full max-w-sm">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-blue-500">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+            </span>
+            <input
+              className="w-full rounded-md border border-blue-200 bg-blue-50 pl-10 pr-3 py-2 text-sm text-slate-800 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              placeholder="Search designs"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
         </div>
         {rowsLoading ? (
           <p className="mb-3 text-sm text-blue-700">Loading designs...</p>
@@ -2072,7 +2131,7 @@ export default function ProductsPage() {
           <p className="mb-3 text-sm text-red-600">{rowsError}</p>
         ) : null}
 
-        <div className="overflow-x-auto border border-gray-200">
+        <div className="overflow-x-auto scrollbar-top border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
@@ -2091,12 +2150,9 @@ export default function ProductsPage() {
                 </th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Image</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Design No.</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Version</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Jewelry Group</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Jewelry Size</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Diamond Type</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Diamond Spread</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Gold Colour</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Metal Info</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Collection</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Stone Info</th>
                 <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Price</th>
@@ -2140,12 +2196,13 @@ export default function ProductsPage() {
                       {row.designNo}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.version}</td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.jewelryGroup}</td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.jewelrySize}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.diamondType || '-'}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.diamondSpread || '-'}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700"><span className="rounded bg-green-700 px-2 py-1 text-[11px] font-semibold text-white">{row.goldColour}</span></td>
+                  <td className="px-3 py-2 text-sm text-gray-700">
+                    <span className="rounded bg-green-700 px-2 py-1 text-[11px] font-semibold text-white">
+                      {row.goldColour || '-'}
+                    </span>
+                  </td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.collection}</td>
                   <td className="px-3 py-2 text-sm text-gray-700"><span className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white">{row.stoneInfo}</span></td>
                   <td className="px-3 py-2 text-sm text-gray-700">{formatMoney(row.price)}</td>
@@ -2558,225 +2615,230 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-amber-200 bg-white shadow-sm">
-              <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Metal Information</div>
-              <div className="overflow-x-auto">
-                <table className="min-w-[1100px] text-sm">
-                  <thead className="bg-amber-50/70 text-left text-[11px] font-semibold text-amber-900">
-                    <tr>
-                      <th className="px-2 py-2">Gold Colour</th>
-                      <th className="px-2 py-2">Net Wt. *</th>
-                      <th className="px-2 py-2">Wastage %</th>
-                      <th className="px-2 py-2">Wastage Wt.</th>
-                      <th className="px-2 py-2">Total Wt.</th>
-                      <th className="px-2 py-2">@(Per Gms)</th>
-                      <th className="px-2 py-2">Value</th>
-                      <th className="px-2 py-2">No. Of Components *</th>
-                      <th className="px-2 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {metalRows.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-2">
-                            <select
-                              className="w-full rounded border border-gray-300 px-2 py-1"
-                              value={item.goldColour}
-                              onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
-                            >
-                              <option value="">Select Gold Colour</option>
-                              {!masterOptions.goldColours.some((option) => option.value === item.goldColour) && item.goldColour ? (
-                                <option value={item.goldColour}>{item.goldColour}</option>
-                              ) : null}
-                              {masterOptions.goldColours.map((option) => {
-                                const optionKey = normalizeLookupKey(option.value);
-                                const isUsedInOtherRow =
-                                  optionKey.length > 0 &&
-                                  metalRows.some(
-                                    (row) =>
-                                      row.id !== item.id &&
-                                      normalizeLookupKey(row.goldColour) === optionKey,
-                                  );
-                                return (
-                                  <option
-                                    key={option.id}
-                                    value={option.value}
-                                    disabled={isUsedInOtherRow}
-                                  >
-                                    {option.value}
-                                    {isUsedInOtherRow ? ' (Used)' : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <button
-                              type="button"
-                              className={inlineMasterAddButtonClass}
-                              disabled={creatingMasterType === 'GOLD_COLOUR'}
-                              onClick={() =>
-                                addMasterFromDesign('GOLD_COLOUR', (masterValue) => updateMetalRow(item.id, 'goldColour', masterValue))
-                              }
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
-                        <td className="px-2 py-2">
-                          <input
-                            className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
-                            value={
-                              item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
-                                ? getMetalWastageWt(item).toFixed(3)
-                                : ''
-                            }
-                            placeholder="Wastage Wt"
-                            readOnly
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <input
-                            className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
-                            value={
-                              item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
-                                ? getMetalTotalWt(item).toFixed(3)
-                                : ''
-                            }
-                            placeholder="Total Wt"
-                            readOnly
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-1">
-                            <input type="number" min="0" step="0.01" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
-                            <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 font-semibold text-gray-700">{getMetalValue(item).toFixed(2)}</td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-32 rounded border border-gray-300 px-2 py-1" value={item.components} onChange={(event) => updateMetalRow(item.id, 'components', event.target.value)} placeholder="Components" /></td>
-                        <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                      <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
-                      <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
-                      <td className="px-2 py-2"></td>
-                      <td className="px-2 py-2">{costTotals.metal.toFixed(2)}</td>
-                      <td className="px-2 py-2"></td>
-                      <td className="px-2 py-2"></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
-                <button
-                  type="button"
-                  className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
-                  onClick={addMetalLine}
-                >
-                  + Add Line
-                </button>
-              </div>
-            </div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+              <div className="space-y-4">
+                <div className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
+                  <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Metal Information</div>
+                  <div className="overflow-x-auto scrollbar-top">
+                    <table className="min-w-[1020px] text-sm">
+                      <thead className="bg-amber-50/70 text-left text-[11px] font-semibold text-amber-900">
+                        <tr>
+                          <th className="px-2 py-2">Metal Caratage</th>
+                          <th className="px-2 py-2">Net Wt. *</th>
+                          <th className="px-2 py-2">Wastage %</th>
+                          <th className="px-2 py-2">Wastage Wt.</th>
+                          <th className="px-2 py-2">Total Wt.</th>
+                          <th className="px-2 py-2">@(Per Gms)</th>
+                          <th className="px-2 py-2">Value</th>
+                          <th className="px-2 py-2">No. Of Components *</th>
+                          <th className="px-2 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {metalRows.map((item) => (
+                          <tr key={item.id}>
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-2">
+                                <select
+                                  className="w-full rounded border border-gray-300 px-2 py-1"
+                                  value={item.goldColour}
+                                  onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
+                                >
+                                  <option value="">Select Metal Caratage</option>
+                                  {!masterOptions.goldColours.some((option) => option.value === item.goldColour) && item.goldColour ? (
+                                    <option value={item.goldColour}>{item.goldColour}</option>
+                                  ) : null}
+                                  {masterOptions.goldColours.map((option) => {
+                                    const optionKey = normalizeLookupKey(option.value);
+                                    const isUsedInOtherRow =
+                                      optionKey.length > 0 &&
+                                      metalRows.some(
+                                        (row) =>
+                                          row.id !== item.id &&
+                                          normalizeLookupKey(row.goldColour) === optionKey,
+                                      );
+                                    return (
+                                      <option
+                                        key={option.id}
+                                        value={option.value}
+                                        disabled={isUsedInOtherRow}
+                                      >
+                                        {option.value}
+                                        {isUsedInOtherRow ? ' (Used)' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <button
+                                  type="button"
+                                  className={inlineMasterAddButtonClass}
+                                  disabled={creatingMasterType === 'GOLD_COLOUR'}
+                                  onClick={() =>
+                                    addMasterFromDesign('GOLD_COLOUR', (masterValue) => updateMetalRow(item.id, 'goldColour', masterValue))
+                                  }
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
+                                value={
+                                  item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
+                                    ? getMetalWastageWt(item).toFixed(3)
+                                    : ''
+                                }
+                                placeholder="Wastage Wt"
+                                readOnly
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
+                                value={
+                                  item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
+                                    ? getMetalTotalWt(item).toFixed(3)
+                                    : ''
+                                }
+                                placeholder="Total Wt"
+                                readOnly
+                              />
+                            </td>
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-1">
+                                <input type="number" min="0" step="0.01" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
+                                <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 font-semibold text-gray-700">{getMetalValue(item).toFixed(2)}</td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-32 rounded border border-gray-300 px-2 py-1" value={item.components} onChange={(event) => updateMetalRow(item.id, 'components', event.target.value)} placeholder="Components" /></td>
+                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
+                          <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
+                          <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
+                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-2">{costTotals.metal.toFixed(2)}</td>
+                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-2"></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
+                    <button
+                      type="button"
+                      className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                      onClick={addMetalLine}
+                    >
+                      + Add Line
+                    </button>
+                  </div>
+                </div>
 
-            <div className="rounded-xl border border-cyan-200 shadow-sm">
-              <div className="flex items-center justify-between border-b border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-800">
-                <span>Gemstone Information</span>
-                {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-[980px] text-sm">
-                  <thead className="bg-cyan-50/70 text-left text-[11px] font-semibold text-cyan-900">
-                    <tr>
-                      <th className="px-2 py-2">##</th>
-                      <th className="px-2 py-2">Packet</th>
-                      <th className="px-2 py-2">Wt/Per Pcs.</th>
-                      <th className="px-2 py-2">Pcs</th>
-                      <th className="px-2 py-2">Wt(In Cts)</th>
-                      <th className="px-2 py-2">@(P/C/In USD)</th>
-                      <th className="px-2 py-2">Amount</th>
-                      <th className="px-2 py-2">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {gemRows.map((item, idx) => (
-                      <tr key={item.id}>
-                        <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-2">
-                            <select
-                              className="w-44 rounded border border-gray-300 px-2 py-1"
-                              value={item.packetId}
-                              onChange={(event) => applyPacketToGemRow(item.id, event.target.value)}
-                            >
-                              <option value="">Select Packet</option>
-                              {packetOptions.map((packet) => {
-                                const isCurrentPacket = item.packetId === packet.id;
-                                const packetUsedByOtherRow = gemRows.some(
-                                  (row) => row.id !== item.id && row.packetId === packet.id,
-                                );
-                                const stoneKey = normalizeLookupKey(packet.stone);
-                                const stoneUsedByOtherRow =
-                                  stoneKey.length > 0 &&
-                                  gemRows.some(
-                                    (row) =>
-                                      row.id !== item.id && normalizeLookupKey(row.stone) === stoneKey,
-                                  );
-                                const isDisabled =
-                                  !isCurrentPacket && (packetUsedByOtherRow || stoneUsedByOtherRow);
+                <div className="rounded-xl border border-cyan-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-800">
+                    <span>Gemstone Information</span>
+                    {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
+                  </div>
+                  <div className="overflow-x-auto scrollbar-top">
+                    <table className="min-w-[920px] text-sm">
+                      <thead className="bg-cyan-50/70 text-left text-[11px] font-semibold text-cyan-900">
+                        <tr>
+                          <th className="px-2 py-2">##</th>
+                          <th className="px-2 py-2">Packet</th>
+                          <th className="px-2 py-2">Wt/Per Pcs.</th>
+                          <th className="px-2 py-2">Pcs</th>
+                          <th className="px-2 py-2">Wt(In Cts)</th>
+                          <th className="px-2 py-2">@(P/C/In USD)</th>
+                          <th className="px-2 py-2">Amount</th>
+                          <th className="px-2 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {gemRows.map((item, idx) => (
+                          <tr key={item.id}>
+                            <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                            <td className="px-2 py-2">
+                              <div className="flex items-center gap-2">
+                                <select
+                                  className="w-44 rounded border border-gray-300 px-2 py-1"
+                                  value={item.packetId}
+                                  onChange={(event) => applyPacketToGemRow(item.id, event.target.value)}
+                                >
+                                  <option value="">Select Packet</option>
+                                  {packetOptions.map((packet) => {
+                                    const isCurrentPacket = item.packetId === packet.id;
+                                    const packetUsedByOtherRow = gemRows.some(
+                                      (row) => row.id !== item.id && row.packetId === packet.id,
+                                    );
+                                    const stoneKey = normalizeLookupKey(packet.stone);
+                                    const stoneUsedByOtherRow =
+                                      stoneKey.length > 0 &&
+                                      gemRows.some(
+                                        (row) =>
+                                          row.id !== item.id && normalizeLookupKey(row.stone) === stoneKey,
+                                      );
+                                    const isDisabled =
+                                      !isCurrentPacket && (packetUsedByOtherRow || stoneUsedByOtherRow);
 
-                                return (
-                                  <option key={packet.id} value={packet.id} disabled={isDisabled}>
-                                    {packet.packetName}
-                                    {isDisabled ? ' (Used)' : ''}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <button
-                              type="button"
-                              className={inlineMasterAddButtonClass}
-                              onClick={() => {
-                                setPacketForm(defaultPacketForm);
-                                setShowPacketMasterModal(true);
-                              }}
-                              title="Add Packet"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                        <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700" value={item.wtPerPcs.trim().length > 0 || item.pcs.trim().length > 0 ? getGemWeight(item).toFixed(3) : ''} placeholder="0.000" readOnly /></td>
-                        <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
-                        <td className="px-2 py-2 font-semibold text-gray-700">{getGemValue(item).toFixed(2)}</td>
-                        <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                      <td className="px-2 py-2 text-right" colSpan={3}>Total</td>
-                      <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + parseNum(row.pcs), 0).toFixed(0)}</td>
-                      <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + getGemWeight(row), 0).toFixed(3)}</td>
-                      <td className="px-2 py-2"></td>
-                      <td className="px-2 py-2">{costTotals.gem.toFixed(2)}</td>
-                      <td className="px-2 py-2"></td>
-                    </tr>
-                  </tbody>
-                </table>
+                                    return (
+                                      <option key={packet.id} value={packet.id} disabled={isDisabled}>
+                                        {packet.packetName}
+                                        {isDisabled ? ' (Used)' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <button
+                                  type="button"
+                                  className={inlineMasterAddButtonClass}
+                                  onClick={() => {
+                                    setPacketForm(defaultPacketForm);
+                                    setShowPacketMasterModal(true);
+                                  }}
+                                  title="Add Packet"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
+                            <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700" value={item.wtPerPcs.trim().length > 0 || item.pcs.trim().length > 0 ? getGemWeight(item).toFixed(3) : ''} placeholder="0.000" readOnly /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
+                            <td className="px-2 py-2 font-semibold text-gray-700">{getGemValue(item).toFixed(2)}</td>
+                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
+                          <td className="px-2 py-2 text-right" colSpan={3}>Total</td>
+                          <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + parseNum(row.pcs), 0).toFixed(0)}</td>
+                          <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + getGemWeight(row), 0).toFixed(3)}</td>
+                          <td className="px-2 py-2"></td>
+                          <td className="px-2 py-2">{costTotals.gem.toFixed(2)}</td>
+                          <td className="px-2 py-2"></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end border-t border-cyan-200 bg-white px-3 py-2">
+                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '' }])}>+ Add Line</button>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-end border-t border-cyan-200 bg-white px-3 py-2">
-                <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '' }])}>+ Add Line</button>
-              </div>
+              <div className="hidden xl:block" aria-hidden="true" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_1fr]">
               <div className="space-y-4">
                 <div className="rounded-xl border border-rose-200 bg-white shadow-sm">
                   <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">Labor Information</div>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto scrollbar-top">
                     <table className="min-w-full text-sm">
                       <thead className="bg-rose-50/70 text-left text-[11px] font-semibold text-rose-900">
                         <tr>
@@ -2850,7 +2912,7 @@ export default function ProductsPage() {
                 {FINDING_FEATURE_ENABLED ? (
                   <div className="rounded-xl border border-indigo-200 bg-white shadow-sm">
                     <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800">Finding Information</div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto scrollbar-top">
                       <table className="min-w-full text-sm">
                         <thead className="bg-indigo-50/70 text-left text-[11px] font-semibold text-indigo-900">
                           <tr>
@@ -2989,7 +3051,7 @@ export default function ProductsPage() {
       )}
 
       {showInlineMasterModal && inlineMasterType && (
-        <Modal title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`} onClose={closeInlineMasterModal} size="max-w-3xl">
+        <Modal title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`} onClose={closeInlineMasterModal} size="max-w-3xl" zIndexClass="z-[70]">
           <form onSubmit={saveInlineMasterFromDesign} className="space-y-4">
             <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
@@ -3101,14 +3163,30 @@ export default function ProductsPage() {
             ) : null}
 
             {inlineMasterType !== 'FINDING_HEAD' ? (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                <textarea
-                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  value={inlineMasterDescription}
-                  onChange={(event) => setInlineMasterDescription(event.target.value)}
-                  placeholder="Description"
-                />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterDescription}
+                    onChange={(event) => setInlineMasterDescription(event.target.value)}
+                    placeholder="Description"
+                  />
+                </div>
+                {inlineMasterType === 'GOLD_COLOUR' ? (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={inlinePricePerUnit}
+                      onChange={(event) => setInlinePricePerUnit(event.target.value)}
+                      placeholder="Default Wastage %"
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -3309,15 +3387,6 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Stock Type</label>
-                  <input
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.stockType}
-                    onChange={(event) => setPacketForm((prev) => ({ ...prev, stockType: event.target.value }))}
-                    placeholder="Stock Type"
-                  />
-                </div>
-                <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">Pieces</label>
                   <input
                     type="number"
@@ -3455,7 +3524,7 @@ export default function ProductsPage() {
       {modal === 'process' && selected && (
         <Modal title={`PROCESS (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-5xl">
           <div className="space-y-3">
-            <div className="overflow-x-auto rounded border border-gray-200">
+            <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">Process Stage</th><th className="px-3 py-2">Net Weight</th><th className="px-3 py-2">Duration (Min)</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2">Action</th></tr></thead>
                 <tbody>
@@ -3478,7 +3547,7 @@ export default function ProductsPage() {
 
       {modal === 'history' && selected && (
         <Modal title={`ACTIONS HISTORY (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-4xl">
-          <div className="overflow-x-auto rounded border border-gray-200">
+          <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Date Time</th></tr></thead>
               <tbody>{historyRows.map((row, idx) => <tr key={`${row[0]}-${idx}`} className="border-t border-gray-200"><td className="px-3 py-2">{idx + 1}</td><td className="px-3 py-2">{row[0]}</td><td className="px-3 py-2">{row[1]}</td><td className="px-3 py-2">{row[2]}</td></tr>)}</tbody>
@@ -3495,7 +3564,7 @@ export default function ProductsPage() {
               <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gross Weight</p><p className="font-semibold">{costTotals.grossWeight.toFixed(3)}</p></div>
               <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Net Weight</p><p className="font-semibold">{metalRows.reduce((sum, row) => sum + parseNum(row.netWt), 0).toFixed(3)}</p></div>
             </div>
-            <div className="overflow-x-auto rounded border border-gray-200">
+            <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">Tier Name</th><th className="px-3 py-2">Increment %</th><th className="px-3 py-2">Selling Price</th><th className="px-3 py-2">Action</th></tr></thead>
                 <tbody>
@@ -3518,7 +3587,7 @@ export default function ProductsPage() {
       {modal === 'vendor' && selected && (
         <Modal title={`VENDOR NO. (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-5xl">
           <div className="space-y-3">
-            <div className="overflow-x-auto rounded border border-gray-200">
+            <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">Supplier</th><th className="px-3 py-2">Stock Type</th><th className="px-3 py-2">Supplier Style No.</th><th className="px-3 py-2">Action</th></tr></thead>
                 <tbody>

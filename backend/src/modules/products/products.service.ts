@@ -57,6 +57,7 @@ interface ScopeResult {
 }
 
 interface NormalizedMetalRow {
+  metalCaratage: string | null;
   goldColour: string | null;
   netWt: number;
   wastagePercent: number;
@@ -950,7 +951,7 @@ export class ProductsService {
       tags: [] as Array<{ id: string; value: string }>,
       designStatuses: [] as Array<{ id: string; value: string }>,
       stages: [] as Array<{ id: string; value: string }>,
-      goldColours: [] as Array<{ id: string; value: string }>,
+      goldColours: [] as Array<{ id: string; value: string; wastagePercent?: number }>,
       diamondTypes: [] as Array<{ id: string; value: string }>,
       diamondSpreads: [] as Array<{ id: string; value: string }>,
       laborHeads: [] as Array<{ id: string; value: string }>,
@@ -978,7 +979,13 @@ export class ProductsService {
       } else if (entry.masterType === DesignMasterType.STAGE) {
         grouped.stages.push(option);
       } else if (entry.masterType === DesignMasterType.GOLD_COLOUR) {
-        grouped.goldColours.push(option);
+        grouped.goldColours.push({
+          ...option,
+          wastagePercent:
+            entry.pricePerUnit !== null && entry.pricePerUnit !== undefined
+              ? this.toNumber(entry.pricePerUnit)
+              : undefined,
+        });
       } else if (entry.masterType === DesignMasterType.DIAMOND_TYPE) {
         grouped.diamondTypes.push(option);
       } else if (entry.masterType === DesignMasterType.DIAMOND_SPREAD) {
@@ -1043,6 +1050,16 @@ export class ProductsService {
             weightPerUnit: dto.weightPerUnit,
           })
         : this.emptyFindingMasterFields();
+    const defaultWastagePercent =
+      masterType === DesignMasterType.GOLD_COLOUR
+        ? this.optionalNonNegativeNumber(dto.pricePerUnit, 'pricePerUnit')
+        : null;
+    const masterPricePerUnit =
+      masterType === DesignMasterType.FINDING_HEAD
+        ? findingFields.pricePerUnit
+        : masterType === DesignMasterType.GOLD_COLOUR
+          ? defaultWastagePercent
+          : null;
 
     const matches = await this.designMasterRepo
       .createQueryBuilder('master')
@@ -1071,7 +1088,7 @@ export class ProductsService {
         valueMatch.findingNo = findingFields.findingNo;
         valueMatch.metalCaratage = findingFields.metalCaratage;
         valueMatch.priceIn = findingFields.priceIn;
-        valueMatch.pricePerUnit = findingFields.pricePerUnit;
+        valueMatch.pricePerUnit = masterPricePerUnit;
         valueMatch.dimensions = findingFields.dimensions;
         valueMatch.weightPerUnit = findingFields.weightPerUnit;
         valueMatch.isActive = true;
@@ -1091,7 +1108,7 @@ export class ProductsService {
         aliasMatch.findingNo = findingFields.findingNo;
         aliasMatch.metalCaratage = findingFields.metalCaratage;
         aliasMatch.priceIn = findingFields.priceIn;
-        aliasMatch.pricePerUnit = findingFields.pricePerUnit;
+        aliasMatch.pricePerUnit = masterPricePerUnit;
         aliasMatch.dimensions = findingFields.dimensions;
         aliasMatch.weightPerUnit = findingFields.weightPerUnit;
         aliasMatch.isActive = true;
@@ -1115,7 +1132,7 @@ export class ProductsService {
           findingNoMatch.findingNo = findingFields.findingNo;
           findingNoMatch.metalCaratage = findingFields.metalCaratage;
           findingNoMatch.priceIn = findingFields.priceIn;
-          findingNoMatch.pricePerUnit = findingFields.pricePerUnit;
+          findingNoMatch.pricePerUnit = masterPricePerUnit;
           findingNoMatch.dimensions = findingFields.dimensions;
           findingNoMatch.weightPerUnit = findingFields.weightPerUnit;
           findingNoMatch.isActive = true;
@@ -1136,7 +1153,7 @@ export class ProductsService {
       findingNo: findingFields.findingNo,
       metalCaratage: findingFields.metalCaratage,
       priceIn: findingFields.priceIn,
-      pricePerUnit: findingFields.pricePerUnit,
+      pricePerUnit: masterPricePerUnit,
       dimensions: findingFields.dimensions,
       weightPerUnit: findingFields.weightPerUnit,
       isActive: true,
@@ -1180,6 +1197,19 @@ export class ProductsService {
               dto.weightPerUnit !== undefined ? dto.weightPerUnit : master.weightPerUnit,
           })
         : this.emptyFindingMasterFields();
+    const defaultWastagePercent =
+      master.masterType === DesignMasterType.GOLD_COLOUR
+        ? this.optionalNonNegativeNumber(
+            dto.pricePerUnit !== undefined ? dto.pricePerUnit : master.pricePerUnit,
+            'pricePerUnit',
+          )
+        : null;
+    const masterPricePerUnit =
+      master.masterType === DesignMasterType.FINDING_HEAD
+        ? findingFields.pricePerUnit
+        : master.masterType === DesignMasterType.GOLD_COLOUR
+          ? defaultWastagePercent
+          : null;
 
     const duplicates = await this.designMasterRepo
       .createQueryBuilder('duplicate')
@@ -1222,7 +1252,7 @@ export class ProductsService {
     master.findingNo = findingFields.findingNo;
     master.metalCaratage = findingFields.metalCaratage;
     master.priceIn = findingFields.priceIn;
-    master.pricePerUnit = findingFields.pricePerUnit;
+    master.pricePerUnit = masterPricePerUnit;
     master.dimensions = findingFields.dimensions;
     master.weightPerUnit = findingFields.weightPerUnit;
     master.updatedBy = requester.id;
@@ -1547,7 +1577,12 @@ export class ProductsService {
         );
       }
 
-      const goldColour = this.optionalText(row.goldColour);
+      const metalCaratage = this.optionalText(row.metalCaratage) || this.optionalText(row.goldColour);
+      if (!metalCaratage) {
+        throw new BadRequestException(
+          `Metal Caratage is required for Metal row ${rowNo}`,
+        );
+      }
       const wastagePercent = this.toNumber(row.wastagePercent);
       if (wastagePercent < 0) {
         throw new BadRequestException(
@@ -1557,7 +1592,7 @@ export class ProductsService {
 
       const wastageWt = (netWt * wastagePercent) / 100;
       const totalWt = netWt + wastageWt;
-      const globalPricePerGm = this.resolveMetalRate(globalRateMaps, goldColour);
+      const globalPricePerGm = this.resolveMetalRate(globalRateMaps, metalCaratage);
       const enteredPricePerGm = this.toNumber(row.pricePerGm);
       if (globalPricePerGm === undefined && enteredPricePerGm < 0) {
         throw new BadRequestException(
@@ -1574,7 +1609,8 @@ export class ProductsService {
       const value = totalWt * pricePerGm;
 
       return {
-        goldColour,
+        metalCaratage,
+        goldColour: metalCaratage,
         netWt,
         wastagePercent,
         wastageWt,
@@ -1902,6 +1938,7 @@ export class ProductsService {
   private toMetalDtos(rows: DesignMetal[]): DesignMetalDto[] {
     return rows.map((row) => ({
       goldColour: row.goldColour || undefined,
+      metalCaratage: row.goldColour || undefined,
       netWt: this.toNumber(row.netWt),
       wastagePercent: this.toNumber(row.wastagePercent),
       wastageWt: this.toNumber(row.wastageWt),
@@ -2100,6 +2137,20 @@ export class ProductsService {
     return parsed;
   }
 
+  private optionalNonNegativeNumber(
+    value: number | string | null | undefined,
+    field: string,
+  ): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(`${field} must be a valid number`);
+    }
+    return parsed;
+  }
+
   private requiredPositiveNumber(value: number | string | null | undefined, field: string): number {
     if (value === undefined || value === null || Number.isNaN(Number(value))) {
       throw new BadRequestException(`${field} is required`);
@@ -2238,12 +2289,15 @@ export class ProductsService {
     };
   }
 
-  private resolveMetalRate(globalRateMaps: GlobalRateMaps | undefined, goldColour: string | null): number | undefined {
-    if (!globalRateMaps || !goldColour) {
+  private resolveMetalRate(
+    globalRateMaps: GlobalRateMaps | undefined,
+    metalCaratage: string | null,
+  ): number | undefined {
+    if (!globalRateMaps || !metalCaratage) {
       return undefined;
     }
 
-    const lookupKey = this.normalizeLookupKey(goldColour);
+    const lookupKey = this.normalizeLookupKey(metalCaratage);
     if (!lookupKey) {
       return undefined;
     }

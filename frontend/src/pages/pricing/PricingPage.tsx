@@ -342,7 +342,7 @@ export default function PricingPage() {
         {loading ? (
           <div className="py-6 text-sm text-gray-600">Loading base prices...</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-top">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600">
                 <tr>

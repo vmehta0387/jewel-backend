@@ -25,6 +25,11 @@ type DesignMasterType =
 type MasterCategoryType = DesignMasterType | 'STONE_PACKET';
 type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
 
+interface MasterOption {
+  id: string;
+  value: string;
+}
+
 interface MasterRow {
   id: string;
   masterType: DesignMasterType;
@@ -45,7 +50,6 @@ interface MasterRow {
 interface PacketRow {
   id: string;
   packetName: string;
-  stockType: string | null;
   stone: string | null;
   shape: string | null;
   size: string | null;
@@ -113,10 +117,10 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
   },
   {
     value: 'GOLD_COLOUR',
-    label: 'Gold Colour',
+    label: 'Metal Caratage',
     icon: 'GC',
     accentClass: 'bg-yellow-50 text-yellow-800 ring-yellow-200',
-    hint: 'Metal finish options',
+    hint: 'Metal caratage options',
   },
   {
     value: 'DIAMOND_TYPE',
@@ -190,6 +194,70 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
   },
 ];
 
+function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
+  if (type === 'GOLD_COLOUR') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 3c-3.2 3.8-5 6-5 9a5 5 0 1 0 10 0c0-3-1.8-5.2-5-9Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'DIAMOND_TYPE' || type === 'DIAMOND_SPREAD') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 9 8 4h8l4 5-8 11L4 9Z" />
+      </svg>
+    );
+  }
+
+  if (type === 'TAG') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="m20 10-8 8-8-8V4h6l10 6Z" />
+        <circle cx="8.5" cy="8.5" r="1.3" />
+      </svg>
+    );
+  }
+
+  if (type === 'LABOR_HEAD') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="m4 20 7-7" />
+        <path d="m14 4 6 6-1.5 1.5-6-6L14 4Z" />
+        <path d="M8 10 4 6l2-2 4 4" />
+      </svg>
+    );
+  }
+
+  if (type === 'PACKET_STONE' || type === 'PACKET_SHAPE' || type === 'PACKET_SIZE' || type === 'PACKET_CUT' || type === 'PACKET_COLOR' || type === 'PACKET_QUALITY' || type === 'STONE_PACKET') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
+        <path d="m4 7.5 8 4.5 8-4.5" />
+      </svg>
+    );
+  }
+
+  if (type === 'DESIGN_STATUS' || type === 'STAGE') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M8 6h12M8 12h12M8 18h12" />
+        <circle cx="4" cy="6" r="1" />
+        <circle cx="4" cy="12" r="1" />
+        <circle cx="4" cy="18" r="1" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+
 interface MasterModalProps {
   open: boolean;
   title: string;
@@ -200,8 +268,10 @@ interface MasterModalProps {
   formAliasName: string;
   formDescription: string;
   isFindingType: boolean;
+  isMetalCaratageType: boolean;
   findingNo: string;
   metalCaratage: string;
+  defaultWastage: string;
   priceIn: FindingPriceIn;
   pricePerUnit: string;
   dimensions: string;
@@ -213,6 +283,7 @@ interface MasterModalProps {
   onChangeDescription: (value: string) => void;
   onChangeFindingNo: (value: string) => void;
   onChangeMetalCaratage: (value: string) => void;
+  onChangeDefaultWastage: (value: string) => void;
   onChangePriceIn: (value: FindingPriceIn) => void;
   onChangePricePerUnit: (value: string) => void;
   onChangeDimensions: (value: string) => void;
@@ -225,6 +296,7 @@ interface PacketModalProps {
   saveLabel: string;
   loading: boolean;
   form: PacketForm;
+  masterOptions: PacketMasterOptions;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChange: (key: keyof PacketForm, value: string) => void;
@@ -232,7 +304,6 @@ interface PacketModalProps {
 
 interface PacketForm {
   packetName: string;
-  stockType: string;
   stone: string;
   shape: string;
   size: string;
@@ -244,9 +315,17 @@ interface PacketForm {
   weightUnit: 'CTS' | 'GMS';
 }
 
+interface PacketMasterOptions {
+  packetStones: MasterOption[];
+  packetShapes: MasterOption[];
+  packetSizes: MasterOption[];
+  packetCuts: MasterOption[];
+  packetColors: MasterOption[];
+  packetQualities: MasterOption[];
+}
+
 const defaultPacketForm: PacketForm = {
   packetName: '',
-  stockType: 'COMPLETED',
   stone: '',
   shape: '',
   size: '',
@@ -256,6 +335,15 @@ const defaultPacketForm: PacketForm = {
   pieces: '',
   weight: '',
   weightUnit: 'CTS',
+};
+
+const emptyPacketMasterOptions: PacketMasterOptions = {
+  packetStones: [],
+  packetShapes: [],
+  packetSizes: [],
+  packetCuts: [],
+  packetColors: [],
+  packetQualities: [],
 };
 
 function parseNum(value: string): number {
@@ -273,8 +361,10 @@ function MasterModal({
   formAliasName,
   formDescription,
   isFindingType,
+  isMetalCaratageType,
   findingNo,
   metalCaratage,
+  defaultWastage,
   priceIn,
   pricePerUnit,
   dimensions,
@@ -286,6 +376,7 @@ function MasterModal({
   onChangeDescription,
   onChangeFindingNo,
   onChangeMetalCaratage,
+  onChangeDefaultWastage,
   onChangePriceIn,
   onChangePricePerUnit,
   onChangeDimensions,
@@ -421,14 +512,30 @@ function MasterModal({
           ) : null}
 
           {!isFindingType ? (
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-              <textarea
-                className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={formDescription}
-                onChange={(event) => onChangeDescription(event.target.value)}
-                placeholder="Description"
-              />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                <textarea
+                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formDescription}
+                  onChange={(event) => onChangeDescription(event.target.value)}
+                  placeholder="Description"
+                />
+              </div>
+              {isMetalCaratageType ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={defaultWastage}
+                    onChange={(event) => onChangeDefaultWastage(event.target.value)}
+                    placeholder="Default Wastage %"
+                  />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -446,7 +553,7 @@ function MasterModal({
   );
 }
 
-function PacketModal({ open, title, saveLabel, loading, form, onClose, onSubmit, onChange }: PacketModalProps) {
+function PacketModal({ open, title, saveLabel, loading, form, masterOptions, onClose, onSubmit, onChange }: PacketModalProps) {
   if (!open) {
     return null;
   }
@@ -474,35 +581,79 @@ function PacketModal({ open, title, saveLabel, loading, form, onClose, onSubmit,
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Stone*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.stone} onChange={(event) => onChange('stone', event.target.value)} placeholder="Stone" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.stone} onChange={(event) => onChange('stone', event.target.value)}>
+                  <option value="">Select Stone</option>
+                  {!masterOptions.packetStones.some((option) => option.value === form.stone) && form.stone ? (
+                    <option value={form.stone}>{form.stone}</option>
+                  ) : null}
+                  {masterOptions.packetStones.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Shape*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.shape} onChange={(event) => onChange('shape', event.target.value)} placeholder="Shape" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.shape} onChange={(event) => onChange('shape', event.target.value)}>
+                  <option value="">Select Shape</option>
+                  {!masterOptions.packetShapes.some((option) => option.value === form.shape) && form.shape ? (
+                    <option value={form.shape}>{form.shape}</option>
+                  ) : null}
+                  {masterOptions.packetShapes.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Size*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.size} onChange={(event) => onChange('size', event.target.value)} placeholder="Size" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.size} onChange={(event) => onChange('size', event.target.value)}>
+                  <option value="">Select Size</option>
+                  {!masterOptions.packetSizes.some((option) => option.value === form.size) && form.size ? (
+                    <option value={form.size}>{form.size}</option>
+                  ) : null}
+                  {masterOptions.packetSizes.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Cut*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.cut} onChange={(event) => onChange('cut', event.target.value)} placeholder="Cut" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.cut} onChange={(event) => onChange('cut', event.target.value)}>
+                  <option value="">Select Cut</option>
+                  {!masterOptions.packetCuts.some((option) => option.value === form.cut) && form.cut ? (
+                    <option value={form.cut}>{form.cut}</option>
+                  ) : null}
+                  {masterOptions.packetCuts.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Color*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.color} onChange={(event) => onChange('color', event.target.value)} placeholder="Color" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.color} onChange={(event) => onChange('color', event.target.value)}>
+                  <option value="">Select Color</option>
+                  {!masterOptions.packetColors.some((option) => option.value === form.color) && form.color ? (
+                    <option value={form.color}>{form.color}</option>
+                  ) : null}
+                  {masterOptions.packetColors.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Quality*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.quality} onChange={(event) => onChange('quality', event.target.value)} placeholder="Quality" />
+                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.quality} onChange={(event) => onChange('quality', event.target.value)}>
+                  <option value="">Select Quality</option>
+                  {!masterOptions.packetQualities.some((option) => option.value === form.quality) && form.quality ? (
+                    <option value={form.quality}>{form.quality}</option>
+                  ) : null}
+                  {masterOptions.packetQualities.map((option) => (
+                    <option key={option.id} value={option.value}>{option.value}</option>
+                  ))}
+                </select>
               </div>
               <div className="xl:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-slate-700">Packet Name*</label>
                 <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.packetName} onChange={(event) => onChange('packetName', event.target.value)} placeholder="Packet Name" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Stock Type</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.stockType} onChange={(event) => onChange('stockType', event.target.value)} placeholder="Stock Type" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Pieces</label>
@@ -559,6 +710,7 @@ export default function DesignMastersPage() {
   const [formDimensions, setFormDimensions] = useState('');
   const [formWeightPerUnit, setFormWeightPerUnit] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
+  const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
 
   const isPacketType = selectedType === 'STONE_PACKET';
 
@@ -599,9 +751,35 @@ export default function DesignMastersPage() {
     }
   };
 
+  const fetchPacketMasterOptions = async () => {
+    try {
+      const response = await api.get('/products/masters');
+      setPacketMasterOptions({
+        packetStones: response.data?.packetStones || [],
+        packetShapes: response.data?.packetShapes || [],
+        packetSizes: response.data?.packetSizes || [],
+        packetCuts: response.data?.packetCuts || [],
+        packetColors: response.data?.packetColors || [],
+        packetQualities: response.data?.packetQualities || [],
+      });
+    } catch {
+      setPacketMasterOptions(emptyPacketMasterOptions);
+    }
+  };
+
   useEffect(() => {
     fetchRows();
   }, [selectedType, viewInactive, searchTerm]);
+
+  useEffect(() => {
+    fetchPacketMasterOptions();
+  }, []);
+
+  useEffect(() => {
+    if (selectedType === 'STONE_PACKET') {
+      fetchPacketMasterOptions();
+    }
+  }, [selectedType]);
 
   const resetModalState = () => {
     setEditingRow(null);
@@ -643,7 +821,6 @@ export default function DesignMastersPage() {
     setEditingPacket(row);
     setPacketForm({
       packetName: row.packetName || '',
-      stockType: row.stockType || 'COMPLETED',
       stone: row.stone || '',
       shape: row.shape || '',
       size: row.size || '',
@@ -663,7 +840,6 @@ export default function DesignMastersPage() {
     if (isPacketType) {
       const payload = {
         packetName: packetForm.packetName.trim(),
-        stockType: packetForm.stockType.trim() || 'COMPLETED',
         stone: packetForm.stone.trim(),
         shape: packetForm.shape.trim(),
         size: packetForm.size.trim(),
@@ -716,6 +892,13 @@ export default function DesignMastersPage() {
             weightPerUnit: parseNum(formWeightPerUnit),
           }
         : null;
+    const defaultWastagePayload =
+      selectedType === 'GOLD_COLOUR'
+        ? {
+            pricePerUnit:
+              formPricePerUnit.trim().length > 0 ? parseNum(formPricePerUnit) : null,
+          }
+        : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
 
     if (selectedType === 'FINDING_HEAD') {
@@ -737,6 +920,7 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(findingPayload || {}),
+          ...(defaultWastagePayload || {}),
         });
       } else {
         await api.post('/products/masters', {
@@ -745,6 +929,7 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(findingPayload || {}),
+          ...(defaultWastagePayload || {}),
         });
       }
       setShowModal(false);
@@ -793,7 +978,14 @@ export default function DesignMastersPage() {
 
       <Card>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Master Categories</h2>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M5 7h14M5 12h14M5 17h14" />
+              </svg>
+            </span>
+            Master Categories
+          </h2>
           <span className="text-xs text-slate-500">Click a category to manage entries</span>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -817,8 +1009,8 @@ export default function DesignMastersPage() {
                 }}
               >
                 <div className="flex items-center gap-2.5">
-                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded text-xs font-bold ring-1 ${config.accentClass}`}>
-                    {config.icon}
+                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded ring-1 ${config.accentClass}`}>
+                    <MasterCategoryIcon type={config.value} />
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-slate-900">{config.label}</p>
@@ -867,14 +1059,13 @@ export default function DesignMastersPage() {
         </form>
 
         <div className="overflow-hidden rounded-lg border border-slate-200">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-top">
             {isPacketType ? (
-              <table className="min-w-[1500px] divide-y divide-slate-200">
+              <table className="min-w-[1400px] divide-y divide-slate-200">
                 <thead className="bg-slate-100">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Packet Name</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Stock Type</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Stone</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Shape</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Size</th>
@@ -892,13 +1083,13 @@ export default function DesignMastersPage() {
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {loading ? (
                     <tr>
-                      <td colSpan={15} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={14} className="px-3 py-8 text-center text-sm text-slate-500">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={15} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={14} className="px-3 py-8 text-center text-sm text-slate-500">
                         No records found.
                       </td>
                     </tr>
@@ -907,7 +1098,6 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.packetName}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.stockType || '-'}</td>
                         <td className="px-3 py-2 text-sm text-slate-700">{row.stone || '-'}</td>
                         <td className="px-3 py-2 text-sm text-slate-700">{row.shape || '-'}</td>
                         <td className="px-3 py-2 text-sm text-slate-700">{row.size || '-'}</td>
@@ -949,6 +1139,9 @@ export default function DesignMastersPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">{selectedConfig.label}</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Alias Name</th>
+                    {selectedType === 'GOLD_COLOUR' ? (
+                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Default Wastage (%)</th>
+                    ) : null}
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Description</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Created</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Modified</th>
@@ -958,13 +1151,13 @@ export default function DesignMastersPage() {
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={selectedType === 'GOLD_COLOUR' ? 8 : 7} className="px-3 py-8 text-center text-sm text-slate-500">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={selectedType === 'GOLD_COLOUR' ? 8 : 7} className="px-3 py-8 text-center text-sm text-slate-500">
                         No records found.
                       </td>
                     </tr>
@@ -974,6 +1167,13 @@ export default function DesignMastersPage() {
                         <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.value}</td>
                         <td className="px-3 py-2 text-sm text-slate-700">{row.aliasName || row.value}</td>
+                        {selectedType === 'GOLD_COLOUR' ? (
+                          <td className="px-3 py-2 text-sm text-slate-700">
+                            {row.pricePerUnit !== null && row.pricePerUnit !== undefined
+                              ? Number(row.pricePerUnit).toFixed(2)
+                              : '-'}
+                          </td>
+                        ) : null}
                         <td className="max-w-sm px-3 py-2 text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
                         <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
@@ -1012,6 +1212,7 @@ export default function DesignMastersPage() {
           saveLabel={editingPacket ? 'Update' : 'Save'}
           loading={saving}
           form={packetForm}
+          masterOptions={packetMasterOptions}
           onClose={() => {
             setShowModal(false);
             resetModalState();
@@ -1030,8 +1231,10 @@ export default function DesignMastersPage() {
           formAliasName={formAliasName}
           formDescription={formDescription}
           isFindingType={selectedType === 'FINDING_HEAD'}
+          isMetalCaratageType={selectedType === 'GOLD_COLOUR'}
           findingNo={formFindingNo}
           metalCaratage={formMetalCaratage}
+          defaultWastage={formPricePerUnit}
           priceIn={formPriceIn}
           pricePerUnit={formPricePerUnit}
           dimensions={formDimensions}
@@ -1046,6 +1249,7 @@ export default function DesignMastersPage() {
           onChangeDescription={setFormDescription}
           onChangeFindingNo={setFormFindingNo}
           onChangeMetalCaratage={setFormMetalCaratage}
+          onChangeDefaultWastage={setFormPricePerUnit}
           onChangePriceIn={setFormPriceIn}
           onChangePricePerUnit={setFormPricePerUnit}
           onChangeDimensions={setFormDimensions}

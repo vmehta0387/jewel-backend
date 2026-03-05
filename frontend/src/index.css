@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  .scrollbar-top {
+    overflow-y: hidden;
+    transform: rotateX(180deg);
+  }
+
+  .scrollbar-top > * {
+    transform: rotateX(180deg);
+  }
+}

@@ -1,11 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { clearAuthSession, getStoredUser } from '../../utils/auth';
 
+interface HeaderProps {
+  sidebarCollapsed?: boolean;
+}
+
 function getInitials(firstName: string, lastName: string): string {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
-export default function Header() {
+export default function Header({ sidebarCollapsed = false }: HeaderProps) {
   const navigate = useNavigate();
   const user = getStoredUser();
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
@@ -17,7 +21,11 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 h-16 fixed top-0 right-0 left-64 z-10">
+    <header
+      className={`fixed top-0 right-0 z-10 h-16 border-b border-gray-200 bg-white transition-all duration-300 ${
+        sidebarCollapsed ? 'left-20' : 'left-64'
+      }`}
+    >
       <div className="h-full px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-gray-900">Super Admin Portal</h2>
