@@ -48,6 +48,7 @@ import { StonePacket, StoneWeightUnit } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster, DesignMasterType, FindingPriceIn } from './entities/design-master.entity';
+import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
 
 interface ScopeResult {
   companyId: string | null;
@@ -105,6 +106,12 @@ interface SummaryBreakdown {
   grossWeight: number;
 }
 
+interface GlobalRateMaps {
+  metalRates: Map<string, number>;
+  diamondRatesByType: Map<string, number>;
+  diamondRatesByTypeAndSize: Map<string, number>;
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -138,6 +145,8 @@ export class ProductsService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(GlobalBasePrice)
+    private readonly globalBasePriceRepo: Repository<GlobalBasePrice>,
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
@@ -148,8 +157,13 @@ export class ProductsService {
 
     await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
 
-    const normalizedMetals = this.normalizeMetals(dto.metals || []);
-    const normalizedGemstones = this.normalizeGemstones(dto.gemstones || []);
+    const globalRateMaps = await this.getGlobalRateMaps();
+    const normalizedMetals = this.normalizeMetals(dto.metals || [], globalRateMaps);
+    const normalizedGemstones = this.normalizeGemstones(
+      dto.gemstones || [],
+      this.optionalText(dto.diamondType),
+      globalRateMaps,
+    );
     const normalizedLabors = this.normalizeLabors(dto.labors || []);
     const normalizedFindings = this.normalizeFindings(dto.findings || []);
     const summary = this.calculateSummary(
@@ -430,11 +444,17 @@ export class ProductsService {
     await this.assertUniqueDesign(designNo, version, scope.companyId, id);
 
     const existingRows = await this.getExistingRows(id);
+    const globalRateMaps = await this.getGlobalRateMaps();
     const normalizedMetals = this.normalizeMetals(
       dto.metals !== undefined ? dto.metals : this.toMetalDtos(existingRows.metals),
+      globalRateMaps,
     );
+    const effectiveDiamondType =
+      dto.diamondType !== undefined ? this.optionalText(dto.diamondType) : this.optionalText(design.diamondType);
     const normalizedGemstones = this.normalizeGemstones(
       dto.gemstones !== undefined ? dto.gemstones : this.toGemstoneDtos(existingRows.gemstones),
+      effectiveDiamondType,
+      globalRateMaps,
     );
     const normalizedLabors = this.normalizeLabors(
       dto.labors !== undefined ? dto.labors : this.toLaborDtos(existingRows.labors),
@@ -1362,18 +1382,22 @@ export class ProductsService {
     }
   }
 
-  private normalizeMetals(rows: DesignMetalDto[]): NormalizedMetalRow[] {
+  private normalizeMetals(rows: DesignMetalDto[], globalRateMaps?: GlobalRateMaps): NormalizedMetalRow[] {
     return rows.map((row) => {
+      const goldColour = this.optionalText(row.goldColour);
       const netWt = this.toNumber(row.netWt);
       const wastagePercent = this.toNumber(row.wastagePercent);
       const wastageWt = row.wastageWt !== undefined ? this.toNumber(row.wastageWt) : (netWt * wastagePercent) / 100;
       const totalWt = row.totalWt !== undefined ? this.toNumber(row.totalWt) : netWt + wastageWt;
-      const pricePerGm = this.toNumber(row.pricePerGm);
+      const globalPricePerGm = this.resolveMetalRate(globalRateMaps, goldColour);
+      const enteredPricePerGm = this.toNumber(row.pricePerGm);
+      const pricePerGm =
+        globalPricePerGm !== undefined ? globalPricePerGm : enteredPricePerGm;
       const value = row.value !== undefined ? this.toNumber(row.value) : totalWt * pricePerGm;
       const components = Math.max(0, Math.trunc(this.toNumber(row.components)));
 
       return {
-        goldColour: this.optionalText(row.goldColour),
+        goldColour,
         netWt,
         wastagePercent,
         wastageWt,
@@ -1385,12 +1409,21 @@ export class ProductsService {
     });
   }
 
-  private normalizeGemstones(rows: DesignGemstoneDto[]): NormalizedGemstoneRow[] {
+  private normalizeGemstones(
+    rows: DesignGemstoneDto[],
+    designDiamondType: string | null,
+    globalRateMaps?: GlobalRateMaps,
+  ): NormalizedGemstoneRow[] {
     return rows.map((row) => {
+      const stoneType = this.optionalText(row.stoneType);
+      const effectiveDiamondType = stoneType || designDiamondType;
       const wtPerPcs = this.toNumber(row.wtPerPcs);
       const pcs = Math.max(0, Math.trunc(this.toNumber(row.pcs)));
       const wtInCts = row.wtInCts !== undefined ? this.toNumber(row.wtInCts) : wtPerPcs * pcs;
-      const pricePerCt = this.toNumber(row.pricePerCt);
+      const globalPricePerCt = this.resolveDiamondRate(globalRateMaps, effectiveDiamondType, row.size || null);
+      const enteredPricePerCt = this.toNumber(row.pricePerCt);
+      const pricePerCt =
+        globalPricePerCt !== undefined ? globalPricePerCt : enteredPricePerCt;
       const amount = row.amount !== undefined ? this.toNumber(row.amount) : wtInCts * pricePerCt;
 
       return {
@@ -1401,7 +1434,7 @@ export class ProductsService {
         cut: this.optionalText(row.cut),
         color: this.optionalText(row.color),
         quality: this.optionalText(row.quality),
-        stoneType: this.optionalText(row.stoneType),
+        stoneType,
         wtPerPcs,
         pcs,
         wtInCts,
@@ -1951,6 +1984,102 @@ export class ProductsService {
       return 0;
     }
     return Math.floor(parsed);
+  }
+
+  private async getGlobalRateMaps(): Promise<GlobalRateMaps> {
+    const rows = await this.globalBasePriceRepo.find({
+      where: { isActive: true },
+      order: { effectiveFrom: 'DESC', updatedAt: 'DESC' },
+    });
+    return this.buildGlobalRateMaps(rows);
+  }
+
+  private buildGlobalRateMaps(rows: GlobalBasePrice[]): GlobalRateMaps {
+    const metalRates = new Map<string, number>();
+    const diamondRatesByType = new Map<string, number>();
+    const diamondRatesByTypeAndSize = new Map<string, number>();
+
+    rows.forEach((row) => {
+      const referenceKey = this.normalizeLookupKey(row.referenceValue);
+      if (!referenceKey) return;
+
+      const rate = this.toNumber(row.pricePerUnit);
+      if (row.category === GlobalBasePriceCategory.METAL) {
+        if (!metalRates.has(referenceKey)) {
+          metalRates.set(referenceKey, rate);
+        }
+        return;
+      }
+
+      if (row.category === GlobalBasePriceCategory.DIAMOND) {
+        const sizeKey = this.normalizeLookupKey(row.subValue);
+        if (sizeKey) {
+          const key = `${referenceKey}::${sizeKey}`;
+          if (!diamondRatesByTypeAndSize.has(key)) {
+            diamondRatesByTypeAndSize.set(key, rate);
+          }
+        }
+
+        if (!diamondRatesByType.has(referenceKey)) {
+          diamondRatesByType.set(referenceKey, rate);
+        }
+      }
+    });
+
+    return {
+      metalRates,
+      diamondRatesByType,
+      diamondRatesByTypeAndSize,
+    };
+  }
+
+  private resolveMetalRate(globalRateMaps: GlobalRateMaps | undefined, goldColour: string | null): number | undefined {
+    if (!globalRateMaps || !goldColour) {
+      return undefined;
+    }
+
+    const lookupKey = this.normalizeLookupKey(goldColour);
+    if (!lookupKey) {
+      return undefined;
+    }
+
+    return globalRateMaps.metalRates.get(lookupKey);
+  }
+
+  private resolveDiamondRate(
+    globalRateMaps: GlobalRateMaps | undefined,
+    diamondType: string | null,
+    size: string | null,
+  ): number | undefined {
+    if (!globalRateMaps || !diamondType) {
+      return undefined;
+    }
+
+    const diamondTypeKey = this.normalizeLookupKey(diamondType);
+    if (!diamondTypeKey) {
+      return undefined;
+    }
+
+    const sizeKey = this.normalizeLookupKey(size);
+    if (sizeKey) {
+      const sizeSpecificRate = globalRateMaps.diamondRatesByTypeAndSize.get(
+        `${diamondTypeKey}::${sizeKey}`,
+      );
+      if (sizeSpecificRate !== undefined) {
+        return sizeSpecificRate;
+      }
+    }
+
+    return globalRateMaps.diamondRatesByType.get(diamondTypeKey);
+  }
+
+  private normalizeLookupKey(value?: string | null): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
   }
 
   private normalizePacketName(value?: string): string {
