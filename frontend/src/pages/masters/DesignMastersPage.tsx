@@ -798,11 +798,13 @@ function MasterModal({
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Price/Gms</label>
                     <input
-                      className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={livePricePerGm}
                       onChange={(event) => onChangeLivePricePerGm(event.target.value)}
-                      placeholder="Auto calculated"
-                      readOnly
+                      placeholder="Auto calculated (editable)"
                     />
                   </div>
                 </div>
@@ -1014,7 +1016,7 @@ export default function DesignMastersPage() {
     const ounce = parseNum(formMarketPricePerOunce);
     if (ounce <= 0) return;
     const computedPerGm = ounce / 31.1035;
-    const rounded = computedPerGm.toFixed(4);
+    const rounded = computedPerGm.toFixed(2);
     if (rounded !== formMarketPricePerGm) {
       setFormMarketPricePerGm(rounded);
     }
@@ -1035,16 +1037,10 @@ export default function DesignMastersPage() {
     }
 
     const basePricePerGm =
-      selectedMetal?.livePricePerGm !== undefined && selectedMetal.livePricePerGm > 0
-        ? selectedMetal.livePricePerGm
-        : selectedMetal?.marketPricePerGm !== undefined
-          ? selectedMetal.marketPricePerGm
-          : 0;
+      selectedMetal?.marketPricePerGm !== undefined ? selectedMetal.marketPricePerGm : 0;
     if (basePricePerGm > 0 && purityPercent > 0) {
-      const computed = ((basePricePerGm * purityPercent) / 100).toFixed(4);
-      if (computed !== formLivePricePerGm) {
-        setFormLivePricePerGm(computed);
-      }
+      const computed = ((basePricePerGm * purityPercent) / 100).toFixed(2);
+      setFormLivePricePerGm(computed);
     }
 
     if (formMetalName && formMetalPurity && formMetalColor) {
@@ -1061,7 +1057,6 @@ export default function DesignMastersPage() {
     formMetalColor,
     formMetalName,
     formMetalPurity,
-    formLivePricePerGm,
     formPurityPercentage,
     formValue,
     metalMasterOptions.metalNames,

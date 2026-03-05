@@ -2329,7 +2329,7 @@ export class ProductsService {
         'marketPricePerGm',
       );
       if (marketPricePerGm === null && marketPricePerOunce !== null) {
-        marketPricePerGm = this.roundTo4(marketPricePerOunce / 31.1035);
+        marketPricePerGm = this.roundTo2(marketPricePerOunce / 31.1035);
       }
       if (marketPricePerGm === null) {
         throw new BadRequestException('marketPricePerGm is required for METAL_NAME');
@@ -2418,42 +2418,38 @@ export class ProductsService {
         'defaultWastagePercent',
       ) ?? 0;
 
-    let baseLivePricePerGm = this.optionalNonNegativeNumber(
+    const metalMaster = await this.designMasterRepo.findOne({
+      where: {
+        masterType: DesignMasterType.METAL_NAME,
+        value: metalName,
+        isActive: true,
+      },
+    });
+    const baseMarketPricePerGm =
+      metalMaster?.marketPricePerGm !== null && metalMaster?.marketPricePerGm !== undefined
+        ? this.toNumber(metalMaster.marketPricePerGm)
+        : null;
+    if (baseMarketPricePerGm === null) {
+      throw new BadRequestException(
+        'Unable to resolve Market Price/Gms from selected METAL_NAME for METAL_CARATAGE',
+      );
+    }
+
+    const computedLivePricePerGm = this.roundTo2((baseMarketPricePerGm * purityPercentage) / 100);
+    const manualLivePricePerGm = this.optionalNonNegativeNumber(
       input.livePricePerGm !== undefined ? input.livePricePerGm : null,
       'livePricePerGm',
     );
-    if (baseLivePricePerGm === null) {
-      const metalMaster = await this.designMasterRepo.findOne({
-        where: {
-          masterType: DesignMasterType.METAL_NAME,
-          value: metalName,
-          isActive: true,
-        },
-      });
-      if (metalMaster?.livePricePerGm !== null && metalMaster?.livePricePerGm !== undefined) {
-        baseLivePricePerGm = this.toNumber(metalMaster.livePricePerGm);
-      } else if (
-        metalMaster?.marketPricePerGm !== null &&
-        metalMaster?.marketPricePerGm !== undefined
-      ) {
-        baseLivePricePerGm = this.toNumber(metalMaster.marketPricePerGm);
-      }
-    }
-    if (baseLivePricePerGm === null) {
-      baseLivePricePerGm = this.optionalNonNegativeNumber(existing?.livePricePerGm, 'livePricePerGm');
-    }
-    if (baseLivePricePerGm === null) {
-      throw new BadRequestException('Unable to resolve base metal price for METAL_CARATAGE');
-    }
-
-    const computedLivePricePerGm = this.roundTo4((baseLivePricePerGm * purityPercentage) / 100);
+    const finalLivePricePerGm = this.roundTo2(
+      manualLivePricePerGm !== null ? manualLivePricePerGm : computedLivePricePerGm,
+    );
     return {
       ...empty,
       metalName,
       metalColor,
       metalPurity,
       purityPercentage,
-      livePricePerGm: computedLivePricePerGm,
+      livePricePerGm: finalLivePricePerGm,
       defaultWastagePercent,
     };
   }
@@ -2570,8 +2566,8 @@ export class ProductsService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  private roundTo4(value: number): number {
-    return Number(value.toFixed(4));
+  private roundTo2(value: number): number {
+    return Number(value.toFixed(2));
   }
 
   private toInt(value: number | string | undefined | null): number {
