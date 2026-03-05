@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS design_masters (
   id VARCHAR(36) PRIMARY KEY,
-  master_type ENUM('JEWELRY_GROUP', 'COLLECTION', 'JEWELRY_SIZE', 'TAG', 'DESIGN_STATUS', 'STAGE', 'GOLD_COLOUR', 'DIAMOND_TYPE', 'DIAMOND_SPREAD', 'LABOR_HEAD', 'FINDING_HEAD', 'PACKET_STONE', 'PACKET_SHAPE', 'PACKET_SIZE', 'PACKET_CUT', 'PACKET_COLOR', 'PACKET_QUALITY') NOT NULL,
+  master_type ENUM('JEWELRY_GROUP', 'COLLECTION', 'JEWELRY_SIZE', 'TAG', 'DESIGN_STATUS', 'STAGE', 'METAL_NAME', 'METAL_COLOR', 'METAL_PURITY', 'METAL_CARATAGE', 'GOLD_COLOUR', 'DIAMOND_TYPE', 'DIAMOND_SPREAD', 'LABOR_HEAD', 'FINDING_HEAD', 'PACKET_STONE', 'PACKET_SHAPE', 'PACKET_SIZE', 'PACKET_CUT', 'PACKET_COLOR', 'PACKET_QUALITY') NOT NULL,
   value VARCHAR(255) NOT NULL,
   normalized_value VARCHAR(255) NOT NULL,
   alias_name VARCHAR(255) NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS design_masters (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE design_masters
-  MODIFY COLUMN master_type ENUM('JEWELRY_GROUP', 'COLLECTION', 'JEWELRY_SIZE', 'TAG', 'DESIGN_STATUS', 'STAGE', 'GOLD_COLOUR', 'DIAMOND_TYPE', 'DIAMOND_SPREAD', 'LABOR_HEAD', 'FINDING_HEAD', 'PACKET_STONE', 'PACKET_SHAPE', 'PACKET_SIZE', 'PACKET_CUT', 'PACKET_COLOR', 'PACKET_QUALITY') NOT NULL;
+  MODIFY COLUMN master_type ENUM('JEWELRY_GROUP', 'COLLECTION', 'JEWELRY_SIZE', 'TAG', 'DESIGN_STATUS', 'STAGE', 'METAL_NAME', 'METAL_COLOR', 'METAL_PURITY', 'METAL_CARATAGE', 'GOLD_COLOUR', 'DIAMOND_TYPE', 'DIAMOND_SPREAD', 'LABOR_HEAD', 'FINDING_HEAD', 'PACKET_STONE', 'PACKET_SHAPE', 'PACKET_SIZE', 'PACKET_CUT', 'PACKET_COLOR', 'PACKET_QUALITY') NOT NULL;
 
 SET @col_exists := (
   SELECT COUNT(1)
@@ -35,6 +35,134 @@ SET @col_exists := (
 SET @col_sql := IF(
   @col_exists = 0,
   'ALTER TABLE design_masters ADD COLUMN alias_name VARCHAR(255) NULL AFTER normalized_value',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'metal_name'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN metal_name VARCHAR(120) NULL AFTER weight_per_unit',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'metal_color'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN metal_color VARCHAR(120) NULL AFTER metal_name',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'metal_purity'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN metal_purity VARCHAR(120) NULL AFTER metal_color',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'purity_percentage'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN purity_percentage DECIMAL(8,3) NULL AFTER metal_purity',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'market_price_per_ounce'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN market_price_per_ounce DECIMAL(12,2) NULL AFTER purity_percentage',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'market_price_per_gm'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN market_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_ounce',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'live_price_per_gm'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN live_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_gm',
+  'SELECT 1'
+);
+PREPARE stmt FROM @col_sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND column_name = 'default_wastage_percent'
+);
+SET @col_sql := IF(
+  @col_exists = 0,
+  'ALTER TABLE design_masters ADD COLUMN default_wastage_percent DECIMAL(8,3) NULL AFTER live_price_per_gm',
   'SELECT 1'
 );
 PREPARE stmt FROM @col_sql;

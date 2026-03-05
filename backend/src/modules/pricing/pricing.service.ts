@@ -79,13 +79,15 @@ export class PricingService {
   async findGlobalBasePriceReferenceOptions(
     query: FindGlobalBasePriceReferenceOptionsQueryDto,
   ): Promise<{ data: string[] }> {
-    const masterType = this.resolveReferenceMasterType(query.category);
+    const masterTypes = this.resolveReferenceMasterTypes(query.category);
 
     const [masters, configuredRates, currentRate] = await Promise.all([
-      this.designMasterRepo.find({
-        where: { masterType, isActive: true },
-        order: { value: 'ASC' },
-      }),
+      this.designMasterRepo
+        .createQueryBuilder('master')
+        .where('master.masterType IN (:...masterTypes)', { masterTypes })
+        .andWhere('master.isActive = :isActive', { isActive: true })
+        .orderBy('master.value', 'ASC')
+        .getMany(),
       this.globalBasePriceRepo.find({
         where: { category: query.category },
         select: ['id', 'referenceValue'],
@@ -562,11 +564,11 @@ export class PricingService {
     return normalized.length > 0 ? normalized : 'USD';
   }
 
-  private resolveReferenceMasterType(category: GlobalBasePriceCategory): DesignMasterType {
+  private resolveReferenceMasterTypes(category: GlobalBasePriceCategory): DesignMasterType[] {
     if (category === GlobalBasePriceCategory.METAL) {
-      return DesignMasterType.GOLD_COLOUR;
+      return [DesignMasterType.METAL_CARATAGE, DesignMasterType.GOLD_COLOUR];
     }
-    return DesignMasterType.DIAMOND_TYPE;
+    return [DesignMasterType.DIAMOND_TYPE];
   }
 
   private roundMoney(value: number): number {

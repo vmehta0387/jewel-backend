@@ -951,6 +951,30 @@ export class ProductsService {
       tags: [] as Array<{ id: string; value: string }>,
       designStatuses: [] as Array<{ id: string; value: string }>,
       stages: [] as Array<{ id: string; value: string }>,
+      metalNames: [] as Array<{
+        id: string;
+        value: string;
+        marketPricePerOunce?: number;
+        marketPricePerGm?: number;
+        livePricePerGm?: number;
+      }>,
+      metalColors: [] as Array<{ id: string; value: string; metalName?: string }>,
+      metalPurities: [] as Array<{
+        id: string;
+        value: string;
+        metalName?: string;
+        purityPercentage?: number;
+      }>,
+      metalCaratages: [] as Array<{
+        id: string;
+        value: string;
+        metalName?: string;
+        metalColor?: string;
+        metalPurity?: string;
+        purityPercentage?: number;
+        defaultWastagePercent?: number;
+        livePricePerGm?: number;
+      }>,
       goldColours: [] as Array<{ id: string; value: string; wastagePercent?: number }>,
       diamondTypes: [] as Array<{ id: string; value: string }>,
       diamondSpreads: [] as Array<{ id: string; value: string }>,
@@ -978,6 +1002,55 @@ export class ProductsService {
         grouped.designStatuses.push(option);
       } else if (entry.masterType === DesignMasterType.STAGE) {
         grouped.stages.push(option);
+      } else if (entry.masterType === DesignMasterType.METAL_NAME) {
+        grouped.metalNames.push({
+          ...option,
+          marketPricePerOunce:
+            entry.marketPricePerOunce !== null && entry.marketPricePerOunce !== undefined
+              ? this.toNumber(entry.marketPricePerOunce)
+              : undefined,
+          marketPricePerGm:
+            entry.marketPricePerGm !== null && entry.marketPricePerGm !== undefined
+              ? this.toNumber(entry.marketPricePerGm)
+              : undefined,
+          livePricePerGm:
+            entry.livePricePerGm !== null && entry.livePricePerGm !== undefined
+              ? this.toNumber(entry.livePricePerGm)
+              : undefined,
+        });
+      } else if (entry.masterType === DesignMasterType.METAL_COLOR) {
+        grouped.metalColors.push({
+          ...option,
+          metalName: entry.metalName || undefined,
+        });
+      } else if (entry.masterType === DesignMasterType.METAL_PURITY) {
+        grouped.metalPurities.push({
+          ...option,
+          metalName: entry.metalName || undefined,
+          purityPercentage:
+            entry.purityPercentage !== null && entry.purityPercentage !== undefined
+              ? this.toNumber(entry.purityPercentage)
+              : undefined,
+        });
+      } else if (entry.masterType === DesignMasterType.METAL_CARATAGE) {
+        grouped.metalCaratages.push({
+          ...option,
+          metalName: entry.metalName || undefined,
+          metalColor: entry.metalColor || undefined,
+          metalPurity: entry.metalPurity || undefined,
+          purityPercentage:
+            entry.purityPercentage !== null && entry.purityPercentage !== undefined
+              ? this.toNumber(entry.purityPercentage)
+              : undefined,
+          defaultWastagePercent:
+            entry.defaultWastagePercent !== null && entry.defaultWastagePercent !== undefined
+              ? this.toNumber(entry.defaultWastagePercent)
+              : undefined,
+          livePricePerGm:
+            entry.livePricePerGm !== null && entry.livePricePerGm !== undefined
+              ? this.toNumber(entry.livePricePerGm)
+              : undefined,
+        });
       } else if (entry.masterType === DesignMasterType.GOLD_COLOUR) {
         grouped.goldColours.push({
           ...option,
@@ -1050,6 +1123,20 @@ export class ProductsService {
             weightPerUnit: dto.weightPerUnit,
           })
         : this.emptyFindingMasterFields();
+    const metalFields = await this.normalizeMetalMasterFields(
+      masterType,
+      {
+        metalName: dto.metalName,
+        metalColor: dto.metalColor,
+        metalPurity: dto.metalPurity,
+        purityPercentage: dto.purityPercentage,
+        marketPricePerOunce: dto.marketPricePerOunce,
+        marketPricePerGm: dto.marketPricePerGm,
+        livePricePerGm: dto.livePricePerGm,
+        defaultWastagePercent: dto.defaultWastagePercent,
+      },
+      undefined,
+    );
     const defaultWastagePercent =
       masterType === DesignMasterType.GOLD_COLOUR
         ? this.optionalNonNegativeNumber(dto.pricePerUnit, 'pricePerUnit')
@@ -1057,6 +1144,8 @@ export class ProductsService {
     const masterPricePerUnit =
       masterType === DesignMasterType.FINDING_HEAD
         ? findingFields.pricePerUnit
+        : masterType === DesignMasterType.METAL_CARATAGE
+          ? metalFields.defaultWastagePercent
         : masterType === DesignMasterType.GOLD_COLOUR
           ? defaultWastagePercent
           : null;
@@ -1091,6 +1180,14 @@ export class ProductsService {
         valueMatch.pricePerUnit = masterPricePerUnit;
         valueMatch.dimensions = findingFields.dimensions;
         valueMatch.weightPerUnit = findingFields.weightPerUnit;
+        valueMatch.metalName = metalFields.metalName;
+        valueMatch.metalColor = metalFields.metalColor;
+        valueMatch.metalPurity = metalFields.metalPurity;
+        valueMatch.purityPercentage = metalFields.purityPercentage;
+        valueMatch.marketPricePerOunce = metalFields.marketPricePerOunce;
+        valueMatch.marketPricePerGm = metalFields.marketPricePerGm;
+        valueMatch.livePricePerGm = metalFields.livePricePerGm;
+        valueMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
         valueMatch.isActive = true;
         valueMatch.updatedBy = requester.id;
         return this.designMasterRepo.save(valueMatch);
@@ -1111,6 +1208,14 @@ export class ProductsService {
         aliasMatch.pricePerUnit = masterPricePerUnit;
         aliasMatch.dimensions = findingFields.dimensions;
         aliasMatch.weightPerUnit = findingFields.weightPerUnit;
+        aliasMatch.metalName = metalFields.metalName;
+        aliasMatch.metalColor = metalFields.metalColor;
+        aliasMatch.metalPurity = metalFields.metalPurity;
+        aliasMatch.purityPercentage = metalFields.purityPercentage;
+        aliasMatch.marketPricePerOunce = metalFields.marketPricePerOunce;
+        aliasMatch.marketPricePerGm = metalFields.marketPricePerGm;
+        aliasMatch.livePricePerGm = metalFields.livePricePerGm;
+        aliasMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
         aliasMatch.isActive = true;
         aliasMatch.updatedBy = requester.id;
         return this.designMasterRepo.save(aliasMatch);
@@ -1135,6 +1240,14 @@ export class ProductsService {
           findingNoMatch.pricePerUnit = masterPricePerUnit;
           findingNoMatch.dimensions = findingFields.dimensions;
           findingNoMatch.weightPerUnit = findingFields.weightPerUnit;
+          findingNoMatch.metalName = metalFields.metalName;
+          findingNoMatch.metalColor = metalFields.metalColor;
+          findingNoMatch.metalPurity = metalFields.metalPurity;
+          findingNoMatch.purityPercentage = metalFields.purityPercentage;
+          findingNoMatch.marketPricePerOunce = metalFields.marketPricePerOunce;
+          findingNoMatch.marketPricePerGm = metalFields.marketPricePerGm;
+          findingNoMatch.livePricePerGm = metalFields.livePricePerGm;
+          findingNoMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
           findingNoMatch.isActive = true;
           findingNoMatch.updatedBy = requester.id;
           return this.designMasterRepo.save(findingNoMatch);
@@ -1156,6 +1269,14 @@ export class ProductsService {
       pricePerUnit: masterPricePerUnit,
       dimensions: findingFields.dimensions,
       weightPerUnit: findingFields.weightPerUnit,
+      metalName: metalFields.metalName,
+      metalColor: metalFields.metalColor,
+      metalPurity: metalFields.metalPurity,
+      purityPercentage: metalFields.purityPercentage,
+      marketPricePerOunce: metalFields.marketPricePerOunce,
+      marketPricePerGm: metalFields.marketPricePerGm,
+      livePricePerGm: metalFields.livePricePerGm,
+      defaultWastagePercent: metalFields.defaultWastagePercent,
       isActive: true,
       createdBy: requester.id,
       updatedBy: requester.id,
@@ -1197,6 +1318,20 @@ export class ProductsService {
               dto.weightPerUnit !== undefined ? dto.weightPerUnit : master.weightPerUnit,
           })
         : this.emptyFindingMasterFields();
+    const metalFields = await this.normalizeMetalMasterFields(
+      master.masterType,
+      {
+        metalName: dto.metalName,
+        metalColor: dto.metalColor,
+        metalPurity: dto.metalPurity,
+        purityPercentage: dto.purityPercentage,
+        marketPricePerOunce: dto.marketPricePerOunce,
+        marketPricePerGm: dto.marketPricePerGm,
+        livePricePerGm: dto.livePricePerGm,
+        defaultWastagePercent: dto.defaultWastagePercent,
+      },
+      master,
+    );
     const defaultWastagePercent =
       master.masterType === DesignMasterType.GOLD_COLOUR
         ? this.optionalNonNegativeNumber(
@@ -1207,6 +1342,8 @@ export class ProductsService {
     const masterPricePerUnit =
       master.masterType === DesignMasterType.FINDING_HEAD
         ? findingFields.pricePerUnit
+        : master.masterType === DesignMasterType.METAL_CARATAGE
+          ? metalFields.defaultWastagePercent
         : master.masterType === DesignMasterType.GOLD_COLOUR
           ? defaultWastagePercent
           : null;
@@ -1255,6 +1392,14 @@ export class ProductsService {
     master.pricePerUnit = masterPricePerUnit;
     master.dimensions = findingFields.dimensions;
     master.weightPerUnit = findingFields.weightPerUnit;
+    master.metalName = metalFields.metalName;
+    master.metalColor = metalFields.metalColor;
+    master.metalPurity = metalFields.metalPurity;
+    master.purityPercentage = metalFields.purityPercentage;
+    master.marketPricePerOunce = metalFields.marketPricePerOunce;
+    master.marketPricePerGm = metalFields.marketPricePerGm;
+    master.livePricePerGm = metalFields.livePricePerGm;
+    master.defaultWastagePercent = metalFields.defaultWastagePercent;
     master.updatedBy = requester.id;
 
     return this.designMasterRepo.save(master);
@@ -2118,6 +2263,201 @@ export class ProductsService {
     throw new BadRequestException('priceIn is required');
   }
 
+  private emptyMetalMasterFields(): {
+    metalName: string | null;
+    metalColor: string | null;
+    metalPurity: string | null;
+    purityPercentage: number | null;
+    marketPricePerOunce: number | null;
+    marketPricePerGm: number | null;
+    livePricePerGm: number | null;
+    defaultWastagePercent: number | null;
+  } {
+    return {
+      metalName: null,
+      metalColor: null,
+      metalPurity: null,
+      purityPercentage: null,
+      marketPricePerOunce: null,
+      marketPricePerGm: null,
+      livePricePerGm: null,
+      defaultWastagePercent: null,
+    };
+  }
+
+  private async normalizeMetalMasterFields(
+    masterType: DesignMasterType,
+    input: {
+      metalName?: string | null;
+      metalColor?: string | null;
+      metalPurity?: string | null;
+      purityPercentage?: number | null;
+      marketPricePerOunce?: number | null;
+      marketPricePerGm?: number | null;
+      livePricePerGm?: number | null;
+      defaultWastagePercent?: number | null;
+    },
+    existing?: DesignMaster,
+  ): Promise<{
+    metalName: string | null;
+    metalColor: string | null;
+    metalPurity: string | null;
+    purityPercentage: number | null;
+    marketPricePerOunce: number | null;
+    marketPricePerGm: number | null;
+    livePricePerGm: number | null;
+    defaultWastagePercent: number | null;
+  }> {
+    if (
+      masterType !== DesignMasterType.METAL_NAME &&
+      masterType !== DesignMasterType.METAL_COLOR &&
+      masterType !== DesignMasterType.METAL_PURITY &&
+      masterType !== DesignMasterType.METAL_CARATAGE
+    ) {
+      return this.emptyMetalMasterFields();
+    }
+
+    const empty = this.emptyMetalMasterFields();
+
+    if (masterType === DesignMasterType.METAL_NAME) {
+      const marketPricePerOunce = this.optionalNonNegativeNumber(
+        input.marketPricePerOunce !== undefined ? input.marketPricePerOunce : existing?.marketPricePerOunce,
+        'marketPricePerOunce',
+      );
+      let marketPricePerGm = this.optionalNonNegativeNumber(
+        input.marketPricePerGm !== undefined ? input.marketPricePerGm : existing?.marketPricePerGm,
+        'marketPricePerGm',
+      );
+      if (marketPricePerGm === null && marketPricePerOunce !== null) {
+        marketPricePerGm = this.roundTo4(marketPricePerOunce / 31.1035);
+      }
+      if (marketPricePerGm === null) {
+        throw new BadRequestException('marketPricePerGm is required for METAL_NAME');
+      }
+      let livePricePerGm = this.optionalNonNegativeNumber(
+        input.livePricePerGm !== undefined ? input.livePricePerGm : existing?.livePricePerGm,
+        'livePricePerGm',
+      );
+      if (livePricePerGm === null) {
+        livePricePerGm = marketPricePerGm;
+      }
+      return {
+        ...empty,
+        marketPricePerOunce,
+        marketPricePerGm,
+        livePricePerGm,
+      };
+    }
+
+    if (masterType === DesignMasterType.METAL_COLOR) {
+      const metalName = this.requiredText(
+        input.metalName !== undefined ? input.metalName : existing?.metalName,
+        'metalName',
+      );
+      return {
+        ...empty,
+        metalName,
+      };
+    }
+
+    if (masterType === DesignMasterType.METAL_PURITY) {
+      const metalName = this.requiredText(
+        input.metalName !== undefined ? input.metalName : existing?.metalName,
+        'metalName',
+      );
+      const purityPercentage = this.requiredNumber(
+        input.purityPercentage !== undefined ? input.purityPercentage : existing?.purityPercentage,
+        'purityPercentage',
+      );
+      return {
+        ...empty,
+        metalName,
+        purityPercentage,
+      };
+    }
+
+    const metalName = this.requiredText(
+      input.metalName !== undefined ? input.metalName : existing?.metalName,
+      'metalName',
+    );
+    const metalColor = this.requiredText(
+      input.metalColor !== undefined ? input.metalColor : existing?.metalColor,
+      'metalColor',
+    );
+    const metalPurity = this.requiredText(
+      input.metalPurity !== undefined ? input.metalPurity : existing?.metalPurity,
+      'metalPurity',
+    );
+
+    let purityPercentage = this.optionalNonNegativeNumber(
+      input.purityPercentage !== undefined ? input.purityPercentage : existing?.purityPercentage,
+      'purityPercentage',
+    );
+    if (purityPercentage === null) {
+      const purityMaster = await this.designMasterRepo.findOne({
+        where: {
+          masterType: DesignMasterType.METAL_PURITY,
+          value: metalPurity,
+          metalName,
+          isActive: true,
+        },
+      });
+      if (purityMaster?.purityPercentage !== null && purityMaster?.purityPercentage !== undefined) {
+        purityPercentage = this.toNumber(purityMaster.purityPercentage);
+      }
+    }
+    if (purityPercentage === null) {
+      throw new BadRequestException('purityPercentage is required for METAL_CARATAGE');
+    }
+
+    const defaultWastagePercent =
+      this.optionalNonNegativeNumber(
+        input.defaultWastagePercent !== undefined
+          ? input.defaultWastagePercent
+          : existing?.defaultWastagePercent,
+        'defaultWastagePercent',
+      ) ?? 0;
+
+    let baseLivePricePerGm = this.optionalNonNegativeNumber(
+      input.livePricePerGm !== undefined ? input.livePricePerGm : null,
+      'livePricePerGm',
+    );
+    if (baseLivePricePerGm === null) {
+      const metalMaster = await this.designMasterRepo.findOne({
+        where: {
+          masterType: DesignMasterType.METAL_NAME,
+          value: metalName,
+          isActive: true,
+        },
+      });
+      if (metalMaster?.livePricePerGm !== null && metalMaster?.livePricePerGm !== undefined) {
+        baseLivePricePerGm = this.toNumber(metalMaster.livePricePerGm);
+      } else if (
+        metalMaster?.marketPricePerGm !== null &&
+        metalMaster?.marketPricePerGm !== undefined
+      ) {
+        baseLivePricePerGm = this.toNumber(metalMaster.marketPricePerGm);
+      }
+    }
+    if (baseLivePricePerGm === null) {
+      baseLivePricePerGm = this.optionalNonNegativeNumber(existing?.livePricePerGm, 'livePricePerGm');
+    }
+    if (baseLivePricePerGm === null) {
+      throw new BadRequestException('Unable to resolve base metal price for METAL_CARATAGE');
+    }
+
+    const computedLivePricePerGm = this.roundTo4((baseLivePricePerGm * purityPercentage) / 100);
+    return {
+      ...empty,
+      metalName,
+      metalColor,
+      metalPurity,
+      purityPercentage,
+      livePricePerGm: computedLivePricePerGm,
+      defaultWastagePercent,
+    };
+  }
+
   private requiredText(value: string | null | undefined, field: string): string {
     const normalized = this.optionalText(value);
     if (!normalized) {
@@ -2228,6 +2568,10 @@ export class ProductsService {
 
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private roundTo4(value: number): number {
+    return Number(value.toFixed(4));
   }
 
   private toInt(value: number | string | undefined | null): number {

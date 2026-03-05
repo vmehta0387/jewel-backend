@@ -828,6 +828,10 @@ export enum DesignMasterType {
   TAG = 'TAG',
   DESIGN_STATUS = 'DESIGN_STATUS',
   STAGE = 'STAGE',
+  METAL_NAME = 'METAL_NAME',
+  METAL_COLOR = 'METAL_COLOR',
+  METAL_PURITY = 'METAL_PURITY',
+  METAL_CARATAGE = 'METAL_CARATAGE',
   GOLD_COLOUR = 'GOLD_COLOUR',
   DIAMOND_TYPE = 'DIAMOND_TYPE',
   DIAMOND_SPREAD = 'DIAMOND_SPREAD',
@@ -904,6 +908,48 @@ export class CreateDesignMasterDto {
   @Min(0)
   @IsOptional()
   weightPerUnit?: number;
+
+  @IsString()
+  @IsOptional()
+  metalName?: string;
+
+  @IsString()
+  @IsOptional()
+  metalColor?: string;
+
+  @IsString()
+  @IsOptional()
+  metalPurity?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  purityPercentage?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  marketPricePerOunce?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  marketPricePerGm?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  livePricePerGm?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  defaultWastagePercent?: number;
 }
 
 export class UpdateDesignMasterDto {
@@ -946,6 +992,48 @@ export class UpdateDesignMasterDto {
   @Min(0)
   @IsOptional()
   weightPerUnit?: number;
+
+  @IsString()
+  @IsOptional()
+  metalName?: string;
+
+  @IsString()
+  @IsOptional()
+  metalColor?: string;
+
+  @IsString()
+  @IsOptional()
+  metalPurity?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  purityPercentage?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  marketPricePerOunce?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  marketPricePerGm?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  livePricePerGm?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  defaultWastagePercent?: number;
 }
 
 export class UpdateDesignMasterStatusDto {

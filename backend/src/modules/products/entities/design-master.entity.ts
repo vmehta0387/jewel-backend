@@ -16,6 +16,10 @@ export enum DesignMasterType {
   TAG = 'TAG',
   DESIGN_STATUS = 'DESIGN_STATUS',
   STAGE = 'STAGE',
+  METAL_NAME = 'METAL_NAME',
+  METAL_COLOR = 'METAL_COLOR',
+  METAL_PURITY = 'METAL_PURITY',
+  METAL_CARATAGE = 'METAL_CARATAGE',
   GOLD_COLOUR = 'GOLD_COLOUR',
   DIAMOND_TYPE = 'DIAMOND_TYPE',
   DIAMOND_SPREAD = 'DIAMOND_SPREAD',
@@ -86,6 +90,30 @@ export class DesignMaster {
   @Column({ name: 'weight_per_unit', type: 'decimal', precision: 12, scale: 3, nullable: true })
   weightPerUnit: number | null;
 
+  @Column({ name: 'metal_name', length: 120, nullable: true })
+  metalName: string | null;
+
+  @Column({ name: 'metal_color', length: 120, nullable: true })
+  metalColor: string | null;
+
+  @Column({ name: 'metal_purity', length: 120, nullable: true })
+  metalPurity: string | null;
+
+  @Column({ name: 'purity_percentage', type: 'decimal', precision: 8, scale: 3, nullable: true })
+  purityPercentage: number | null;
+
+  @Column({ name: 'market_price_per_ounce', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  marketPricePerOunce: number | null;
+
+  @Column({ name: 'market_price_per_gm', type: 'decimal', precision: 12, scale: 4, nullable: true })
+  marketPricePerGm: number | null;
+
+  @Column({ name: 'live_price_per_gm', type: 'decimal', precision: 12, scale: 4, nullable: true })
+  livePricePerGm: number | null;
+
+  @Column({ name: 'default_wastage_percent', type: 'decimal', precision: 8, scale: 3, nullable: true })
+  defaultWastagePercent: number | null;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
@@ -138,6 +166,18 @@ export class DesignMaster {
     if (this.dimensions !== undefined && this.dimensions !== null) {
       const normalizedDimensions = this.dimensions.trim();
       this.dimensions = normalizedDimensions.length > 0 ? normalizedDimensions : null;
+    }
+    if (this.metalName !== undefined && this.metalName !== null) {
+      const normalizedMetalName = this.metalName.trim();
+      this.metalName = normalizedMetalName.length > 0 ? normalizedMetalName : null;
+    }
+    if (this.metalColor !== undefined && this.metalColor !== null) {
+      const normalizedMetalColor = this.metalColor.trim();
+      this.metalColor = normalizedMetalColor.length > 0 ? normalizedMetalColor : null;
+    }
+    if (this.metalPurity !== undefined && this.metalPurity !== null) {
+      const normalizedMetalPurity = this.metalPurity.trim();
+      this.metalPurity = normalizedMetalPurity.length > 0 ? normalizedMetalPurity : null;
     }
   }
 }

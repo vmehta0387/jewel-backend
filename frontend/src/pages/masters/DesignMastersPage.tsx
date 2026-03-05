@@ -10,6 +10,10 @@ type DesignMasterType =
   | 'TAG'
   | 'DESIGN_STATUS'
   | 'STAGE'
+  | 'METAL_NAME'
+  | 'METAL_COLOR'
+  | 'METAL_PURITY'
+  | 'METAL_CARATAGE'
   | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
@@ -28,6 +32,12 @@ type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
 interface MasterOption {
   id: string;
   value: string;
+  metalName?: string;
+  purityPercentage?: number;
+  marketPricePerOunce?: number;
+  marketPricePerGm?: number;
+  livePricePerGm?: number;
+  defaultWastagePercent?: number;
 }
 
 interface MasterRow {
@@ -42,6 +52,14 @@ interface MasterRow {
   pricePerUnit?: number | null;
   dimensions?: string | null;
   weightPerUnit?: number | null;
+  metalName?: string | null;
+  metalColor?: string | null;
+  metalPurity?: string | null;
+  purityPercentage?: number | null;
+  marketPricePerOunce?: number | null;
+  marketPricePerGm?: number | null;
+  livePricePerGm?: number | null;
+  defaultWastagePercent?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -116,11 +134,32 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     hint: 'Sketch, CAD, Casting',
   },
   {
-    value: 'GOLD_COLOUR',
-    label: 'Metal Caratage',
-    icon: 'GC',
+    value: 'METAL_NAME',
+    label: 'Metal',
+    icon: 'MN',
     accentClass: 'bg-yellow-50 text-yellow-800 ring-yellow-200',
-    hint: 'Metal caratage options',
+    hint: 'Base pure metal prices',
+  },
+  {
+    value: 'METAL_COLOR',
+    label: 'Metal Color',
+    icon: 'MC',
+    accentClass: 'bg-orange-50 text-orange-700 ring-orange-200',
+    hint: 'Color options per metal',
+  },
+  {
+    value: 'METAL_PURITY',
+    label: 'Metal Purity',
+    icon: 'MP',
+    accentClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    hint: 'Purity with percentage',
+  },
+  {
+    value: 'METAL_CARATAGE',
+    label: 'Metal Caratage',
+    icon: 'MK',
+    accentClass: 'bg-amber-50 text-amber-700 ring-amber-200',
+    hint: 'Metal + purity + color mapping',
   },
   {
     value: 'DIAMOND_TYPE',
@@ -195,7 +234,13 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
 ];
 
 function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
-  if (type === 'GOLD_COLOUR') {
+  if (
+    type === 'GOLD_COLOUR' ||
+    type === 'METAL_NAME' ||
+    type === 'METAL_COLOR' ||
+    type === 'METAL_PURITY' ||
+    type === 'METAL_CARATAGE'
+  ) {
     return (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 3c-3.2 3.8-5 6-5 9a5 5 0 1 0 10 0c0-3-1.8-5.2-5-9Z" />
@@ -268,10 +313,23 @@ interface MasterModalProps {
   formAliasName: string;
   formDescription: string;
   isFindingType: boolean;
+  isMetalNameType: boolean;
+  isMetalColorType: boolean;
+  isMetalPurityType: boolean;
   isMetalCaratageType: boolean;
   findingNo: string;
   metalCaratage: string;
+  metalName: string;
+  metalColor: string;
+  metalPurity: string;
+  purityPercentage: string;
+  marketPricePerOunce: string;
+  marketPricePerGm: string;
+  livePricePerGm: string;
   defaultWastage: string;
+  metalNameOptions: MasterOption[];
+  metalColorOptions: MasterOption[];
+  metalPurityOptions: MasterOption[];
   priceIn: FindingPriceIn;
   pricePerUnit: string;
   dimensions: string;
@@ -283,6 +341,13 @@ interface MasterModalProps {
   onChangeDescription: (value: string) => void;
   onChangeFindingNo: (value: string) => void;
   onChangeMetalCaratage: (value: string) => void;
+  onChangeMetalName: (value: string) => void;
+  onChangeMetalColor: (value: string) => void;
+  onChangeMetalPurity: (value: string) => void;
+  onChangePurityPercentage: (value: string) => void;
+  onChangeMarketPricePerOunce: (value: string) => void;
+  onChangeMarketPricePerGm: (value: string) => void;
+  onChangeLivePricePerGm: (value: string) => void;
   onChangeDefaultWastage: (value: string) => void;
   onChangePriceIn: (value: FindingPriceIn) => void;
   onChangePricePerUnit: (value: string) => void;
@@ -324,6 +389,13 @@ interface PacketMasterOptions {
   packetQualities: MasterOption[];
 }
 
+interface MetalMasterOptions {
+  metalNames: MasterOption[];
+  metalColors: MasterOption[];
+  metalPurities: MasterOption[];
+  metalCaratages: MasterOption[];
+}
+
 const defaultPacketForm: PacketForm = {
   packetName: '',
   stone: '',
@@ -346,9 +418,25 @@ const emptyPacketMasterOptions: PacketMasterOptions = {
   packetQualities: [],
 };
 
+const emptyMetalMasterOptions: MetalMasterOptions = {
+  metalNames: [],
+  metalColors: [],
+  metalPurities: [],
+  metalCaratages: [],
+};
+
 function parseNum(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseOptionalNum(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function MasterModal({
@@ -361,10 +449,23 @@ function MasterModal({
   formAliasName,
   formDescription,
   isFindingType,
+  isMetalNameType,
+  isMetalColorType,
+  isMetalPurityType,
   isMetalCaratageType,
   findingNo,
   metalCaratage,
+  metalName,
+  metalColor,
+  metalPurity,
+  purityPercentage,
+  marketPricePerOunce,
+  marketPricePerGm,
+  livePricePerGm,
   defaultWastage,
+  metalNameOptions,
+  metalColorOptions,
+  metalPurityOptions,
   priceIn,
   pricePerUnit,
   dimensions,
@@ -376,6 +477,13 @@ function MasterModal({
   onChangeDescription,
   onChangeFindingNo,
   onChangeMetalCaratage,
+  onChangeMetalName,
+  onChangeMetalColor,
+  onChangeMetalPurity,
+  onChangePurityPercentage,
+  onChangeMarketPricePerOunce,
+  onChangeMarketPricePerGm,
+  onChangeLivePricePerGm,
   onChangeDefaultWastage,
   onChangePriceIn,
   onChangePricePerUnit,
@@ -385,6 +493,21 @@ function MasterModal({
   if (!open) {
     return null;
   }
+
+  const normalizeLookup = (value?: string | null): string =>
+    (value || '').trim().toLowerCase();
+  const filteredMetalColors =
+    metalName.trim().length > 0
+      ? metalColorOptions.filter(
+          (option) => normalizeLookup(option.metalName) === normalizeLookup(metalName),
+        )
+      : metalColorOptions;
+  const filteredMetalPurities =
+    metalName.trim().length > 0
+      ? metalPurityOptions.filter(
+          (option) => normalizeLookup(option.metalName) === normalizeLookup(metalName),
+        )
+      : metalPurityOptions;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
@@ -512,7 +635,179 @@ function MasterModal({
           ) : null}
 
           {!isFindingType ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <>
+              {isMetalNameType ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Market Price/Ounce*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={marketPricePerOunce}
+                      onChange={(event) => onChangeMarketPricePerOunce(event.target.value)}
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Market Price/Gms*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={marketPricePerGm}
+                      onChange={(event) => onChangeMarketPricePerGm(event.target.value)}
+                      placeholder="0.0000"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Live Price/Gms*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={livePricePerGm}
+                      onChange={(event) => onChangeLivePricePerGm(event.target.value)}
+                      placeholder="0.0000"
+                      required
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {isMetalColorType ? (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={metalName}
+                    onChange={(event) => onChangeMetalName(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Metal Name</option>
+                    {metalNameOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              {isMetalPurityType ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
+                    <select
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={metalName}
+                      onChange={(event) => onChangeMetalName(event.target.value)}
+                      required
+                    >
+                      <option value="">Select Metal Name</option>
+                      {metalNameOptions.map((option) => (
+                        <option key={option.id} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Percentage*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={purityPercentage}
+                      onChange={(event) => onChangePurityPercentage(event.target.value)}
+                      placeholder="75"
+                      required
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {isMetalCaratageType ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
+                    <select
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={metalName}
+                      onChange={(event) => onChangeMetalName(event.target.value)}
+                      required
+                    >
+                      <option value="">Select Metal Name</option>
+                      {metalNameOptions.map((option) => (
+                        <option key={option.id} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Metal Purity*</label>
+                    <select
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={metalPurity}
+                      onChange={(event) => onChangeMetalPurity(event.target.value)}
+                      required
+                    >
+                      <option value="">Select Metal Purity</option>
+                      {filteredMetalPurities.map((option) => (
+                        <option key={option.id} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Metal Color*</label>
+                    <select
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={metalColor}
+                      onChange={(event) => onChangeMetalColor(event.target.value)}
+                      required
+                    >
+                      <option value="">Select Metal Color</option>
+                      {filteredMetalColors.map((option) => (
+                        <option key={option.id} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={defaultWastage}
+                      onChange={(event) => onChangeDefaultWastage(event.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Price/Gms</label>
+                    <input
+                      className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                      value={livePricePerGm}
+                      onChange={(event) => onChangeLivePricePerGm(event.target.value)}
+                      placeholder="Auto calculated"
+                      readOnly
+                    />
+                  </div>
+                </div>
+              ) : null}
+
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
                 <textarea
@@ -522,21 +817,7 @@ function MasterModal({
                   placeholder="Description"
                 />
               </div>
-              {isMetalCaratageType ? (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={defaultWastage}
-                    onChange={(event) => onChangeDefaultWastage(event.target.value)}
-                    placeholder="Default Wastage %"
-                  />
-                </div>
-              ) : null}
-            </div>
+            </>
           ) : null}
 
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
@@ -705,12 +986,21 @@ export default function DesignMastersPage() {
   const [formDescription, setFormDescription] = useState('');
   const [formFindingNo, setFormFindingNo] = useState('');
   const [formMetalCaratage, setFormMetalCaratage] = useState('');
+  const [formMetalName, setFormMetalName] = useState('');
+  const [formMetalColor, setFormMetalColor] = useState('');
+  const [formMetalPurity, setFormMetalPurity] = useState('');
+  const [formPurityPercentage, setFormPurityPercentage] = useState('');
+  const [formMarketPricePerOunce, setFormMarketPricePerOunce] = useState('');
+  const [formMarketPricePerGm, setFormMarketPricePerGm] = useState('');
+  const [formLivePricePerGm, setFormLivePricePerGm] = useState('');
+  const [formDefaultWastage, setFormDefaultWastage] = useState('');
   const [formPriceIn, setFormPriceIn] = useState<FindingPriceIn>('PIECES');
   const [formPricePerUnit, setFormPricePerUnit] = useState('');
   const [formDimensions, setFormDimensions] = useState('');
   const [formWeightPerUnit, setFormWeightPerUnit] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
+  const [metalMasterOptions, setMetalMasterOptions] = useState<MetalMasterOptions>(emptyMetalMasterOptions);
 
   const isPacketType = selectedType === 'STONE_PACKET';
 
@@ -718,6 +1008,66 @@ export default function DesignMastersPage() {
     () => MASTER_TYPE_CONFIGS.find((config) => config.value === selectedType) || MASTER_TYPE_CONFIGS[0],
     [selectedType],
   );
+
+  useEffect(() => {
+    if (selectedType !== 'METAL_NAME') return;
+    const ounce = parseNum(formMarketPricePerOunce);
+    if (ounce <= 0) return;
+    const computedPerGm = ounce / 31.1035;
+    const rounded = computedPerGm.toFixed(4);
+    if (rounded !== formMarketPricePerGm) {
+      setFormMarketPricePerGm(rounded);
+    }
+  }, [formMarketPricePerOunce, formMarketPricePerGm, selectedType]);
+
+  useEffect(() => {
+    if (selectedType !== 'METAL_CARATAGE') return;
+    const selectedMetal = metalMasterOptions.metalNames.find((row) => row.value === formMetalName);
+    const selectedPurity = metalMasterOptions.metalPurities.find(
+      (row) => row.value === formMetalPurity && (!formMetalName || row.metalName === formMetalName),
+    );
+    const purityPercent =
+      selectedPurity?.purityPercentage !== undefined
+        ? selectedPurity.purityPercentage
+        : parseNum(formPurityPercentage);
+    if (purityPercent > 0 && String(purityPercent) !== formPurityPercentage) {
+      setFormPurityPercentage(String(purityPercent));
+    }
+
+    const basePricePerGm =
+      selectedMetal?.livePricePerGm !== undefined && selectedMetal.livePricePerGm > 0
+        ? selectedMetal.livePricePerGm
+        : selectedMetal?.marketPricePerGm !== undefined
+          ? selectedMetal.marketPricePerGm
+          : 0;
+    if (basePricePerGm > 0 && purityPercent > 0) {
+      const computed = ((basePricePerGm * purityPercent) / 100).toFixed(4);
+      if (computed !== formLivePricePerGm) {
+        setFormLivePricePerGm(computed);
+      }
+    }
+
+    if (formMetalName && formMetalPurity && formMetalColor) {
+      const computedValue = `${formMetalPurity}-${formMetalColor}-${formMetalName}`;
+      if (computedValue !== formValue) {
+        setFormValue(computedValue);
+      }
+      if (!formAliasName.trim()) {
+        setFormAliasName(computedValue);
+      }
+    }
+  }, [
+    formAliasName,
+    formMetalColor,
+    formMetalName,
+    formMetalPurity,
+    formLivePricePerGm,
+    formPurityPercentage,
+    formValue,
+    metalMasterOptions.metalNames,
+    metalMasterOptions.metalPurities,
+    selectedType,
+  ]);
 
   const fetchRows = async () => {
     setLoading(true);
@@ -767,17 +1117,40 @@ export default function DesignMastersPage() {
     }
   };
 
+  const fetchMetalMasterOptions = async () => {
+    try {
+      const response = await api.get('/products/masters');
+      setMetalMasterOptions({
+        metalNames: response.data?.metalNames || [],
+        metalColors: response.data?.metalColors || [],
+        metalPurities: response.data?.metalPurities || [],
+        metalCaratages: response.data?.metalCaratages || [],
+      });
+    } catch {
+      setMetalMasterOptions(emptyMetalMasterOptions);
+    }
+  };
+
   useEffect(() => {
     fetchRows();
   }, [selectedType, viewInactive, searchTerm]);
 
   useEffect(() => {
     fetchPacketMasterOptions();
+    fetchMetalMasterOptions();
   }, []);
 
   useEffect(() => {
     if (selectedType === 'STONE_PACKET') {
       fetchPacketMasterOptions();
+    }
+    if (
+      selectedType === 'METAL_NAME' ||
+      selectedType === 'METAL_COLOR' ||
+      selectedType === 'METAL_PURITY' ||
+      selectedType === 'METAL_CARATAGE'
+    ) {
+      fetchMetalMasterOptions();
     }
   }, [selectedType]);
 
@@ -789,6 +1162,14 @@ export default function DesignMastersPage() {
     setFormDescription('');
     setFormFindingNo('');
     setFormMetalCaratage('');
+    setFormMetalName('');
+    setFormMetalColor('');
+    setFormMetalPurity('');
+    setFormPurityPercentage('');
+    setFormMarketPricePerOunce('');
+    setFormMarketPricePerGm('');
+    setFormLivePricePerGm('');
+    setFormDefaultWastage('');
     setFormPriceIn('PIECES');
     setFormPricePerUnit('');
     setFormDimensions('');
@@ -809,6 +1190,34 @@ export default function DesignMastersPage() {
     setFormDescription(row.description || '');
     setFormFindingNo(row.findingNo || '');
     setFormMetalCaratage(row.metalCaratage || '');
+    setFormMetalName(row.metalName || '');
+    setFormMetalColor(row.metalColor || '');
+    setFormMetalPurity(row.metalPurity || '');
+    setFormPurityPercentage(
+      row.purityPercentage !== null && row.purityPercentage !== undefined
+        ? String(row.purityPercentage)
+        : '',
+    );
+    setFormMarketPricePerOunce(
+      row.marketPricePerOunce !== null && row.marketPricePerOunce !== undefined
+        ? String(row.marketPricePerOunce)
+        : '',
+    );
+    setFormMarketPricePerGm(
+      row.marketPricePerGm !== null && row.marketPricePerGm !== undefined
+        ? String(row.marketPricePerGm)
+        : '',
+    );
+    setFormLivePricePerGm(
+      row.livePricePerGm !== null && row.livePricePerGm !== undefined
+        ? String(row.livePricePerGm)
+        : '',
+    );
+    setFormDefaultWastage(
+      row.defaultWastagePercent !== null && row.defaultWastagePercent !== undefined
+        ? String(row.defaultWastagePercent)
+        : '',
+    );
     setFormPriceIn((row.priceIn as FindingPriceIn) || 'PIECES');
     setFormPricePerUnit(row.pricePerUnit !== null && row.pricePerUnit !== undefined ? String(row.pricePerUnit) : '');
     setFormDimensions(row.dimensions || '');
@@ -874,8 +1283,17 @@ export default function DesignMastersPage() {
       return;
     }
 
-    const value = formValue.trim();
-    const aliasName = formAliasName.trim();
+    let value = formValue.trim();
+    let aliasName = formAliasName.trim();
+    if (selectedType === 'METAL_CARATAGE' && formMetalName && formMetalPurity && formMetalColor) {
+      const autoValue = `${formMetalPurity}-${formMetalColor}-${formMetalName}`;
+      if (!value) {
+        value = autoValue;
+      }
+      if (!aliasName) {
+        aliasName = autoValue;
+      }
+    }
     if (!value || !aliasName) {
       window.alert('Master name and alias name are required.');
       return;
@@ -899,6 +1317,44 @@ export default function DesignMastersPage() {
               formPricePerUnit.trim().length > 0 ? parseNum(formPricePerUnit) : null,
           }
         : null;
+
+    const selectedPurityOption =
+      selectedType === 'METAL_CARATAGE'
+        ? metalMasterOptions.metalPurities.find(
+            (option) =>
+              option.value === formMetalPurity &&
+              (!formMetalName || option.metalName === formMetalName),
+          )
+        : null;
+    const resolvedPurityPercentage =
+      parseOptionalNum(formPurityPercentage) ??
+      (selectedPurityOption?.purityPercentage ?? null);
+    const metalPayload =
+      selectedType === 'METAL_NAME'
+        ? {
+            marketPricePerOunce: parseOptionalNum(formMarketPricePerOunce),
+            marketPricePerGm: parseOptionalNum(formMarketPricePerGm),
+            livePricePerGm: parseOptionalNum(formLivePricePerGm),
+          }
+        : selectedType === 'METAL_COLOR'
+          ? {
+              metalName: formMetalName.trim(),
+            }
+          : selectedType === 'METAL_PURITY'
+            ? {
+                metalName: formMetalName.trim(),
+                purityPercentage: parseOptionalNum(formPurityPercentage),
+              }
+            : selectedType === 'METAL_CARATAGE'
+              ? {
+                  metalName: formMetalName.trim(),
+                  metalColor: formMetalColor.trim(),
+                  metalPurity: formMetalPurity.trim(),
+                  purityPercentage: resolvedPurityPercentage,
+                  livePricePerGm: parseOptionalNum(formLivePricePerGm),
+                  defaultWastagePercent: parseOptionalNum(formDefaultWastage) ?? 0,
+                }
+              : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
 
     if (selectedType === 'FINDING_HEAD') {
@@ -912,6 +1368,43 @@ export default function DesignMastersPage() {
       }
     }
 
+    if (selectedType === 'METAL_NAME') {
+      if (
+        parseOptionalNum(formMarketPricePerOunce) === null ||
+        parseOptionalNum(formMarketPricePerGm) === null
+      ) {
+        window.alert('Market Price/Ounce and Market Price/Gms are required.');
+        return;
+      }
+    }
+
+    if (selectedType === 'METAL_COLOR' && !formMetalName.trim()) {
+      window.alert('Metal Name is required.');
+      return;
+    }
+
+    if (selectedType === 'METAL_PURITY') {
+      if (!formMetalName.trim()) {
+        window.alert('Metal Name is required.');
+        return;
+      }
+      if (parseOptionalNum(formPurityPercentage) === null) {
+        window.alert('Percentage is required.');
+        return;
+      }
+    }
+
+    if (selectedType === 'METAL_CARATAGE') {
+      if (!formMetalName.trim() || !formMetalPurity.trim() || !formMetalColor.trim()) {
+        window.alert('Metal Name, Metal Purity and Metal Color are required.');
+        return;
+      }
+      if (resolvedPurityPercentage === null) {
+        window.alert('Unable to resolve purity percentage for selected Metal Purity.');
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       if (editingRow) {
@@ -920,6 +1413,7 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(findingPayload || {}),
+          ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
         });
       } else {
@@ -929,6 +1423,7 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(findingPayload || {}),
+          ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
         });
       }
@@ -1139,7 +1634,7 @@ export default function DesignMastersPage() {
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">{selectedConfig.label}</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Alias Name</th>
-                    {selectedType === 'GOLD_COLOUR' ? (
+                    {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
                       <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Default Wastage (%)</th>
                     ) : null}
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Description</th>
@@ -1151,13 +1646,27 @@ export default function DesignMastersPage() {
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {loading ? (
                     <tr>
-                      <td colSpan={selectedType === 'GOLD_COLOUR' ? 8 : 7} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td
+                        colSpan={
+                          selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE'
+                            ? 8
+                            : 7
+                        }
+                        className="px-3 py-8 text-center text-sm text-slate-500"
+                      >
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={selectedType === 'GOLD_COLOUR' ? 8 : 7} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td
+                        colSpan={
+                          selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE'
+                            ? 8
+                            : 7
+                        }
+                        className="px-3 py-8 text-center text-sm text-slate-500"
+                      >
                         No records found.
                       </td>
                     </tr>
@@ -1167,10 +1676,19 @@ export default function DesignMastersPage() {
                         <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.value}</td>
                         <td className="px-3 py-2 text-sm text-slate-700">{row.aliasName || row.value}</td>
-                        {selectedType === 'GOLD_COLOUR' ? (
+                        {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
                           <td className="px-3 py-2 text-sm text-slate-700">
-                            {row.pricePerUnit !== null && row.pricePerUnit !== undefined
-                              ? Number(row.pricePerUnit).toFixed(2)
+                            {(selectedType === 'METAL_CARATAGE'
+                              ? row.defaultWastagePercent
+                              : row.pricePerUnit) !== null &&
+                            (selectedType === 'METAL_CARATAGE'
+                              ? row.defaultWastagePercent
+                              : row.pricePerUnit) !== undefined
+                              ? Number(
+                                  selectedType === 'METAL_CARATAGE'
+                                    ? row.defaultWastagePercent
+                                    : row.pricePerUnit,
+                                ).toFixed(2)
                               : '-'}
                           </td>
                         ) : null}
@@ -1231,10 +1749,23 @@ export default function DesignMastersPage() {
           formAliasName={formAliasName}
           formDescription={formDescription}
           isFindingType={selectedType === 'FINDING_HEAD'}
-          isMetalCaratageType={selectedType === 'GOLD_COLOUR'}
+          isMetalNameType={selectedType === 'METAL_NAME'}
+          isMetalColorType={selectedType === 'METAL_COLOR'}
+          isMetalPurityType={selectedType === 'METAL_PURITY'}
+          isMetalCaratageType={selectedType === 'METAL_CARATAGE' || selectedType === 'GOLD_COLOUR'}
           findingNo={formFindingNo}
           metalCaratage={formMetalCaratage}
-          defaultWastage={formPricePerUnit}
+          metalName={formMetalName}
+          metalColor={formMetalColor}
+          metalPurity={formMetalPurity}
+          purityPercentage={formPurityPercentage}
+          marketPricePerOunce={formMarketPricePerOunce}
+          marketPricePerGm={formMarketPricePerGm}
+          livePricePerGm={formLivePricePerGm}
+          defaultWastage={formDefaultWastage}
+          metalNameOptions={metalMasterOptions.metalNames}
+          metalColorOptions={metalMasterOptions.metalColors}
+          metalPurityOptions={metalMasterOptions.metalPurities}
           priceIn={formPriceIn}
           pricePerUnit={formPricePerUnit}
           dimensions={formDimensions}
@@ -1249,7 +1780,14 @@ export default function DesignMastersPage() {
           onChangeDescription={setFormDescription}
           onChangeFindingNo={setFormFindingNo}
           onChangeMetalCaratage={setFormMetalCaratage}
-          onChangeDefaultWastage={setFormPricePerUnit}
+          onChangeMetalName={setFormMetalName}
+          onChangeMetalColor={setFormMetalColor}
+          onChangeMetalPurity={setFormMetalPurity}
+          onChangePurityPercentage={setFormPurityPercentage}
+          onChangeMarketPricePerOunce={setFormMarketPricePerOunce}
+          onChangeMarketPricePerGm={setFormMarketPricePerGm}
+          onChangeLivePricePerGm={setFormLivePricePerGm}
+          onChangeDefaultWastage={setFormDefaultWastage}
           onChangePriceIn={setFormPriceIn}
           onChangePricePerUnit={setFormPricePerUnit}
           onChangeDimensions={setFormDimensions}
