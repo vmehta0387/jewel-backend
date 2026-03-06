@@ -475,7 +475,7 @@ function buildPacketNameFromForm(
   const parts = [form.stone, form.shape, form.size, form.cut, form.color, form.quality]
     .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
-  return parts.join('');
+  return parts.join('-');
 }
 
 function getMetalPurityDisplay(option: MasterOption): string {
@@ -1905,20 +1905,20 @@ export default function DesignMastersPage() {
               <table className="min-w-[1400px] divide-y divide-slate-200">
                 <thead className="bg-slate-100">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Packet Name</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Stone</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Shape</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Size</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Cut</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Color</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Quality</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Pieces</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Weight</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Unit</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Created</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Modified</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Action</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">#</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Packet Name</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Stone</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Shape</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Size</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Cut</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Color</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Quality</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Pieces</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Weight</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Unit</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Created</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Modified</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -1977,18 +1977,18 @@ export default function DesignMastersPage() {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-100">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">{selectedConfig.label}</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">#</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">{selectedConfig.label}</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">
                       {selectedType === 'METAL_CARATAGE' ? 'Price/Gms' : 'Alias Name'}
                     </th>
                     {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
-                      <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Default Wastage (%)</th>
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Default Wastage (%)</th>
                     ) : null}
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Description</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Created</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Modified</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Action</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Description</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Created</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Modified</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">

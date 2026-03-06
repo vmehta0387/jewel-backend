@@ -342,9 +342,9 @@ export default function PricingPage() {
         {loading ? (
           <div className="py-6 text-sm text-gray-600">Loading base prices...</div>
         ) : (
-          <div className="overflow-x-auto scrollbar-top">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600">
+          <div className="overflow-x-auto scrollbar-top rounded-lg border border-slate-200">
+            <table className="min-w-full text-[14px] leading-6">
+              <thead className="bg-slate-100 text-left text-sm font-semibold text-slate-700">
                 <tr>
                   <th className="px-3 py-2">Category</th>
                   <th className="px-3 py-2">Reference</th>
@@ -356,9 +356,9 @@ export default function PricingPage() {
                   <th className="px-3 py-2">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-200 bg-white">
                 {filteredRows.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-200">
+                  <tr key={row.id}>
                     <td className="px-3 py-2">{row.category}</td>
                     <td className="px-3 py-2">{row.referenceValue}</td>
                     <td className="px-3 py-2">{row.subValue || '-'}</td>

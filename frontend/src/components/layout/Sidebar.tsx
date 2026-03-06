@@ -171,7 +171,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
 
   return (
     <div
-      className={`fixed left-0 top-0 h-screen border-r border-primary-700/60 bg-primary-600 text-white transition-all duration-300 ${
+      className={`fixed left-0 top-0 h-screen border-r border-blue-700/40 bg-gradient-to-b from-blue-700 via-blue-600 to-cyan-700 text-white transition-all duration-300 ${
         collapsed ? 'w-20' : 'w-64'
       }`}
     >
@@ -187,7 +187,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
           type="button"
           onClick={onToggle}
           className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 ${
-            collapsed ? 'absolute -right-3 top-4 bg-primary-600 shadow' : ''
+            collapsed ? 'absolute -right-3 top-4 bg-blue-700 shadow' : ''
           }`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

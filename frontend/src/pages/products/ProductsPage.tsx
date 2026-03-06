@@ -198,6 +198,14 @@ interface PacketForm {
   weightIn: 'CTS' | 'GRAM';
 }
 
+interface DesignHistoryRow {
+  id: string;
+  actionType: string;
+  remarks: string;
+  user: string;
+  dateTime: string;
+}
+
 const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const parseNum = (value: string): number => {
   const n = Number.parseFloat(value);
@@ -231,7 +239,7 @@ const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 's
   const parts = [packet.stone, packet.shape, packet.size, packet.cut, packet.color, packet.quality]
     .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
-  return parts.join('');
+  return parts.join('-');
 };
 const getMetalPurityDisplay = (option: MasterOption): string => {
   return (option.aliasName || option.value || '').trim();
@@ -387,13 +395,6 @@ const defaultPacketForm: PacketForm = {
   weightPerPc: '',
   weightIn: 'CTS',
 };
-
-const historyRows = [
-  ['Relevant designs updated successfully.', 'Developer', '2026-02-21 14:08'],
-  ['Design updated successfully.', 'Developer', '2026-02-21 14:07'],
-  ['Relevant designs updated successfully.', 'Admin', '2026-01-13 13:00'],
-  ['Design added successfully.', 'Sina', '2025-12-17 12:23'],
-];
 
 const emptyMasterOptions = {
   jewelryGroups: [] as MasterOption[],
@@ -574,10 +575,10 @@ export default function ProductsPage() {
   }]);
   const [laborRows, setLaborRows] = useState<LaborRow[]>([{
     id: makeId(),
-    laborHead: 'Setting',
-    laborPerUnit: 'Price Per Quantity',
-    unitQty: '1',
-    laborValue: '2',
+    laborHead: '',
+    laborPerUnit: '',
+    unitQty: '',
+    laborValue: '',
   }]);
   const [findingRows, setFindingRows] = useState<FindingRow[]>([]);
   const [processRows, setProcessRows] = useState<ProcessRow[]>([
@@ -615,6 +616,9 @@ export default function ProductsPage() {
   const [inlinePricePerUnit, setInlinePricePerUnit] = useState('');
   const [inlineDimensions, setInlineDimensions] = useState('');
   const [inlineWeightPerUnit, setInlineWeightPerUnit] = useState('');
+  const [historyRows, setHistoryRows] = useState<DesignHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
@@ -1001,6 +1005,33 @@ export default function ProductsPage() {
     }
   };
 
+  const fetchDesignHistory = async (designId: string) => {
+    if (!designId) {
+      setHistoryRows([]);
+      setHistoryError(null);
+      return;
+    }
+
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await api.get(`/products/${designId}/history`);
+      const mapped = (Array.isArray(response.data) ? response.data : []).map((entry: any) => ({
+        id: entry?.id || makeId(),
+        actionType: String(entry?.actionType || '').trim(),
+        remarks: String(entry?.remarks || '').trim(),
+        user: String(entry?.user || '').trim() || 'System',
+        dateTime: entry?.dateTime ? new Date(entry.dateTime).toLocaleString() : '-',
+      })) as DesignHistoryRow[];
+      setHistoryRows(mapped);
+    } catch (error: any) {
+      setHistoryRows([]);
+      setHistoryError(error?.response?.data?.message || 'Unable to load history.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const applyPacketToGemRow = (rowId: string, packetId: string) => {
     const packet = packetOptions.find((entry) => entry.id === packetId);
     setGemRows((prev) => {
@@ -1378,6 +1409,11 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
+    if (modal !== 'history' || !selectedId) return;
+    fetchDesignHistory(selectedId);
+  }, [modal, selectedId]);
+
+  useEffect(() => {
     setSelectedDesignIds((prev) => {
       const validIds = new Set(rows.map((row) => row.id));
       const next = prev.filter((id) => validIds.has(id));
@@ -1594,11 +1630,6 @@ export default function ProductsPage() {
     return { ...row, pricePerCt: (amount / wt).toFixed(2) };
   };
 
-  const getGemInfoText = (row: GemRow): string =>
-    [row.stone, row.size, row.color, row.quality, row.shape]
-      .map((entry) => (entry || '').trim())
-      .filter((entry) => entry.length > 0)
-      .join(', ');
   const getLaborValue = (row: LaborRow): number =>
     parseNum(row.unitQty) * parseNum(row.laborPerUnit);
   const getFindingValue = (row: FindingRow): number => {
@@ -1658,8 +1689,8 @@ export default function ProductsPage() {
     }]);
     setLaborRows([{
       id: makeId(),
-      laborHead: 'Setting',
-      laborPerUnit: 'Price Per Quantity',
+      laborHead: '',
+      laborPerUnit: '',
       unitQty: '',
       laborValue: '',
     }]);
@@ -1800,7 +1831,7 @@ export default function ProductsPage() {
             }))
           : [{
               id: makeId(),
-              laborHead: 'Setting',
+              laborHead: '',
               laborPerUnit: '',
               unitQty: '',
               laborValue: '',
@@ -2403,6 +2434,9 @@ export default function ProductsPage() {
     }, 150);
   };
 
+  const exportActionButtonClass =
+    'inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2417,8 +2451,36 @@ export default function ProductsPage() {
           {canCreateDesign ? (
             <Button type="button" onClick={openAdd}>+ Add New</Button>
           ) : null}
-          <Button type="button" variant="secondary" onClick={exportPdf}>Export Selected PDF</Button>
-          <Button type="button" variant="secondary" onClick={exportCsv}>Export as Excel</Button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
+            onClick={exportPdf}
+            title="Export selected rows to PDF"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+              <path d="M14 2v5h5" />
+              <path d="M8 13h8M8 17h6" />
+            </svg>
+            <span>PDF</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">
+              {selectedDesignIds.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
+            onClick={exportCsv}
+            title="Export design list to Excel (CSV)"
+          >
+            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+              <path d="M14 2v5h5" />
+              <path d="M9 10h6M9 14h6M9 18h6" />
+              <path d="m8 10 8 8M16 10l-8 8" />
+            </svg>
+            <span>Excel</span>
+          </button>
         </div>
       </div>
 
@@ -2486,11 +2548,11 @@ export default function ProductsPage() {
           <p className="mb-3 text-sm text-red-600">{rowsError}</p>
         ) : null}
 
-        <div className="overflow-x-auto scrollbar-top border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-100">
+        <div className="overflow-x-auto scrollbar-top border border-slate-200">
+          <table className="min-w-full divide-y divide-slate-200 text-[14px] leading-6">
+            <thead className="bg-slate-100">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">
                   <div className="flex items-center gap-2">
                     <input
                       ref={selectAllVisibleCheckboxRef}
@@ -2503,19 +2565,19 @@ export default function ProductsPage() {
                     <span>#</span>
                   </div>
                 </th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Image</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Design No.</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Jewelry Group</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Jewelry Size</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Metal Info</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Collection</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Stone Info</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Price</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Tags</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600">Action</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Image</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Design No.</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Group</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Size</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Metal Info</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Collection</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Stone Info</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Price</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Tags</th>
+                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className="divide-y divide-slate-200 bg-white">
               {filteredRows.map((row, idx) => (
                 <tr key={row.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 text-sm text-gray-700">
@@ -2553,11 +2615,7 @@ export default function ProductsPage() {
                   </td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.jewelryGroup}</td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.jewelrySize}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">
-                    <span className="rounded bg-green-700 px-2 py-1 text-[11px] font-semibold text-white">
-                      {row.goldColour || '-'}
-                    </span>
-                  </td>
+                  <td className="px-3 py-2 text-sm text-gray-700">{row.goldColour || '-'}</td>
                   <td className="px-3 py-2 text-sm text-gray-700">{row.collection}</td>
                   <td className="px-3 py-2 text-sm text-gray-700"><span className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white">{row.stoneInfo}</span></td>
                   <td className="px-3 py-2 text-sm text-gray-700">{formatMoney(row.price)}</td>
@@ -2625,7 +2683,7 @@ export default function ProductsPage() {
                 <div className="border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">General Information</div>
                 <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Design No *</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
                     <input
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={form.designNo}
@@ -2638,7 +2696,7 @@ export default function ProductsPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group *</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group *</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2663,7 +2721,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Collection</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Collection</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2688,7 +2746,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Stage</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Stage</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2713,7 +2771,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Size</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Size</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2738,7 +2796,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Diamond Type</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Type</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2763,7 +2821,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Diamond Spread</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2788,7 +2846,7 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Design Status</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Design Status</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2813,15 +2871,15 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Drawer Location</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Drawer Location</label>
                     <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.drawerLocation} onChange={(event) => setForm((prev) => ({ ...prev, drawerLocation: event.target.value }))} placeholder="Drawer location" />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Other Weight</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Other Weight</label>
                     <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.otherWeight} onChange={(event) => setForm((prev) => ({ ...prev, otherWeight: event.target.value }))} placeholder="Other Weight" />
                   </div>
                   <div className="md:col-span-2 xl:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Tags</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Tags</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -2868,17 +2926,18 @@ export default function ProductsPage() {
                     </div>
                   </div>
                   <div className="xl:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Design Description</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Design Description</label>
                     <textarea className="h-20 w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.designDescription} onChange={(event) => setForm((prev) => ({ ...prev, designDescription: event.target.value }))} placeholder="Design Description" />
                   </div>
                   <div className="xl:col-span-2">
-                    <label className="mb-1 block text-xs font-medium text-gray-600">Remarks</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Remarks</label>
                     <textarea className="h-20 w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.remarks} onChange={(event) => setForm((prev) => ({ ...prev, remarks: event.target.value }))} placeholder="Design Remarks" />
                   </div>
                 </div>
               </div>
 
-              <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
+              <div className="space-y-4">
+                <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
                 <div className="border-b border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">Images Gallery</div>
                 <div className="space-y-3 p-3">
                   <div className="flex flex-wrap gap-2">
@@ -2967,6 +3026,23 @@ export default function ProductsPage() {
                     </div>
                   )}
                 </div>
+                </div>
+                <div className="h-fit rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-sm shadow-sm">
+                  <h3 className="mb-3 border-b border-emerald-200 pb-2 text-base font-semibold text-emerald-900">Summary</h3>
+                  <div className="space-y-1 text-slate-700">
+                    <p className="flex items-center justify-between"><span>Metal Value :</span><span className="font-semibold">{costTotals.metal.toFixed(2)}</span></p>
+                    <p className="flex items-center justify-between"><span>Stone Value :</span><span className="font-semibold">{costTotals.gem.toFixed(2)}</span></p>
+                    <p className="flex items-center justify-between"><span>Labor Value :</span><span className="font-semibold">{costTotals.labor.toFixed(2)}</span></p>
+                    {FINDING_FEATURE_ENABLED ? (
+                      <p className="flex items-center justify-between"><span>Finding Value :</span><span className="font-semibold">{costTotals.finding.toFixed(2)}</span></p>
+                    ) : null}
+                    <p className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-base"><span className="font-semibold">Total Value :</span><span className="font-bold text-slate-900">{costTotals.total.toFixed(2)}</span></p>
+                  </div>
+                  <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-slate-700">
+                    <p className="flex items-center justify-between"><span>Gross Weight :</span><span className="font-semibold">{costTotals.grossWeight.toFixed(3)}</span></p>
+                    <p className="flex items-center justify-between"><span>Live Price :</span><span className="font-semibold">0.00</span></p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2975,8 +3051,8 @@ export default function ProductsPage() {
                 <div className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
                   <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Metal Information</div>
                   <div className="overflow-x-auto scrollbar-top">
-                    <table className="min-w-[1020px] text-sm">
-                      <thead className="bg-amber-50/70 text-left text-[11px] font-semibold text-amber-900">
+                    <table className="w-full min-w-[1020px] text-sm">
+                      <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
                           <th className="px-2 py-2">Metal Caratage</th>
                           <th className="px-2 py-2">Net Wt. *</th>
@@ -3114,8 +3190,8 @@ export default function ProductsPage() {
                     {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
                   </div>
                   <div className="overflow-x-auto scrollbar-top">
-                    <table className="min-w-[920px] text-sm">
-                      <thead className="bg-cyan-50/70 text-left text-[11px] font-semibold text-cyan-900">
+                    <table className="w-full min-w-[920px] text-sm">
+                      <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
                           <th className="px-2 py-2">Packet</th>
                           <th className="px-2 py-2">Info</th>
@@ -3133,7 +3209,7 @@ export default function ProductsPage() {
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-2">
                                 <select
-                                  className="w-44 rounded border border-gray-300 px-2 py-1"
+                                  className="w-36 rounded border border-gray-300 px-2 py-1"
                                   value={item.packetId}
                                   onChange={(event) => applyPacketToGemRow(item.id, event.target.value)}
                                 >
@@ -3168,23 +3244,33 @@ export default function ProductsPage() {
                               </div>
                             </td>
                             <td className="px-2 py-2">
-                              <input
-                                className="w-52 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
-                                value={getGemInfoText(item)}
-                                placeholder="Stone, Size, Color, Quality, Shape"
-                                readOnly
-                              />
+                              <div className="max-w-[14rem] whitespace-normal text-[11px] leading-4 text-gray-700">
+                                <p>
+                                  <span className="font-semibold text-gray-900">S:</span> {item.stone || '-'}
+                                  {' | '}
+                                  <span className="font-semibold text-gray-900">Sh:</span> {item.shape || '-'}
+                                  {' | '}
+                                  <span className="font-semibold text-gray-900">Sz:</span> {item.size || '-'}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-gray-900">C:</span> {item.cut || '-'}
+                                  {' | '}
+                                  <span className="font-semibold text-gray-900">Clr:</span> {item.color || '-'}
+                                  {' | '}
+                                  <span className="font-semibold text-gray-900">Q:</span> {item.quality || '-'}
+                                </p>
+                              </div>
                             </td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-16 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
                             <td className="px-2 py-2">
                               <input
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                className="w-24 rounded border border-gray-300 px-2 py-1"
+                                className="w-20 rounded border border-gray-300 px-2 py-1"
                                 value={item.amount}
                                 onChange={(event) => updateGemRow(item.id, 'amount', event.target.value)}
                                 placeholder={getGemValue(item).toFixed(2)}
@@ -3212,13 +3298,13 @@ export default function ProductsPage() {
               <div className="hidden xl:block" aria-hidden="true" />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[3fr_1fr]">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
                 <div className="rounded-xl border border-rose-200 bg-white shadow-sm">
                   <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">Labor Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="min-w-full text-sm">
-                      <thead className="bg-rose-50/70 text-left text-[11px] font-semibold text-rose-900">
+                      <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
                           <th className="px-2 py-2">##</th>
                           <th className="px-2 py-2">Labor Head</th>
@@ -3283,7 +3369,7 @@ export default function ProductsPage() {
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-rose-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: masterOptions.laborHeads[0]?.value || '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
+                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
                   </div>
                 </div>
 
@@ -3358,22 +3444,7 @@ export default function ProductsPage() {
                 ) : null}
               </div>
 
-              <div className="h-fit rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-sm shadow-sm">
-                <h3 className="mb-3 border-b border-emerald-200 pb-2 text-base font-semibold text-emerald-900">Summary</h3>
-                <div className="space-y-1 text-slate-700">
-                  <p className="flex items-center justify-between"><span>Metal Value :</span><span className="font-semibold">{costTotals.metal.toFixed(2)}</span></p>
-                  <p className="flex items-center justify-between"><span>Stone Value :</span><span className="font-semibold">{costTotals.gem.toFixed(2)}</span></p>
-                  <p className="flex items-center justify-between"><span>Labor Value :</span><span className="font-semibold">{costTotals.labor.toFixed(2)}</span></p>
-                  {FINDING_FEATURE_ENABLED ? (
-                    <p className="flex items-center justify-between"><span>Finding Value :</span><span className="font-semibold">{costTotals.finding.toFixed(2)}</span></p>
-                  ) : null}
-                  <p className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-base"><span className="font-semibold">Total Value :</span><span className="font-bold text-slate-900">{costTotals.total.toFixed(2)}</span></p>
-                </div>
-                <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-slate-700">
-                  <p className="flex items-center justify-between"><span>Gross Weight :</span><span className="font-semibold">{costTotals.grossWeight.toFixed(3)}</span></p>
-                  <p className="flex items-center justify-between"><span>Live Price :</span><span className="font-semibold">0.00</span></p>
-                </div>
-              </div>
+              <div className="hidden xl:block" aria-hidden="true" />
             </div>
 
             <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 pt-3 shadow-[0_-6px_18px_rgba(15,23,42,0.08)]">
@@ -4121,7 +4192,39 @@ export default function ProductsPage() {
           <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Date Time</th></tr></thead>
-              <tbody>{historyRows.map((row, idx) => <tr key={`${row[0]}-${idx}`} className="border-t border-gray-200"><td className="px-3 py-2">{idx + 1}</td><td className="px-3 py-2">{row[0]}</td><td className="px-3 py-2">{row[1]}</td><td className="px-3 py-2">{row[2]}</td></tr>)}</tbody>
+              <tbody>
+                {historyLoading ? (
+                  <tr className="border-t border-gray-200">
+                    <td className="px-3 py-4 text-center text-sm text-gray-600" colSpan={4}>
+                      Loading history...
+                    </td>
+                  </tr>
+                ) : historyError ? (
+                  <tr className="border-t border-gray-200">
+                    <td className="px-3 py-4 text-center text-sm text-red-600" colSpan={4}>
+                      {historyError}
+                    </td>
+                  </tr>
+                ) : historyRows.length === 0 ? (
+                  <tr className="border-t border-gray-200">
+                    <td className="px-3 py-4 text-center text-sm text-gray-500" colSpan={4}>
+                      No history entries found.
+                    </td>
+                  </tr>
+                ) : (
+                  historyRows.map((row, idx) => (
+                    <tr key={row.id || `${row.actionType}-${idx}`} className="border-t border-gray-200">
+                      <td className="px-3 py-2">{idx + 1}</td>
+                      <td className="px-3 py-2">
+                        {row.actionType ? `${row.actionType}: ` : ''}
+                        {row.remarks || '-'}
+                      </td>
+                      <td className="px-3 py-2">{row.user || 'System'}</td>
+                      <td className="px-3 py-2">{row.dateTime || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </table>
           </div>
         </Modal>

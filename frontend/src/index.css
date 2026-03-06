@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --brand-primary: #81a6c6;
+    --brand-secondary: #aacddc;
+    --brand-surface: #f3e3d0;
+    --brand-neutral: #d2c4b4;
+  }
+
+  body {
+    background: var(--brand-surface);
+    color: #1f2937;
+  }
+}
+
 @layer utilities {
   .scrollbar-top {
     overflow-y: hidden;
