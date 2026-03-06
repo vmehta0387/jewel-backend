@@ -45,7 +45,7 @@ import { DesignDurationType, DesignProcessStage } from './entities/design-proces
 import { DesignRelevant } from './entities/design-relevant.entity';
 import { DesignStlFile } from './entities/design-stl-file.entity';
 import { DesignVendor } from './entities/design-vendor.entity';
-import { StonePacket, StoneWeightUnit } from './entities/stone-packet.entity';
+import { StonePacket, StonePacketPriceIn, StoneWeightUnit } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster, DesignMasterType, FindingPriceIn } from './entities/design-master.entity';
@@ -821,9 +821,19 @@ export class ProductsService {
     this.assertDesignWriteAccess(requester);
     const packetName = this.normalizePacketName(dto.packetName);
     const existing = await this.packetRepo.findOne({ where: { packetName } });
+    const pieces = this.resolvePacketPieces(dto.pieces, 1);
+    const weightPerPc = this.resolvePacketWeightPerPc({
+      weightPerPc: dto.weightPerPc,
+      weight: dto.weight,
+      pieces,
+    });
+    const totalWeight = this.roundTo3(weightPerPc * pieces);
+    const priceIn = this.normalizePacketPriceIn(dto.priceIn);
+    const sellingPrice = this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice');
+    const weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
+
     if (existing) {
       if (!existing.isActive) {
-        const nextWeight = this.requiredPositiveNumber(dto.weight, 'weight');
         existing.stockType = this.optionalText(dto.stockType) || existing.stockType || 'COMPLETED';
         existing.stone = this.optionalText(dto.stone);
         existing.shape = this.optionalText(dto.shape);
@@ -831,16 +841,17 @@ export class ProductsService {
         existing.cut = this.optionalText(dto.cut);
         existing.color = this.optionalText(dto.color);
         existing.quality = this.optionalText(dto.quality);
-        existing.pieces = this.toInt(dto.pieces);
-        existing.weight = nextWeight;
-        existing.weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
+        existing.priceIn = priceIn;
+        existing.sellingPrice = sellingPrice;
+        existing.weightPerPc = this.roundTo3(weightPerPc);
+        existing.pieces = pieces;
+        existing.weight = totalWeight;
+        existing.weightUnit = weightUnit;
         existing.isActive = true;
         return this.packetRepo.save(existing);
       }
       throw new BadRequestException('Packet name already exists');
     }
-
-    const weight = this.requiredPositiveNumber(dto.weight, 'weight');
 
     const packet = this.packetRepo.create({
       packetName,
@@ -851,9 +862,12 @@ export class ProductsService {
       cut: this.optionalText(dto.cut),
       color: this.optionalText(dto.color),
       quality: this.optionalText(dto.quality),
-      pieces: this.toInt(dto.pieces),
-      weight,
-      weightUnit: this.normalizePacketWeightUnit(dto.weightUnit),
+      priceIn,
+      sellingPrice,
+      weightPerPc: this.roundTo3(weightPerPc),
+      pieces,
+      weight: totalWeight,
+      weightUnit,
       isActive: true,
     });
 
@@ -878,6 +892,11 @@ export class ProductsService {
       packet.packetName = nextPacketName;
     }
 
+    const nextPieces = this.resolvePacketPieces(
+      dto.pieces !== undefined ? dto.pieces : packet.pieces,
+      packet.pieces || 1,
+    );
+
     if (dto.stockType !== undefined) packet.stockType = this.optionalText(dto.stockType);
     if (dto.stone !== undefined) packet.stone = this.optionalText(dto.stone);
     if (dto.shape !== undefined) packet.shape = this.optionalText(dto.shape);
@@ -885,12 +904,30 @@ export class ProductsService {
     if (dto.cut !== undefined) packet.cut = this.optionalText(dto.cut);
     if (dto.color !== undefined) packet.color = this.optionalText(dto.color);
     if (dto.quality !== undefined) packet.quality = this.optionalText(dto.quality);
-    if (dto.pieces !== undefined) packet.pieces = this.toInt(dto.pieces);
-    if (dto.weight !== undefined) packet.weight = this.requiredPositiveNumber(dto.weight, 'weight');
+    if (dto.priceIn !== undefined) packet.priceIn = this.normalizePacketPriceIn(dto.priceIn);
+    if (dto.sellingPrice !== undefined) {
+      packet.sellingPrice = this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice');
+    }
+
+    const shouldRecalculateWeight =
+      dto.weight !== undefined || dto.weightPerPc !== undefined || dto.pieces !== undefined;
+    if (shouldRecalculateWeight) {
+      const nextWeightPerPc = this.resolvePacketWeightPerPc({
+        weightPerPc: dto.weightPerPc,
+        weight: dto.weight,
+        pieces: nextPieces,
+        fallbackWeightPerPc: packet.weightPerPc,
+        fallbackWeight: packet.weight,
+      });
+      packet.weightPerPc = this.roundTo3(nextWeightPerPc);
+      packet.weight = this.roundTo3(nextWeightPerPc * nextPieces);
+    }
+
+    packet.pieces = nextPieces;
     if (dto.weightUnit !== undefined) packet.weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
 
-    if (packet.weight <= 0) {
-      throw new BadRequestException('Stone packet weight must be greater than 0');
+    if (this.toNumber(packet.weightPerPc) <= 0) {
+      throw new BadRequestException('Stone packet weight per pc must be greater than 0');
     }
 
     return this.packetRepo.save(packet);
@@ -2615,6 +2652,10 @@ export class ProductsService {
     return Number(value.toFixed(2));
   }
 
+  private roundTo3(value: number): number {
+    return Number(value.toFixed(3));
+  }
+
   private toInt(value: number | string | undefined | null): number {
     if (value === undefined || value === null) {
       return 0;
@@ -2751,10 +2792,62 @@ export class ProductsService {
   }
 
   private normalizePacketWeightUnit(value?: string): StoneWeightUnit {
-    if (value === StoneWeightUnit.GMS) {
+    const normalized = (value || '').trim().toUpperCase();
+    if (normalized === StoneWeightUnit.GMS || normalized === 'GRAM') {
       return StoneWeightUnit.GMS;
     }
     return StoneWeightUnit.CTS;
+  }
+
+  private normalizePacketPriceIn(value?: string): StonePacketPriceIn {
+    const normalized = (value || '').trim().toUpperCase();
+    if (normalized === StonePacketPriceIn.PCS) {
+      return StonePacketPriceIn.PCS;
+    }
+    return StonePacketPriceIn.WT;
+  }
+
+  private resolvePacketPieces(value: number | string | null | undefined, fallback = 1): number {
+    if (value === undefined || value === null || value === '') {
+      return Math.max(1, this.toInt(fallback));
+    }
+    return Math.max(1, this.toInt(value));
+  }
+
+  private resolvePacketWeightPerPc(input: {
+    weightPerPc?: number | string | null;
+    weight?: number | string | null;
+    pieces: number;
+    fallbackWeightPerPc?: number | string | null;
+    fallbackWeight?: number | string | null;
+  }): number {
+    const explicitWeightPerPc = this.optionalNonNegativeNumber(input.weightPerPc, 'weightPerPc');
+    if (explicitWeightPerPc !== null) {
+      if (explicitWeightPerPc <= 0) {
+        throw new BadRequestException('weightPerPc must be greater than 0');
+      }
+      return explicitWeightPerPc;
+    }
+
+    const explicitWeight = this.optionalNonNegativeNumber(input.weight, 'weight');
+    if (explicitWeight !== null) {
+      if (explicitWeight <= 0) {
+        throw new BadRequestException('weight must be greater than 0');
+      }
+      return explicitWeight / Math.max(1, input.pieces);
+    }
+
+    const fallbackPerPc = this.toNumber(input.fallbackWeightPerPc);
+    if (fallbackPerPc > 0) {
+      return fallbackPerPc;
+    }
+
+    const fallbackWeight = this.toNumber(input.fallbackWeight);
+    if (fallbackWeight > 0) {
+      return fallbackWeight / Math.max(1, input.pieces);
+    }
+
+    throw new BadRequestException('weightPerPc must be greater than 0');
   }
 
   private deriveFileNameFromUrl(fileUrl: string): string {

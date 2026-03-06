@@ -29,6 +29,12 @@ type DesignMasterType =
 interface MasterOption {
   id: string;
   value: string;
+  aliasName?: string;
+  metalName?: string;
+  metalColor?: string;
+  metalPurity?: string;
+  purityPercentage?: number;
+  marketPricePerGm?: number;
   wastagePercent?: number;
   defaultWastagePercent?: number;
   livePricePerGm?: number;
@@ -169,6 +175,9 @@ interface PacketOption {
   cut: string | null;
   color: string | null;
   quality: string | null;
+  priceIn: 'WT' | 'PCS';
+  sellingPrice: number | null;
+  weightPerPc: number | null;
   pieces: number;
   weight: number;
   weightUnit: 'CTS' | 'GMS';
@@ -183,20 +192,10 @@ interface PacketForm {
   cut: string;
   color: string;
   quality: string;
-  pieces: string;
-  weight: string;
-  weightUnit: 'CTS' | 'GMS';
-}
-
-interface GlobalBasePriceRow {
-  id: string;
-  category: 'METAL' | 'DIAMOND';
-  referenceValue: string;
-  subValue: string | null;
-  pricePerUnit: number;
-  unit: 'GRAM' | 'CARAT';
-  currency: string;
-  effectiveFrom: string;
+  priceIn: 'WT' | 'PCS';
+  sellingPrice: string;
+  weightPerPc: string;
+  weightIn: 'CTS' | 'GRAM';
 }
 
 const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -207,6 +206,16 @@ const parseNum = (value: string): number => {
 const parseNumericValue = (value: number | string | null | undefined): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+const toPacketToken = (value: string): string => value.replace(/\s+/g, '').replace(/[^a-zA-Z0-9/-]/g, '');
+const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>): string => {
+  const parts = [packet.stone, packet.shape, packet.size, packet.cut, packet.color, packet.quality]
+    .map((entry) => toPacketToken((entry || '').trim()))
+    .filter((entry) => entry.length > 0);
+  return parts.join('');
+};
+const getMetalPurityDisplay = (option: MasterOption): string => {
+  return (option.aliasName || option.value || '').trim();
 };
 const normalizeLookupKey = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 const normalizeDateTimeValue = (value: string | null | undefined): string => {
@@ -354,9 +363,10 @@ const defaultPacketForm: PacketForm = {
   cut: '',
   color: '',
   quality: '',
-  pieces: '',
-  weight: '',
-  weightUnit: 'CTS',
+  priceIn: 'WT',
+  sellingPrice: '',
+  weightPerPc: '',
+  weightIn: 'CTS',
 };
 
 const historyRows = [
@@ -373,6 +383,9 @@ const emptyMasterOptions = {
   tags: [] as MasterOption[],
   designStatuses: [] as MasterOption[],
   stages: [] as MasterOption[],
+  metalNames: [] as MasterOption[],
+  metalColors: [] as MasterOption[],
+  metalPurities: [] as MasterOption[],
   metalCaratages: [] as MasterOption[],
   goldColours: [] as MasterOption[],
   diamondTypes: [] as MasterOption[],
@@ -561,10 +574,10 @@ export default function ProductsPage() {
   const [tagPicker, setTagPicker] = useState('');
   const [packetOptions, setPacketOptions] = useState<PacketOption[]>([]);
   const [packetLoading, setPacketLoading] = useState(false);
-  const [metalRateLookup, setMetalRateLookup] = useState<Record<string, number>>({});
   const [showPacketMasterModal, setShowPacketMasterModal] = useState(false);
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
+  const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [showGalleryPicker, setShowGalleryPicker] = useState(false);
@@ -575,6 +588,10 @@ export default function ProductsPage() {
   const [inlineMasterDescription, setInlineMasterDescription] = useState('');
   const [inlineFindingNo, setInlineFindingNo] = useState('');
   const [inlineMetalCaratage, setInlineMetalCaratage] = useState('');
+  const [inlineMetalName, setInlineMetalName] = useState('');
+  const [inlineMetalColor, setInlineMetalColor] = useState('');
+  const [inlineMetalPurity, setInlineMetalPurity] = useState('');
+  const [inlineDefaultWastagePercent, setInlineDefaultWastagePercent] = useState('');
   const [inlinePriceIn, setInlinePriceIn] = useState<'PIECES' | 'GRAM' | 'PAIR' | 'INCHES'>('PIECES');
   const [inlinePricePerUnit, setInlinePricePerUnit] = useState('');
   const [inlineDimensions, setInlineDimensions] = useState('');
@@ -593,6 +610,121 @@ export default function ProductsPage() {
         .filter((tag) => tag.length > 0),
     [form.tags],
   );
+  const inlineMetalColorOptions = useMemo(
+    () =>
+      masterOptions.metalColors.filter(
+        (option) =>
+          !inlineMetalName ||
+          normalizeLookupKey(option.metalName) === normalizeLookupKey(inlineMetalName),
+      ),
+    [inlineMetalName, masterOptions.metalColors],
+  );
+  const inlineMetalPurityOptions = useMemo(
+    () =>
+      masterOptions.metalPurities.filter(
+        (option) =>
+          !inlineMetalName ||
+          normalizeLookupKey(option.metalName) === normalizeLookupKey(inlineMetalName),
+      ),
+    [inlineMetalName, masterOptions.metalPurities],
+  );
+  const inlineSelectedPurityOption = useMemo(
+    () =>
+      inlineMetalPurityOptions.find(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(inlineMetalPurity),
+      ),
+    [inlineMetalPurity, inlineMetalPurityOptions],
+  );
+  const inlineSelectedPurityToken = useMemo(
+    () =>
+      inlineSelectedPurityOption
+        ? getMetalPurityDisplay(inlineSelectedPurityOption)
+        : inlineMetalPurity,
+    [inlineMetalPurity, inlineSelectedPurityOption],
+  );
+  useEffect(() => {
+    if (inlineMasterType !== 'METAL_CARATAGE') return;
+
+    if (
+      inlineMetalColor &&
+      !inlineMetalColorOptions.some(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(inlineMetalColor),
+      )
+    ) {
+      setInlineMetalColor('');
+    }
+
+    if (
+      inlineMetalPurity &&
+      !inlineMetalPurityOptions.some(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(inlineMetalPurity),
+      )
+    ) {
+      setInlineMetalPurity('');
+    }
+  }, [
+    inlineMasterType,
+    inlineMetalColor,
+    inlineMetalColorOptions,
+    inlineMetalPurity,
+    inlineMetalPurityOptions,
+  ]);
+
+  useEffect(() => {
+    if (inlineMasterType !== 'METAL_CARATAGE') return;
+    if (!inlineMetalPurity || !inlineMetalColor || !inlineMetalName) return;
+
+    const purityToken = inlineSelectedPurityToken || inlineMetalPurity;
+    const computedValue = `${purityToken}-${inlineMetalColor}-${inlineMetalName}`.trim();
+    if (!computedValue) return;
+    if (inlineMasterValue !== computedValue) {
+      setInlineMasterValue(computedValue);
+    }
+    if (inlineMasterAliasName !== computedValue) {
+      setInlineMasterAliasName(computedValue);
+    }
+  }, [
+    inlineMasterAliasName,
+    inlineMasterType,
+    inlineMasterValue,
+    inlineMetalColor,
+    inlineMetalName,
+    inlineMetalPurity,
+    inlineSelectedPurityToken,
+  ]);
+  useEffect(() => {
+    if (inlineMasterType !== 'METAL_CARATAGE') return;
+    const selectedMetal = masterOptions.metalNames.find(
+      (row) => normalizeLookupKey(row.value) === normalizeLookupKey(inlineMetalName),
+    );
+    const basePricePerGm = parseNumericValue(selectedMetal?.marketPricePerGm);
+    const purityPercent = parseNumericValue(inlineSelectedPurityOption?.purityPercentage);
+    if (basePricePerGm <= 0 || purityPercent <= 0) return;
+    const computed = ((basePricePerGm * purityPercent) / 100).toFixed(2);
+    if (computed !== inlinePricePerUnit) {
+      setInlinePricePerUnit(computed);
+    }
+  }, [
+    inlineMasterType,
+    inlineMetalName,
+    inlinePricePerUnit,
+    inlineSelectedPurityOption,
+    masterOptions.metalNames,
+  ]);
+
+  useEffect(() => {
+    if (!showPacketMasterModal || packetNameManuallyEdited) {
+      return;
+    }
+    const computedPacketName = buildPacketNameFromForm(packetForm);
+    if (computedPacketName && computedPacketName !== packetForm.packetName) {
+      setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
+    }
+  }, [
+    packetForm,
+    packetNameManuallyEdited,
+    showPacketMasterModal,
+  ]);
   const galleryLibraryUrls = useMemo(() => {
     const seen = new Set<string>();
     const urls: string[] = [];
@@ -614,9 +746,7 @@ export default function ProductsPage() {
     if (masterRate > 0) {
       return masterRate;
     }
-    const key = normalizeLookupKey(metalCaratage);
-    if (!key) return undefined;
-    return metalRateLookup[key];
+    return undefined;
   };
 
   const getMetalMasterOption = (metalCaratage: string): MasterOption | undefined => {
@@ -812,6 +942,9 @@ export default function ProductsPage() {
         tags: response.data?.tags || [],
         designStatuses: response.data?.designStatuses || [],
         stages: response.data?.stages || [],
+        metalNames: response.data?.metalNames || [],
+        metalColors: response.data?.metalColors || [],
+        metalPurities: response.data?.metalPurities || [],
         metalCaratages: response.data?.metalCaratages || [],
         goldColours: response.data?.goldColours || [],
         diamondTypes: response.data?.diamondTypes || [],
@@ -829,27 +962,6 @@ export default function ProductsPage() {
       setMasterOptions(emptyMasterOptions);
     } finally {
       setMastersLoading(false);
-    }
-  };
-
-  const fetchGlobalBasePrices = async () => {
-    try {
-      const response = await api.get('/products/global-base-prices');
-      const data = Array.isArray(response.data?.data) ? (response.data.data as GlobalBasePriceRow[]) : [];
-      const nextLookup: Record<string, number> = {};
-
-      data.forEach((row) => {
-        if (row.category !== 'METAL') return;
-        const key = normalizeLookupKey(row.referenceValue);
-        if (!key) return;
-        if (nextLookup[key] === undefined) {
-          nextLookup[key] = parseNumericValue(row.pricePerUnit);
-        }
-      });
-
-      setMetalRateLookup(nextLookup);
-    } catch {
-      setMetalRateLookup({});
     }
   };
 
@@ -917,9 +1029,10 @@ export default function ProductsPage() {
           };
         }
 
-        const totalWeight = Math.max(0, Number(packet.weight || 0));
         const pieces = Math.max(0, Number(packet.pieces || 0));
-        const wtPerPcs = pieces > 0 ? totalWeight / pieces : 0;
+        const explicitWeightPerPc = Math.max(0, Number(packet.weightPerPc || 0));
+        const totalWeight = Math.max(0, Number(packet.weight || 0));
+        const wtPerPcs = explicitWeightPerPc > 0 ? explicitWeightPerPc : pieces > 0 ? totalWeight / pieces : 0;
         const wtInCts = wtPerPcs * pieces;
 
         return {
@@ -962,6 +1075,10 @@ export default function ProductsPage() {
     setInlineMasterDescription('');
     setInlineFindingNo('');
     setInlineMetalCaratage('');
+    setInlineMetalName('');
+    setInlineMetalColor('');
+    setInlineMetalPurity('');
+    setInlineDefaultWastagePercent('');
     setInlinePriceIn('PIECES');
     setInlinePricePerUnit('');
     setInlineDimensions('');
@@ -1041,6 +1158,10 @@ export default function ProductsPage() {
     setInlineMasterDescription('');
     setInlineFindingNo('');
     setInlineMetalCaratage('');
+    setInlineMetalName('');
+    setInlineMetalColor('');
+    setInlineMetalPurity('');
+    setInlineDefaultWastagePercent('');
     setInlinePriceIn('PIECES');
     setInlinePricePerUnit('');
     setInlineDimensions('');
@@ -1053,9 +1174,24 @@ export default function ProductsPage() {
     event.preventDefault();
     if (!inlineMasterType) return;
 
-    const value = inlineMasterValue.trim();
-    const aliasName = inlineMasterAliasName.trim();
-    if (!value || !aliasName) {
+    let value = inlineMasterValue.trim();
+    let aliasName = inlineMasterAliasName.trim();
+
+    if (
+      inlineMasterType === 'METAL_CARATAGE' &&
+      inlineMetalName &&
+      inlineMetalPurity &&
+      inlineMetalColor
+    ) {
+      const purityToken = inlineSelectedPurityToken || inlineMetalPurity;
+      const computed = `${purityToken}-${inlineMetalColor}-${inlineMetalName}`.trim();
+      if (computed) {
+        value = computed;
+        aliasName = computed;
+      }
+    }
+
+    if (inlineMasterType !== 'METAL_CARATAGE' && (!value || !aliasName)) {
       window.alert('Master name and alias name are required.');
       return;
     }
@@ -1078,6 +1214,25 @@ export default function ProductsPage() {
               inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
           }
         : null;
+    const metalCaratagePayload =
+      inlineMasterType === 'METAL_CARATAGE'
+        ? {
+            metalName: inlineMetalName.trim(),
+            metalColor: inlineMetalColor.trim(),
+            metalPurity: inlineMetalPurity.trim(),
+            purityPercentage:
+              inlineSelectedPurityOption?.purityPercentage !== undefined &&
+              inlineSelectedPurityOption?.purityPercentage !== null
+                ? parseNumericValue(inlineSelectedPurityOption.purityPercentage)
+                : null,
+            livePricePerGm:
+              inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
+            defaultWastagePercent:
+              inlineDefaultWastagePercent.trim().length > 0
+                ? parseNum(inlineDefaultWastagePercent)
+                : null,
+          }
+        : null;
     const descriptionPayload = inlineMasterType === 'FINDING_HEAD' ? null : inlineMasterDescription.trim() || null;
 
     if (inlineMasterType === 'FINDING_HEAD') {
@@ -1087,6 +1242,16 @@ export default function ProductsPage() {
       }
       if (inlinePricePerUnit.trim().length === 0 || inlineWeightPerUnit.trim().length === 0) {
         window.alert('Price/Unit and Weight/Unit are required.');
+        return;
+      }
+    }
+    if (inlineMasterType === 'METAL_CARATAGE') {
+      if (
+        !metalCaratagePayload?.metalName ||
+        !metalCaratagePayload?.metalColor ||
+        !metalCaratagePayload?.metalPurity
+      ) {
+        window.alert('Metal Name, Metal Color, and Metal Purity are required.');
         return;
       }
     }
@@ -1100,6 +1265,7 @@ export default function ProductsPage() {
         description: descriptionPayload,
         ...(findingPayload || {}),
         ...(defaultWastagePayload || {}),
+        ...(metalCaratagePayload || {}),
       });
 
       const masterValue = response.data?.value || value;
@@ -1119,6 +1285,35 @@ export default function ProductsPage() {
     }
   };
 
+  const updatePacketFormField = (key: keyof PacketForm, value: string) => {
+    setPacketForm((prev) => {
+      const next = { ...prev, [key]: value } as PacketForm;
+      if (
+        !packetNameManuallyEdited &&
+        key !== 'packetName' &&
+        key !== 'priceIn' &&
+        key !== 'weightIn' &&
+        key !== 'sellingPrice' &&
+        key !== 'weightPerPc'
+      ) {
+        const computedPacketName = buildPacketNameFromForm(next);
+        if (computedPacketName) {
+          next.packetName = computedPacketName;
+        }
+      }
+      return next;
+    });
+    if (key === 'packetName') {
+      setPacketNameManuallyEdited(true);
+    }
+  };
+
+  const regeneratePacketName = () => {
+    const computedPacketName = buildPacketNameFromForm(packetForm);
+    setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
+    setPacketNameManuallyEdited(false);
+  };
+
   const savePacketMaster = async () => {
     const payload = {
       packetName: packetForm.packetName.trim(),
@@ -1128,21 +1323,24 @@ export default function ProductsPage() {
       cut: packetForm.cut.trim(),
       color: packetForm.color.trim(),
       quality: packetForm.quality.trim(),
-      pieces: parseNum(packetForm.pieces),
-      weight: parseNum(packetForm.weight),
-      weightUnit: packetForm.weightUnit,
+      priceIn: packetForm.priceIn,
+      sellingPrice: parseNum(packetForm.sellingPrice),
+      weightPerPc: parseNum(packetForm.weightPerPc),
+      pieces: 1,
+      weight: parseNum(packetForm.weightPerPc),
+      weightUnit: packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS',
     };
 
     if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.cut || !payload.color || !payload.quality) {
       window.alert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
       return;
     }
-    if (payload.pieces < 0) {
-      window.alert('Packet pieces cannot be negative.');
+    if (payload.sellingPrice < 0) {
+      window.alert('Selling price cannot be negative.');
       return;
     }
-    if (payload.weight <= 0) {
-      window.alert('Stone packet weight must be greater than 0.');
+    if (payload.weightPerPc <= 0) {
+      window.alert('Weight/Pc must be greater than 0.');
       return;
     }
 
@@ -1152,6 +1350,7 @@ export default function ProductsPage() {
       await fetchPacketOptions();
       setShowPacketMasterModal(false);
       setPacketForm(defaultPacketForm);
+      setPacketNameManuallyEdited(false);
 
       const createdId = response.data?.id;
       if (createdId && gemRows[0]) {
@@ -1168,7 +1367,6 @@ export default function ProductsPage() {
     fetchDesignRows();
     fetchMasterOptions();
     fetchPacketOptions();
-    fetchGlobalBasePrices();
   }, []);
 
   useEffect(() => {
@@ -1208,7 +1406,7 @@ export default function ProductsPage() {
         return { ...row, pricePerGm: nextPricePerGm, wastagePercent: nextWastagePercent };
       }),
     );
-  }, [masterOptions.metalCaratages, masterOptions.goldColours, metalRateLookup]);
+  }, [masterOptions.metalCaratages, masterOptions.goldColours]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1414,16 +1612,21 @@ export default function ProductsPage() {
 
       setMetalRows(
         metals.length > 0
-          ? metals.map((item: any) => ({
-              id: item.id || makeId(),
-              goldColour: item.metalCaratage || item.goldColour || '',
-              netWt: asInput(item.netWt),
-              wastagePercent: asInput(item.wastagePercent),
+          ? metals.map((item: any) => {
+              const metalCaratage = item.metalCaratage || item.goldColour || '';
+              const masterRate = getMetalRate(metalCaratage);
+              return {
+                id: item.id || makeId(),
+                goldColour: metalCaratage,
+                netWt: asInput(item.netWt),
+                wastagePercent: asInput(item.wastagePercent),
                 wastageWt: asInput(item.wastageWt),
-              totalWt: asInput(item.totalWt),
-              pricePerGm: asInput(item.pricePerGm),
-              value: asInput(item.value),
-            }))
+                totalWt: asInput(item.totalWt),
+                pricePerGm:
+                  masterRate !== undefined ? masterRate.toFixed(2) : asInput(item.pricePerGm),
+                value: asInput(item.value),
+              };
+            })
           : [createMetalRow(row.goldColour || '')],
       );
 
@@ -2710,6 +2913,19 @@ export default function ProductsPage() {
                                     );
                                   })}
                                 </select>
+                                <button
+                                  type="button"
+                                  className={inlineMasterAddButtonClass}
+                                  disabled={creatingMasterType === 'METAL_CARATAGE'}
+                                  onClick={() =>
+                                    addMasterFromDesign('METAL_CARATAGE', (masterValue) =>
+                                      updateMetalRow(item.id, 'goldColour', masterValue),
+                                    )
+                                  }
+                                  title="Add Metal Caratage"
+                                >
+                                  +
+                                </button>
                               </div>
                             </td>
                             <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
@@ -2838,6 +3054,7 @@ export default function ProductsPage() {
                                   className={inlineMasterAddButtonClass}
                                   onClick={() => {
                                     setPacketForm(defaultPacketForm);
+                                    setPacketNameManuallyEdited(false);
                                     setShowPacketMasterModal(true);
                                   }}
                                   title="Add Packet"
@@ -3104,8 +3321,8 @@ export default function ProductsPage() {
           <form onSubmit={saveInlineMasterFromDesign} className="space-y-4">
             <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
-            <div className={`grid grid-cols-1 gap-4 ${inlineMasterType === 'FINDING_HEAD' ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-              {inlineMasterType === 'FINDING_HEAD' ? (
+            {inlineMasterType === 'FINDING_HEAD' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Finding No.*</label>
                   <input
@@ -3116,28 +3333,146 @@ export default function ProductsPage() {
                     required
                   />
                 </div>
-              ) : null}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
-                <input
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  value={inlineMasterValue}
-                  onChange={(event) => setInlineMasterValue(event.target.value)}
-                  placeholder={masterTypeLabelMap[inlineMasterType]}
-                  required
-                />
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterValue}
+                    onChange={(event) => setInlineMasterValue(event.target.value)}
+                    placeholder={masterTypeLabelMap[inlineMasterType]}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterAliasName}
+                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
+                    placeholder="Alias Name"
+                    required
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-                <input
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  value={inlineMasterAliasName}
-                  onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                  placeholder="Alias Name"
-                  required
-                />
+            ) : null}
+
+            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterValue}
+                    onChange={(event) => setInlineMasterValue(event.target.value)}
+                    placeholder={masterTypeLabelMap[inlineMasterType]}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterAliasName}
+                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
+                    placeholder="Alias Name"
+                    required
+                  />
+                </div>
               </div>
-            </div>
+            ) : null}
+
+            {inlineMasterType === 'METAL_CARATAGE' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMetalName}
+                    onChange={(event) => setInlineMetalName(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Metal Name</option>
+                    {masterOptions.metalNames.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Purity*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMetalPurity}
+                    onChange={(event) => setInlineMetalPurity(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Metal Purity</option>
+                    {inlineMetalPurityOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {getMetalPurityDisplay(option)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Color*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMetalColor}
+                    onChange={(event) => setInlineMetalColor(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Metal Color</option>
+                    {inlineMetalColorOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterAliasName}
+                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
+                    placeholder="Metal Caratage Name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Wastage</label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={inlineDefaultWastagePercent}
+                      onChange={(event) => setInlineDefaultWastagePercent(event.target.value)}
+                      placeholder="0.00"
+                    />
+                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Price/Gms</label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={inlinePricePerUnit}
+                      onChange={(event) => setInlinePricePerUnit(event.target.value)}
+                      placeholder="Auto calculated (editable)"
+                    />
+                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {inlineMasterType === 'FINDING_HEAD' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -3211,7 +3546,19 @@ export default function ProductsPage() {
               </div>
             ) : null}
 
-            {inlineMasterType !== 'FINDING_HEAD' ? (
+            {inlineMasterType === 'METAL_CARATAGE' ? (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                <textarea
+                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={inlineMasterDescription}
+                  onChange={(event) => setInlineMasterDescription(event.target.value)}
+                  placeholder="Description"
+                />
+              </div>
+            ) : null}
+
+            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
@@ -3252,7 +3599,7 @@ export default function ProductsPage() {
       )}
 
       {showPacketMasterModal && (
-        <Modal title="ADD PACKET" onClose={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); }} size="max-w-6xl">
+        <Modal title="ADD PACKET" onClose={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }} size="max-w-6xl">
           <div className="space-y-4">
             <p className="text-sm font-medium text-rose-700">* Required fields</p>
             <div className="rounded border border-slate-200 bg-slate-50 p-4">
@@ -3264,7 +3611,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.stone}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, stone: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('stone', event.target.value)}
                     >
                       <option value="">Select Stone</option>
                       {!masterOptions.packetStones.some((option) => option.value === packetForm.stone) && packetForm.stone ? (
@@ -3292,7 +3639,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.shape}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, shape: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('shape', event.target.value)}
                     >
                       <option value="">Select Shape</option>
                       {!masterOptions.packetShapes.some((option) => option.value === packetForm.shape) && packetForm.shape ? (
@@ -3320,7 +3667,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.size}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, size: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('size', event.target.value)}
                     >
                       <option value="">Select Size</option>
                       {!masterOptions.packetSizes.some((option) => option.value === packetForm.size) && packetForm.size ? (
@@ -3348,7 +3695,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.cut}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, cut: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('cut', event.target.value)}
                     >
                       <option value="">Select Cut</option>
                       {!masterOptions.packetCuts.some((option) => option.value === packetForm.cut) && packetForm.cut ? (
@@ -3376,7 +3723,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.color}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, color: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('color', event.target.value)}
                     >
                       <option value="">Select Color</option>
                       {!masterOptions.packetColors.some((option) => option.value === packetForm.color) && packetForm.color ? (
@@ -3404,7 +3751,7 @@ export default function ProductsPage() {
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={packetForm.quality}
-                      onChange={(event) => setPacketForm((prev) => ({ ...prev, quality: event.target.value }))}
+                      onChange={(event) => updatePacketFormField('quality', event.target.value)}
                     >
                       <option value="">Select Quality</option>
                       {!masterOptions.packetQualities.some((option) => option.value === packetForm.quality) && packetForm.quality ? (
@@ -3428,47 +3775,110 @@ export default function ProductsPage() {
                 </div>
                 <div className="xl:col-span-2">
                   <label className="mb-1 block text-xs font-medium text-gray-600">Packet Name*</label>
-                  <input
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.packetName}
-                    onChange={(event) => setPacketForm((prev) => ({ ...prev, packetName: event.target.value }))}
-                    placeholder="Packet Name"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={packetForm.packetName}
+                      onChange={(event) => updatePacketFormField('packetName', event.target.value)}
+                      placeholder="Packet Name"
+                    />
+                    <button
+                      type="button"
+                      className={inlineMasterAddButtonClass}
+                      title="Regenerate packet name"
+                      onClick={regeneratePacketName}
+                    >
+                      R
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded border border-slate-200 bg-slate-50 p-4">
+              <p className="mb-3 text-sm font-semibold text-slate-800">Purchase Weight & Price (Optional)</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Price In</label>
+                  <div className="flex items-center gap-3 rounded border border-gray-300 bg-white px-3 py-2 text-sm">
+                    <label className="inline-flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="packet-price-in"
+                        value="WT"
+                        checked={packetForm.priceIn === 'WT'}
+                        onChange={(event) => updatePacketFormField('priceIn', event.target.value)}
+                      />
+                      <span>Wt</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="packet-price-in"
+                        value="PCS"
+                        checked={packetForm.priceIn === 'PCS'}
+                        onChange={(event) => updatePacketFormField('priceIn', event.target.value)}
+                      />
+                      <span>Pcs</span>
+                    </label>
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Pieces</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.pieces}
-                    onChange={(event) => setPacketForm((prev) => ({ ...prev, pieces: event.target.value }))}
-                    placeholder="0"
-                  />
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight In</label>
+                  <div className="flex items-center gap-3 rounded border border-gray-300 bg-white px-3 py-2 text-sm">
+                    <label className="inline-flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="packet-weight-in"
+                        value="CTS"
+                        checked={packetForm.weightIn === 'CTS'}
+                        onChange={(event) => updatePacketFormField('weightIn', event.target.value)}
+                      />
+                      <span>Cts</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="packet-weight-in"
+                        value="GRAM"
+                        checked={packetForm.weightIn === 'GRAM'}
+                        onChange={(event) => updatePacketFormField('weightIn', event.target.value)}
+                      />
+                      <span>Gram</span>
+                    </label>
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight</label>
-                  <input
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.weight}
-                    onChange={(event) => setPacketForm((prev) => ({ ...prev, weight: event.target.value }))}
-                    placeholder="0.000"
-                  />
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Selling Price*</label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded-l border border-gray-300 px-2 py-2 text-sm"
+                      value={packetForm.sellingPrice}
+                      onChange={(event) => updatePacketFormField('sellingPrice', event.target.value)}
+                      placeholder="Price"
+                    />
+                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">USD</span>
+                  </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight Unit</label>
-                  <select
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.weightUnit}
-                    onChange={(event) => setPacketForm((prev) => ({ ...prev, weightUnit: event.target.value as 'CTS' | 'GMS' }))}
-                  >
-                    <option value="CTS">CTS</option>
-                    <option value="GMS">GMS</option>
-                  </select>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight/Pc.</label>
+                  <div className="flex">
+                    <input
+                      type="number"
+                      min="0.001"
+                      step="0.001"
+                      className="w-full rounded-l border border-gray-300 px-2 py-2 text-sm"
+                      value={packetForm.weightPerPc}
+                      onChange={(event) => updatePacketFormField('weightPerPc', event.target.value)}
+                      placeholder="Weight/Pc."
+                    />
+                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">
+                      {packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3476,7 +3886,7 @@ export default function ProductsPage() {
               <Button type="button" onClick={savePacketMaster} disabled={packetSaving}>
                 {packetSaving ? 'Saving...' : 'Save'}
               </Button>
-              <Button type="button" variant="secondary" onClick={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); }}>
+              <Button type="button" variant="secondary" onClick={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }}>
                 Close
               </Button>
             </div>

@@ -748,6 +748,22 @@ export class CreateStonePacketDto {
   @IsOptional()
   quality?: string;
 
+  @IsIn(['WT', 'PCS'])
+  @IsOptional()
+  priceIn?: 'WT' | 'PCS';
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sellingPrice?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  @IsOptional()
+  weightPerPc?: number;
+
   @Type(() => Number)
   @IsNumber()
   @Min(0)
@@ -797,6 +813,22 @@ export class UpdateStonePacketDto {
   @IsString()
   @IsOptional()
   quality?: string;
+
+  @IsIn(['WT', 'PCS'])
+  @IsOptional()
+  priceIn?: 'WT' | 'PCS';
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  sellingPrice?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.000001)
+  @IsOptional()
+  weightPerPc?: number;
 
   @Type(() => Number)
   @IsNumber()

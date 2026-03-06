@@ -13,6 +13,11 @@ export enum StoneWeightUnit {
   GMS = 'GMS',
 }
 
+export enum StonePacketPriceIn {
+  WT = 'WT',
+  PCS = 'PCS',
+}
+
 @Entity('stone_packets')
 export class StonePacket {
   @PrimaryColumn('varchar', { length: 36 })
@@ -41,6 +46,20 @@ export class StonePacket {
 
   @Column({ nullable: true })
   quality: string | null;
+
+  @Column({
+    name: 'price_in',
+    type: 'enum',
+    enum: StonePacketPriceIn,
+    default: StonePacketPriceIn.WT,
+  })
+  priceIn: StonePacketPriceIn;
+
+  @Column({ name: 'selling_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  sellingPrice: number | null;
+
+  @Column({ name: 'weight_per_pc', type: 'decimal', precision: 12, scale: 3, nullable: true })
+  weightPerPc: number | null;
 
   @Column({ type: 'int', default: 0 })
   pieces: number;

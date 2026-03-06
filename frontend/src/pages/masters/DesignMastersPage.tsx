@@ -32,6 +32,7 @@ type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
 interface MasterOption {
   id: string;
   value: string;
+  aliasName?: string;
   metalName?: string;
   purityPercentage?: number;
   marketPricePerOunce?: number;
@@ -74,6 +75,9 @@ interface PacketRow {
   cut: string | null;
   color: string | null;
   quality: string | null;
+  priceIn: 'WT' | 'PCS';
+  sellingPrice: number | null;
+  weightPerPc: number | null;
   pieces: number;
   weight: number;
   weightUnit: 'CTS' | 'GMS';
@@ -365,6 +369,7 @@ interface PacketModalProps {
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChange: (key: keyof PacketForm, value: string) => void;
+  onRegeneratePacketName: () => void;
 }
 
 interface PacketForm {
@@ -375,9 +380,10 @@ interface PacketForm {
   cut: string;
   color: string;
   quality: string;
-  pieces: string;
-  weight: string;
-  weightUnit: 'CTS' | 'GMS';
+  priceIn: 'WT' | 'PCS';
+  sellingPrice: string;
+  weightPerPc: string;
+  weightIn: 'CTS' | 'GRAM';
 }
 
 interface PacketMasterOptions {
@@ -404,9 +410,10 @@ const defaultPacketForm: PacketForm = {
   cut: '',
   color: '',
   quality: '',
-  pieces: '',
-  weight: '',
-  weightUnit: 'CTS',
+  priceIn: 'WT',
+  sellingPrice: '',
+  weightPerPc: '',
+  weightIn: 'CTS',
 };
 
 const emptyPacketMasterOptions: PacketMasterOptions = {
@@ -437,6 +444,23 @@ function parseOptionalNum(value: string): number | null {
   }
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toPacketToken(value: string): string {
+  return value.replace(/\s+/g, '').replace(/[^a-zA-Z0-9/-]/g, '');
+}
+
+function buildPacketNameFromForm(
+  form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>,
+): string {
+  const parts = [form.stone, form.shape, form.size, form.cut, form.color, form.quality]
+    .map((entry) => toPacketToken((entry || '').trim()))
+    .filter((entry) => entry.length > 0);
+  return parts.join('');
+}
+
+function getMetalPurityDisplay(option: MasterOption): string {
+  return (option.aliasName || option.value || '').trim();
 }
 
 function MasterModal({
@@ -527,8 +551,8 @@ function MasterModal({
         <form onSubmit={onSubmit} className="space-y-4 p-6">
           <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
-          <div className={`grid grid-cols-1 gap-4 ${isFindingType ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-            {isFindingType ? (
+          {isFindingType ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Finding No.*</label>
                 <input
@@ -539,28 +563,53 @@ function MasterModal({
                   required
                 />
               </div>
-            ) : null}
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
-              <input
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={formValue}
-                onChange={(event) => onChangeValue(event.target.value)}
-                placeholder={valueLabel}
-                required
-              />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formValue}
+                  onChange={(event) => onChangeValue(event.target.value)}
+                  placeholder={valueLabel}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formAliasName}
+                  onChange={(event) => onChangeAliasName(event.target.value)}
+                  placeholder="Alias Name"
+                  required
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-              <input
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={formAliasName}
-                onChange={(event) => onChangeAliasName(event.target.value)}
-                placeholder="Alias Name"
-                required
-              />
+          ) : null}
+
+          {!isFindingType && !isMetalCaratageType ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formValue}
+                  onChange={(event) => onChangeValue(event.target.value)}
+                  placeholder={valueLabel}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formAliasName}
+                  onChange={(event) => onChangeAliasName(event.target.value)}
+                  placeholder="Alias Name"
+                  required
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {isFindingType ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -692,7 +741,7 @@ function MasterModal({
                     <option value="">Select Metal Name</option>
                     {metalNameOptions.map((option) => (
                       <option key={option.id} value={option.value}>
-                        {option.value}
+                        {option.aliasName || option.value}
                       </option>
                     ))}
                   </select>
@@ -709,14 +758,14 @@ function MasterModal({
                       onChange={(event) => onChangeMetalName(event.target.value)}
                       required
                     >
-                      <option value="">Select Metal Name</option>
-                      {metalNameOptions.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                    <option value="">Select Metal Name</option>
+                    {metalNameOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Percentage*</label>
                     <input
@@ -734,7 +783,7 @@ function MasterModal({
               ) : null}
 
               {isMetalCaratageType ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
                     <select
@@ -743,14 +792,14 @@ function MasterModal({
                       onChange={(event) => onChangeMetalName(event.target.value)}
                       required
                     >
-                      <option value="">Select Metal Name</option>
-                      {metalNameOptions.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                    <option value="">Select Metal Name</option>
+                    {metalNameOptions.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Purity*</label>
                     <select
@@ -762,7 +811,7 @@ function MasterModal({
                       <option value="">Select Metal Purity</option>
                       {filteredMetalPurities.map((option) => (
                         <option key={option.id} value={option.value}>
-                          {option.value}
+                          {getMetalPurityDisplay(option)}
                         </option>
                       ))}
                     </select>
@@ -775,37 +824,53 @@ function MasterModal({
                       onChange={(event) => onChangeMetalColor(event.target.value)}
                       required
                     >
-                      <option value="">Select Metal Color</option>
-                      {filteredMetalColors.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
+                    <option value="">Select Metal Color</option>
+                    {filteredMetalColors.map((option) => (
+                      <option key={option.id} value={option.value}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
+                    <input
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={formAliasName}
+                      onChange={(event) => onChangeAliasName(event.target.value)}
+                      placeholder="Metal Caratage Name"
+                      required
+                    />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={defaultWastage}
-                      onChange={(event) => onChangeDefaultWastage(event.target.value)}
-                      placeholder="0.00"
-                    />
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Wastage</label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={defaultWastage}
+                        onChange={(event) => onChangeDefaultWastage(event.target.value)}
+                        placeholder="0.00"
+                      />
+                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
+                    </div>
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Price/Gms</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={livePricePerGm}
-                      onChange={(event) => onChangeLivePricePerGm(event.target.value)}
-                      placeholder="Auto calculated (editable)"
-                    />
+                    <div className="flex">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={livePricePerGm}
+                        onChange={(event) => onChangeLivePricePerGm(event.target.value)}
+                        placeholder="Auto calculated (editable)"
+                      />
+                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -836,7 +901,18 @@ function MasterModal({
   );
 }
 
-function PacketModal({ open, title, saveLabel, loading, form, masterOptions, onClose, onSubmit, onChange }: PacketModalProps) {
+function PacketModal({
+  open,
+  title,
+  saveLabel,
+  loading,
+  form,
+  masterOptions,
+  onClose,
+  onSubmit,
+  onChange,
+  onRegeneratePacketName,
+}: PacketModalProps) {
   if (!open) {
     return null;
   }
@@ -936,22 +1012,110 @@ function PacketModal({ open, title, saveLabel, loading, form, masterOptions, onC
               </div>
               <div className="xl:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-slate-700">Packet Name*</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.packetName} onChange={(event) => onChange('packetName', event.target.value)} placeholder="Packet Name" />
+                <div className="flex items-center gap-2">
+                  <input
+                    className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                    value={form.packetName}
+                    onChange={(event) => onChange('packetName', event.target.value)}
+                    placeholder="Packet Name"
+                  />
+                  <button
+                    type="button"
+                    className="inline-flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold leading-none text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50"
+                    title="Regenerate packet name"
+                    onClick={onRegeneratePacketName}
+                  >
+                    R
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-3 text-sm font-semibold text-slate-800">Purchase Weight & Price (Optional)</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Price In</label>
+                <div className="flex items-center gap-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <label className="inline-flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="packet-price-in-master"
+                      value="WT"
+                      checked={form.priceIn === 'WT'}
+                      onChange={(event) => onChange('priceIn', event.target.value)}
+                    />
+                    <span>Wt</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="packet-price-in-master"
+                      value="PCS"
+                      checked={form.priceIn === 'PCS'}
+                      onChange={(event) => onChange('priceIn', event.target.value)}
+                    />
+                    <span>Pcs</span>
+                  </label>
+                </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Pieces</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.pieces} onChange={(event) => onChange('pieces', event.target.value)} placeholder="0" />
+                <label className="mb-1 block text-xs font-medium text-slate-700">Weight In</label>
+                <div className="flex items-center gap-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <label className="inline-flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="packet-weight-in-master"
+                      value="CTS"
+                      checked={form.weightIn === 'CTS'}
+                      onChange={(event) => onChange('weightIn', event.target.value)}
+                    />
+                    <span>Cts</span>
+                  </label>
+                  <label className="inline-flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="packet-weight-in-master"
+                      value="GRAM"
+                      checked={form.weightIn === 'GRAM'}
+                      onChange={(event) => onChange('weightIn', event.target.value)}
+                    />
+                    <span>Gram</span>
+                  </label>
+                </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Weight</label>
-                <input className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.weight} onChange={(event) => onChange('weight', event.target.value)} placeholder="0.000" />
+                <label className="mb-1 block text-xs font-medium text-slate-700">Selling Price*</label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded-l border border-slate-300 px-2 py-2 text-sm"
+                    value={form.sellingPrice}
+                    onChange={(event) => onChange('sellingPrice', event.target.value)}
+                    placeholder="Price"
+                  />
+                  <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">USD</span>
+                </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Weight Unit</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.weightUnit} onChange={(event) => onChange('weightUnit', event.target.value)}>
-                  <option value="CTS">CTS</option>
-                  <option value="GMS">GMS</option>
-                </select>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Weight/Pc.</label>
+                <div className="flex">
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    className="w-full rounded-l border border-slate-300 px-2 py-2 text-sm"
+                    value={form.weightPerPc}
+                    onChange={(event) => onChange('weightPerPc', event.target.value)}
+                    placeholder="Weight/Pc."
+                  />
+                  <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">
+                    {form.weightIn === 'GRAM' ? 'GMS' : 'CTS'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1001,6 +1165,7 @@ export default function DesignMastersPage() {
   const [formDimensions, setFormDimensions] = useState('');
   const [formWeightPerUnit, setFormWeightPerUnit] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
+  const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
   const [metalMasterOptions, setMetalMasterOptions] = useState<MetalMasterOptions>(emptyMetalMasterOptions);
 
@@ -1010,6 +1175,68 @@ export default function DesignMastersPage() {
     () => MASTER_TYPE_CONFIGS.find((config) => config.value === selectedType) || MASTER_TYPE_CONFIGS[0],
     [selectedType],
   );
+  const categoryBlocks = useMemo(() => {
+    const metalTypes = new Set<MasterCategoryType>([
+      'METAL_NAME',
+      'METAL_COLOR',
+      'METAL_PURITY',
+      'METAL_CARATAGE',
+      'GOLD_COLOUR',
+    ]);
+    const stoneTypes = new Set<MasterCategoryType>([
+      'DIAMOND_TYPE',
+      'DIAMOND_SPREAD',
+      'PACKET_STONE',
+      'PACKET_SHAPE',
+      'PACKET_SIZE',
+      'PACKET_CUT',
+      'PACKET_COLOR',
+      'PACKET_QUALITY',
+      'STONE_PACKET',
+    ]);
+
+    return [
+      {
+        key: 'general',
+        label: 'General',
+        hint: 'Core masters used across the design module',
+        configs: MASTER_TYPE_CONFIGS.filter(
+          (config) => !metalTypes.has(config.value) && !stoneTypes.has(config.value),
+        ),
+      },
+      {
+        key: 'metal',
+        label: 'Metal',
+        hint: 'Metal name, color, purity and caratage definitions',
+        configs: MASTER_TYPE_CONFIGS.filter((config) => metalTypes.has(config.value)),
+      },
+      {
+        key: 'stone',
+        label: 'Stone',
+        hint: 'Diamond and stone packet related masters',
+        configs: MASTER_TYPE_CONFIGS.filter((config) => stoneTypes.has(config.value)),
+      },
+    ];
+  }, []);
+  const [collapsedBlocks, setCollapsedBlocks] = useState<{
+    general: boolean;
+    metal: boolean;
+    stone: boolean;
+  }>({
+    general: false,
+    metal: true,
+    stone: true,
+  });
+
+  useEffect(() => {
+    if (!showModal || !isPacketType || packetNameManuallyEdited) {
+      return;
+    }
+    const computedPacketName = buildPacketNameFromForm(packetForm);
+    if (computedPacketName && computedPacketName !== packetForm.packetName) {
+      setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
+    }
+  }, [isPacketType, packetForm, packetNameManuallyEdited, showModal]);
 
   useEffect(() => {
     if (selectedType !== 'METAL_NAME') return;
@@ -1038,23 +1265,28 @@ export default function DesignMastersPage() {
 
     const basePricePerGm =
       selectedMetal?.marketPricePerGm !== undefined ? selectedMetal.marketPricePerGm : 0;
-    if (basePricePerGm > 0 && purityPercent > 0) {
+    const shouldAutoFillLivePrice = !editingRow || formLivePricePerGm.trim().length === 0;
+    if (basePricePerGm > 0 && purityPercent > 0 && shouldAutoFillLivePrice) {
       const computed = ((basePricePerGm * purityPercent) / 100).toFixed(2);
-      setFormLivePricePerGm(computed);
+      if (computed !== formLivePricePerGm) {
+        setFormLivePricePerGm(computed);
+      }
     }
 
     if (formMetalName && formMetalPurity && formMetalColor) {
-      const computedValue = `${formMetalPurity}-${formMetalColor}-${formMetalName}`;
+      const purityToken = selectedPurity ? getMetalPurityDisplay(selectedPurity) : formMetalPurity;
+      const computedValue = `${purityToken}-${formMetalColor}-${formMetalName}`;
       if (computedValue !== formValue) {
         setFormValue(computedValue);
       }
-      if (!formAliasName.trim()) {
+      if (computedValue !== formAliasName) {
         setFormAliasName(computedValue);
       }
     }
   }, [
-    formAliasName,
+    editingRow,
     formMetalColor,
+    formLivePricePerGm,
     formMetalName,
     formMetalPurity,
     formPurityPercentage,
@@ -1170,6 +1402,7 @@ export default function DesignMastersPage() {
     setFormDimensions('');
     setFormWeightPerUnit('');
     setPacketForm(defaultPacketForm);
+    setPacketNameManuallyEdited(false);
   };
 
   const openCreate = () => {
@@ -1231,11 +1464,48 @@ export default function DesignMastersPage() {
       cut: row.cut || '',
       color: row.color || '',
       quality: row.quality || '',
-      pieces: row.pieces ? String(row.pieces) : '',
-      weight: row.weight ? String(row.weight) : '',
-      weightUnit: row.weightUnit || 'CTS',
+      priceIn: row.priceIn || 'WT',
+      sellingPrice:
+        row.sellingPrice !== null && row.sellingPrice !== undefined ? String(row.sellingPrice) : '',
+      weightPerPc:
+        row.weightPerPc !== null && row.weightPerPc !== undefined
+          ? String(row.weightPerPc)
+          : row.weight && row.pieces
+            ? String(Number(row.weight) / Number(row.pieces))
+            : '',
+      weightIn: row.weightUnit === 'GMS' ? 'GRAM' : 'CTS',
     });
+    setPacketNameManuallyEdited(true);
     setShowModal(true);
+  };
+
+  const updatePacketFormField = (key: keyof PacketForm, value: string) => {
+    setPacketForm((prev) => {
+      const next = { ...prev, [key]: value } as PacketForm;
+      if (
+        !packetNameManuallyEdited &&
+        key !== 'packetName' &&
+        key !== 'priceIn' &&
+        key !== 'weightIn' &&
+        key !== 'sellingPrice' &&
+        key !== 'weightPerPc'
+      ) {
+        const computedPacketName = buildPacketNameFromForm(next);
+        if (computedPacketName) {
+          next.packetName = computedPacketName;
+        }
+      }
+      return next;
+    });
+    if (key === 'packetName') {
+      setPacketNameManuallyEdited(true);
+    }
+  };
+
+  const regeneratePacketName = () => {
+    const computedPacketName = buildPacketNameFromForm(packetForm);
+    setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
+    setPacketNameManuallyEdited(false);
   };
 
   const handleSubmitModal = async (event: FormEvent<HTMLFormElement>) => {
@@ -1250,13 +1520,24 @@ export default function DesignMastersPage() {
         cut: packetForm.cut.trim(),
         color: packetForm.color.trim(),
         quality: packetForm.quality.trim(),
-        pieces: parseNum(packetForm.pieces),
-        weight: parseNum(packetForm.weight),
-        weightUnit: packetForm.weightUnit,
+        priceIn: packetForm.priceIn,
+        sellingPrice: parseNum(packetForm.sellingPrice),
+        weightPerPc: parseNum(packetForm.weightPerPc),
+        pieces: 1,
+        weight: parseNum(packetForm.weightPerPc),
+        weightUnit: packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS',
       };
 
       if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.cut || !payload.color || !payload.quality) {
         window.alert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
+        return;
+      }
+      if (payload.sellingPrice < 0) {
+        window.alert('Selling price cannot be negative.');
+        return;
+      }
+      if (payload.weightPerPc <= 0) {
+        window.alert('Weight/Pc must be greater than 0.');
         return;
       }
 
@@ -1478,36 +1759,76 @@ export default function DesignMastersPage() {
           </h2>
           <span className="text-xs text-slate-500">Click a category to manage entries</span>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {MASTER_TYPE_CONFIGS.map((config) => {
-            const isSelected = config.value === selectedType;
+        <div className="space-y-4">
+          {categoryBlocks.map((block) => {
+            const blockKey = block.key as keyof typeof collapsedBlocks;
+            const isCollapsed = collapsedBlocks[blockKey];
+
             return (
-              <button
-                key={config.value}
-                type="button"
-                className={`rounded-md border p-3 text-left transition-all ${
-                  isSelected
-                    ? 'border-primary-400 bg-primary-50 shadow-sm ring-1 ring-primary-200'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
-                }`}
-                onClick={() => {
-                  setSelectedType(config.value);
-                  setShowModal(false);
-                  setSearchInput('');
-                  setSearchTerm('');
-                  resetModalState();
-                }}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className={`inline-flex h-8 w-8 items-center justify-center rounded ring-1 ${config.accentClass}`}>
-                    <MasterCategoryIcon type={config.value} />
-                  </span>
+              <div key={block.key} className="rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">{config.label}</p>
-                    <p className="text-xs leading-tight text-slate-500">{config.hint}</p>
+                    <h3 className="text-sm font-semibold text-slate-900">{block.label}</h3>
+                    <p className="text-xs text-slate-500">{block.hint}</p>
                   </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    onClick={() =>
+                      setCollapsedBlocks((prev) => ({
+                        ...prev,
+                        [blockKey]: !prev[blockKey],
+                      }))
+                    }
+                  >
+                    <span>{isCollapsed ? 'Show' : 'Hide'}</span>
+                    <svg
+                      className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="m6 8 4 4 4-4" />
+                    </svg>
+                  </button>
                 </div>
-              </button>
+                {!isCollapsed && (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                    {block.configs.map((config) => {
+                      const isSelected = config.value === selectedType;
+                      return (
+                        <button
+                          key={config.value}
+                          type="button"
+                          className={`rounded-md border p-3 text-left transition-all ${
+                            isSelected
+                              ? 'border-primary-400 bg-primary-50 shadow-sm ring-1 ring-primary-200'
+                              : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                          }`}
+                          onClick={() => {
+                            setSelectedType(config.value);
+                            setShowModal(false);
+                            setSearchInput('');
+                            setSearchTerm('');
+                            resetModalState();
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex h-8 w-8 items-center justify-center rounded ring-1 ${config.accentClass}`}>
+                              <MasterCategoryIcon type={config.value} />
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">{config.label}</p>
+                              <p className="text-xs leading-tight text-slate-500">{config.hint}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -1628,7 +1949,9 @@ export default function DesignMastersPage() {
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">#</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">{selectedConfig.label}</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Alias Name</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">
+                      {selectedType === 'METAL_CARATAGE' ? 'Price/Gms' : 'Alias Name'}
+                    </th>
                     {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
                       <th className="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-700">Default Wastage (%)</th>
                     ) : null}
@@ -1670,7 +1993,13 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.value}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.aliasName || row.value}</td>
+                        <td className="px-3 py-2 text-sm text-slate-700">
+                          {selectedType === 'METAL_CARATAGE'
+                            ? row.livePricePerGm !== null && row.livePricePerGm !== undefined
+                              ? Number(row.livePricePerGm).toFixed(2)
+                              : '-'
+                            : row.aliasName || row.value}
+                        </td>
                         {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
                           <td className="px-3 py-2 text-sm text-slate-700">
                             {(selectedType === 'METAL_CARATAGE'
@@ -1731,7 +2060,8 @@ export default function DesignMastersPage() {
             resetModalState();
           }}
           onSubmit={handleSubmitModal}
-          onChange={(key, value) => setPacketForm((prev) => ({ ...prev, [key]: value as PacketForm[keyof PacketForm] }))}
+          onChange={updatePacketFormField}
+          onRegeneratePacketName={regeneratePacketName}
         />
       ) : (
         <MasterModal

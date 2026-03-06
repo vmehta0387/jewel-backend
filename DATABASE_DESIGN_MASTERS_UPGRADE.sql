@@ -99,6 +99,9 @@ CREATE TABLE IF NOT EXISTS stone_packets (
   cut VARCHAR(100) NULL,
   color VARCHAR(100) NULL,
   quality VARCHAR(100) NULL,
+  price_in ENUM('WT', 'PCS') NOT NULL DEFAULT 'WT',
+  selling_price DECIMAL(12,2) NULL,
+  weight_per_pc DECIMAL(12,3) NULL,
   pieces INT NOT NULL DEFAULT 0,
   weight DECIMAL(12,3) NOT NULL DEFAULT 0.000,
   weight_unit ENUM('CTS', 'GMS') NOT NULL DEFAULT 'CTS',
@@ -107,6 +110,27 @@ CREATE TABLE IF NOT EXISTS stone_packets (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_packet_search (packet_name, stone, shape, size, cut, color, quality)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE stone_packets
+  ADD COLUMN IF NOT EXISTS price_in ENUM('WT', 'PCS') NOT NULL DEFAULT 'WT' AFTER quality,
+  ADD COLUMN IF NOT EXISTS selling_price DECIMAL(12,2) NULL AFTER price_in,
+  ADD COLUMN IF NOT EXISTS weight_per_pc DECIMAL(12,3) NULL AFTER selling_price;
+
+UPDATE stone_packets
+SET weight_per_pc = CASE
+  WHEN weight_per_pc IS NOT NULL AND weight_per_pc > 0 THEN weight_per_pc
+  WHEN pieces IS NOT NULL AND pieces > 0 THEN ROUND(weight / pieces, 3)
+  ELSE ROUND(weight, 3)
+END
+WHERE weight_per_pc IS NULL OR weight_per_pc <= 0;
+
+UPDATE stone_packets
+SET pieces = 1
+WHERE pieces IS NULL OR pieces <= 0;
+
+UPDATE stone_packets
+SET weight = ROUND(weight_per_pc * pieces, 3)
+WHERE weight_per_pc IS NOT NULL AND weight_per_pc > 0;
 
 -- Stone packets are intentionally not seeded.
 -- Create packets from the app (Masters > Stone Packet) based on your own data.
