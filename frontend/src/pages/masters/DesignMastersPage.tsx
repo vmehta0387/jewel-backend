@@ -446,15 +446,34 @@ function parseOptionalNum(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function toPacketToken(value: string): string {
-  return value.replace(/\s+/g, '').replace(/[^a-zA-Z0-9/-]/g, '');
+function toPacketAbbreviation(value: string): string {
+  const normalized = (value || '').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  const compact = normalized.replace(/[^a-zA-Z0-9]/g, '');
+  const words = normalized
+    .replace(/[^a-zA-Z0-9\s/-]/g, ' ')
+    .split(/[\s/-]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (words.length <= 1) {
+    return compact.slice(0, 3).toUpperCase();
+  }
+
+  return words
+    .slice(0, 3)
+    .map((entry) => entry.charAt(0).toUpperCase())
+    .join('');
 }
 
 function buildPacketNameFromForm(
   form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>,
 ): string {
   const parts = [form.stone, form.shape, form.size, form.cut, form.color, form.quality]
-    .map((entry) => toPacketToken((entry || '').trim()))
+    .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
   return parts.join('');
 }
@@ -1227,6 +1246,12 @@ export default function DesignMastersPage() {
     metal: true,
     stone: true,
   });
+  const toggleCategoryBlock = (blockKey: keyof typeof collapsedBlocks) => {
+    setCollapsedBlocks((prev) => ({
+      ...prev,
+      [blockKey]: !prev[blockKey],
+    }));
+  };
 
   useEffect(() => {
     if (!showModal || !isPacketType || packetNameManuallyEdited) {
@@ -1752,12 +1777,12 @@ export default function DesignMastersPage() {
           <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-primary-50 text-primary-700 ring-1 ring-primary-200">
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 7h14M5 12h14M5 17h14" />
+              <path d="M5 7h14M5 12h14M5 17h14" />
               </svg>
             </span>
             Master Categories
           </h2>
-          <span className="text-xs text-slate-500">Click a category to manage entries</span>
+          <span className="text-xs text-slate-500">Click a block to expand/collapse</span>
         </div>
         <div className="space-y-4">
           {categoryBlocks.map((block) => {
@@ -1765,22 +1790,25 @@ export default function DesignMastersPage() {
             const isCollapsed = collapsedBlocks[blockKey];
 
             return (
-              <div key={block.key} className="rounded-lg border border-slate-200 bg-slate-50/40 p-3">
+              <div
+                key={block.key}
+                role="button"
+                tabIndex={0}
+                className="rounded-lg border border-slate-200 bg-slate-50/40 p-3 cursor-pointer transition-colors hover:bg-slate-50"
+                onClick={() => toggleCategoryBlock(blockKey)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleCategoryBlock(blockKey);
+                  }
+                }}
+              >
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">{block.label}</h3>
                     <p className="text-xs text-slate-500">{block.hint}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                    onClick={() =>
-                      setCollapsedBlocks((prev) => ({
-                        ...prev,
-                        [blockKey]: !prev[blockKey],
-                      }))
-                    }
-                  >
+                  <span className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700">
                     <span>{isCollapsed ? 'Show' : 'Hide'}</span>
                     <svg
                       className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
@@ -1791,10 +1819,13 @@ export default function DesignMastersPage() {
                     >
                       <path d="m6 8 4 4 4-4" />
                     </svg>
-                  </button>
+                  </span>
                 </div>
                 {!isCollapsed && (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                  <div
+                    className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     {block.configs.map((config) => {
                       const isSelected = config.value === selectedType;
                       return (
@@ -1818,14 +1849,13 @@ export default function DesignMastersPage() {
                             <span className={`inline-flex h-8 w-8 items-center justify-center rounded ring-1 ${config.accentClass}`}>
                               <MasterCategoryIcon type={config.value} />
                             </span>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{config.label}</p>
-                              <p className="text-xs leading-tight text-slate-500">{config.hint}</p>
-                            </div>
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{config.label}</p>
                           </div>
-                        </button>
-                      );
-                    })}
+                        </div>
+                      </button>
+                    );
+                  })}
                   </div>
                 )}
               </div>

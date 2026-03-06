@@ -207,10 +207,29 @@ const parseNumericValue = (value: number | string | null | undefined): number =>
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
-const toPacketToken = (value: string): string => value.replace(/\s+/g, '').replace(/[^a-zA-Z0-9/-]/g, '');
+const toPacketAbbreviation = (value: string): string => {
+  const normalized = (value || '').trim();
+  if (!normalized) return '';
+
+  const compact = normalized.replace(/[^a-zA-Z0-9]/g, '');
+  const words = normalized
+    .replace(/[^a-zA-Z0-9\\s/-]/g, ' ')
+    .split(/[\\s/-]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (words.length <= 1) {
+    return compact.slice(0, 3).toUpperCase();
+  }
+
+  return words
+    .slice(0, 3)
+    .map((entry) => entry.charAt(0).toUpperCase())
+    .join('');
+};
 const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>): string => {
   const parts = [packet.stone, packet.shape, packet.size, packet.cut, packet.color, packet.quality]
-    .map((entry) => toPacketToken((entry || '').trim()))
+    .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
   return parts.join('');
 };
@@ -986,24 +1005,9 @@ export default function ProductsPage() {
     const packet = packetOptions.find((entry) => entry.id === packetId);
     setGemRows((prev) => {
       if (packet) {
-        const packetWeight = Number(packet.weight || 0);
-        if (!Number.isFinite(packetWeight) || packetWeight <= 0) {
-          window.alert('Selected stone packet weight must be greater than 0.');
-          return prev;
-        }
-
         const packetAlreadyUsed = prev.some((row) => row.id !== rowId && row.packetId === packet.id);
         if (packetAlreadyUsed) {
           window.alert('This packet is already used in another line.');
-          return prev;
-        }
-
-        const stoneKey = normalizeLookupKey(packet.stone);
-        const stoneAlreadyUsed =
-          stoneKey.length > 0 &&
-          prev.some((row) => row.id !== rowId && normalizeLookupKey(row.stone) === stoneKey);
-        if (stoneAlreadyUsed) {
-          window.alert('This stone is already used in another line.');
           return prev;
         }
       }
@@ -1025,6 +1029,7 @@ export default function ProductsPage() {
             wtPerPcs: '',
             pcs: '',
             wtInCts: '',
+            pricePerCt: '',
             amount: '',
           };
         }
@@ -1034,6 +1039,8 @@ export default function ProductsPage() {
         const totalWeight = Math.max(0, Number(packet.weight || 0));
         const wtPerPcs = explicitWeightPerPc > 0 ? explicitWeightPerPc : pieces > 0 ? totalWeight / pieces : 0;
         const wtInCts = wtPerPcs * pieces;
+        const rate = Math.max(0, Number(packet.sellingPrice || 0));
+        const amount = wtInCts * rate;
 
         return {
           ...row,
@@ -1048,7 +1055,8 @@ export default function ProductsPage() {
           wtPerPcs: wtPerPcs > 0 ? wtPerPcs.toFixed(3) : '',
           pcs: pieces > 0 ? String(pieces) : '',
           wtInCts: wtInCts > 0 ? wtInCts.toFixed(3) : '',
-          amount: '',
+          pricePerCt: rate > 0 ? rate.toFixed(2) : '',
+          amount: amount > 0 ? amount.toFixed(2) : '',
         };
       });
     });
@@ -1400,10 +1408,24 @@ export default function ProductsPage() {
         const nextWastagePercent =
           row.wastagePercent.trim().length > 0 ? row.wastagePercent : defaultWastage;
 
-        if (nextPricePerGm === row.pricePerGm && nextWastagePercent === row.wastagePercent) {
+        let nextRow = row;
+        let changed = false;
+        if (nextPricePerGm !== row.pricePerGm) {
+          nextRow = { ...nextRow, pricePerGm: nextPricePerGm };
+          changed = true;
+        }
+        if (nextWastagePercent !== row.wastagePercent) {
+          nextRow = { ...nextRow, wastagePercent: nextWastagePercent };
+          changed = true;
+        }
+
+        if (!changed) {
           return row;
         }
-        return { ...row, pricePerGm: nextPricePerGm, wastagePercent: nextWastagePercent };
+
+        nextRow = applyMetalWeightFromPercent(nextRow);
+        nextRow = applyMetalValueFromRate(nextRow);
+        return nextRow;
       }),
     );
   }, [masterOptions.metalCaratages, masterOptions.goldColours]);
@@ -1470,12 +1492,113 @@ export default function ProductsPage() {
     row.value.trim().length > 0
       ? Math.max(0, parseNum(row.value))
       : getMetalTotalWt(row) * Math.max(0, parseNum(row.pricePerGm));
+
+  const applyMetalWeightFromPercent = (row: MetalRow): MetalRow => {
+    const hasAnyInput = row.netWt.trim().length > 0 || row.wastagePercent.trim().length > 0;
+    if (!hasAnyInput) {
+      return { ...row, wastageWt: '', totalWt: '' };
+    }
+    const netWt = Math.max(0, parseNum(row.netWt));
+    const wastagePercent = Math.max(0, parseNum(row.wastagePercent));
+    const wastageWt = (netWt * wastagePercent) / 100;
+    const totalWt = netWt + wastageWt;
+    return {
+      ...row,
+      wastageWt: wastageWt.toFixed(3),
+      totalWt: totalWt.toFixed(3),
+    };
+  };
+
+  const applyMetalWeightFromWastageWt = (row: MetalRow): MetalRow => {
+    const hasAnyInput = row.netWt.trim().length > 0 || row.wastageWt.trim().length > 0;
+    if (!hasAnyInput) {
+      return { ...row, wastagePercent: '', totalWt: '' };
+    }
+    const netWt = Math.max(0, parseNum(row.netWt));
+    const wastageWt = Math.max(0, parseNum(row.wastageWt));
+    const wastagePercent = netWt > 0 ? (wastageWt * 100) / netWt : 0;
+    const totalWt = netWt + wastageWt;
+    return {
+      ...row,
+      wastagePercent: wastagePercent.toFixed(2),
+      totalWt: totalWt.toFixed(3),
+      wastageWt: wastageWt.toFixed(3),
+    };
+  };
+
+  const applyMetalValueFromRate = (row: MetalRow): MetalRow => {
+    const totalWt = Math.max(0, parseNum(row.totalWt));
+    const rate = Math.max(0, parseNum(row.pricePerGm));
+    if (row.pricePerGm.trim().length === 0 || totalWt <= 0) {
+      return { ...row, value: '' };
+    }
+    return { ...row, value: (totalWt * rate).toFixed(2) };
+  };
+
+  const applyMetalRateFromValue = (row: MetalRow): MetalRow => {
+    const totalWt = Math.max(0, parseNum(row.totalWt));
+    const value = Math.max(0, parseNum(row.value));
+    if (row.value.trim().length === 0 || totalWt <= 0) {
+      return row;
+    }
+    return { ...row, pricePerGm: (value / totalWt).toFixed(2) };
+  };
+
   const getGemWeight = (row: GemRow): number =>
-    Math.max(0, parseNum(row.wtPerPcs)) * Math.max(0, parseNum(row.pcs));
+    row.wtInCts.trim().length > 0
+      ? Math.max(0, parseNum(row.wtInCts))
+      : Math.max(0, parseNum(row.wtPerPcs)) * Math.max(0, parseNum(row.pcs));
   const getGemValue = (row: GemRow): number =>
     row.amount.trim().length > 0
       ? Math.max(0, parseNum(row.amount))
       : getGemWeight(row) * Math.max(0, parseNum(row.pricePerCt));
+
+  const applyGemWeightFromPcs = (row: GemRow): GemRow => {
+    const hasAnyInput = row.wtPerPcs.trim().length > 0 || row.pcs.trim().length > 0;
+    if (!hasAnyInput) {
+      return { ...row, wtInCts: '' };
+    }
+    const wtPerPcs = Math.max(0, parseNum(row.wtPerPcs));
+    const pcs = Math.max(0, parseNum(row.pcs));
+    return { ...row, wtInCts: (wtPerPcs * pcs).toFixed(3) };
+  };
+
+  const applyGemWtPerPcsFromWeight = (row: GemRow): GemRow => {
+    const hasAnyInput = row.wtInCts.trim().length > 0 || row.pcs.trim().length > 0;
+    if (!hasAnyInput) {
+      return { ...row, wtPerPcs: '' };
+    }
+    const wtInCts = Math.max(0, parseNum(row.wtInCts));
+    const pcs = Math.max(0, parseNum(row.pcs));
+    if (pcs <= 0) {
+      return { ...row, wtPerPcs: '' };
+    }
+    return { ...row, wtPerPcs: (wtInCts / pcs).toFixed(3), wtInCts: wtInCts.toFixed(3) };
+  };
+
+  const applyGemAmountFromRate = (row: GemRow): GemRow => {
+    const wt = Math.max(0, parseNum(row.wtInCts));
+    const rate = Math.max(0, parseNum(row.pricePerCt));
+    if (row.pricePerCt.trim().length === 0 || wt <= 0) {
+      return { ...row, amount: '' };
+    }
+    return { ...row, amount: (wt * rate).toFixed(2) };
+  };
+
+  const applyGemRateFromAmount = (row: GemRow): GemRow => {
+    const wt = Math.max(0, parseNum(row.wtInCts));
+    const amount = Math.max(0, parseNum(row.amount));
+    if (row.amount.trim().length === 0 || wt <= 0) {
+      return row;
+    }
+    return { ...row, pricePerCt: (amount / wt).toFixed(2) };
+  };
+
+  const getGemInfoText = (row: GemRow): string =>
+    [row.stone, row.size, row.color, row.quality, row.shape]
+      .map((entry) => (entry || '').trim())
+      .filter((entry) => entry.length > 0)
+      .join(', ');
   const getLaborValue = (row: LaborRow): number =>
     parseNum(row.unitQty) * parseNum(row.laborPerUnit);
   const getFindingValue = (row: FindingRow): number => {
@@ -1841,11 +1964,12 @@ export default function ProductsPage() {
       usedMetalKeys.add(key);
     }
 
-    const usedStoneKeys = new Set<string>();
+    const usedPacketIds = new Set<string>();
     for (let index = 0; index < gemRows.length; index += 1) {
       const row = gemRows[index];
       const wtPerPcs = parseNum(row.wtPerPcs);
       const pcs = parseNum(row.pcs);
+      const wtInCts = parseNum(row.wtInCts);
       const pricePerCt = parseNum(row.pricePerCt);
       const amount = parseNum(row.amount);
 
@@ -1857,6 +1981,10 @@ export default function ProductsPage() {
         window.alert(`Number of Pcs cannot be negative in Stone row ${index + 1}.`);
         return;
       }
+      if (wtInCts < 0) {
+        window.alert(`Wt(In Cts) cannot be negative in Stone row ${index + 1}.`);
+        return;
+      }
       if (pricePerCt < 0) {
         window.alert(`Price per Ct cannot be negative in Stone row ${index + 1}.`);
         return;
@@ -1866,13 +1994,13 @@ export default function ProductsPage() {
         return;
       }
 
-      const key = normalizeLookupKey(row.stone);
-      if (!key) continue;
-      if (usedStoneKeys.has(key)) {
-        window.alert('Each Stone can be used only once.');
+      const packetKey = normalizeLookupKey(row.packetId);
+      if (!packetKey) continue;
+      if (usedPacketIds.has(packetKey)) {
+        window.alert('Each Packet can be used only once.');
         return;
       }
-      usedStoneKeys.add(key);
+      usedPacketIds.add(packetKey);
     }
 
     const basePayload = {
@@ -2052,44 +2180,35 @@ export default function ProductsPage() {
       return prev.map((item) => {
         if (item.id !== id) return item;
 
-        const updated = { ...item, [key]: value };
+        let updated: MetalRow = { ...item, [key]: value };
         if (key === 'goldColour') {
           const rate = getMetalRate(value);
           const defaultWastage = getMetalDefaultWastage(value);
-          const withDefaults = {
+          updated = {
             ...updated,
             wastagePercent: defaultWastage,
             pricePerGm: rate !== undefined ? rate.toFixed(2) : '',
           };
-          const hasAnyInput =
-            withDefaults.netWt.trim().length > 0 || withDefaults.wastagePercent.trim().length > 0;
-          if (!hasAnyInput) {
-            return { ...withDefaults, wastageWt: '', totalWt: '' };
-          }
-
-          const wastageWt = getMetalWastageWt(withDefaults);
-          const totalWt = getMetalTotalWt(withDefaults);
-          return {
-            ...withDefaults,
-            wastageWt: wastageWt.toFixed(3),
-            totalWt: totalWt.toFixed(3),
-          };
+          updated = applyMetalWeightFromPercent(updated);
+          return applyMetalValueFromRate(updated);
         }
 
         if (key === 'netWt' || key === 'wastagePercent') {
-          const hasAnyInput =
-            updated.netWt.trim().length > 0 || updated.wastagePercent.trim().length > 0;
-          if (!hasAnyInput) {
-            return { ...updated, wastageWt: '', totalWt: '' };
-          }
+          updated = applyMetalWeightFromPercent(updated);
+          return applyMetalValueFromRate(updated);
+        }
 
-          const wastageWt = getMetalWastageWt(updated);
-          const totalWt = getMetalTotalWt(updated);
-          return {
-            ...updated,
-            wastageWt: wastageWt.toFixed(3),
-            totalWt: totalWt.toFixed(3),
-          };
+        if (key === 'wastageWt') {
+          updated = applyMetalWeightFromWastageWt(updated);
+          return applyMetalValueFromRate(updated);
+        }
+
+        if (key === 'pricePerGm') {
+          return applyMetalValueFromRate(updated);
+        }
+
+        if (key === 'value') {
+          return applyMetalRateFromValue(updated);
         }
 
         return updated;
@@ -2098,34 +2217,33 @@ export default function ProductsPage() {
   };
 
   const updateGemRow = (id: string, key: keyof Omit<GemRow, 'id'>, value: string) => {
-    setGemRows((prev) => {
-      if (key === 'stone') {
-        const normalizedValue = normalizeLookupKey(value);
-        const isDuplicate =
-          normalizedValue.length > 0 &&
-          prev.some((row) => row.id !== id && normalizeLookupKey(row.stone) === normalizedValue);
-        if (isDuplicate) {
-          window.alert('This stone is already used in another line.');
-          return prev;
-        }
-      }
-
-      return prev.map((item) => {
+    setGemRows((prev) =>
+      prev.map((item) => {
         if (item.id !== id) return item;
 
-        const updated = { ...item, [key]: value };
+        let updated: GemRow = { ...item, [key]: value };
+
         if (key === 'wtPerPcs' || key === 'pcs') {
-          const hasAnyInput =
-            updated.wtPerPcs.trim().length > 0 || updated.pcs.trim().length > 0;
-          return {
-            ...updated,
-            wtInCts: hasAnyInput ? getGemWeight(updated).toFixed(3) : '',
-          };
+          updated = applyGemWeightFromPcs(updated);
+          return applyGemAmountFromRate(updated);
+        }
+
+        if (key === 'wtInCts') {
+          updated = applyGemWtPerPcsFromWeight(updated);
+          return applyGemAmountFromRate(updated);
+        }
+
+        if (key === 'pricePerCt') {
+          return applyGemAmountFromRate(updated);
+        }
+
+        if (key === 'amount') {
+          return applyGemRateFromAmount(updated);
         }
 
         return updated;
-      });
-    });
+      }),
+    );
   };
 
   const addMetalLine = () => {
@@ -2932,24 +3050,19 @@ export default function ProductsPage() {
                             <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
                             <td className="px-2 py-2">
                               <input
-                                className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
-                                value={
-                                  item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
-                                    ? getMetalWastageWt(item).toFixed(3)
-                                    : ''
-                                }
+                                type="number"
+                                min="0"
+                                step="0.001"
+                                className="w-28 rounded border border-gray-300 px-2 py-1 text-gray-900"
+                                value={item.wastageWt}
+                                onChange={(event) => updateMetalRow(item.id, 'wastageWt', event.target.value)}
                                 placeholder="Wastage Wt"
-                                readOnly
                               />
                             </td>
                             <td className="px-2 py-2">
                               <input
                                 className="w-28 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
-                                value={
-                                  item.netWt.trim().length > 0 || item.wastagePercent.trim().length > 0
-                                    ? getMetalTotalWt(item).toFixed(3)
-                                    : ''
-                                }
+                                value={item.totalWt}
                                 placeholder="Total Wt"
                                 readOnly
                               />
@@ -2965,7 +3078,7 @@ export default function ProductsPage() {
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                className="w-28 rounded border border-gray-300 px-2 py-1"
+                                className="w-28 rounded border border-gray-300 px-2 py-1 font-semibold text-slate-900"
                                 value={item.value}
                                 onChange={(event) => updateMetalRow(item.id, 'value', event.target.value)}
                                 placeholder={getMetalValue(item).toFixed(2)}
@@ -2974,7 +3087,7 @@ export default function ProductsPage() {
                             <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
-                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
+                        <tr className="bg-slate-100 text-sm font-bold text-slate-900">
                           <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
                           <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
                           <td className="px-2 py-2"></td>
@@ -3004,8 +3117,8 @@ export default function ProductsPage() {
                     <table className="min-w-[920px] text-sm">
                       <thead className="bg-cyan-50/70 text-left text-[11px] font-semibold text-cyan-900">
                         <tr>
-                          <th className="px-2 py-2">##</th>
                           <th className="px-2 py-2">Packet</th>
+                          <th className="px-2 py-2">Info</th>
                           <th className="px-2 py-2">Wt/Per Pcs.</th>
                           <th className="px-2 py-2">Pcs</th>
                           <th className="px-2 py-2">Wt(In Cts)</th>
@@ -3015,9 +3128,8 @@ export default function ProductsPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {gemRows.map((item, idx) => (
+                        {gemRows.map((item) => (
                           <tr key={item.id}>
-                            <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-2">
                                 <select
@@ -3031,15 +3143,7 @@ export default function ProductsPage() {
                                     const packetUsedByOtherRow = gemRows.some(
                                       (row) => row.id !== item.id && row.packetId === packet.id,
                                     );
-                                    const stoneKey = normalizeLookupKey(packet.stone);
-                                    const stoneUsedByOtherRow =
-                                      stoneKey.length > 0 &&
-                                      gemRows.some(
-                                        (row) =>
-                                          row.id !== item.id && normalizeLookupKey(row.stone) === stoneKey,
-                                      );
-                                    const isDisabled =
-                                      !isCurrentPacket && (packetUsedByOtherRow || stoneUsedByOtherRow);
+                                    const isDisabled = !isCurrentPacket && packetUsedByOtherRow;
 
                                     return (
                                       <option key={packet.id} value={packet.id} disabled={isDisabled}>
@@ -3063,9 +3167,17 @@ export default function ProductsPage() {
                                 </button>
                               </div>
                             </td>
+                            <td className="px-2 py-2">
+                              <input
+                                className="w-52 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
+                                value={getGemInfoText(item)}
+                                placeholder="Stone, Size, Color, Quality, Shape"
+                                readOnly
+                              />
+                            </td>
                             <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
                             <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                            <td className="px-2 py-2"><input className="w-24 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700" value={item.wtPerPcs.trim().length > 0 || item.pcs.trim().length > 0 ? getGemWeight(item).toFixed(3) : ''} placeholder="0.000" readOnly /></td>
+                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
                             <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
                             <td className="px-2 py-2">
                               <input
