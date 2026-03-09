@@ -930,7 +930,9 @@ export class ProductsService {
       throw new BadRequestException('Stone packet weight per pc must be greater than 0');
     }
 
-    return this.packetRepo.save(packet);
+    const savedPacket = await this.packetRepo.save(packet);
+    await this.recalculateDesignsForDependencies({ packetIds: [savedPacket.id] });
+    return savedPacket;
   }
 
   async updatePacketStatus(id: string, isActive: boolean, requester: AuthUser): Promise<StonePacket> {
@@ -1486,7 +1488,19 @@ export class ProductsService {
     master.defaultWastagePercent = metalFields.defaultWastagePercent;
     master.updatedBy = requester.id;
 
-    return this.designMasterRepo.save(master);
+    const savedMaster = await this.designMasterRepo.save(master);
+
+    if (savedMaster.masterType === DesignMasterType.METAL_NAME) {
+      const affectedMetalCaratages = await this.syncMetalCaratageRatesForMetalName(
+        savedMaster.value,
+        requester.id,
+      );
+      await this.recalculateDesignsForDependencies({ metalCaratages: affectedMetalCaratages });
+    } else if (savedMaster.masterType === DesignMasterType.METAL_CARATAGE) {
+      await this.recalculateDesignsForDependencies({ metalCaratages: [savedMaster.value] });
+    }
+
+    return savedMaster;
   }
 
   async updateMasterStatus(id: string, isActive: boolean, requester: AuthUser): Promise<DesignMaster> {
@@ -1885,6 +1899,259 @@ export class ProductsService {
       }
     });
     return map;
+  }
+
+  private async syncMetalCaratageRatesForMetalName(
+    metalName: string,
+    updatedBy?: string | null,
+  ): Promise<string[]> {
+    const normalizedMetalName = this.optionalText(metalName);
+    if (!normalizedMetalName) {
+      return [];
+    }
+
+    const metalMaster = await this.designMasterRepo.findOne({
+      where: {
+        masterType: DesignMasterType.METAL_NAME,
+        value: normalizedMetalName,
+      },
+    });
+
+    if (metalMaster?.marketPricePerGm === null || metalMaster?.marketPricePerGm === undefined) {
+      return [];
+    }
+
+    const baseMarketPricePerGm = this.toNumber(metalMaster.marketPricePerGm);
+    const metalCaratages = await this.designMasterRepo.find({
+      where: {
+        masterType: DesignMasterType.METAL_CARATAGE,
+        metalName: normalizedMetalName,
+      },
+    });
+
+    const changedMasters: DesignMaster[] = [];
+    const affectedValues = new Set<string>();
+
+    for (const metalCaratage of metalCaratages) {
+      let purityPercentage =
+        metalCaratage.purityPercentage !== null && metalCaratage.purityPercentage !== undefined
+          ? this.toNumber(metalCaratage.purityPercentage)
+          : null;
+
+      if (purityPercentage === null && metalCaratage.metalPurity) {
+        const purityMaster = await this.designMasterRepo.findOne({
+          where: {
+            masterType: DesignMasterType.METAL_PURITY,
+            value: metalCaratage.metalPurity,
+            metalName: normalizedMetalName,
+          },
+        });
+
+        if (
+          purityMaster?.purityPercentage !== null &&
+          purityMaster?.purityPercentage !== undefined
+        ) {
+          purityPercentage = this.toNumber(purityMaster.purityPercentage);
+          metalCaratage.purityPercentage = purityPercentage;
+        }
+      }
+
+      if (purityPercentage === null) {
+        continue;
+      }
+
+      const nextLivePricePerGm = this.roundTo2((baseMarketPricePerGm * purityPercentage) / 100);
+      if (this.toNumber(metalCaratage.livePricePerGm) !== nextLivePricePerGm) {
+        metalCaratage.livePricePerGm = nextLivePricePerGm;
+        if (updatedBy) {
+          metalCaratage.updatedBy = updatedBy;
+        }
+        changedMasters.push(metalCaratage);
+      }
+
+      if (metalCaratage.value) {
+        affectedValues.add(metalCaratage.value);
+      }
+    }
+
+    if (changedMasters.length > 0) {
+      await this.designMasterRepo.save(changedMasters);
+    }
+
+    return Array.from(affectedValues);
+  }
+
+  private async recalculateDesignsForDependencies(input: {
+    metalCaratages?: string[];
+    packetIds?: string[];
+  }): Promise<{ updatedDesigns: number; totalDesigns: number }> {
+    const metalCaratageKeys = new Set(
+      (input.metalCaratages || [])
+        .map((value) => this.normalizeLookupKey(value))
+        .filter(Boolean),
+    );
+    const packetIds = new Set(
+      (input.packetIds || []).map((value) => (value || '').trim()).filter(Boolean),
+    );
+
+    if (metalCaratageKeys.size === 0 && packetIds.size === 0) {
+      return { updatedDesigns: 0, totalDesigns: 0 };
+    }
+
+    const metalRateMap = await this.getMetalCaratageRateMap();
+    const packetRows = packetIds.size
+      ? await this.packetRepo.find({
+          where: {
+            id: In(Array.from(packetIds)),
+          },
+        })
+      : [];
+    const packetRateMap = new Map(
+      packetRows.map((row) => [row.id, this.toNumber(row.sellingPrice)]),
+    );
+
+    const designs = await this.designRepo.find({
+      relations: ['metals', 'gemstones', 'labors', 'findings'],
+    });
+
+    let updatedDesigns = 0;
+
+    for (const design of designs) {
+      const metals = design.metals || [];
+      const gemstones = design.gemstones || [];
+
+      const touchesMetalDependency =
+        metalCaratageKeys.size > 0 &&
+        metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.goldColour)));
+      const touchesPacketDependency =
+        packetIds.size > 0 &&
+        gemstones.some((row) => row.packetId && packetIds.has((row.packetId || '').trim()));
+
+      if (!touchesMetalDependency && !touchesPacketDependency) {
+        continue;
+      }
+
+      let metalsChanged = false;
+      let gemstonesChanged = false;
+
+      for (const metal of metals) {
+        const lookup = this.normalizeLookupKey(metal.goldColour);
+        if (!lookup || (metalCaratageKeys.size > 0 && !metalCaratageKeys.has(lookup))) {
+          continue;
+        }
+
+        const rate = metalRateMap.get(lookup);
+        if (rate === undefined) {
+          continue;
+        }
+
+        const nextValue = this.roundTo2(this.toNumber(metal.totalWt) * rate);
+        if (this.toNumber(metal.pricePerGm) !== rate || this.toNumber(metal.value) !== nextValue) {
+          metal.pricePerGm = rate;
+          metal.value = nextValue;
+          metalsChanged = true;
+        }
+      }
+
+      for (const gemstone of gemstones) {
+        const packetId = (gemstone.packetId || '').trim();
+        if (!packetId || (packetIds.size > 0 && !packetIds.has(packetId))) {
+          continue;
+        }
+
+        const rate = packetRateMap.get(packetId);
+        if (rate === undefined) {
+          continue;
+        }
+
+        const computedWeight = this.roundTo3(
+          this.toNumber(gemstone.wtPerPcs) * Math.max(0, Math.trunc(this.toNumber(gemstone.pcs))),
+        );
+        const currentWtInCts = this.toNumber(gemstone.wtInCts);
+        const nextWtInCts = currentWtInCts > 0 ? currentWtInCts : computedWeight;
+        const nextAmount = this.roundTo2(nextWtInCts * rate);
+
+        if (
+          this.toNumber(gemstone.pricePerCt) !== rate ||
+          this.toNumber(gemstone.amount) !== nextAmount ||
+          this.toNumber(gemstone.wtInCts) !== nextWtInCts
+        ) {
+          gemstone.pricePerCt = rate;
+          gemstone.amount = nextAmount;
+          gemstone.wtInCts = nextWtInCts;
+          gemstonesChanged = true;
+        }
+      }
+
+      if (metalsChanged) {
+        await this.metalRepo.save(metals);
+      }
+
+      if (gemstonesChanged) {
+        await this.gemstoneRepo.save(gemstones);
+      }
+
+      if (!metalsChanged && !gemstonesChanged) {
+        continue;
+      }
+
+      const summary = this.calculateSummary(
+        metals.map((row) => ({
+          metalCaratage: row.goldColour || null,
+          goldColour: row.goldColour || null,
+          netWt: this.toNumber(row.netWt),
+          wastagePercent: this.toNumber(row.wastagePercent),
+          wastageWt: this.toNumber(row.wastageWt),
+          totalWt: this.toNumber(row.totalWt),
+          pricePerGm: this.toNumber(row.pricePerGm),
+          value: this.toNumber(row.value),
+          components: this.toNumber(row.components),
+        })),
+        gemstones.map((row) => ({
+          packetId: row.packetId || null,
+          stone: row.stone || null,
+          shape: row.shape || null,
+          size: row.size || null,
+          cut: row.cut || null,
+          color: row.color || null,
+          quality: row.quality || null,
+          stoneType: row.stoneType || null,
+          wtPerPcs: this.toNumber(row.wtPerPcs),
+          pcs: Math.max(0, Math.trunc(this.toNumber(row.pcs))),
+          wtInCts: this.toNumber(row.wtInCts),
+          pricePerCt: this.toNumber(row.pricePerCt),
+          amount: this.toNumber(row.amount),
+        })),
+        (design.labors || []).map((row) => ({
+          laborHead: row.laborHead || null,
+          laborPerUnit: this.toNumber(row.laborPerUnit),
+          unitQty: this.toNumber(row.unitQty),
+          laborValue: this.toNumber(row.laborValue),
+        })),
+        (design.findings || []).map((row) => ({
+          findingHead: row.findingHead || null,
+          pricePerUnit: this.toNumber(row.pricePerUnit),
+          units: this.toNumber(row.units),
+          totalWeight: this.toNumber(row.totalWeight),
+          findingValue: this.toNumber(row.findingValue),
+        })),
+      );
+
+      design.metalValue = summary.metalValue;
+      design.gemValue = summary.gemValue;
+      design.laborValue = summary.laborValue;
+      design.findingValue = summary.findingValue;
+      design.totalValue = summary.totalValue;
+      design.grossWeight = summary.grossWeight;
+      design.livePrice = summary.totalValue;
+      design.goldColour = metals[0]?.goldColour || design.goldColour || null;
+      design.stoneInfo = gemstones[0]?.stone || design.stoneInfo || null;
+
+      await this.designRepo.save(design);
+      updatedDesigns += 1;
+    }
+
+    return { updatedDesigns, totalDesigns: designs.length };
   }
 
   private normalizeGemstones(

@@ -10,8 +10,7 @@ type MenuIconName =
   | 'users'
   | 'designs'
   | 'masters'
-  | 'orders'
-  | 'pricing';
+  | 'orders';
 
 interface NavigationItem {
   name: string;
@@ -54,13 +53,6 @@ const navigation: NavigationItem[] = [
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES' },
   { name: 'Orders', path: '/orders', icon: 'orders', permission: 'ORDER_ENTRIES' },
-  {
-    name: 'Pricing',
-    path: '/pricing',
-    icon: 'pricing',
-    permission: 'PRICING_CONFIGURATION',
-    allowedRoles: ['SUPER_ADMIN'],
-  },
 ];
 
 function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean }) {
@@ -131,13 +123,6 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
       <>
         <rect x="6" y="4.5" width="12" height="15" rx="1.75" />
         <path d="M9 8.25h6M9 12h6M9 15.75h4.5" />
-      </>
-    );
-  } else if (name === 'pricing') {
-    iconBody = (
-      <>
-        <path d="M6 18V12.75M12 18V9M18 18v-4.5M4.5 18.75h15" />
-        <path d="M12 4.5v10.5M14.625 6.75H10.5a2.25 2.25 0 0 0 0 4.5h3a2.25 2.25 0 1 1 0 4.5H9.375" />
       </>
     );
   }
