@@ -16,6 +16,142 @@
   }
 }
 
+@layer components {
+  .app-table-shell {
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+    box-shadow: 0 24px 48px -32px rgba(15, 23, 42, 0.28);
+  }
+
+  .app-table-scroll {
+    overflow-x: auto;
+  }
+
+  .app-table {
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #334155;
+    font-size: 0.875rem;
+    line-height: 1.5rem;
+  }
+
+  .app-table thead {
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.94) 100%);
+  }
+
+  .app-table-head-cell {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+    text-align: left;
+    white-space: nowrap;
+    font-size: 0.69rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .app-table-row {
+    background: rgba(255, 255, 255, 0.98);
+    transition: background-color 160ms ease;
+  }
+
+  .app-table-row:nth-child(even) {
+    background: rgba(248, 250, 252, 0.92);
+  }
+
+  .app-table-row:hover {
+    background: rgba(227, 237, 244, 0.72);
+  }
+
+  .app-table-cell {
+    padding: 0.95rem 1rem;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+    vertical-align: middle;
+    font-size: 0.875rem;
+    color: #334155;
+  }
+
+  .app-table tbody tr:last-child .app-table-cell {
+    border-bottom: 0;
+  }
+
+  .app-table-compact .app-table-head-cell {
+    padding: 0.8rem 0.8rem;
+    font-size: 0.66rem;
+  }
+
+  .app-table-compact .app-table-cell {
+    padding: 0.8rem;
+    font-size: 0.8125rem;
+  }
+
+  .app-table-empty {
+    padding: 2rem 1rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: #64748b;
+  }
+
+  .app-table-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid rgba(129, 166, 198, 0.28);
+    background: rgba(241, 246, 250, 0.92);
+    padding: 0.22rem 0.62rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1rem;
+    color: #4d6e87;
+  }
+
+  .app-table-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.96);
+    padding: 0.35rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    transition: all 160ms ease;
+  }
+
+  .app-table-action:hover {
+    border-color: rgba(129, 166, 198, 0.36);
+    background: rgba(241, 246, 250, 0.98);
+    color: #3d596d;
+  }
+
+  .app-table-icon-action {
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.96);
+    color: #5d829f;
+    transition: all 160ms ease;
+  }
+
+  .app-table-icon-action:hover {
+    border-color: rgba(129, 166, 198, 0.36);
+    background: rgba(241, 246, 250, 0.98);
+    color: #3d596d;
+  }
+}
+
 @layer utilities {
   .scrollbar-top {
     overflow-y: hidden;

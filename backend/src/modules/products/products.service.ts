@@ -688,7 +688,7 @@ export class ProductsService {
       this.assertDesignCreateAccess(requester);
     }
     if (!files || files.length === 0) {
-      throw new BadRequestException('At least one image file is required.');
+      throw new BadRequestException('At least one image or video file is required.');
     }
 
     const uploadDir = join(process.cwd(), 'uploads', 'design-gallery');
@@ -699,13 +699,13 @@ export class ProductsService {
     for (const file of files) {
       if (!file?.buffer || !file.originalname) continue;
 
-      if (!this.isImageMimeType(file.mimetype)) {
+      if (!this.isGalleryMimeType(file.mimetype)) {
         throw new BadRequestException(
-          `Unsupported file type: ${file.originalname}. Only image files are allowed.`,
+          `Unsupported file type: ${file.originalname}. Only image and video files are allowed.`,
         );
       }
 
-      const extension = this.resolveImageExtension(file.originalname, file.mimetype);
+      const extension = this.resolveGalleryExtension(file.originalname, file.mimetype);
       const fileName = `${Date.now()}-${randomUUID()}${extension}`;
       const outputPath = join(uploadDir, fileName);
 
@@ -718,7 +718,7 @@ export class ProductsService {
     }
 
     if (uploaded.length === 0) {
-      throw new BadRequestException('No valid image files uploaded.');
+      throw new BadRequestException('No valid image or video files uploaded.');
     }
 
     return { files: uploaded };
@@ -2677,13 +2677,30 @@ export class ProductsService {
     return parsed;
   }
 
-  private isImageMimeType(mimeType?: string | null): boolean {
-    return typeof mimeType === 'string' && mimeType.trim().toLowerCase().startsWith('image/');
+  private isGalleryMimeType(mimeType?: string | null): boolean {
+    if (typeof mimeType !== 'string') return false;
+    const normalized = mimeType.trim().toLowerCase();
+    return normalized.startsWith('image/') || normalized.startsWith('video/');
   }
 
-  private resolveImageExtension(originalName: string, mimeType?: string | null): string {
+  private resolveGalleryExtension(originalName: string, mimeType?: string | null): string {
     const ext = extname(originalName || '').toLowerCase();
-    const allowed = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif']);
+    const allowed = new Set([
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.bmp',
+      '.svg',
+      '.avif',
+      '.mp4',
+      '.webm',
+      '.mov',
+      '.m4v',
+      '.ogv',
+      '.ogg',
+    ]);
     if (allowed.has(ext)) {
       return ext;
     }
@@ -2697,10 +2714,19 @@ export class ProductsService {
       'image/bmp': '.bmp',
       'image/svg+xml': '.svg',
       'image/avif': '.avif',
+      'video/mp4': '.mp4',
+      'video/webm': '.webm',
+      'video/quicktime': '.mov',
+      'video/x-m4v': '.m4v',
+      'video/ogg': '.ogv',
+      'audio/ogg': '.ogg',
     };
 
     const normalizedMime = (mimeType || '').toLowerCase();
-    return mimeMap[normalizedMime] || '.jpg';
+    if (mimeMap[normalizedMime]) {
+      return mimeMap[normalizedMime];
+    }
+    return normalizedMime.startsWith('video/') ? '.mp4' : '.jpg';
   }
 
   private buildPublicAssetUrl(request: any, assetPath: string): string {

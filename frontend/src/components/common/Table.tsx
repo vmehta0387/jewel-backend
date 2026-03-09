@@ -2,46 +2,62 @@ interface Column {
   key: string;
   label: string;
   render?: (value: any, row: any) => React.ReactNode;
+  headerClassName?: string;
+  cellClassName?: string;
 }
 
 interface TableProps {
   columns: Column[];
   data: any[];
   onRowClick?: (row: any) => void;
+  compact?: boolean;
+  wrapperClassName?: string;
+  tableClassName?: string;
 }
 
-export default function Table({ columns, data, onRowClick }: TableProps) {
+export default function Table({
+  columns,
+  data,
+  onRowClick,
+  compact = false,
+  wrapperClassName = '',
+  tableClassName = '',
+}: TableProps) {
+  const tableDensityClass = compact ? 'app-table app-table-compact' : 'app-table';
+
   return (
-    <div className="overflow-x-auto scrollbar-top rounded-lg border border-slate-200">
-      <table className="min-w-full divide-y divide-slate-200 text-[14px] leading-6">
-        <thead className="bg-slate-100">
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                className="px-5 py-3 text-left text-sm font-semibold text-slate-700"
-              >
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200 bg-white">
-          {data.map((row, idx) => (
-            <tr
-              key={idx}
-              onClick={() => onRowClick?.(row)}
-              className={onRowClick ? 'cursor-pointer hover:bg-slate-50' : ''}
-            >
+    <div className={`app-table-shell ${wrapperClassName}`.trim()}>
+      <div className="app-table-scroll scrollbar-top">
+        <table className={`${tableDensityClass} ${tableClassName}`.trim()}>
+          <thead>
+            <tr>
               {columns.map((col) => (
-                <td key={col.key} className="px-5 py-3 whitespace-nowrap text-[14px] text-slate-800">
-                  {col.render ? col.render(row[col.key], row) : row[col.key]}
-                </td>
+                <th
+                  key={col.key}
+                  className={`app-table-head-cell ${col.headerClassName || ''}`.trim()}
+                >
+                  {col.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {data.map((row, idx) => (
+              <tr
+                key={idx}
+                onClick={() => onRowClick?.(row)}
+                className={onRowClick ? 'app-table-row cursor-pointer' : 'app-table-row'}
+              >
+                {columns.map((col) => (
+                  <td key={col.key} className={`app-table-cell ${col.cellClassName || ''}`.trim()}>
+                    {col.render ? col.render(row[col.key], row) : row[col.key]}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

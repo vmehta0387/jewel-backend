@@ -269,6 +269,16 @@ const resolvePublicAssetUrl = (rawUrl: string): string => {
   }
   return `${publicAssetsBaseUrl}/${url}`;
 };
+const stripUrlSuffix = (url: string): string => url.split('#')[0].split('?')[0].toLowerCase();
+const isVideoUrl = (url: string): boolean => {
+  const normalized = (url || '').trim();
+  if (!normalized) return false;
+  if (/^data:video\//i.test(normalized)) return true;
+  const clean = stripUrlSuffix(normalized);
+  return ['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg'].some((ext) => clean.endsWith(ext));
+};
+const isGalleryUploadFile = (file: File): boolean =>
+  Boolean(file.type) && (file.type.startsWith('image/') || file.type.startsWith('video/'));
 const normalizeStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -448,7 +458,11 @@ const inlineMasterAddButtonClass =
 const FINDING_FEATURE_ENABLED = false;
 
 function Tag({ text }: { text: string }) {
-  return <span className="inline-flex rounded bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white">{text}</span>;
+  return (
+    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+      {text}
+    </span>
+  );
 }
 
 function Action({ label, onClick }: { label: string; onClick: () => void }) {
@@ -475,12 +489,39 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       title={label}
       aria-label={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+      className="app-table-icon-action"
       onClick={onClick}
     >
       {icon}
     </button>
   );
+}
+
+function MediaPreview({
+  url,
+  alt,
+  className,
+  controls = false,
+}: {
+  url: string;
+  alt: string;
+  className: string;
+  controls?: boolean;
+}) {
+  if (isVideoUrl(url)) {
+    return (
+      <video
+        src={url}
+        className={className}
+        controls={controls}
+        muted
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+
+  return <img src={url} alt={alt} className={className} />;
 }
 
 function Modal({
@@ -909,14 +950,14 @@ export default function ProductsPage() {
     event.target.value = '';
     if (files.length === 0) return;
 
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    if (imageFiles.length === 0) {
-      window.alert('Please select image files only.');
+    const mediaFiles = files.filter(isGalleryUploadFile);
+    if (mediaFiles.length === 0) {
+      window.alert('Please select image or video files only.');
       return;
     }
 
     const formData = new FormData();
-    imageFiles.forEach((file) => formData.append('files', file));
+    mediaFiles.forEach((file) => formData.append('files', file));
 
     setGalleryUploading(true);
     try {
@@ -928,16 +969,16 @@ export default function ProductsPage() {
         .filter((url: string) => Boolean(url));
 
       if (urls.length === 0) {
-        window.alert('No images were uploaded.');
+        window.alert('No media files were uploaded.');
       } else {
         addGalleryUrls(urls);
       }
 
-      if (imageFiles.length !== files.length) {
-        window.alert('Only image files were uploaded. Non-image files were skipped.');
+      if (mediaFiles.length !== files.length) {
+        window.alert('Only image/video files were uploaded. Unsupported files were skipped.');
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to upload images.');
+      window.alert(error?.response?.data?.message || 'Unable to upload media.');
     } finally {
       setGalleryUploading(false);
     }
@@ -2589,11 +2630,12 @@ export default function ProductsPage() {
           <p className="mb-3 text-sm text-red-600">{rowsError}</p>
         ) : null}
 
-        <div className="overflow-x-auto scrollbar-top border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-[14px] leading-6">
-            <thead className="bg-slate-100">
+        <div className="app-table-shell">
+          <div className="app-table-scroll scrollbar-top">
+            <table className="app-table app-table-compact">
+              <thead>
               <tr>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">
+                <th className="app-table-head-cell">
                   <div className="flex items-center gap-2">
                     <input
                       ref={selectAllVisibleCheckboxRef}
@@ -2606,22 +2648,22 @@ export default function ProductsPage() {
                     <span>#</span>
                   </div>
                 </th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Image</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Design No.</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Group</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Size</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Metal Info</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Collection</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Stone Info</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Price</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Tags</th>
-                <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
+                <th className="app-table-head-cell">Media</th>
+                <th className="app-table-head-cell">Design No.</th>
+                <th className="app-table-head-cell">Jewelry Group</th>
+                <th className="app-table-head-cell">Jewelry Size</th>
+                <th className="app-table-head-cell">Metal Info</th>
+                <th className="app-table-head-cell">Collection</th>
+                <th className="app-table-head-cell">Stone Info</th>
+                <th className="app-table-head-cell">Price</th>
+                <th className="app-table-head-cell">Tags</th>
+                <th className="app-table-head-cell">Action</th>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
+              </thead>
+              <tbody>
               {filteredRows.map((row, idx) => (
-                <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 text-sm text-gray-700">
+                <tr key={row.id} className="app-table-row">
+                  <td className="app-table-cell text-sm text-slate-600">
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -2633,35 +2675,41 @@ export default function ProductsPage() {
                       {idx + 1}
                     </div>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="app-table-cell">
                     {row.imageUrls?.[0] ? (
-                      <img
-                        src={row.imageUrls[0]}
+                      <MediaPreview
+                        url={row.imageUrls[0]}
                         alt={`${row.designNo} preview`}
-                        className="h-10 w-10 rounded border border-gray-300 object-cover"
+                        className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm"
                       />
                     ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded border border-gray-300 bg-gray-100 text-[10px] font-semibold text-gray-500">IMG</div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-semibold tracking-[0.12em] text-slate-400">N/A</div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-sm font-semibold">
+                  <td className="app-table-cell text-sm font-semibold">
                     <button
                       type="button"
-                      className="text-blue-700 underline-offset-2 hover:underline"
+                      className="text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
                       onClick={() => openEdit(row)}
                       title="Edit design"
                     >
                       {row.designNo}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.jewelryGroup}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.jewelrySize}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.goldColour || '-'}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{row.collection}</td>
-                  <td className="px-3 py-2 text-sm text-gray-700"><span className="rounded bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white">{row.stoneInfo}</span></td>
-                  <td className="px-3 py-2 text-sm text-gray-700">{formatMoney(row.price)}</td>
-                  <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div></td>
-                  <td className="px-3 py-2">
+                  <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
+                  <td className="app-table-cell text-sm text-slate-700">{row.jewelrySize}</td>
+                  <td className="app-table-cell text-sm text-slate-700">{row.goldColour || '-'}</td>
+                  <td className="app-table-cell text-sm text-slate-700">{row.collection}</td>
+                  <td className="app-table-cell text-sm text-slate-700">
+                    <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
+                      {row.stoneInfo}
+                    </span>
+                  </td>
+                  <td className="app-table-cell text-sm font-semibold text-slate-800">{formatMoney(row.price)}</td>
+                  <td className="app-table-cell">
+                    <div className="flex flex-wrap gap-1.5">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div>
+                  </td>
+                  <td className="app-table-cell">
                     <div className="flex flex-wrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
@@ -2672,7 +2720,7 @@ export default function ProductsPage() {
                             type="button"
                             title="Delete"
                             aria-label="Delete"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => deleteDesign(row.id)}
                             disabled={deletingId === row.id}
                           >
@@ -2693,8 +2741,9 @@ export default function ProductsPage() {
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
@@ -2985,7 +3034,7 @@ export default function ProductsPage() {
 
               <div className="space-y-4">
                 <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
-                <div className="border-b border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">Images Gallery</div>
+                <div className="border-b border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">Media Gallery</div>
                 <div className="space-y-3 p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -3001,34 +3050,41 @@ export default function ProductsPage() {
                       onClick={() => galleryUploadInputRef.current?.click()}
                       disabled={galleryUploading}
                     >
-                      {galleryUploading ? 'Uploading...' : 'Add Image'}
+                      {galleryUploading ? 'Uploading...' : 'Add Media'}
                     </button>
                   </div>
                   <input
                     ref={galleryUploadInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
                     multiple
                     className="hidden"
                     onChange={handleGalleryUploadChange}
                   />
                   {galleryUrls.length === 0 ? (
                     <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-5 text-center text-xs text-gray-500">
-                      No images added yet.
+                      No media added yet.
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-violet-700">
-                        {galleryUrls.length} image{galleryUrls.length > 1 ? 's' : ''} selected
+                        {galleryUrls.length} media item{galleryUrls.length > 1 ? 's' : ''} selected
                       </p>
                       <div className="grid grid-cols-2 gap-2">
                         {galleryUrls.map((url, index) => (
                           <div key={`${url}-${index}`} className="rounded border border-gray-200 bg-gray-50 p-1.5">
-                            <img
-                              src={url}
-                              alt={`Design media ${index + 1}`}
-                              className="h-24 w-full rounded object-cover"
-                            />
+                            <div className="relative">
+                              <MediaPreview
+                                url={url}
+                                alt={`Design media ${index + 1}`}
+                                className="h-24 w-full rounded object-cover"
+                              />
+                              {isVideoUrl(url) ? (
+                                <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
+                                  Video
+                                </span>
+                              ) : null}
+                            </div>
                             <div className="mt-1 flex flex-wrap gap-1">
                               {index > 0 ? (
                                 <button
@@ -3536,7 +3592,7 @@ export default function ProductsPage() {
           <div className="space-y-4">
             {galleryLibraryUrls.length === 0 ? (
               <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
-                No images found in existing designs yet.
+                No media found in existing designs yet.
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -3544,7 +3600,18 @@ export default function ProductsPage() {
                   const selectedInCurrent = galleryUrls.includes(url);
                   return (
                     <div key={`${url}-${index}`} className="rounded border border-gray-200 bg-white p-2 shadow-sm">
-                      <img src={url} alt={`Gallery ${index + 1}`} className="h-28 w-full rounded object-cover" />
+                      <div className="relative">
+                        <MediaPreview
+                          url={url}
+                          alt={`Gallery ${index + 1}`}
+                          className="h-28 w-full rounded object-cover"
+                        />
+                        {isVideoUrl(url) ? (
+                          <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
+                            Video
+                          </span>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         className={`mt-2 w-full rounded px-2 py-1 text-xs font-semibold ${
@@ -4222,21 +4289,22 @@ export default function ProductsPage() {
                 </table>
               </div>
               <div className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Data</div>
+                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
                 <div className="p-3">
                   {selected.imageUrls?.length ? (
                     <div className="space-y-3">
-                      <img
-                        src={selected.imageUrls[0]}
+                      <MediaPreview
+                        url={selected.imageUrls[0]}
                         alt={`${selected.designNo} primary`}
                         className="h-44 w-full rounded border border-gray-300 object-cover"
+                        controls={isVideoUrl(selected.imageUrls[0])}
                       />
                       {selected.imageUrls.length > 1 ? (
                         <div className="grid grid-cols-3 gap-2">
                           {selected.imageUrls.slice(1).map((url, index) => (
-                            <img
+                            <MediaPreview
                               key={`${url}-${index}`}
-                              src={url}
+                              url={url}
                               alt={`${selected.designNo} gallery ${index + 2}`}
                               className="h-16 w-full rounded border border-gray-200 object-cover"
                             />
@@ -4246,7 +4314,7 @@ export default function ProductsPage() {
                     </div>
                   ) : (
                     <div className="flex h-36 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs font-semibold text-gray-500">
-                      No gallery images
+                      No gallery media
                     </div>
                   )}
                 </div>

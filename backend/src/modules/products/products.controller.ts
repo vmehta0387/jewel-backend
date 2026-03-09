@@ -69,7 +69,7 @@ export class ProductsController {
   }
 
   @Post('gallery-files')
-  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 50 * 1024 * 1024 } }))
   uploadGalleryFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
     return this.productsService.uploadGalleryFiles(files || [], req);
   }

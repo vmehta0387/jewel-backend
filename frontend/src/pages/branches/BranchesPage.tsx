@@ -79,8 +79,8 @@ export default function BranchesPage() {
       label: 'Status',
       render: (val: boolean) => (
         <span
-          className={`px-2 py-1 rounded-full text-xs font-medium ${
-            val ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+            val ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'
           }`}
         >
           {val ? 'Active' : 'Inactive'}
@@ -97,7 +97,7 @@ export default function BranchesPage() {
         <div className="flex gap-2">
           <button
             onClick={() => navigate(`/branches/edit/${row.id}`)}
-            className="text-primary-600 hover:text-primary-800 text-sm font-medium"
+            className="app-table-action"
           >
             Edit
           </button>
@@ -110,8 +110,10 @@ export default function BranchesPage() {
                 console.error(error);
               }
             }}
-            className={`text-sm font-medium ${
-              row.isActive ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'
+            className={`app-table-action ${
+              row.isActive
+                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
             }`}
           >
             {row.isActive ? 'Disable' : 'Enable'}

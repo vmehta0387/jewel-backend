@@ -1985,68 +1985,68 @@ export default function DesignMastersPage() {
           </div>
         </form>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <div className="overflow-x-auto scrollbar-top">
+        <div className="app-table-shell">
+          <div className="app-table-scroll scrollbar-top">
             {isPacketType ? (
-              <table className="min-w-[1400px] divide-y divide-slate-200">
-                <thead className="bg-slate-100">
+              <table className="app-table app-table-compact min-w-[1400px]">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">#</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Packet Name</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Stone</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Shape</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Size</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Cut</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Color</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Quality</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Pieces</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Weight</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Unit</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Created</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Modified</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Packet Name</th>
+                    <th className="app-table-head-cell">Stone</th>
+                    <th className="app-table-head-cell">Shape</th>
+                    <th className="app-table-head-cell">Size</th>
+                    <th className="app-table-head-cell">Cut</th>
+                    <th className="app-table-head-cell">Color</th>
+                    <th className="app-table-head-cell">Quality</th>
+                    <th className="app-table-head-cell">Pieces</th>
+                    <th className="app-table-head-cell">Weight</th>
+                    <th className="app-table-head-cell">Unit</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={14} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={14} className="app-table-empty">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={14} className="px-3 py-8 text-center text-sm text-slate-500">
+                      <td colSpan={14} className="app-table-empty">
                         No records found.
                       </td>
                     </tr>
                   ) : (
                     packetRows.map((row, index) => (
-                      <tr key={row.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
-                        <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.packetName}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.stone || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.shape || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.size || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.cut || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.color || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.quality || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.pieces}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{Number(row.weight || 0).toFixed(3)}</td>
-                        <td className="px-3 py-2 text-sm text-slate-700">{row.weightUnit}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-sm">
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.packetName}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.stone || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.shape || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.size || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.cut || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.color || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.quality || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.pieces}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{Number(row.weight || 0).toFixed(3)}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.weightUnit}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
                           <div className="flex gap-2">
-                            <button type="button" className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100" onClick={() => openEditPacket(row)}>
+                            <button type="button" className="app-table-action" onClick={() => openEditPacket(row)}>
                               Edit
                             </button>
                             <button
                               type="button"
-                              className={`rounded border px-2 py-1 text-xs font-semibold ${
+                              className={`app-table-action ${
                                 row.isActive
-                                  ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
                               }`}
                               onClick={() => handleToggleStatus(row)}
                             >
@@ -2060,27 +2060,27 @@ export default function DesignMastersPage() {
                 </tbody>
               </table>
             ) : (
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-100">
+              <table className="app-table app-table-compact min-w-full">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">#</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">{selectedConfig.label}</th>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">{selectedConfig.label}</th>
                     {selectedType === 'JEWELRY_SIZE' ? (
-                      <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Group</th>
+                      <th className="app-table-head-cell">Jewelry Group</th>
                     ) : null}
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">
+                    <th className="app-table-head-cell">
                       {selectedType === 'METAL_CARATAGE' ? 'Price/Gms' : 'Alias Name'}
                     </th>
                     {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
-                      <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Default Wastage (%)</th>
+                      <th className="app-table-head-cell">Default Wastage (%)</th>
                     ) : null}
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Description</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Created</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Modified</th>
-                    <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Action</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody>
                   {loading ? (
                     <tr>
                       <td
@@ -2091,7 +2091,7 @@ export default function DesignMastersPage() {
                             ? 8
                             : 7
                         }
-                        className="px-3 py-8 text-center text-sm text-slate-500"
+                        className="app-table-empty"
                       >
                         Loading records...
                       </td>
@@ -2106,20 +2106,20 @@ export default function DesignMastersPage() {
                             ? 8
                             : 7
                         }
-                        className="px-3 py-8 text-center text-sm text-slate-500"
+                        className="app-table-empty"
                       >
                         No records found.
                       </td>
                     </tr>
                   ) : (
                     masterRows.map((row, index) => (
-                      <tr key={row.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
-                        <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.value}</td>
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
                         {selectedType === 'JEWELRY_SIZE' ? (
-                          <td className="px-3 py-2 text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                          <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
                         ) : null}
-                        <td className="px-3 py-2 text-sm text-slate-700">
+                        <td className="app-table-cell text-sm text-slate-700">
                           {selectedType === 'METAL_CARATAGE'
                             ? row.livePricePerGm !== null && row.livePricePerGm !== undefined
                               ? Number(row.livePricePerGm).toFixed(2)
@@ -2127,7 +2127,7 @@ export default function DesignMastersPage() {
                             : row.aliasName || row.value}
                         </td>
                         {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
-                          <td className="px-3 py-2 text-sm text-slate-700">
+                          <td className="app-table-cell text-sm text-slate-700">
                             {(selectedType === 'METAL_CARATAGE'
                               ? row.defaultWastagePercent
                               : row.pricePerUnit) !== null &&
@@ -2142,20 +2142,20 @@ export default function DesignMastersPage() {
                               : '-'}
                           </td>
                         ) : null}
-                        <td className="max-w-sm px-3 py-2 text-sm text-slate-600">{row.description || '-'}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
-                        <td className="whitespace-nowrap px-3 py-2 text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-sm">
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
                           <div className="flex gap-2">
-                            <button type="button" className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100" onClick={() => openEditMaster(row)}>
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
                               Edit
                             </button>
                             <button
                               type="button"
-                              className={`rounded border px-2 py-1 text-xs font-semibold ${
+                              className={`app-table-action ${
                                 row.isActive
-                                  ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
                               }`}
                               onClick={() => handleToggleStatus(row)}
                             >
