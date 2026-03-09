@@ -33,6 +33,8 @@ interface MasterOption {
   id: string;
   value: string;
   aliasName?: string;
+  jewelryGroupId?: string;
+  jewelryGroup?: string;
   metalName?: string;
   purityPercentage?: number;
   marketPricePerOunce?: number;
@@ -46,6 +48,8 @@ interface MasterRow {
   masterType: DesignMasterType;
   value: string;
   aliasName?: string | null;
+  jewelryGroupId?: string | null;
+  jewelryGroup?: string | null;
   description?: string | null;
   findingNo?: string | null;
   metalCaratage?: string | null;
@@ -316,12 +320,14 @@ interface MasterModalProps {
   formValue: string;
   formAliasName: string;
   formDescription: string;
+  isJewelrySizeType: boolean;
   isFindingType: boolean;
   isMetalNameType: boolean;
   isMetalColorType: boolean;
   isMetalPurityType: boolean;
   isMetalCaratageType: boolean;
   findingNo: string;
+  jewelryGroupId: string;
   metalCaratage: string;
   metalName: string;
   metalColor: string;
@@ -338,12 +344,14 @@ interface MasterModalProps {
   pricePerUnit: string;
   dimensions: string;
   weightPerUnit: string;
+  jewelryGroupOptions: MasterOption[];
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChangeValue: (value: string) => void;
   onChangeAliasName: (value: string) => void;
   onChangeDescription: (value: string) => void;
   onChangeFindingNo: (value: string) => void;
+  onChangeJewelryGroupId: (value: string) => void;
   onChangeMetalCaratage: (value: string) => void;
   onChangeMetalName: (value: string) => void;
   onChangeMetalColor: (value: string) => void;
@@ -396,6 +404,7 @@ interface PacketMasterOptions {
 }
 
 interface MetalMasterOptions {
+  jewelryGroups: MasterOption[];
   metalNames: MasterOption[];
   metalColors: MasterOption[];
   metalPurities: MasterOption[];
@@ -426,6 +435,7 @@ const emptyPacketMasterOptions: PacketMasterOptions = {
 };
 
 const emptyMetalMasterOptions: MetalMasterOptions = {
+  jewelryGroups: [],
   metalNames: [],
   metalColors: [],
   metalPurities: [],
@@ -491,12 +501,14 @@ function MasterModal({
   formValue,
   formAliasName,
   formDescription,
+  isJewelrySizeType,
   isFindingType,
   isMetalNameType,
   isMetalColorType,
   isMetalPurityType,
   isMetalCaratageType,
   findingNo,
+  jewelryGroupId,
   metalCaratage,
   metalName,
   metalColor,
@@ -513,12 +525,14 @@ function MasterModal({
   pricePerUnit,
   dimensions,
   weightPerUnit,
+  jewelryGroupOptions,
   onClose,
   onSubmit,
   onChangeValue,
   onChangeAliasName,
   onChangeDescription,
   onChangeFindingNo,
+  onChangeJewelryGroupId,
   onChangeMetalCaratage,
   onChangeMetalName,
   onChangeMetalColor,
@@ -605,7 +619,57 @@ function MasterModal({
             </div>
           ) : null}
 
-          {!isFindingType && !isMetalCaratageType ? (
+          {isJewelrySizeType ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formValue}
+                  onChange={(event) => onChangeValue(event.target.value)}
+                  placeholder={valueLabel}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group*</label>
+                <select
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={jewelryGroupId}
+                  onChange={(event) => onChangeJewelryGroupId(event.target.value)}
+                  required
+                >
+                  <option value="">Select Jewelry Group</option>
+                  {jewelryGroupOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.aliasName || option.value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formAliasName}
+                  onChange={(event) => onChangeAliasName(event.target.value)}
+                  placeholder="Alias Name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                <textarea
+                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formDescription}
+                  onChange={(event) => onChangeDescription(event.target.value)}
+                  placeholder="Description"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {!isFindingType && !isMetalCaratageType && !isJewelrySizeType ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
@@ -894,6 +958,7 @@ function MasterModal({
                 </div>
               ) : null}
 
+              {!isJewelrySizeType ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
                 <textarea
@@ -903,6 +968,7 @@ function MasterModal({
                   placeholder="Description"
                 />
               </div>
+              ) : null}
             </>
           ) : null}
 
@@ -1170,6 +1236,7 @@ export default function DesignMastersPage() {
   const [formAliasName, setFormAliasName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formFindingNo, setFormFindingNo] = useState('');
+  const [formJewelryGroupId, setFormJewelryGroupId] = useState('');
   const [formMetalCaratage, setFormMetalCaratage] = useState('');
   const [formMetalName, setFormMetalName] = useState('');
   const [formMetalColor, setFormMetalColor] = useState('');
@@ -1373,6 +1440,7 @@ export default function DesignMastersPage() {
     try {
       const response = await api.get('/products/masters');
       setMetalMasterOptions({
+        jewelryGroups: response.data?.jewelryGroups || [],
         metalNames: response.data?.metalNames || [],
         metalColors: response.data?.metalColors || [],
         metalPurities: response.data?.metalPurities || [],
@@ -1413,6 +1481,7 @@ export default function DesignMastersPage() {
     setFormAliasName('');
     setFormDescription('');
     setFormFindingNo('');
+    setFormJewelryGroupId('');
     setFormMetalCaratage('');
     setFormMetalName('');
     setFormMetalColor('');
@@ -1442,6 +1511,11 @@ export default function DesignMastersPage() {
     setFormAliasName(row.aliasName || row.value || '');
     setFormDescription(row.description || '');
     setFormFindingNo(row.findingNo || '');
+    setFormJewelryGroupId(
+      row.jewelryGroupId ||
+        metalMasterOptions.jewelryGroups.find((option) => option.value === row.jewelryGroup)?.id ||
+        '',
+    );
     setFormMetalCaratage(row.metalCaratage || '');
     setFormMetalName(row.metalName || '');
     setFormMetalColor(row.metalColor || '');
@@ -1656,6 +1730,12 @@ export default function DesignMastersPage() {
                   defaultWastagePercent: parseOptionalNum(formDefaultWastage) ?? 0,
                 }
               : null;
+    const jewelrySizePayload =
+      selectedType === 'JEWELRY_SIZE'
+        ? {
+            jewelryGroupId: formJewelryGroupId,
+          }
+        : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
 
     if (selectedType === 'FINDING_HEAD') {
@@ -1667,6 +1747,10 @@ export default function DesignMastersPage() {
         window.alert('Price/Unit and Weight/Unit are required.');
         return;
       }
+    }
+    if (selectedType === 'JEWELRY_SIZE' && !formJewelryGroupId.trim()) {
+      window.alert('Jewelry Group is required.');
+      return;
     }
 
     if (selectedType === 'METAL_NAME') {
@@ -1713,6 +1797,7 @@ export default function DesignMastersPage() {
           value,
           aliasName,
           description: descriptionPayload,
+          ...(jewelrySizePayload || {}),
           ...(findingPayload || {}),
           ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
@@ -1723,6 +1808,7 @@ export default function DesignMastersPage() {
           value,
           aliasName,
           description: descriptionPayload,
+          ...(jewelrySizePayload || {}),
           ...(findingPayload || {}),
           ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
@@ -1979,6 +2065,9 @@ export default function DesignMastersPage() {
                   <tr>
                     <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">#</th>
                     <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">{selectedConfig.label}</th>
+                    {selectedType === 'JEWELRY_SIZE' ? (
+                      <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">Jewelry Group</th>
+                    ) : null}
                     <th className="px-3 py-2 text-left text-sm font-semibold text-slate-700">
                       {selectedType === 'METAL_CARATAGE' ? 'Price/Gms' : 'Alias Name'}
                     </th>
@@ -1996,7 +2085,9 @@ export default function DesignMastersPage() {
                     <tr>
                       <td
                         colSpan={
-                          selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE'
+                          selectedType === 'GOLD_COLOUR' ||
+                          selectedType === 'METAL_CARATAGE' ||
+                          selectedType === 'JEWELRY_SIZE'
                             ? 8
                             : 7
                         }
@@ -2009,7 +2100,9 @@ export default function DesignMastersPage() {
                     <tr>
                       <td
                         colSpan={
-                          selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE'
+                          selectedType === 'GOLD_COLOUR' ||
+                          selectedType === 'METAL_CARATAGE' ||
+                          selectedType === 'JEWELRY_SIZE'
                             ? 8
                             : 7
                         }
@@ -2023,6 +2116,9 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="hover:bg-slate-50">
                         <td className="px-3 py-2 text-sm text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 text-sm font-medium text-slate-800">{row.value}</td>
+                        {selectedType === 'JEWELRY_SIZE' ? (
+                          <td className="px-3 py-2 text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                        ) : null}
                         <td className="px-3 py-2 text-sm text-slate-700">
                           {selectedType === 'METAL_CARATAGE'
                             ? row.livePricePerGm !== null && row.livePricePerGm !== undefined
@@ -2103,12 +2199,14 @@ export default function DesignMastersPage() {
           formValue={formValue}
           formAliasName={formAliasName}
           formDescription={formDescription}
+          isJewelrySizeType={selectedType === 'JEWELRY_SIZE'}
           isFindingType={selectedType === 'FINDING_HEAD'}
           isMetalNameType={selectedType === 'METAL_NAME'}
           isMetalColorType={selectedType === 'METAL_COLOR'}
           isMetalPurityType={selectedType === 'METAL_PURITY'}
           isMetalCaratageType={selectedType === 'METAL_CARATAGE' || selectedType === 'GOLD_COLOUR'}
           findingNo={formFindingNo}
+          jewelryGroupId={formJewelryGroupId}
           metalCaratage={formMetalCaratage}
           metalName={formMetalName}
           metalColor={formMetalColor}
@@ -2125,6 +2223,7 @@ export default function DesignMastersPage() {
           pricePerUnit={formPricePerUnit}
           dimensions={formDimensions}
           weightPerUnit={formWeightPerUnit}
+          jewelryGroupOptions={metalMasterOptions.jewelryGroups}
           onClose={() => {
             setShowModal(false);
             resetModalState();
@@ -2134,6 +2233,7 @@ export default function DesignMastersPage() {
           onChangeAliasName={setFormAliasName}
           onChangeDescription={setFormDescription}
           onChangeFindingNo={setFormFindingNo}
+          onChangeJewelryGroupId={setFormJewelryGroupId}
           onChangeMetalCaratage={setFormMetalCaratage}
           onChangeMetalName={setFormMetalName}
           onChangeMetalColor={setFormMetalColor}

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -406,7 +406,7 @@ export default function AddCompany() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => navigate('/companies')}>Back</Button>
         <h1 className="text-2xl font-bold text-gray-900">Add New Company</h1>
@@ -420,7 +420,7 @@ export default function AddCompany() {
         )}
 
         <Card title="Company Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
               label="Company Name *"
               value={formData.companyName}
@@ -457,7 +457,7 @@ export default function AddCompany() {
               
               {showAddManager && (
                 <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Input
                       label="First Name *"
                       value={newManager.firstName}
@@ -507,7 +507,7 @@ export default function AddCompany() {
         </Card>
 
         <Card title="Contact Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
               label="Primary Email"
               type="email"
@@ -534,7 +534,7 @@ export default function AddCompany() {
         </Card>
 
         <Card title="Company Address">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <Input
                 label="Street Address"
@@ -608,7 +608,7 @@ export default function AddCompany() {
 
             {showCreateBranchForm && (
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     label="Branch Name *"
                     value={newBranchData.name}
@@ -774,7 +774,7 @@ export default function AddCompany() {
 
             {showCreateUserForm && (
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     label="First Name *"
                     value={newUserData.firstName}
@@ -968,7 +968,7 @@ export default function AddCompany() {
             </div>
             
             {formData.shipToType === 'CUSTOM' && (
-              <div className="grid grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
                     label="Street Address"
@@ -1080,4 +1080,5 @@ export default function AddCompany() {
     </div>
   );
 }
+
 

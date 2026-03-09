@@ -24,6 +24,8 @@ interface NavigationItem {
 interface SidebarProps {
   collapsed?: boolean;
   onToggle?: () => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 const navigation: NavigationItem[] = [
@@ -153,7 +155,12 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
   );
 }
 
-export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
+export default function Sidebar({
+  collapsed = false,
+  onToggle,
+  mobileOpen = false,
+  onCloseMobile,
+}: SidebarProps) {
   const location = useLocation();
   const user = getStoredUser();
 
@@ -171,22 +178,25 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
 
   return (
     <div
-      className={`fixed left-0 top-0 h-screen border-r border-blue-700/40 bg-gradient-to-b from-blue-700 via-blue-600 to-cyan-700 text-white transition-all duration-300 ${
-        collapsed ? 'w-20' : 'w-64'
-      }`}
+      className={`fixed left-0 top-0 z-30 h-screen w-72 border-r border-blue-700/40 bg-gradient-to-b from-blue-700 via-blue-600 to-cyan-700 text-white transition-all duration-300 lg:w-auto ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } ${
+        collapsed ? 'lg:w-20' : 'lg:w-64'
+      } lg:translate-x-0`}
     >
       <div
         className={`relative flex items-center border-b border-white/20 ${
-          collapsed ? 'justify-center px-2 py-4' : 'justify-between px-4 py-4'
+          collapsed ? 'justify-center px-2 py-4 lg:px-2' : 'justify-between px-4 py-4'
         }`}
       >
-        <h1 className={`font-bold text-white ${collapsed ? 'text-base' : 'text-xl'}`}>
-          {collapsed ? 'JP' : 'Jewelry Platform'}
+        <h1 className={`font-bold text-white ${collapsed ? 'text-base lg:text-base' : 'text-xl'}`}>
+          <span className={collapsed ? 'lg:hidden' : ''}>Jewelry Platform</span>
+          {collapsed ? <span className="hidden lg:inline">JP</span> : null}
         </h1>
         <button
           type="button"
           onClick={onToggle}
-          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 ${
+          className={`hidden h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 lg:inline-flex ${
             collapsed ? 'absolute -right-3 top-4 bg-blue-700 shadow' : ''
           }`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -205,16 +215,28 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             <path d="m15 18-6-6 6-6" />
           </svg>
         </button>
+        <button
+          type="button"
+          onClick={onCloseMobile}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
+          aria-label="Close navigation"
+          title="Close navigation"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
       </div>
-      <nav className={`space-y-1 ${collapsed ? 'p-2' : 'p-4'}`}>
+      <nav className={`space-y-1 ${collapsed ? 'p-4 lg:p-2' : 'p-4'}`}>
         {visibleNavigation.map((item) => {
           const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`group flex rounded-lg py-3 transition-colors ${
-                collapsed ? 'justify-center px-2' : 'items-center gap-3 px-4'
+              onClick={() => onCloseMobile?.()}
+              className={`group flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
+                collapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''
               } ${
                 isActive
                   ? 'bg-white/20 text-white font-semibold shadow-sm'
@@ -223,7 +245,7 @@ export default function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
               title={collapsed ? item.name : undefined}
             >
               <MenuIcon name={item.icon} isActive={isActive} />
-              {!collapsed ? <span>{item.name}</span> : null}
+              <span className={collapsed ? 'lg:hidden' : ''}>{item.name}</span>
             </Link>
           );
         })}

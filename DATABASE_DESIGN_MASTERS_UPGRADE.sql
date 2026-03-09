@@ -8,14 +8,17 @@ CREATE TABLE IF NOT EXISTS design_masters (
   normalized_value VARCHAR(255) NOT NULL,
   alias_name VARCHAR(255) NULL,
   normalized_alias VARCHAR(255) NULL,
+  scope_key VARCHAR(64) NOT NULL DEFAULT '',
+  jewelry_group_id VARCHAR(36) NULL,
+  jewelry_group VARCHAR(255) NULL,
   description TEXT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by VARCHAR(36) NULL,
   updated_by VARCHAR(36) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY unique_master_type_value (master_type, normalized_value),
-  UNIQUE KEY unique_master_type_alias (master_type, normalized_alias),
+  UNIQUE KEY unique_master_type_value (master_type, scope_key, normalized_value),
+  UNIQUE KEY unique_master_type_alias (master_type, scope_key, normalized_alias),
   INDEX idx_master_type_active (master_type, is_active),
   CONSTRAINT fk_design_master_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT fk_design_master_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
@@ -27,7 +30,10 @@ ALTER TABLE design_masters
 ALTER TABLE design_masters
   ADD COLUMN IF NOT EXISTS alias_name VARCHAR(255) NULL AFTER normalized_value,
   ADD COLUMN IF NOT EXISTS normalized_alias VARCHAR(255) NULL AFTER alias_name,
-  ADD COLUMN IF NOT EXISTS description TEXT NULL AFTER normalized_alias,
+  ADD COLUMN IF NOT EXISTS scope_key VARCHAR(64) NOT NULL DEFAULT '' AFTER normalized_alias,
+  ADD COLUMN IF NOT EXISTS jewelry_group_id VARCHAR(36) NULL AFTER scope_key,
+  ADD COLUMN IF NOT EXISTS jewelry_group VARCHAR(255) NULL AFTER jewelry_group_id,
+  ADD COLUMN IF NOT EXISTS description TEXT NULL AFTER jewelry_group,
   ADD COLUMN IF NOT EXISTS finding_no VARCHAR(100) NULL AFTER description,
   ADD COLUMN IF NOT EXISTS metal_caratage VARCHAR(100) NULL AFTER finding_no,
   ADD COLUMN IF NOT EXISTS price_in ENUM('PIECES', 'GRAM', 'PAIR', 'INCHES') NULL AFTER metal_caratage,
@@ -51,21 +57,82 @@ UPDATE design_masters
 SET normalized_alias = LOWER(TRIM(alias_name))
 WHERE normalized_alias IS NULL OR TRIM(normalized_alias) = '';
 
-SET @idx_exists := (
+UPDATE design_masters
+SET scope_key = ''
+WHERE scope_key IS NULL;
+
+UPDATE design_masters size_master
+JOIN design_masters group_master
+  ON group_master.id = size_master.jewelry_group_id
+SET
+  size_master.jewelry_group = group_master.value,
+  size_master.scope_key = group_master.id
+WHERE size_master.master_type = 'JEWELRY_SIZE'
+  AND size_master.jewelry_group_id IS NOT NULL;
+
+SET @drop_unique_value_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND index_name = 'unique_master_type_value'
+);
+SET @drop_unique_value_sql := IF(
+  @drop_unique_value_exists > 0,
+  'ALTER TABLE design_masters DROP INDEX unique_master_type_value',
+  'SELECT 1'
+);
+PREPARE stmt_drop_value FROM @drop_unique_value_sql;
+EXECUTE stmt_drop_value;
+DEALLOCATE PREPARE stmt_drop_value;
+
+SET @drop_unique_alias_exists := (
   SELECT COUNT(1)
   FROM information_schema.statistics
   WHERE table_schema = DATABASE()
     AND table_name = 'design_masters'
     AND index_name = 'unique_master_type_alias'
 );
-SET @idx_sql := IF(
-  @idx_exists = 0,
-  'ALTER TABLE design_masters ADD UNIQUE KEY unique_master_type_alias (master_type, normalized_alias)',
+SET @drop_unique_alias_sql := IF(
+  @drop_unique_alias_exists > 0,
+  'ALTER TABLE design_masters DROP INDEX unique_master_type_alias',
   'SELECT 1'
 );
-PREPARE stmt FROM @idx_sql;
+PREPARE stmt_drop_alias FROM @drop_unique_alias_sql;
+EXECUTE stmt_drop_alias;
+DEALLOCATE PREPARE stmt_drop_alias;
+
+SET @idx_value_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND index_name = 'unique_master_type_value'
+);
+SET @idx_value_sql := IF(
+  @idx_value_exists = 0,
+  'ALTER TABLE design_masters ADD UNIQUE KEY unique_master_type_value (master_type, scope_key, normalized_value)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @idx_value_sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+SET @idx_alias_exists := (
+  SELECT COUNT(1)
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'design_masters'
+    AND index_name = 'unique_master_type_alias'
+);
+SET @idx_alias_sql := IF(
+  @idx_alias_exists = 0,
+  'ALTER TABLE design_masters ADD UNIQUE KEY unique_master_type_alias (master_type, scope_key, normalized_alias)',
+  'SELECT 1'
+);
+PREPARE stmt_alias FROM @idx_alias_sql;
+EXECUTE stmt_alias;
+DEALLOCATE PREPARE stmt_alias;
 
 SET @idx_finding_no_exists := (
   SELECT COUNT(1)
@@ -200,6 +267,27 @@ ON DUPLICATE KEY UPDATE
   description = VALUES(description),
   is_active = VALUES(is_active),
   updated_at = CURRENT_TIMESTAMP;
+
+UPDATE design_masters
+SET
+  jewelry_group_id = 'dm-jg-ring',
+  jewelry_group = 'Ring',
+  scope_key = 'dm-jg-ring'
+WHERE id IN ('dm-size-us6', 'dm-size-us8');
+
+UPDATE design_masters
+SET
+  jewelry_group_id = 'dm-jg-bracelet',
+  jewelry_group = 'Bracelet',
+  scope_key = 'dm-jg-bracelet'
+WHERE id = 'dm-size-155cm';
+
+UPDATE design_masters
+SET
+  jewelry_group_id = 'dm-jg-necklace',
+  jewelry_group = 'Necklace',
+  scope_key = 'dm-jg-necklace'
+WHERE id = 'dm-size-6in';
 
 UPDATE design_masters
 SET

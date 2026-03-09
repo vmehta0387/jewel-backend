@@ -64,6 +64,15 @@ export class DesignMaster {
   @Column({ name: 'normalized_alias', length: 255, nullable: true })
   normalizedAlias: string | null;
 
+  @Column({ name: 'scope_key', length: 64, default: '' })
+  scopeKey: string;
+
+  @Column({ name: 'jewelry_group_id', length: 36, nullable: true })
+  jewelryGroupId: string | null;
+
+  @Column({ name: 'jewelry_group', length: 255, nullable: true })
+  jewelryGroup: string | null;
+
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
@@ -154,6 +163,17 @@ export class DesignMaster {
     if (this.description !== undefined && this.description !== null) {
       const normalizedDescription = this.description.trim();
       this.description = normalizedDescription.length > 0 ? normalizedDescription : null;
+    }
+    if (this.scopeKey !== undefined && this.scopeKey !== null) {
+      this.scopeKey = this.scopeKey.trim();
+    }
+    if (this.jewelryGroupId !== undefined && this.jewelryGroupId !== null) {
+      const normalizedJewelryGroupId = this.jewelryGroupId.trim();
+      this.jewelryGroupId = normalizedJewelryGroupId.length > 0 ? normalizedJewelryGroupId : null;
+    }
+    if (this.jewelryGroup !== undefined && this.jewelryGroup !== null) {
+      const normalizedJewelryGroup = this.jewelryGroup.trim();
+      this.jewelryGroup = normalizedJewelryGroup.length > 0 ? normalizedJewelryGroup : null;
     }
     if (this.findingNo !== undefined && this.findingNo !== null) {
       const normalizedFindingNo = this.findingNo.trim();

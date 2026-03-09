@@ -380,7 +380,7 @@ export default function EditCompany() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => navigate('/companies')}>Back</Button>
         <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
@@ -394,7 +394,7 @@ export default function EditCompany() {
         )}
 
         <Card title="Company Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
               label="Company Name *"
               value={formData.companyName}
@@ -426,7 +426,7 @@ export default function EditCompany() {
         </Card>
 
         <Card title="Contact Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
               label="Primary Email"
               type="email"
@@ -453,7 +453,7 @@ export default function EditCompany() {
         </Card>
 
         <Card title="Company Address">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <Input
                 label="Street Address"
@@ -536,7 +536,7 @@ export default function EditCompany() {
             </div>
 
             {formData.shipToType === 'CUSTOM' && (
-              <div className="grid grid-cols-2 gap-4 mt-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
                     label="Street Address"
@@ -649,7 +649,7 @@ export default function EditCompany() {
 
             {showCreateBranchForm && (
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     label="Branch Name *"
                     value={newBranchData.name}
@@ -797,7 +797,7 @@ export default function EditCompany() {
 
             {showCreateUserForm && (
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     label="First Name *"
                     value={newUserData.firstName}
@@ -968,3 +968,4 @@ export default function EditCompany() {
     </div>
   );
 }
+

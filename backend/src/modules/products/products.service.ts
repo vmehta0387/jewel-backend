@@ -967,12 +967,17 @@ export class ProductsService {
             where
               .where('master.value LIKE :search', { search: `%${query.search.trim()}%` })
               .orWhere('master.aliasName LIKE :search', { search: `%${query.search.trim()}%` })
-              .orWhere('master.description LIKE :search', { search: `%${query.search.trim()}%` });
+              .orWhere('master.description LIKE :search', { search: `%${query.search.trim()}%` })
+              .orWhere('master.jewelryGroup LIKE :search', { search: `%${query.search.trim()}%` });
           }),
         );
       }
 
-      qb.orderBy('master.isActive', 'DESC').addOrderBy('master.value', 'ASC');
+      qb.orderBy('master.isActive', 'DESC');
+      if ((query.type as unknown as DesignMasterType) === DesignMasterType.JEWELRY_SIZE) {
+        qb.addOrderBy('master.jewelryGroup', 'ASC');
+      }
+      qb.addOrderBy('master.value', 'ASC');
 
       const data = await qb.getMany();
       return { data, total: data.length };
@@ -986,7 +991,12 @@ export class ProductsService {
     const grouped = {
       jewelryGroups: [] as Array<{ id: string; value: string }>,
       collections: [] as Array<{ id: string; value: string }>,
-      jewelrySizes: [] as Array<{ id: string; value: string }>,
+      jewelrySizes: [] as Array<{
+        id: string;
+        value: string;
+        jewelryGroupId?: string;
+        jewelryGroup?: string;
+      }>,
       tags: [] as Array<{ id: string; value: string }>,
       designStatuses: [] as Array<{ id: string; value: string }>,
       stages: [] as Array<{ id: string; value: string }>,
@@ -1034,7 +1044,11 @@ export class ProductsService {
       } else if (entry.masterType === DesignMasterType.COLLECTION) {
         grouped.collections.push(option);
       } else if (entry.masterType === DesignMasterType.JEWELRY_SIZE) {
-        grouped.jewelrySizes.push(option);
+        grouped.jewelrySizes.push({
+          ...option,
+          jewelryGroupId: entry.jewelryGroupId || undefined,
+          jewelryGroup: entry.jewelryGroup || undefined,
+        });
       } else if (entry.masterType === DesignMasterType.TAG) {
         grouped.tags.push(option);
       } else if (entry.masterType === DesignMasterType.DESIGN_STATUS) {
@@ -1176,6 +1190,13 @@ export class ProductsService {
       },
       undefined,
     );
+    const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+      masterType,
+      {
+        jewelryGroupId: dto.jewelryGroupId,
+      },
+      undefined,
+    );
     const defaultWastagePercent =
       masterType === DesignMasterType.GOLD_COLOUR
         ? this.optionalNonNegativeNumber(dto.pricePerUnit, 'pricePerUnit')
@@ -1192,6 +1213,7 @@ export class ProductsService {
     const matches = await this.designMasterRepo
       .createQueryBuilder('master')
       .where('master.masterType = :masterType', { masterType })
+      .andWhere('master.scopeKey = :scopeKey', { scopeKey: jewelrySizeFields.scopeKey })
       .andWhere(
         new Brackets((where) => {
           where
@@ -1215,6 +1237,9 @@ export class ProductsService {
         valueMatch.description = description;
         valueMatch.findingNo = findingFields.findingNo;
         valueMatch.metalCaratage = findingFields.metalCaratage;
+        valueMatch.scopeKey = jewelrySizeFields.scopeKey;
+        valueMatch.jewelryGroupId = jewelrySizeFields.jewelryGroupId;
+        valueMatch.jewelryGroup = jewelrySizeFields.jewelryGroup;
         valueMatch.priceIn = findingFields.priceIn;
         valueMatch.pricePerUnit = masterPricePerUnit;
         valueMatch.dimensions = findingFields.dimensions;
@@ -1243,6 +1268,9 @@ export class ProductsService {
         aliasMatch.description = description;
         aliasMatch.findingNo = findingFields.findingNo;
         aliasMatch.metalCaratage = findingFields.metalCaratage;
+        aliasMatch.scopeKey = jewelrySizeFields.scopeKey;
+        aliasMatch.jewelryGroupId = jewelrySizeFields.jewelryGroupId;
+        aliasMatch.jewelryGroup = jewelrySizeFields.jewelryGroup;
         aliasMatch.priceIn = findingFields.priceIn;
         aliasMatch.pricePerUnit = masterPricePerUnit;
         aliasMatch.dimensions = findingFields.dimensions;
@@ -1275,6 +1303,9 @@ export class ProductsService {
           findingNoMatch.description = description;
           findingNoMatch.findingNo = findingFields.findingNo;
           findingNoMatch.metalCaratage = findingFields.metalCaratage;
+          findingNoMatch.scopeKey = jewelrySizeFields.scopeKey;
+          findingNoMatch.jewelryGroupId = jewelrySizeFields.jewelryGroupId;
+          findingNoMatch.jewelryGroup = jewelrySizeFields.jewelryGroup;
           findingNoMatch.priceIn = findingFields.priceIn;
           findingNoMatch.pricePerUnit = masterPricePerUnit;
           findingNoMatch.dimensions = findingFields.dimensions;
@@ -1301,6 +1332,9 @@ export class ProductsService {
       normalizedValue,
       aliasName,
       normalizedAlias,
+      scopeKey: jewelrySizeFields.scopeKey,
+      jewelryGroupId: jewelrySizeFields.jewelryGroupId,
+      jewelryGroup: jewelrySizeFields.jewelryGroup,
       description,
       findingNo: findingFields.findingNo,
       metalCaratage: findingFields.metalCaratage,
@@ -1371,6 +1405,13 @@ export class ProductsService {
       },
       master,
     );
+    const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+      master.masterType,
+      {
+        jewelryGroupId: dto.jewelryGroupId,
+      },
+      master,
+    );
     const defaultWastagePercent =
       master.masterType === DesignMasterType.GOLD_COLOUR
         ? this.optionalNonNegativeNumber(
@@ -1390,6 +1431,7 @@ export class ProductsService {
     const duplicates = await this.designMasterRepo
       .createQueryBuilder('duplicate')
       .where('duplicate.masterType = :masterType', { masterType: master.masterType })
+      .andWhere('duplicate.scopeKey = :scopeKey', { scopeKey: jewelrySizeFields.scopeKey })
       .andWhere('duplicate.id != :id', { id: master.id })
       .andWhere(
         new Brackets((where) => {
@@ -1424,6 +1466,9 @@ export class ProductsService {
     master.normalizedValue = normalizedValue;
     master.aliasName = aliasName;
     master.normalizedAlias = normalizedAlias;
+    master.scopeKey = jewelrySizeFields.scopeKey;
+    master.jewelryGroupId = jewelrySizeFields.jewelryGroupId;
+    master.jewelryGroup = jewelrySizeFields.jewelryGroup;
     master.description = description;
     master.findingNo = findingFields.findingNo;
     master.metalCaratage = findingFields.metalCaratage;
@@ -2343,6 +2388,56 @@ export class ProductsService {
       return value;
     }
     throw new BadRequestException('priceIn is required');
+  }
+
+  private emptyJewelrySizeMasterFields(): {
+    scopeKey: string;
+    jewelryGroupId: string | null;
+    jewelryGroup: string | null;
+  } {
+    return {
+      scopeKey: '',
+      jewelryGroupId: null,
+      jewelryGroup: null,
+    };
+  }
+
+  private async normalizeJewelrySizeMasterFields(
+    masterType: DesignMasterType,
+    input: {
+      jewelryGroupId?: string | null;
+    },
+    existing?: DesignMaster,
+  ): Promise<{
+    scopeKey: string;
+    jewelryGroupId: string | null;
+    jewelryGroup: string | null;
+  }> {
+    if (masterType !== DesignMasterType.JEWELRY_SIZE) {
+      return this.emptyJewelrySizeMasterFields();
+    }
+
+    const jewelryGroupId = this.requiredText(
+      input.jewelryGroupId !== undefined ? input.jewelryGroupId : existing?.jewelryGroupId,
+      'jewelryGroupId',
+    );
+
+    const jewelryGroupMaster = await this.designMasterRepo.findOne({
+      where: {
+        id: jewelryGroupId,
+        masterType: DesignMasterType.JEWELRY_GROUP,
+        isActive: true,
+      },
+    });
+    if (!jewelryGroupMaster) {
+      throw new BadRequestException('Selected jewelry group was not found');
+    }
+
+    return {
+      scopeKey: jewelryGroupMaster.id,
+      jewelryGroupId: jewelryGroupMaster.id,
+      jewelryGroup: jewelryGroupMaster.value,
+    };
   }
 
   private emptyMetalMasterFields(): {

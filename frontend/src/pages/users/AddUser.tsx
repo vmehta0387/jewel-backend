@@ -194,7 +194,7 @@ export default function AddUser() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => navigate('/users')}>
           Back
@@ -208,7 +208,7 @@ export default function AddUser() {
         )}
 
         <Card title="User Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
               label="First Name *"
               value={formData.firstName}
@@ -265,7 +265,7 @@ export default function AddUser() {
         </Card>
 
         <Card title="Role & Scope">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
               <select
@@ -397,3 +397,4 @@ export default function AddUser() {
     </div>
   );
 }
+

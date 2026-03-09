@@ -273,7 +273,7 @@ export default function EditBranch() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => navigate('/branches')}>
           Back
@@ -287,7 +287,7 @@ export default function EditBranch() {
         )}
 
         <Card title="Branch Information">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
               <select
@@ -344,7 +344,7 @@ export default function EditBranch() {
         </Card>
 
         <Card title="Branch Address">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <Input
                 label="Street Address"
@@ -427,7 +427,7 @@ export default function EditBranch() {
 
             {showAddManager && (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     label="First Name *"
                     value={newManager.firstName}
@@ -523,7 +523,7 @@ export default function EditBranch() {
 
         <Card title="Sales Rep Users">
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Input
                 label="First Name *"
                 value={salesRepForm.firstName}
@@ -635,3 +635,4 @@ export default function EditBranch() {
     </div>
   );
 }
+

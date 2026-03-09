@@ -909,6 +909,10 @@ export class CreateDesignMasterDto {
   @IsOptional()
   aliasName?: string;
 
+  @IsUUID()
+  @IsOptional()
+  jewelryGroupId?: string;
+
   @IsString()
   @IsOptional()
   description?: string;
@@ -992,6 +996,10 @@ export class UpdateDesignMasterDto {
   @IsString()
   @IsOptional()
   aliasName?: string;
+
+  @IsUUID()
+  @IsOptional()
+  jewelryGroupId?: string;
 
   @IsString()
   @IsOptional()

@@ -30,6 +30,8 @@ interface MasterOption {
   id: string;
   value: string;
   aliasName?: string;
+  jewelryGroupId?: string;
+  jewelryGroup?: string;
   metalName?: string;
   metalColor?: string;
   metalPurity?: string;
@@ -607,6 +609,7 @@ export default function ProductsPage() {
   const [inlineMasterAliasName, setInlineMasterAliasName] = useState('');
   const [inlineMasterDescription, setInlineMasterDescription] = useState('');
   const [inlineFindingNo, setInlineFindingNo] = useState('');
+  const [inlineJewelryGroupId, setInlineJewelryGroupId] = useState('');
   const [inlineMetalCaratage, setInlineMetalCaratage] = useState('');
   const [inlineMetalName, setInlineMetalName] = useState('');
   const [inlineMetalColor, setInlineMetalColor] = useState('');
@@ -665,6 +668,15 @@ export default function ProductsPage() {
         : inlineMetalPurity,
     [inlineMetalPurity, inlineSelectedPurityOption],
   );
+  const filteredJewelrySizeOptions = useMemo(() => {
+    const selectedGroup = normalizeLookupKey(form.jewelryGroup);
+    if (!selectedGroup) {
+      return [];
+    }
+    return masterOptions.jewelrySizes.filter(
+      (option) => normalizeLookupKey(option.jewelryGroup) === selectedGroup,
+    );
+  }, [form.jewelryGroup, masterOptions.jewelrySizes]);
   useEffect(() => {
     if (inlineMasterType !== 'METAL_CARATAGE') return;
 
@@ -839,9 +851,17 @@ export default function ProductsPage() {
   };
 
   const handleJewelryGroupChange = (jewelryGroup: string) => {
+    const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
+      (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
+    );
     setForm((prev) => ({
       ...prev,
       jewelryGroup,
+      jewelrySize: nextJewelrySizeOptions.some(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(prev.jewelrySize),
+      )
+        ? prev.jewelrySize
+        : '',
       designNo: isDesignNoManual ? prev.designNo : suggestNextDesignNo(jewelryGroup),
     }));
 
@@ -1113,6 +1133,7 @@ export default function ProductsPage() {
     setInlineMasterAliasName('');
     setInlineMasterDescription('');
     setInlineFindingNo('');
+    setInlineJewelryGroupId('');
     setInlineMetalCaratage('');
     setInlineMetalName('');
     setInlineMetalColor('');
@@ -1191,11 +1212,18 @@ export default function ProductsPage() {
     masterType: DesignMasterType,
     onCreated?: (masterValue: string) => void,
   ) => {
+    const selectedJewelryGroupId =
+      masterType === 'JEWELRY_SIZE'
+        ? masterOptions.jewelryGroups.find(
+            (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+          )?.id || ''
+        : '';
     setInlineMasterType(masterType);
     setInlineMasterValue('');
     setInlineMasterAliasName('');
     setInlineMasterDescription('');
     setInlineFindingNo('');
+    setInlineJewelryGroupId(selectedJewelryGroupId);
     setInlineMetalCaratage('');
     setInlineMetalName('');
     setInlineMetalColor('');
@@ -1253,6 +1281,12 @@ export default function ProductsPage() {
               inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
           }
         : null;
+    const jewelrySizePayload =
+      inlineMasterType === 'JEWELRY_SIZE'
+        ? {
+            jewelryGroupId: inlineJewelryGroupId,
+          }
+        : null;
     const metalCaratagePayload =
       inlineMasterType === 'METAL_CARATAGE'
         ? {
@@ -1294,6 +1328,10 @@ export default function ProductsPage() {
         return;
       }
     }
+    if (inlineMasterType === 'JEWELRY_SIZE' && !inlineJewelryGroupId.trim()) {
+      window.alert('Jewelry Group is required.');
+      return;
+    }
 
     setCreatingMasterType(inlineMasterType);
     try {
@@ -1302,6 +1340,7 @@ export default function ProductsPage() {
         value,
         aliasName,
         description: descriptionPayload,
+        ...(jewelrySizePayload || {}),
         ...(findingPayload || {}),
         ...(defaultWastagePayload || {}),
         ...(metalCaratagePayload || {}),
@@ -1643,7 +1682,9 @@ export default function ProductsPage() {
     const gem = gemRows.reduce((sum, row) => sum + getGemValue(row), 0);
     const labor = laborRows.reduce((sum, row) => sum + getLaborValue(row), 0);
     const finding = findingRows.reduce((sum, row) => sum + getFindingValue(row), 0);
-    const grossWeight = metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0);
+    const totalMetalNetWt = metalRows.reduce((sum, row) => sum + Math.max(0, parseNum(row.netWt)), 0);
+    const totalGemWtInCts = gemRows.reduce((sum, row) => sum + getGemWeight(row), 0);
+    const grossWeight = totalMetalNetWt + totalGemWtInCts / 5;
     return { metal, gem, labor, finding, grossWeight, total: metal + gem + labor + finding };
   }, [findingRows, gemRows, laborRows, metalRows]);
 
@@ -2777,9 +2818,15 @@ export default function ProductsPage() {
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                         value={form.jewelrySize}
                         onChange={(event) => setForm((prev) => ({ ...prev, jewelrySize: event.target.value }))}
+                        disabled={!form.jewelryGroup}
                       >
                         <option value="">Select Jewelry Size</option>
-                        {masterOptions.jewelrySizes.map((option) => (
+                        {!filteredJewelrySizeOptions.some(
+                          (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelrySize),
+                        ) && form.jewelrySize ? (
+                          <option value={form.jewelrySize}>{form.jewelrySize}</option>
+                        ) : null}
+                        {filteredJewelrySizeOptions.map((option) => (
                           <option key={option.id} value={option.value}>
                             {option.value}
                           </option>
@@ -3027,20 +3074,47 @@ export default function ProductsPage() {
                   )}
                 </div>
                 </div>
-                <div className="h-fit rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 text-sm shadow-sm">
-                  <h3 className="mb-3 border-b border-emerald-200 pb-2 text-base font-semibold text-emerald-900">Summary</h3>
-                  <div className="space-y-1 text-slate-700">
-                    <p className="flex items-center justify-between"><span>Metal Value :</span><span className="font-semibold">{costTotals.metal.toFixed(2)}</span></p>
-                    <p className="flex items-center justify-between"><span>Stone Value :</span><span className="font-semibold">{costTotals.gem.toFixed(2)}</span></p>
-                    <p className="flex items-center justify-between"><span>Labor Value :</span><span className="font-semibold">{costTotals.labor.toFixed(2)}</span></p>
-                    {FINDING_FEATURE_ENABLED ? (
-                      <p className="flex items-center justify-between"><span>Finding Value :</span><span className="font-semibold">{costTotals.finding.toFixed(2)}</span></p>
-                    ) : null}
-                    <p className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-base"><span className="font-semibold">Total Value :</span><span className="font-bold text-slate-900">{costTotals.total.toFixed(2)}</span></p>
+                <div className="h-fit rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h3 className="text-sm font-semibold tracking-wide text-slate-800">Summary</h3>
+                    <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      USD
+                    </span>
                   </div>
-                  <div className="mt-4 space-y-1 border-t border-slate-200 pt-3 text-slate-700">
-                    <p className="flex items-center justify-between"><span>Gross Weight :</span><span className="font-semibold">{costTotals.grossWeight.toFixed(3)}</span></p>
-                    <p className="flex items-center justify-between"><span>Live Price :</span><span className="font-semibold">0.00</span></p>
+
+                  <div className="space-y-2 text-sm text-slate-700">
+                    <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
+                      <span>Metal Value</span>
+                      <span className="font-semibold text-slate-900">{costTotals.metal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
+                      <span>Stone Value</span>
+                      <span className="font-semibold text-slate-900">{costTotals.gem.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
+                      <span>Labor Value</span>
+                      <span className="font-semibold text-slate-900">{costTotals.labor.toFixed(2)}</span>
+                    </div>
+                    {FINDING_FEATURE_ENABLED ? (
+                      <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
+                        <span>Finding Value</span>
+                        <span className="font-semibold text-slate-900">{costTotals.finding.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-slate-700">Total Value</span>
+                      <span className="text-base font-bold text-slate-900">{costTotals.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-600">Gross Wt.</span>
+                      <span className="font-semibold text-slate-900">{costTotals.grossWeight.toFixed(3)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3539,7 +3613,57 @@ export default function ProductsPage() {
               </div>
             ) : null}
 
-            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' ? (
+            {inlineMasterType === 'JEWELRY_SIZE' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterValue}
+                    onChange={(event) => setInlineMasterValue(event.target.value)}
+                    placeholder={masterTypeLabelMap[inlineMasterType]}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineJewelryGroupId}
+                    onChange={(event) => setInlineJewelryGroupId(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Jewelry Group</option>
+                    {masterOptions.jewelryGroups.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.aliasName || option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterAliasName}
+                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
+                    placeholder="Alias Name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterDescription}
+                    onChange={(event) => setInlineMasterDescription(event.target.value)}
+                    placeholder="Description"
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' && inlineMasterType !== 'JEWELRY_SIZE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
@@ -3741,7 +3865,9 @@ export default function ProductsPage() {
               </div>
             ) : null}
 
-            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' ? (
+            {inlineMasterType !== 'FINDING_HEAD' &&
+            inlineMasterType !== 'METAL_CARATAGE' &&
+            inlineMasterType !== 'JEWELRY_SIZE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
