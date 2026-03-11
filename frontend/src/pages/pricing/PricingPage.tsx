@@ -342,64 +342,68 @@ export default function PricingPage() {
         {loading ? (
           <div className="py-6 text-sm text-gray-600">Loading base prices...</div>
         ) : (
-          <div className="overflow-x-auto scrollbar-top rounded-lg border border-slate-200">
-            <table className="min-w-full text-[14px] leading-6">
-              <thead className="bg-slate-100 text-left text-sm font-semibold text-slate-700">
-                <tr>
-                  <th className="px-3 py-2">Category</th>
-                  <th className="px-3 py-2">Reference</th>
-                  <th className="px-3 py-2">Sub Value</th>
-                  <th className="px-3 py-2">Price</th>
-                  <th className="px-3 py-2">Unit</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Updated</th>
-                  <th className="px-3 py-2">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
-                {filteredRows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-3 py-2">{row.category}</td>
-                    <td className="px-3 py-2">{row.referenceValue}</td>
-                    <td className="px-3 py-2">{row.subValue || '-'}</td>
-                    <td className="px-3 py-2">{row.pricePerUnit} {row.currency}</td>
-                    <td className="px-3 py-2">{row.unit}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded px-2 py-1 text-xs font-semibold ${
-                          row.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {row.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">{new Date(row.updatedAt).toLocaleString()}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <Button type="button" size="sm" onClick={() => startEdit(row)}>
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => toggleStatus(row)}
-                        >
-                          {row.isActive ? 'Deactivate' : 'Activate'}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredRows.length === 0 ? (
+          <div className="app-table-shell">
+            <div className="app-table-scroll scrollbar-top">
+              <table className="app-table">
+                <thead>
                   <tr>
-                    <td className="px-3 py-6 text-center text-sm text-gray-500" colSpan={8}>
-                      No base prices found.
-                    </td>
+                    <th className="app-table-head-cell">Category</th>
+                    <th className="app-table-head-cell">Reference</th>
+                    <th className="app-table-head-cell">Sub Value</th>
+                    <th className="app-table-head-cell">Price</th>
+                    <th className="app-table-head-cell">Unit</th>
+                    <th className="app-table-head-cell">Status</th>
+                    <th className="app-table-head-cell">Updated</th>
+                    <th className="app-table-head-cell">Action</th>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => (
+                    <tr key={row.id} className="app-table-row">
+                      <td className="app-table-cell">{row.category}</td>
+                      <td className="app-table-cell">{row.referenceValue}</td>
+                      <td className="app-table-cell">{row.subValue || '-'}</td>
+                      <td className="app-table-cell">
+                        {row.pricePerUnit} {row.currency}
+                      </td>
+                      <td className="app-table-cell">{row.unit}</td>
+                      <td className="app-table-cell">
+                        <span
+                          className={`app-table-pill ${
+                            row.isActive ? 'border-emerald-200 text-emerald-700' : 'border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {row.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="app-table-cell">{new Date(row.updatedAt).toLocaleString()}</td>
+                      <td className="app-table-cell">
+                        <div className="flex items-center gap-2">
+                          <Button type="button" size="sm" onClick={() => startEdit(row)}>
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => toggleStatus(row)}
+                          >
+                            {row.isActive ? 'Deactivate' : 'Activate'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredRows.length === 0 ? (
+                    <tr>
+                      <td className="app-table-empty" colSpan={8}>
+                        No base prices found.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Card>

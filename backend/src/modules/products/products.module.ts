@@ -19,6 +19,7 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster } from './entities/design-master.entity';
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
       StonePacket,
       DesignMaster,
       GlobalBasePrice,
+      User,
       Company,
       Branch,
     ]),

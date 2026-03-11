@@ -385,7 +385,6 @@ interface PacketForm {
   stone: string;
   shape: string;
   size: string;
-  cut: string;
   color: string;
   quality: string;
   priceIn: 'WT' | 'PCS';
@@ -398,7 +397,6 @@ interface PacketMasterOptions {
   packetStones: MasterOption[];
   packetShapes: MasterOption[];
   packetSizes: MasterOption[];
-  packetCuts: MasterOption[];
   packetColors: MasterOption[];
   packetQualities: MasterOption[];
 }
@@ -416,7 +414,6 @@ const defaultPacketForm: PacketForm = {
   stone: '',
   shape: '',
   size: '',
-  cut: '',
   color: '',
   quality: '',
   priceIn: 'WT',
@@ -429,7 +426,6 @@ const emptyPacketMasterOptions: PacketMasterOptions = {
   packetStones: [],
   packetShapes: [],
   packetSizes: [],
-  packetCuts: [],
   packetColors: [],
   packetQualities: [],
 };
@@ -480,9 +476,9 @@ function toPacketAbbreviation(value: string): string {
 }
 
 function buildPacketNameFromForm(
-  form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>,
+  form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'color' | 'quality'>,
 ): string {
-  const parts = [form.stone, form.shape, form.size, form.cut, form.color, form.quality]
+  const parts = [form.stone, form.shape, form.size, form.color, form.quality]
     .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
   return parts.join('-');
@@ -1060,18 +1056,6 @@ function PacketModal({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Cut*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.cut} onChange={(event) => onChange('cut', event.target.value)}>
-                  <option value="">Select Cut</option>
-                  {!masterOptions.packetCuts.some((option) => option.value === form.cut) && form.cut ? (
-                    <option value={form.cut}>{form.cut}</option>
-                  ) : null}
-                  {masterOptions.packetCuts.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Color*</label>
                 <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.color} onChange={(event) => onChange('color', event.target.value)}>
                   <option value="">Select Color</option>
@@ -1427,7 +1411,6 @@ export default function DesignMastersPage() {
         packetStones: response.data?.packetStones || [],
         packetShapes: response.data?.packetShapes || [],
         packetSizes: response.data?.packetSizes || [],
-        packetCuts: response.data?.packetCuts || [],
         packetColors: response.data?.packetColors || [],
         packetQualities: response.data?.packetQualities || [],
       });
@@ -1560,7 +1543,6 @@ export default function DesignMastersPage() {
       stone: row.stone || '',
       shape: row.shape || '',
       size: row.size || '',
-      cut: row.cut || '',
       color: row.color || '',
       quality: row.quality || '',
       priceIn: row.priceIn || 'WT',
@@ -1616,7 +1598,6 @@ export default function DesignMastersPage() {
         stone: packetForm.stone.trim(),
         shape: packetForm.shape.trim(),
         size: packetForm.size.trim(),
-        cut: packetForm.cut.trim(),
         color: packetForm.color.trim(),
         quality: packetForm.quality.trim(),
         priceIn: packetForm.priceIn,
@@ -1627,8 +1608,8 @@ export default function DesignMastersPage() {
         weightUnit: packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS',
       };
 
-      if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.cut || !payload.color || !payload.quality) {
-        window.alert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
+      if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
+        window.alert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
         return;
       }
       if (payload.sellingPrice < 0) {
@@ -1973,7 +1954,7 @@ export default function DesignMastersPage() {
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder={isPacketType ? 'Search packet name, stone, shape, size, cut, color, quality' : `Search ${selectedConfig.label} name, alias, or description`}
+            placeholder={isPacketType ? 'Search packet name, stone, shape, size, color, quality' : `Search ${selectedConfig.label} name, alias, or description`}
           />
           <div className="flex gap-2">
             <Button type="submit" size="sm">
@@ -1996,7 +1977,6 @@ export default function DesignMastersPage() {
                     <th className="app-table-head-cell">Stone</th>
                     <th className="app-table-head-cell">Shape</th>
                     <th className="app-table-head-cell">Size</th>
-                    <th className="app-table-head-cell">Cut</th>
                     <th className="app-table-head-cell">Color</th>
                     <th className="app-table-head-cell">Quality</th>
                     <th className="app-table-head-cell">Pieces</th>
@@ -2010,13 +1990,13 @@ export default function DesignMastersPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={14} className="app-table-empty">
+                      <td colSpan={13} className="app-table-empty">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={14} className="app-table-empty">
+                      <td colSpan={13} className="app-table-empty">
                         No records found.
                       </td>
                     </tr>
@@ -2028,7 +2008,6 @@ export default function DesignMastersPage() {
                         <td className="app-table-cell text-sm text-slate-700">{row.stone || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.shape || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.size || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.cut || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.color || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.quality || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.pieces}</td>

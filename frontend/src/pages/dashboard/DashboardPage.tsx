@@ -72,6 +72,26 @@ function formatMoney(value?: number | null, digits = 2): string {
   return Number.isFinite(amount) ? amount.toFixed(digits) : '0.00';
 }
 
+function formatCurrency(value?: number | null): string {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) {
+    return '$0';
+  }
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function formatCount(value?: number | null): string {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) {
+    return '0';
+  }
+  return new Intl.NumberFormat('en-US').format(amount);
+}
+
 function formatTimestamp(value?: string): string {
   if (!value) {
     return 'Not updated yet';
@@ -95,7 +115,11 @@ function parseOptionalNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function DashboardStatIcon({ kind }: { kind: 'companies' | 'orders' | 'designs' | 'revenue' }) {
+function DashboardStatIcon({
+  kind,
+}: {
+  kind: 'companies' | 'branches' | 'designs' | 'revenue';
+}) {
   const svgProps = {
     className: 'h-5 w-5',
     viewBox: '0 0 24 24',
@@ -117,11 +141,13 @@ function DashboardStatIcon({ kind }: { kind: 'companies' | 'orders' | 'designs' 
     );
   }
 
-  if (kind === 'orders') {
+  if (kind === 'branches') {
     return (
       <svg {...svgProps}>
-        <rect x="6" y="4.5" width="12" height="15" rx="1.75" />
-        <path d="M9 8.25h6M9 12h6M9 15.75h4.5" />
+        <circle cx="6.75" cy="6.75" r="2.25" />
+        <circle cx="17.25" cy="6.75" r="2.25" />
+        <circle cx="17.25" cy="17.25" r="2.25" />
+        <path d="M9 6.75h6M6.75 9v6.75a1.5 1.5 0 0 0 1.5 1.5H15" />
       </svg>
     );
   }
@@ -167,12 +193,20 @@ export default function DashboardPage() {
   const [selectedPacketId, setSelectedPacketId] = useState('');
   const [selectedPacketPrice, setSelectedPacketPrice] = useState('');
 
-  const stats = [
-    { label: 'Total Companies', value: '2', kind: 'companies' as const },
-    { label: 'Active Orders', value: '0', kind: 'orders' as const },
-    { label: 'Ring Styles', value: '0', kind: 'designs' as const },
-    { label: 'Total Revenue', value: '$0', kind: 'revenue' as const },
-  ];
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [statsUpdatedAt, setStatsUpdatedAt] = useState<Date | null>(null);
+  const [statsData, setStatsData] = useState<{
+    companies: number | null;
+    branches: number | null;
+    designs: number | null;
+    totalValue: number | null;
+  }>({
+    companies: null,
+    branches: null,
+    designs: null,
+    totalValue: null,
+  });
 
   const selectedPacket = useMemo(
     () => packetRows.find((row) => row.id === selectedPacketId) ?? null,
@@ -241,6 +275,99 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchCompaniesCount = async (): Promise<number> => {
+    const response = await api.get('/companies', {
+      params: { page: 1, limit: 1, status: 'ALL' },
+    });
+    const total = response.data?.total;
+    if (typeof total === 'number') {
+      return total;
+    }
+    return Array.isArray(response.data?.data) ? response.data.data.length : 0;
+  };
+
+  const fetchBranchesCount = async (): Promise<number> => {
+    const response = await api.get('/branches', {
+      params: { page: 1, limit: 1, status: 'ALL' },
+    });
+    const total = response.data?.total;
+    if (typeof total === 'number') {
+      return total;
+    }
+    return Array.isArray(response.data?.data) ? response.data.data.length : 0;
+  };
+
+  const fetchDesignSummary = async (): Promise<{ designs: number; totalValue: number }> => {
+    let page = 1;
+    const limit = 200;
+    let totalDesigns = 0;
+    let totalValue = 0;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const response = await api.get('/products', {
+        params: { page, limit, status: 'ALL' },
+      });
+      const data = Array.isArray(response.data?.data) ? response.data.data : [];
+      if (page === 1) {
+        totalDesigns = Number(response.data?.total ?? data.length);
+        totalPages = Number(
+          response.data?.totalPages ?? (totalDesigns > 0 ? Math.ceil(totalDesigns / limit) : 1),
+        );
+      }
+      totalValue += data.reduce((sum: number, row: any) => sum + Number(row?.totalValue ?? 0), 0);
+
+      if (data.length < limit && !response.data?.totalPages) {
+        totalPages = page;
+      }
+      page += 1;
+    }
+
+    return { designs: totalDesigns, totalValue };
+  };
+
+  const loadStats = async () => {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      const [companiesResult, branchesResult, designsResult] = await Promise.allSettled([
+        fetchCompaniesCount(),
+        fetchBranchesCount(),
+        fetchDesignSummary(),
+      ]);
+
+      const nextStats = {
+        companies:
+          companiesResult.status === 'fulfilled' ? companiesResult.value : statsData.companies,
+        branches:
+          branchesResult.status === 'fulfilled' ? branchesResult.value : statsData.branches,
+        designs:
+          designsResult.status === 'fulfilled'
+            ? designsResult.value.designs
+            : statsData.designs,
+        totalValue:
+          designsResult.status === 'fulfilled'
+            ? designsResult.value.totalValue
+            : statsData.totalValue,
+      };
+
+      setStatsData(nextStats);
+      setStatsUpdatedAt(new Date());
+
+      if (
+        companiesResult.status === 'rejected' ||
+        branchesResult.status === 'rejected' ||
+        designsResult.status === 'rejected'
+      ) {
+        setStatsError('Some dashboard metrics could not be loaded.');
+      }
+    } catch (error: any) {
+      setStatsError(error?.response?.data?.message || 'Unable to load dashboard metrics.');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   const fetchPackets = async () => {
     setPacketLoading(true);
     setPacketError(null);
@@ -277,6 +404,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    void loadStats();
     if (!isSuperAdmin) {
       return;
     }
@@ -296,6 +424,34 @@ export default function DashboardPage() {
         : '',
     );
   }, [selectedPacket]);
+
+  const handleGoldMarketPricePerOunceChange = (value: string) => {
+    setGoldMarketPricePerOunce(value);
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+    const perGm = (parsed / 31.1035).toFixed(2);
+    if (perGm !== goldMarketPricePerGm) {
+      setGoldMarketPricePerGm(perGm);
+    }
+  };
+
+  const handleGoldLivePricePerGmChange = (value: string) => {
+    setGoldLivePricePerGm(value);
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return;
+    }
+    const perGm = parsed.toFixed(2);
+    const perOunce = (parsed * 31.1035).toFixed(2);
+    if (perGm !== goldMarketPricePerGm) {
+      setGoldMarketPricePerGm(perGm);
+    }
+    if (perOunce !== goldMarketPricePerOunce) {
+      setGoldMarketPricePerOunce(perOunce);
+    }
+  };
 
   const openGoldModal = async () => {
     setGoldModalOpen(true);
@@ -385,42 +541,122 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Operational overview and quick pricing controls.
-          </p>
+    <div className="dashboard-shell space-y-6">
+      <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
+                <path d="M12 9v6M8.75 12h6.5" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
+                Dashboard
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                Super Admin Portal
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Live operational metrics and pricing controls.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+              {statsUpdatedAt
+                ? `Updated ${statsUpdatedAt.toLocaleTimeString()}`
+                : 'Updating metrics...'}
+            </div>
+            <Button type="button" size="sm" onClick={() => void loadStats()} disabled={statsLoading}>
+              {statsLoading ? 'Refreshing...' : 'Refresh Metrics'}
+            </Button>
+          </div>
         </div>
       </div>
 
+      {statsError ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {statsError}
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="border-slate-200 bg-white/95">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-slate-500">{stat.label}</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
-                  {stat.value}
-                </p>
-              </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC] bg-[#F3E3D0] text-[#81A6C6]">
-                <DashboardStatIcon kind={stat.kind} />
-              </span>
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Total Companies
+              </p>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                {statsLoading && statsData.companies === null ? '--' : formatCount(statsData.companies)}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">Active + inactive</p>
             </div>
-          </Card>
-        ))}
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <DashboardStatIcon kind="companies" />
+            </span>
+          </div>
+        </Card>
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Total Branches
+              </p>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                {statsLoading && statsData.branches === null ? '--' : formatCount(statsData.branches)}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">Across all companies</p>
+            </div>
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <DashboardStatIcon kind="branches" />
+            </span>
+          </div>
+        </Card>
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Designs
+              </p>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                {statsLoading && statsData.designs === null ? '--' : formatCount(statsData.designs)}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">All design entries</p>
+            </div>
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <DashboardStatIcon kind="designs" />
+            </span>
+          </div>
+        </Card>
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Total Design Value
+              </p>
+              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                {statsLoading && statsData.totalValue === null ? '--' : formatCurrency(statsData.totalValue)}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">Aggregate value</p>
+            </div>
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <DashboardStatIcon kind="revenue" />
+            </span>
+          </div>
+        </Card>
       </div>
 
       {isSuperAdmin ? (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <Card className="border-[#AACDDC] bg-gradient-to-br from-white to-[#F3E3D0]/50">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/55 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)]">
             <div className="flex h-full flex-col justify-between gap-6">
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#81A6C6]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                       Quick Action
                     </p>
                     <h2 className="mt-2 text-xl font-semibold text-slate-900">Live Gold Price</h2>
@@ -429,7 +665,7 @@ export default function DashboardPage() {
                       recalculates metal caratage rates and dependent design metal values.
                     </p>
                   </div>
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#AACDDC] bg-[#81A6C6] text-white">
+                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
                     <svg
                       className="h-5 w-5"
                       viewBox="0 0 24 24"
@@ -443,24 +679,24 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Market / Ounce
                     </p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">
                       USD {formatMoney(goldMaster?.marketPricePerOunce)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Market / Gm
                     </p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">
                       USD {formatMoney(goldMaster?.marketPricePerGm)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Live / Gm
                     </p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">
@@ -480,19 +716,19 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500">
                   Last synced: {formatTimestamp(goldMaster?.updatedAt)}
                 </p>
-                <Button type="button" onClick={() => void openGoldModal()} disabled={goldLoading}>
+                <Button type="button" size="sm" onClick={() => void openGoldModal()} disabled={goldLoading}>
                   {goldLoading ? 'Loading...' : 'Add Live Gold Price'}
                 </Button>
               </div>
             </div>
           </Card>
 
-          <Card className="border-[#D2C4B4] bg-gradient-to-br from-white to-[#AACDDC]/35">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/35 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)]">
             <div className="flex h-full flex-col justify-between gap-6">
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#81A6C6]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                       Quick Action
                     </p>
                     <h2 className="mt-2 text-xl font-semibold text-slate-900">Live Packet Price</h2>
@@ -501,7 +737,7 @@ export default function DashboardPage() {
                       gemstone amounts in any design using the selected packet.
                     </p>
                   </div>
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#D2C4B4] bg-[#AACDDC] text-white">
+                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
                     <svg
                       className="h-5 w-5"
                       viewBox="0 0 24 24"
@@ -516,14 +752,14 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Active Packets
                     </p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">{packetRows.length}</p>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 md:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3 md:col-span-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                       Current Selection
                     </p>
                     <p className="mt-2 truncate text-lg font-semibold text-slate-900">
@@ -548,7 +784,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500">
                   Last synced: {formatTimestamp(selectedPacket?.updatedAt)}
                 </p>
-                <Button type="button" onClick={() => void openPacketModal()} disabled={packetLoading}>
+                <Button type="button" size="sm" onClick={() => void openPacketModal()} disabled={packetLoading}>
                   {packetLoading ? 'Loading...' : 'Add Live Packet Price'}
                 </Button>
               </div>
@@ -595,7 +831,7 @@ export default function DashboardPage() {
                 step="0.01"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 value={goldMarketPricePerOunce}
-                onChange={(event) => setGoldMarketPricePerOunce(event.target.value)}
+                onChange={(event) => handleGoldMarketPricePerOunceChange(event.target.value)}
                 required
               />
             </div>
@@ -619,7 +855,7 @@ export default function DashboardPage() {
                 step="0.0001"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 value={goldLivePricePerGm}
-                onChange={(event) => setGoldLivePricePerGm(event.target.value)}
+                onChange={(event) => handleGoldLivePricePerGmChange(event.target.value)}
                 required
               />
             </div>
@@ -739,3 +975,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

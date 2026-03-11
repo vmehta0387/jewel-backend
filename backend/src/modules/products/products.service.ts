@@ -50,6 +50,7 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster, DesignMasterType, FindingPriceIn } from './entities/design-master.entity';
 import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
+import { User } from '../users/entities/user.entity';
 
 interface ScopeResult {
   companyId: string | null;
@@ -151,6 +152,8 @@ export class ProductsService {
     private readonly branchRepo: Repository<Branch>,
     @InjectRepository(GlobalBasePrice)
     private readonly globalBasePriceRepo: Repository<GlobalBasePrice>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
@@ -411,9 +414,16 @@ export class ProductsService {
     }
 
     const [data, total] = await qb.getManyAndCount();
+    const updatedByMap = await this.resolveUserNames(
+      data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+    );
+    const enrichedData = data.map((design) => ({
+      ...design,
+      updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+    }));
 
     return {
-      data,
+      data: enrichedData,
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -458,9 +468,14 @@ export class ProductsService {
     design.processStages = this.sortByOrder(design.processStages);
     design.pricingTiers = this.sortByOrder(design.pricingTiers);
     design.vendors = this.sortByOrder(design.vendors);
+    const updatedByMap = await this.resolveUserNames(
+      design.updatedBy ? [design.updatedBy] : [],
+    );
+    const updatedByName = design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null;
 
     return {
       ...design,
+      updatedByName,
       relevantDesigns: (design.relevantDesignLinks || []).map((link) => ({
         id: link.relatedDesign?.id,
         designNo: link.relatedDesign?.designNo,
@@ -2401,6 +2416,24 @@ export class ProductsService {
     );
 
     await this.vendorRepo.save(entities);
+  }
+
+  private async resolveUserNames(userIds: string[]): Promise<Map<string, string>> {
+    const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
+    if (uniqueIds.length === 0) {
+      return new Map();
+    }
+
+    const users = await this.userRepo.find({
+      where: { id: In(uniqueIds) },
+      select: ['id', 'firstName', 'lastName', 'email'],
+    });
+    const map = new Map<string, string>();
+    users.forEach((user) => {
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+      map.set(user.id, fullName || user.email || user.id);
+    });
+    return map;
   }
 
   private async setRelevantDesignLinks(

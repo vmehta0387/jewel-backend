@@ -61,6 +61,7 @@ interface DesignRow {
   imageUrls?: string[];
   createdAt: string;
   modifiedAt: string;
+  updatedByName: string;
 }
 
 interface ApiDesignRow {
@@ -82,6 +83,7 @@ interface ApiDesignRow {
   imageUrls?: unknown;
   createdAt?: string | null;
   updatedAt?: string | null;
+  updatedByName?: string | null;
 }
 
 interface DesignForm {
@@ -191,7 +193,6 @@ interface PacketForm {
   stone: string;
   shape: string;
   size: string;
-  cut: string;
   color: string;
   quality: string;
   priceIn: 'WT' | 'PCS';
@@ -213,6 +214,7 @@ const parseNum = (value: string): number => {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
 };
+const isPartialDecimal = (value: string): boolean => value.trim().endsWith('.');
 const parseNumericValue = (value: number | string | null | undefined): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -237,8 +239,8 @@ const toPacketAbbreviation = (value: string): string => {
     .map((entry) => entry.charAt(0).toUpperCase())
     .join('');
 };
-const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>): string => {
-  const parts = [packet.stone, packet.shape, packet.size, packet.cut, packet.color, packet.quality]
+const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'color' | 'quality'>): string => {
+  const parts = [packet.stone, packet.shape, packet.size, packet.color, packet.quality]
     .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
   return parts.join('-');
@@ -324,6 +326,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     imageUrls,
     createdAt: normalizeDateTimeValue(design.createdAt) || '',
     modifiedAt: normalizeDateTimeValue(design.updatedAt) || '',
+    updatedByName: design.updatedByName || '',
   };
 };
 const formatMoney = (value: number): string => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -368,14 +371,14 @@ const getNextDesignNo = (jewelryGroup: string, existingRows: DesignRow[]): strin
 };
 
 const designSeed: DesignRow[] = [
-  { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07' },
-  { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42' },
-  { id: '3', designNo: 'RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51' },
-  { id: '4', designNo: 'RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05' },
-  { id: '5', designNo: 'NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35' },
-  { id: '6', designNo: 'RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05' },
-  { id: '7', designNo: 'RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45' },
-  { id: '8', designNo: 'E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15' },
+  { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
+  { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
+  { id: '3', designNo: 'RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
+  { id: '4', designNo: 'RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
+  { id: '5', designNo: 'NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
+  { id: '6', designNo: 'RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
+  { id: '7', designNo: 'RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
+  { id: '8', designNo: 'E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
 ];
 
 const defaultForm: DesignForm = {
@@ -399,7 +402,6 @@ const defaultPacketForm: PacketForm = {
   stone: '',
   shape: '',
   size: '',
-  cut: '',
   color: '',
   quality: '',
   priceIn: 'WT',
@@ -427,7 +429,6 @@ const emptyMasterOptions = {
   packetStones: [] as MasterOption[],
   packetShapes: [] as MasterOption[],
   packetSizes: [] as MasterOption[],
-  packetCuts: [] as MasterOption[],
   packetColors: [] as MasterOption[],
   packetQualities: [] as MasterOption[],
 };
@@ -1038,7 +1039,6 @@ export default function ProductsPage() {
         packetStones: response.data?.packetStones || [],
         packetShapes: response.data?.packetShapes || [],
         packetSizes: response.data?.packetSizes || [],
-        packetCuts: response.data?.packetCuts || [],
         packetColors: response.data?.packetColors || [],
         packetQualities: response.data?.packetQualities || [],
       });
@@ -1238,8 +1238,6 @@ export default function ProductsPage() {
       setPacketForm((prev) => ({ ...prev, shape: masterValue }));
     } else if (masterType === 'PACKET_SIZE') {
       setPacketForm((prev) => ({ ...prev, size: masterValue }));
-    } else if (masterType === 'PACKET_CUT') {
-      setPacketForm((prev) => ({ ...prev, cut: masterValue }));
     } else if (masterType === 'PACKET_COLOR') {
       setPacketForm((prev) => ({ ...prev, color: masterValue }));
     } else if (masterType === 'PACKET_QUALITY') {
@@ -1439,7 +1437,6 @@ export default function ProductsPage() {
       stone: packetForm.stone.trim(),
       shape: packetForm.shape.trim(),
       size: packetForm.size.trim(),
-      cut: packetForm.cut.trim(),
       color: packetForm.color.trim(),
       quality: packetForm.quality.trim(),
       priceIn: packetForm.priceIn,
@@ -1450,8 +1447,8 @@ export default function ProductsPage() {
       weightUnit: packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS',
     };
 
-    if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.cut || !payload.color || !payload.quality) {
-      window.alert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
+    if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
+      window.alert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
       return;
     }
     if (payload.sellingPrice < 0) {
@@ -1638,7 +1635,6 @@ export default function ProductsPage() {
       ...row,
       wastagePercent: wastagePercent.toFixed(2),
       totalWt: totalWt.toFixed(3),
-      wastageWt: wastageWt.toFixed(3),
     };
   };
 
@@ -1689,7 +1685,7 @@ export default function ProductsPage() {
     if (pcs <= 0) {
       return { ...row, wtPerPcs: '' };
     }
-    return { ...row, wtPerPcs: (wtInCts / pcs).toFixed(3), wtInCts: wtInCts.toFixed(3) };
+    return { ...row, wtPerPcs: (wtInCts / pcs).toFixed(3) };
   };
 
   const applyGemAmountFromRate = (row: GemRow): GemRow => {
@@ -2277,6 +2273,10 @@ export default function ProductsPage() {
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
     setMetalRows((prev) => {
+      if (['netWt', 'wastagePercent', 'wastageWt', 'pricePerGm', 'value'].includes(key) && isPartialDecimal(value)) {
+        return prev.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+      }
+
       if (key === 'goldColour') {
         const normalizedValue = normalizeLookupKey(value);
         const isDuplicate =
@@ -2335,6 +2335,10 @@ export default function ProductsPage() {
         if (item.id !== id) return item;
 
         let updated: GemRow = { ...item, [key]: value };
+
+        if (['wtPerPcs', 'pcs', 'wtInCts', 'pricePerCt', 'amount'].includes(key) && isPartialDecimal(value)) {
+          return updated;
+        }
 
         if (key === 'wtPerPcs' || key === 'pcs') {
           updated = applyGemWeightFromPcs(updated);
@@ -2517,7 +2521,7 @@ export default function ProductsPage() {
   };
 
   const exportActionButtonClass =
-    'inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
+    'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)] transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 
   return (
     <div className="space-y-4">
@@ -2527,11 +2531,19 @@ export default function ProductsPage() {
           <p className="text-sm text-gray-600">Design entries module for super admin review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="secondary" onClick={() => setShowFilters((prev) => !prev)}>
+          <Button type="button" size="sm" variant="secondary" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={() => setShowFilters((prev) => !prev)}>
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M4 6h16M7 12h10M10 18h4" />
+            </svg>
             {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
           {canCreateDesign ? (
-            <Button type="button" onClick={openAdd}>+ Add New</Button>
+            <Button type="button" size="sm" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={openAdd}>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Add New
+            </Button>
           ) : null}
           <button
             type="button"
@@ -2539,13 +2551,13 @@ export default function ProductsPage() {
             onClick={exportPdf}
             title="Export selected rows to PDF"
           >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
               <path d="M14 2v5h5" />
               <path d="M8 13h8M8 17h6" />
             </svg>
             <span>PDF</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
               {selectedDesignIds.length}
             </span>
           </button>
@@ -2555,7 +2567,7 @@ export default function ProductsPage() {
             onClick={exportCsv}
             title="Export design list to Excel (CSV)"
           >
-            <svg className="h-4 w-4 text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
               <path d="M14 2v5h5" />
               <path d="M9 10h6M9 14h6M9 18h6" />
@@ -3252,13 +3264,12 @@ export default function ProductsPage() {
                                 </button>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
                             <td className="px-2 py-2">
                               <input
-                                type="number"
-                                min="0"
-                                step="0.001"
+                                type="text"
+                                inputMode="decimal"
                                 className="w-28 rounded border border-gray-300 px-2 py-1 text-gray-900"
                                 value={item.wastageWt}
                                 onChange={(event) => updateMetalRow(item.id, 'wastageWt', event.target.value)}
@@ -3275,15 +3286,14 @@ export default function ProductsPage() {
                             </td>
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-1">
-                                <input type="number" min="0" step="0.01" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
+                                <input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
                                 <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
                               </div>
                             </td>
                             <td className="px-2 py-2">
                               <input
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 className="w-28 rounded border border-gray-300 px-2 py-1 font-semibold text-slate-900"
                                 value={item.value}
                                 onChange={(event) => updateMetalRow(item.id, 'value', event.target.value)}
@@ -3391,15 +3401,14 @@ export default function ProductsPage() {
                                 </p>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="1" className="w-16 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.001" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="number" min="0" step="0.01" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="numeric" className="w-16 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
                             <td className="px-2 py-2">
                               <input
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
+                                inputMode="decimal"
                                 className="w-20 rounded border border-gray-300 px-2 py-1"
                                 value={item.amount}
                                 onChange={(event) => updateGemRow(item.id, 'amount', event.target.value)}
@@ -4066,34 +4075,6 @@ export default function ProductsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Cut*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.cut}
-                      onChange={(event) => updatePacketFormField('cut', event.target.value)}
-                    >
-                      <option value="">Select Cut</option>
-                      {!masterOptions.packetCuts.some((option) => option.value === packetForm.cut) && packetForm.cut ? (
-                        <option value={packetForm.cut}>{packetForm.cut}</option>
-                      ) : null}
-                      {masterOptions.packetCuts.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_CUT'}
-                      onClick={() => addMasterFromDesign('PACKET_CUT')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div>
                   <label className="mb-1 block text-xs font-medium text-gray-600">Color*</label>
                   <div className="flex items-center gap-2">
                     <select
@@ -4285,6 +4266,7 @@ export default function ProductsPage() {
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{selected.jewelrySize}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{selected.status}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(selected.price)}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{selected.remarks || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{selected.createdAt}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{selected.modifiedAt}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{selected.updatedByName || '-'}</td></tr>
                   </tbody>
                 </table>
               </div>

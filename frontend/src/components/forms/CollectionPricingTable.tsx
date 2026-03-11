@@ -1,4 +1,4 @@
-﻿import Button from '../common/Button';
+import Button from '../common/Button';
 
 interface CollectionOverride {
   collectionType: string;
@@ -38,54 +38,62 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
 
   return (
     <div className="mt-4">
-      <table className="min-w-full border border-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Collection Type</th>
-            <th className="px-4 py-2 text-left text-sm font-medium text-gray-700">Multiplier</th>
-            <th className="px-4 py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {overrides.map((override, idx) => (
-            <tr key={idx} className="border-t">
-              <td className="px-4 py-2">
-                <select
-                  className="w-full px-2 py-1 border rounded"
-                  value={override.collectionType}
-                  onChange={(e) => updateOverride(idx, 'collectionType', e.target.value)}
-                >
-                  {collectionTypes.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-              </td>
-              <td className="px-4 py-2">
-                <input
-                  type="number"
-                  step="0.1"
-                  className="w-full px-2 py-1 border rounded"
-                  value={override.multiplier}
-                  onChange={(e) => updateOverride(idx, 'multiplier', parseFloat(e.target.value))}
-                />
-              </td>
-              <td className="px-4 py-2">
-                <button
-                  type="button"
-                  onClick={() => removeOverride(idx)}
-                  className="text-red-600 hover:text-red-800"
-                >
-                  X
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="app-table-shell">
+        <div className="app-table-scroll scrollbar-top">
+          <table className="app-table app-table-compact">
+            <thead>
+              <tr>
+                <th className="app-table-head-cell">Collection Type</th>
+                <th className="app-table-head-cell">Multiplier</th>
+                <th className="app-table-head-cell text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {overrides.map((override, idx) => (
+                <tr key={idx} className="app-table-row">
+                  <td className="app-table-cell">
+                    <select
+                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                      value={override.collectionType}
+                      onChange={(e) => updateOverride(idx, 'collectionType', e.target.value)}
+                    >
+                      {collectionTypes.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="app-table-cell">
+                    <input
+                      type="number"
+                      step="0.1"
+                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                      value={override.multiplier}
+                      onChange={(e) => updateOverride(idx, 'multiplier', parseFloat(e.target.value))}
+                    />
+                  </td>
+                  <td className="app-table-cell text-right">
+                    <button
+                      type="button"
+                      onClick={() => removeOverride(idx)}
+                      className="app-table-icon-action text-rose-600 hover:text-rose-700"
+                      aria-label="Remove override"
+                    >
+                      X
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
       <Button type="button" variant="secondary" size="sm" onClick={addOverride} className="mt-2">
         + Add Collection Override
       </Button>
     </div>
   );
 }
+
 

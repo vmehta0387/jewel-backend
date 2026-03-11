@@ -1,3 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,10 +17,15 @@
   body {
     background: var(--brand-surface);
     color: #1f2937;
+    font-family: 'Manrope', 'Segoe UI', sans-serif;
   }
 }
 
 @layer components {
+  .dashboard-shell {
+    font-family: 'Manrope', 'Segoe UI', sans-serif;
+  }
+
   .app-table-shell {
     overflow: hidden;
     border: 1px solid rgba(148, 163, 184, 0.24);
