@@ -223,6 +223,56 @@ function OrderSummaryIcon({
   );
 }
 
+function MiniBarChart({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values);
+  return (
+    <svg viewBox="0 0 120 48" className="h-12 w-full">
+      {values.map((value, index) => {
+        const height = Math.max(4, (value / max) * 40);
+        const x = index * 16 + 4;
+        const y = 44 - height;
+        return (
+          <rect
+            key={`${value}-${index}`}
+            x={x}
+            y={y}
+            width={10}
+            height={height}
+            rx={4}
+            fill="rgba(129, 166, 198, 0.8)"
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function MiniLineChart({ values }: { values: number[] }) {
+  const max = Math.max(1, ...values);
+  const points = values.map((value, index) => {
+    const x = index * 16 + 4;
+    const y = 44 - (value / max) * 36;
+    return `${x},${y}`;
+  });
+
+  return (
+    <svg viewBox="0 0 120 48" className="h-12 w-full">
+      <polyline
+        points={points.join(' ')}
+        fill="none"
+        stroke="rgba(129, 166, 198, 0.9)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {points.map((point, index) => {
+        const [x, y] = point.split(',');
+        return <circle key={`${point}-${index}`} cx={x} cy={y} r={2.6} fill="rgba(129, 166, 198, 0.95)" />;
+      })}
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -272,6 +322,7 @@ export default function DashboardPage() {
     ordersDueToday: null,
     salesThisWeek: null,
   });
+  const [orderTrends, setOrderTrends] = useState<{ date: string; orders: number; sales: number }[]>([]);
 
   const selectedPacket = useMemo(
     () => packetRows.find((row) => row.id === selectedPacketId) ?? null,
@@ -396,15 +447,21 @@ export default function DashboardPage() {
     return response.data || {};
   };
 
+  const fetchOrderTrends = async () => {
+    const response = await api.get('/orders/trends');
+    return Array.isArray(response.data?.points) ? response.data.points : [];
+  };
+
   const loadStats = async () => {
     setStatsLoading(true);
     setStatsError(null);
     try {
-      const [companiesResult, branchesResult, designsResult, ordersResult] = await Promise.allSettled([
+      const [companiesResult, branchesResult, designsResult, ordersResult, trendsResult] = await Promise.allSettled([
         fetchCompaniesCount(),
         fetchBranchesCount(),
         fetchDesignSummary(),
         fetchOrderSummary(),
+        fetchOrderTrends(),
       ]);
 
       const nextStats = {
@@ -435,13 +492,17 @@ export default function DashboardPage() {
             ordersResult.value?.salesThisWeek ?? prev.salesThisWeek,
         }));
       }
+      if (trendsResult.status === 'fulfilled') {
+        setOrderTrends(trendsResult.value);
+      }
       setStatsUpdatedAt(new Date());
 
       if (
         companiesResult.status === 'rejected' ||
         branchesResult.status === 'rejected' ||
         designsResult.status === 'rejected' ||
-        ordersResult.status === 'rejected'
+        ordersResult.status === 'rejected' ||
+        trendsResult.status === 'rejected'
       ) {
         setStatsError('Some dashboard metrics could not be loaded.');
       }
@@ -811,6 +872,47 @@ export default function DashboardPage() {
             </div>
           </Card>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Orders Trend
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">Last 7 days</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
+              </p>
+            </div>
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <OrderSummaryIcon kind="received" />
+            </span>
+          </div>
+          <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+            <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
+          </div>
+        </Card>
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                Sales Trend
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">Last 7 days</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
+              </p>
+            </div>
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <OrderSummaryIcon kind="sales" />
+            </span>
+          </div>
+          <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+            <MiniLineChart values={orderTrends.map((row) => row.sales || 0)} />
+          </div>
+        </Card>
       </div>
 
       {isSuperAdmin ? (

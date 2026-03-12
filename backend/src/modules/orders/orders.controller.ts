@@ -47,6 +47,11 @@ export class OrdersController {
     return this.ordersService.getSummary(req.user);
   }
 
+  @Get('trends')
+  getTrends(@Request() req: { user: AuthUser }) {
+    return this.ordersService.getTrends(req.user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.ordersService.findOne(id, req.user);

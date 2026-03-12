@@ -358,6 +358,55 @@ export class OrdersService {
     };
   }
 
+  async getTrends(requester: AuthUser) {
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setHours(23, 59, 59, 999);
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - 6);
+    startDate.setHours(0, 0, 0, 0);
+
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .select('DATE(order.createdAt)', 'date')
+      .addSelect('COUNT(*)', 'orders')
+      .addSelect('SUM(order.price)', 'sales')
+      .where('order.createdAt >= :startDate AND order.createdAt <= :endDate', {
+        startDate,
+        endDate,
+      })
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .groupBy('date')
+      .orderBy('date', 'ASC');
+
+    this.applyScopeFilter(qb, requester);
+
+    const rows = await qb.getRawMany();
+    const byDate = new Map<string, { orders: number; sales: number }>();
+    rows.forEach((row: any) => {
+      const dateKey = String(row.date);
+      byDate.set(dateKey, {
+        orders: this.toNumber(row.orders),
+        sales: this.toNumber(row.sales),
+      });
+    });
+
+    const points = [];
+    for (let i = 0; i < 7; i += 1) {
+      const d = new Date(startDate);
+      d.setDate(startDate.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      const found = byDate.get(key) || { orders: 0, sales: 0 };
+      points.push({
+        date: key,
+        orders: found.orders,
+        sales: this.roundMoney(found.sales),
+      });
+    }
+
+    return { points };
+  }
+
   private resolveScope(requester: AuthUser, companyId?: string, branchId?: string) {
     const normalizedCompanyId = companyId?.trim();
     const normalizedBranchId = branchId?.trim();
