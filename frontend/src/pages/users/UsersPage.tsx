@@ -4,6 +4,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Table from '../../components/common/Table';
+import Pagination from '../../components/common/Pagination';
 import api from '../../services/api';
 import { UserRole } from '../../types/auth.types';
 import { TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
@@ -27,6 +28,16 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [role, setRole] = useState<RoleFilter>('ALL');
+  const [page, setPage] = useState(1);
+
+  const pageSize = 15;
+  const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
+  const pagedUsers = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return users.slice(start, start + pageSize);
+  }, [users, page, pageSize]);
+  const showingFrom = users.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min(page * pageSize, users.length);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -55,6 +66,16 @@ export default function UsersPage() {
   useEffect(() => {
     fetchUsers();
   }, [searchTerm, status, role]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, status, role]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -226,7 +247,7 @@ export default function UsersPage() {
             value={status}
             onChange={(event) => setStatus(event.target.value as StatusFilter)}
           >
-            <option value="ALL">All Statuses</option>
+            <option value="ALL">All Status</option>
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
           </select>
@@ -245,7 +266,7 @@ export default function UsersPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">User Directory</h2>
           <span className="text-xs text-gray-600">
-            {users.length} record{users.length === 1 ? '' : 's'}
+            Showing {showingFrom}–{showingTo} of {users.length} record{users.length === 1 ? '' : 's'}
           </span>
         </div>
         {loading ? (
@@ -253,7 +274,10 @@ export default function UsersPage() {
         ) : users.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No users found for selected filters.</div>
         ) : (
-          <Table columns={columns} data={users} />
+          <>
+            <Table columns={columns} data={pagedUsers} />
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>

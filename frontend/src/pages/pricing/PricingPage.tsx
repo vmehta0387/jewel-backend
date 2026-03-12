@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import Pagination from '../../components/common/Pagination';
 import api from '../../services/api';
 
 type PriceCategory = 'METAL' | 'DIAMOND';
@@ -43,11 +44,21 @@ export default function PricingPage() {
   const [form, setForm] = useState(defaultForm);
   const [referenceOptions, setReferenceOptions] = useState<string[]>([]);
   const [referenceOptionsLoading, setReferenceOptionsLoading] = useState(false);
+  const [page, setPage] = useState(1);
 
   const filteredRows = useMemo(() => {
     if (filterCategory === 'ALL') return rows;
     return rows.filter((row) => row.category === filterCategory);
   }, [rows, filterCategory]);
+
+  const pageSize = 15;
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
+  const showingFrom = filteredRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min(page * pageSize, filteredRows.length);
 
   const loadRows = async () => {
     setLoading(true);
@@ -106,6 +117,16 @@ export default function PricingPage() {
   useEffect(() => {
     loadReferenceOptions(form.category, editingId);
   }, [form.category, editingId]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterCategory]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const resetForm = () => {
     setForm(defaultForm);
@@ -342,69 +363,75 @@ export default function PricingPage() {
         {loading ? (
           <div className="py-6 text-sm text-gray-600">Loading base prices...</div>
         ) : (
-          <div className="app-table-shell">
-            <div className="app-table-scroll scrollbar-top">
-              <table className="app-table">
-                <thead>
-                  <tr>
-                    <th className="app-table-head-cell">Category</th>
-                    <th className="app-table-head-cell">Reference</th>
-                    <th className="app-table-head-cell">Sub Value</th>
-                    <th className="app-table-head-cell">Price</th>
-                    <th className="app-table-head-cell">Unit</th>
-                    <th className="app-table-head-cell">Status</th>
-                    <th className="app-table-head-cell">Updated</th>
-                    <th className="app-table-head-cell">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.map((row) => (
-                    <tr key={row.id} className="app-table-row">
-                      <td className="app-table-cell">{row.category}</td>
-                      <td className="app-table-cell">{row.referenceValue}</td>
-                      <td className="app-table-cell">{row.subValue || '-'}</td>
-                      <td className="app-table-cell">
-                        {row.pricePerUnit} {row.currency}
-                      </td>
-                      <td className="app-table-cell">{row.unit}</td>
-                      <td className="app-table-cell">
-                        <span
-                          className={`app-table-pill ${
-                            row.isActive ? 'border-emerald-200 text-emerald-700' : 'border-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {row.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="app-table-cell">{new Date(row.updatedAt).toLocaleString()}</td>
-                      <td className="app-table-cell">
-                        <div className="flex items-center gap-2">
-                          <Button type="button" size="sm" onClick={() => startEdit(row)}>
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => toggleStatus(row)}
-                          >
-                            {row.isActive ? 'Deactivate' : 'Activate'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredRows.length === 0 ? (
+          <>
+            <div className="app-table-shell">
+              <div className="app-table-scroll scrollbar-top">
+                <table className="app-table">
+                  <thead>
                     <tr>
-                      <td className="app-table-empty" colSpan={8}>
-                        No base prices found.
-                      </td>
+                      <th className="app-table-head-cell">Category</th>
+                      <th className="app-table-head-cell">Reference</th>
+                      <th className="app-table-head-cell">Sub Value</th>
+                      <th className="app-table-head-cell">Price</th>
+                      <th className="app-table-head-cell">Unit</th>
+                      <th className="app-table-head-cell">Status</th>
+                      <th className="app-table-head-cell">Updated</th>
+                      <th className="app-table-head-cell">Action</th>
                     </tr>
-                  ) : null}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {pagedRows.map((row) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell">{row.category}</td>
+                        <td className="app-table-cell">{row.referenceValue}</td>
+                        <td className="app-table-cell">{row.subValue || '-'}</td>
+                        <td className="app-table-cell">
+                          {row.pricePerUnit} {row.currency}
+                        </td>
+                        <td className="app-table-cell">{row.unit}</td>
+                        <td className="app-table-cell">
+                          <span
+                            className={`app-table-pill ${
+                              row.isActive ? 'border-emerald-200 text-emerald-700' : 'border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="app-table-cell">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell">
+                          <div className="flex items-center gap-2">
+                            <Button type="button" size="sm" onClick={() => startEdit(row)}>
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => toggleStatus(row)}
+                            >
+                              {row.isActive ? 'Deactivate' : 'Activate'}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredRows.length === 0 ? (
+                      <tr>
+                        <td className="app-table-empty" colSpan={8}>
+                          No base prices found.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+              <span>Showing {showingFrom}–{showingTo} of {filteredRows.length} entries</span>
+            </div>
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>

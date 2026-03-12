@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import Pagination from '../../components/common/Pagination';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
 
@@ -598,10 +599,17 @@ function Modal({
 }) {
   return (
     <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]`}>
-      <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-          <h2 className="text-base font-semibold tracking-wide text-slate-900">{title}</h2>
-          <button type="button" className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100" onClick={onClose}>x</button>
+      <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl`}>
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+          <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-lg font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            x
+          </button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -643,12 +651,22 @@ export default function ProductsPage() {
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
+  const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DesignForm>(defaultForm);
-  const [filters, setFilters] = useState({ jewelryGroup: '', collection: '', jewelrySize: '', tags: '', stone: '', shape: '', stage: '', status: '', goldColour: '' });
+  const [filters, setFilters] = useState({
+    jewelryGroup: '',
+    collection: '',
+    jewelrySize: '',
+    tags: '',
+    status: '',
+    goldColour: '',
+    stonePacket: '',
+  });
   const [metalRows, setMetalRows] = useState<MetalRow[]>([{
     id: makeId(),
     goldColour: '',
@@ -725,6 +743,7 @@ export default function ProductsPage() {
   const [detailDesign, setDetailDesign] = useState<any | null>(null);
   const [detailDesignLoading, setDetailDesignLoading] = useState(false);
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
+  const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
@@ -1665,22 +1684,33 @@ export default function ProductsPage() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((item) => {
+      if (showInactive ? item.isActive : !item.isActive) return false;
       const hay = [item.designNo, item.version, item.jewelryGroup, item.jewelrySize, item.diamondType, item.diamondSpread, item.goldColour, item.collection, item.stoneInfo, item.tags.join(' '), item.stage, item.status].join(' ').toLowerCase();
       if (q && !hay.includes(q)) return false;
       if (filters.jewelryGroup && item.jewelryGroup !== filters.jewelryGroup) return false;
       if (filters.collection && item.collection !== filters.collection) return false;
       if (filters.jewelrySize && item.jewelrySize !== filters.jewelrySize) return false;
       if (filters.tags && !item.tags.join(' ').toLowerCase().includes(filters.tags.toLowerCase())) return false;
-      if (filters.stone && !item.stoneInfo.toLowerCase().includes(filters.stone.toLowerCase())) return false;
-      if (filters.shape && !item.remarks.toLowerCase().includes(filters.shape.toLowerCase())) return false;
-      if (filters.stage && item.stage !== filters.stage) return false;
       if (filters.status && item.status !== filters.status) return false;
       if (filters.goldColour && !item.goldColour.toLowerCase().includes(filters.goldColour.toLowerCase())) return false;
+      if (filters.stonePacket && !item.stoneInfo.toLowerCase().includes(filters.stonePacket.toLowerCase())) return false;
       return true;
     });
-  }, [filters, rows, search]);
+  }, [filters, rows, search, showInactive]);
 
-  const visibleRowIds = useMemo(() => filteredRows.map((row) => row.id), [filteredRows]);
+  const pageSize = 15;
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(filteredRows.length / pageSize)),
+    [filteredRows.length],
+  );
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, page, pageSize]);
+  const showingFrom = filteredRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min(page * pageSize, filteredRows.length);
+
+  const visibleRowIds = useMemo(() => pagedRows.map((row) => row.id), [pagedRows]);
   const selectedVisibleCount = useMemo(
     () => visibleRowIds.filter((id) => selectedDesignIds.includes(id)).length,
     [selectedDesignIds, visibleRowIds],
@@ -1692,6 +1722,16 @@ export default function ProductsPage() {
     selectAllVisibleCheckboxRef.current.indeterminate =
       selectedVisibleCount > 0 && selectedVisibleCount < visibleRowIds.length;
   }, [selectedVisibleCount, visibleRowIds.length]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, showInactive, filters]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const toggleDesignSelection = (designId: string) => {
     setSelectedDesignIds((prev) =>
@@ -1857,6 +1897,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
     setEditingId(null);
     setIsDesignNoManual(false);
+    setSourceDesignNo('');
     designNoRequestSeqRef.current += 1;
     const initialJewelryGroup = masterOptions.jewelryGroups[0]?.value || defaultForm.jewelryGroup;
     const autoDesignNo = suggestNextDesignNo(initialJewelryGroup);
@@ -1957,6 +1998,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       const processStages = Array.isArray(detail.processStages) ? detail.processStages : [];
       const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
       const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
+      setSourceDesignNo(getBaseDesignNo(detail.designNo || row.designNo));
 
       const baseForm: DesignForm = {
         designNo: detail.designNo || row.designNo,
@@ -2119,6 +2161,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         designDescription: '',
         remarks: row.remarks,
       };
+      setSourceDesignNo(getBaseDesignNo(row.designNo));
       setForm({ ...fallbackForm, ...(overrides || {}) });
       setMetalRows([createMetalRow(row.goldColour)]);
       setGemRows([{
@@ -2169,12 +2212,14 @@ const createDefaultVendorRow = (): VendorRow => ({
     setIsDesignNoManual(true);
     designNoRequestSeqRef.current += 1;
     setSelectedId(row.id);
-    const nextVersion = await fetchNextVersionFromServer(row.designNo);
-    const versionedDesignNo = buildVersionedDesignNo(row.designNo, nextVersion);
+    const baseDesignNo = getBaseDesignNo(row.designNo);
+    setSourceDesignNo(baseDesignNo);
+    const nextVersion = await fetchNextVersionFromServer(baseDesignNo);
+    const versionedDesignNo = buildVersionedDesignNo(baseDesignNo, nextVersion);
     await loadDesignDetail(row, { version: nextVersion, designNo: versionedDesignNo });
   };
 
-  const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean }) => {
+  const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean; overrideDesignNo?: string }) => {
     const forceCreate = Boolean(options?.forceCreate);
     const isUpdate = Boolean(editingId) && !forceCreate;
     if (isUpdate) {
@@ -2193,8 +2238,13 @@ const createDefaultVendorRow = (): VendorRow => ({
       return;
     }
 
-    const resolvedDesignNo =
-      form.designNo.trim() || (!isUpdate ? suggestNextDesignNo(form.jewelryGroup) : '');
+    const overrideDesignNo = options?.overrideDesignNo?.trim();
+    const baseDesignNo =
+      overrideDesignNo ||
+      (forceCreate && sourceDesignNo ? sourceDesignNo : '') ||
+      form.designNo.trim() ||
+      (!isUpdate ? suggestNextDesignNo(form.jewelryGroup) : '');
+    const resolvedDesignNo = baseDesignNo;
     const shouldSendDesignNo = isUpdate || isDesignNoManual || forceCreate;
     if (shouldSendDesignNo && !resolvedDesignNo) {
       window.alert('Design No is required.');
@@ -2444,26 +2494,15 @@ const createDefaultVendorRow = (): VendorRow => ({
     setDeletingId(id);
     try {
       await api.patch(`/products/${id}/status`, { isActive: false });
-      await fetchDesignRows(selectedId);
+      setRows((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: false } : item)));
+      if (!showInactive) {
+        setSelectedId((current) => (current === id ? '' : current));
+      }
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to disable design.');
     } finally {
       setDeletingId(null);
     }
-  };
-
-  const saveAsNewVersion = async () => {
-    if (!canCreateDesign) {
-      window.alert('You do not have permission to add designs.');
-      return;
-    }
-    const designNo = form.designNo.trim();
-    if (!designNo) {
-      window.alert('Design No is required to create a new version.');
-      return;
-    }
-    const nextVersion = await fetchNextVersionFromServer(designNo);
-    await saveDesign({ forceCreate: true, overrideVersion: nextVersion, selectAfterCreate: true });
   };
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
@@ -2732,6 +2771,19 @@ const createDefaultVendorRow = (): VendorRow => ({
             </svg>
             {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]"
+            onClick={() => setShowInactive((prev) => !prev)}
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z" />
+              <path d="M4 4l16 16" />
+            </svg>
+            {showInactive ? 'View Active' : 'View Inactive'}
+          </Button>
           {canCreateDesign ? (
             <Button type="button" size="sm" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={openAdd}>
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -2771,35 +2823,93 @@ const createDefaultVendorRow = (): VendorRow => ({
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.jewelryGroup} onChange={(event) => setFilters((prev) => ({ ...prev, jewelryGroup: event.target.value }))} placeholder="Jewelry Group" />
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.jewelryGroup}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelryGroup: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {masterOptions.jewelryGroups.map((option) => (
+                    <option key={option.id} value={option.value}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Collection</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.collection} onChange={(event) => setFilters((prev) => ({ ...prev, collection: event.target.value }))} placeholder="Collection" />
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.collection}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, collection: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {masterOptions.collections.map((option) => (
+                    <option key={option.id} value={option.value}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Size</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.jewelrySize} onChange={(event) => setFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))} placeholder="Jewelry Size" />
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.jewelrySize}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {masterOptions.jewelrySizes.map((option) => (
+                    <option key={option.id} value={option.value}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Tags</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.tags} onChange={(event) => setFilters((prev) => ({ ...prev, tags: event.target.value }))} placeholder="Jewelry Tags" />
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.tags}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, tags: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {masterOptions.tags.map((option) => (
+                    <option key={option.id} value={option.value}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Stone</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.stone} onChange={(event) => setFilters((prev) => ({ ...prev, stone: event.target.value }))} placeholder="Stone" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Shape</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.shape} onChange={(event) => setFilters((prev) => ({ ...prev, shape: event.target.value }))} placeholder="Shape" />
+                <label className="mb-1 block text-xs font-medium text-gray-600">Stone Packet</label>
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.stonePacket}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, stonePacket: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {packetOptions.map((option) => (
+                    <option key={option.id} value={option.packetName}>
+                      {option.packetName}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Metal Caratage</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.goldColour} onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))} placeholder="Metal Caratage" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Stage</label>
-                <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={filters.stage} onChange={(event) => setFilters((prev) => ({ ...prev, stage: event.target.value }))} placeholder="Stage" />
+                <select
+                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                  value={filters.goldColour}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))}
+                >
+                  <option value="">All</option>
+                  {masterOptions.metalCaratages.map((option) => (
+                    <option key={option.id} value={option.value}>
+                      {option.value}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -2859,7 +2969,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </tr>
               </thead>
               <tbody>
-              {filteredRows.map((row, idx) => (
+              {pagedRows.map((row, idx) => (
                 <tr key={row.id} className="app-table-row">
                   <td className="app-table-cell text-sm text-slate-600">
                     <div className="flex items-center gap-2">
@@ -2922,11 +3032,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <Action label="Edit" onClick={() => openEdit(row)} />
                           <button
                             type="button"
-                            title="Disable"
-                            aria-label="Disable"
-                            className="app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            title={row.isActive ? 'Disable' : 'Disabled'}
+                            aria-label={row.isActive ? 'Disable' : 'Disabled'}
+                            className={`app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60 ${row.isActive ? '' : 'opacity-60'}`}
                             onClick={() => deleteDesign(row.id)}
-                            disabled={deletingId === row.id}
+                            disabled={deletingId === row.id || !row.isActive}
                           >
                             {deletingId === row.id ? (
                               '...'
@@ -2949,7 +3059,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         </div>
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
-          <p>Showing {filteredRows.length} of {rows.length} entries</p>
+          <p>Showing {showingFrom}–{showingTo} of {filteredRows.length} entries</p>
           <p className="text-xs text-blue-700">
             {canModifyExistingDesigns
               ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
@@ -2959,6 +3069,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             Selected rows for PDF export: {selectedDesignIds.length}
           </p>
         </div>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </Card>
 
       {showAddModal && (
@@ -3184,6 +3295,56 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <label className="mb-1 block text-sm font-medium text-slate-700">Other Weight</label>
                     <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.otherWeight} onChange={(event) => setForm((prev) => ({ ...prev, otherWeight: event.target.value }))} placeholder="Other Weight" />
                   </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
+                    <select
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.stockType || 'Production'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, stockType: value }, ...rest];
+                        });
+                      }}
+                    >
+                      <option value="Production">Production</option>
+                      <option value="Purchase">Purchase</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.supplier || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, supplier: value }, ...rest];
+                        });
+                      }}
+                      placeholder="Vendor name"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor SKU</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.supplierStyleNo || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, supplierStyleNo: value }, ...rest];
+                        });
+                      }}
+                      placeholder="Vendor SKU"
+                    />
+                  </div>
                   <div className="md:col-span-2 xl:col-span-2">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Tags</label>
                     <div className="flex gap-2">
@@ -3230,56 +3391,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ))
                       )}
                     </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
-                    <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={vendorRows[0]?.supplier || ''}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setVendorRows((prev) => {
-                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
-                          const [first, ...rest] = base;
-                          return [{ ...first, supplier: value }, ...rest];
-                        });
-                      }}
-                      placeholder="Vendor name"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor SKU</label>
-                    <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={vendorRows[0]?.supplierStyleNo || ''}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setVendorRows((prev) => {
-                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
-                          const [first, ...rest] = base;
-                          return [{ ...first, supplierStyleNo: value }, ...rest];
-                        });
-                      }}
-                      placeholder="Vendor SKU"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={vendorRows[0]?.stockType || 'Production'}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setVendorRows((prev) => {
-                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
-                          const [first, ...rest] = base;
-                          return [{ ...first, stockType: value }, ...rest];
-                        });
-                      }}
-                    >
-                      <option value="Production">Production</option>
-                      <option value="Purchase">Purchase</option>
-                    </select>
                   </div>
                   <div className="xl:col-span-2">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Description</label>
@@ -3835,11 +3946,6 @@ const createDefaultVendorRow = (): VendorRow => ({
             </div>
 
             <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 pt-3 shadow-[0_-6px_18px_rgba(15,23,42,0.08)]">
-              {editingId ? (
-                <Button type="button" variant="secondary" onClick={saveAsNewVersion} disabled={savingDesign}>
-                  Save as New Version
-                </Button>
-              ) : null}
               <Button type="button" onClick={() => saveDesign()} disabled={savingDesign}>
                 {savingDesign ? 'Saving...' : 'Save'}
               </Button>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Table from '../../components/common/Table';
+import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
@@ -15,6 +16,13 @@ export default function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+
+  const pageSize = 15;
+  const totalPages = Math.max(1, Math.ceil(branches.length / pageSize));
+  const pagedBranches = branches.slice((page - 1) * pageSize, page * pageSize);
+  const showingFrom = branches.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min(page * pageSize, branches.length);
 
   const fetchBranches = async () => {
     setLoading(true);
@@ -35,6 +43,16 @@ export default function BranchesPage() {
   useEffect(() => {
     fetchBranches();
   }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -161,7 +179,7 @@ export default function BranchesPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">Branch Directory</h2>
           <span className="text-xs text-gray-600">
-            {branches.length} record{branches.length === 1 ? '' : 's'}
+            Showing {showingFrom}–{showingTo} of {branches.length} record{branches.length === 1 ? '' : 's'}
           </span>
         </div>
         {loading ? (
@@ -169,7 +187,10 @@ export default function BranchesPage() {
         ) : branches.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No branches found for selected filters.</div>
         ) : (
-          <Table columns={columns} data={branches} />
+          <>
+            <Table columns={columns} data={pagedBranches} />
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+          </>
         )}
       </Card>
     </div>

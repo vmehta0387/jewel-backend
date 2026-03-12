@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import Pagination from '../../components/common/Pagination';
 import api from '../../services/api';
 
 type DesignMasterType =
@@ -1208,6 +1209,7 @@ export default function DesignMastersPage() {
   const [viewInactive, setViewInactive] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [masterRows, setMasterRows] = useState<MasterRow[]>([]);
   const [packetRows, setPacketRows] = useState<PacketRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1828,7 +1830,30 @@ export default function DesignMastersPage() {
     setSearchTerm('');
   };
 
+  const pageSize = 15;
   const rowsCount = isPacketType ? packetRows.length : masterRows.length;
+  const totalPages = Math.max(1, Math.ceil(rowsCount / pageSize));
+  const pageOffset = (page - 1) * pageSize;
+  const pagedPacketRows = useMemo(
+    () => packetRows.slice(pageOffset, pageOffset + pageSize),
+    [packetRows, pageOffset, pageSize],
+  );
+  const pagedMasterRows = useMemo(
+    () => masterRows.slice(pageOffset, pageOffset + pageSize),
+    [masterRows, pageOffset, pageSize],
+  );
+  const showingFrom = rowsCount === 0 ? 0 : pageOffset + 1;
+  const showingTo = Math.min(pageOffset + pageSize, rowsCount);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedType, searchTerm, viewInactive]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <div className="space-y-6">
@@ -2001,9 +2026,9 @@ export default function DesignMastersPage() {
                       </td>
                     </tr>
                   ) : (
-                    packetRows.map((row, index) => (
+                    pagedPacketRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
-                        <td className="app-table-cell text-sm text-slate-600">{index + 1}</td>
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.packetName}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.stone || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.shape || '-'}</td>
@@ -2038,6 +2063,264 @@ export default function DesignMastersPage() {
                   )}
                 </tbody>
               </table>
+            ) : selectedType === 'METAL_NAME' ? (
+              <table className="app-table app-table-compact min-w-[1200px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Metal Name</th>
+                    <th className="app-table-head-cell">Alias Name</th>
+                    <th className="app-table-head-cell">Market/Oz</th>
+                    <th className="app-table-head-cell">Market/Gm</th>
+                    <th className="app-table-head-cell">Live/Gm</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.marketPricePerOunce !== null && row.marketPricePerOunce !== undefined ? Number(row.marketPricePerOunce).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.marketPricePerGm !== null && row.marketPricePerGm !== undefined ? Number(row.marketPricePerGm).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.livePricePerGm !== null && row.livePricePerGm !== undefined ? Number(row.livePricePerGm).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : selectedType === 'METAL_COLOR' ? (
+              <table className="app-table app-table-compact min-w-[1000px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Metal Name</th>
+                    <th className="app-table-head-cell">Metal Color</th>
+                    <th className="app-table-head-cell">Alias Name</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : selectedType === 'METAL_PURITY' ? (
+              <table className="app-table app-table-compact min-w-[1100px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Metal Name</th>
+                    <th className="app-table-head-cell">Metal Purity</th>
+                    <th className="app-table-head-cell">Alias Name</th>
+                    <th className="app-table-head-cell">Purity %</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.purityPercentage !== null && row.purityPercentage !== undefined
+                            ? Number(row.purityPercentage).toFixed(Number(row.purityPercentage) % 1 === 0 ? 0 : 2)
+                            : '-'}
+                        </td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : selectedType === 'METAL_CARATAGE' ? (
+              <table className="app-table app-table-compact min-w-[1500px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Metal Caratage</th>
+                    <th className="app-table-head-cell">Metal Name</th>
+                    <th className="app-table-head-cell">Metal Purity</th>
+                    <th className="app-table-head-cell">Purity %</th>
+                    <th className="app-table-head-cell">Metal Color</th>
+                    <th className="app-table-head-cell">Price/Gms</th>
+                    <th className="app-table-head-cell">Default Wastage (%)</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={12} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.metalPurity || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.purityPercentage !== null && row.purityPercentage !== undefined
+                            ? Number(row.purityPercentage).toFixed(Number(row.purityPercentage) % 1 === 0 ? 0 : 2)
+                            : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.metalColor || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.livePricePerGm !== null && row.livePricePerGm !== undefined ? Number(row.livePricePerGm).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.defaultWastagePercent !== null && row.defaultWastagePercent !== undefined
+                            ? Number(row.defaultWastagePercent).toFixed(2)
+                            : '-'}
+                        </td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             ) : (
               <table className="app-table app-table-compact min-w-full">
                 <thead>
@@ -2047,12 +2330,7 @@ export default function DesignMastersPage() {
                     {selectedType === 'JEWELRY_SIZE' ? (
                       <th className="app-table-head-cell">Jewelry Group</th>
                     ) : null}
-                    <th className="app-table-head-cell">
-                      {selectedType === 'METAL_CARATAGE' ? 'Price/Gms' : 'Alias Name'}
-                    </th>
-                    {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
-                      <th className="app-table-head-cell">Default Wastage (%)</th>
-                    ) : null}
+                    <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Description</th>
                     <th className="app-table-head-cell">Created</th>
                     <th className="app-table-head-cell">Modified</th>
@@ -2063,13 +2341,7 @@ export default function DesignMastersPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={
-                          selectedType === 'GOLD_COLOUR' ||
-                          selectedType === 'METAL_CARATAGE' ||
-                          selectedType === 'JEWELRY_SIZE'
-                            ? 8
-                            : 7
-                        }
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
                         className="app-table-empty"
                       >
                         Loading records...
@@ -2078,49 +2350,21 @@ export default function DesignMastersPage() {
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td
-                        colSpan={
-                          selectedType === 'GOLD_COLOUR' ||
-                          selectedType === 'METAL_CARATAGE' ||
-                          selectedType === 'JEWELRY_SIZE'
-                            ? 8
-                            : 7
-                        }
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
                         className="app-table-empty"
                       >
                         No records found.
                       </td>
                     </tr>
                   ) : (
-                    masterRows.map((row, index) => (
+                    pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
-                        <td className="app-table-cell text-sm text-slate-600">{index + 1}</td>
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
                         {selectedType === 'JEWELRY_SIZE' ? (
                           <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
                         ) : null}
-                        <td className="app-table-cell text-sm text-slate-700">
-                          {selectedType === 'METAL_CARATAGE'
-                            ? row.livePricePerGm !== null && row.livePricePerGm !== undefined
-                              ? Number(row.livePricePerGm).toFixed(2)
-                              : '-'
-                            : row.aliasName || row.value}
-                        </td>
-                        {selectedType === 'GOLD_COLOUR' || selectedType === 'METAL_CARATAGE' ? (
-                          <td className="app-table-cell text-sm text-slate-700">
-                            {(selectedType === 'METAL_CARATAGE'
-                              ? row.defaultWastagePercent
-                              : row.pricePerUnit) !== null &&
-                            (selectedType === 'METAL_CARATAGE'
-                              ? row.defaultWastagePercent
-                              : row.pricePerUnit) !== undefined
-                              ? Number(
-                                  selectedType === 'METAL_CARATAGE'
-                                    ? row.defaultWastagePercent
-                                    : row.pricePerUnit,
-                                ).toFixed(2)
-                              : '-'}
-                          </td>
-                        ) : null}
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || row.value}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
@@ -2150,6 +2394,10 @@ export default function DesignMastersPage() {
             )}
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+          <span>Showing {showingFrom}–{showingTo} of {rowsCount} entries</span>
+        </div>
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </Card>
 
       {isPacketType ? (
