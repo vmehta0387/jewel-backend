@@ -170,14 +170,15 @@ export class ProductsService {
 
     let designNo: string;
     if (requestedDesignNo) {
-      designNo = this.normalizeDesignNo(requestedDesignNo);
+      designNo = this.applyVersionToDesignNo(requestedDesignNo, version);
       await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
     } else {
       const prefix = this.buildDesignNoPrefix(jewelryGroup);
       designNo = await this.withDesignNoLock(scope.companyId, prefix, async () => {
         const generatedDesignNo = await this.generateNextDesignNo(prefix, scope.companyId);
-        await this.assertUniqueDesign(generatedDesignNo, version, scope.companyId, undefined);
-        return generatedDesignNo;
+        const versioned = this.applyVersionToDesignNo(generatedDesignNo, version);
+        await this.assertUniqueDesign(versioned, version, scope.companyId, undefined);
+        return versioned;
       });
     }
 
@@ -267,7 +268,15 @@ export class ProductsService {
     }
 
     const scope = await this.resolveScope(query.companyId, query.branchId, requester);
-    const prefix = this.buildDesignNoPrefix(jewelryGroup);
+    let groupMaster = await this.designMasterRepo.findOne({
+      where: { masterType: DesignMasterType.JEWELRY_GROUP, value: jewelryGroup },
+    });
+    if (!groupMaster) {
+      groupMaster = await this.designMasterRepo.findOne({
+        where: { masterType: DesignMasterType.JEWELRY_GROUP, aliasName: jewelryGroup },
+      });
+    }
+    const prefix = this.buildDesignNoPrefix(groupMaster?.aliasName || jewelryGroup);
     const designNo = await this.generateNextDesignNo(prefix, scope.companyId);
 
     return {
@@ -281,12 +290,18 @@ export class ProductsService {
     requester: AuthUser,
   ): Promise<{ version: string }> {
     const designNo = this.normalizeDesignNo(query.designNo?.trim() || '');
+    const baseDesignNo = this.normalizeBaseDesignNo(designNo);
     const scope = await this.resolveScope(query.companyId, query.branchId, requester);
 
-    const rows = await this.designRepo.find({
-      where: { designNo, companyId: scope.companyId },
-      select: ['version'],
-    });
+    const rows = await this.designRepo
+      .createQueryBuilder('design')
+      .select(['design.version'])
+      .where('design.company_id <=> :companyId', { companyId: scope.companyId })
+      .andWhere(
+        '(design.design_no = :baseDesignNo OR design.design_no LIKE :versionedDesignNo)',
+        { baseDesignNo, versionedDesignNo: `${baseDesignNo}-V%` },
+      )
+      .getMany();
 
     let maxVersion = 0;
     for (const row of rows) {
@@ -521,8 +536,8 @@ export class ProductsService {
     const targetBranchId = dto.branchId !== undefined ? dto.branchId : design.branchId || undefined;
     const scope = await this.resolveScope(targetCompanyId, targetBranchId, requester);
 
-    const designNo = this.normalizeDesignNo(dto.designNo || design.designNo);
     const version = this.normalizeVersion(dto.version || design.version);
+    const designNo = this.applyVersionToDesignNo(dto.designNo || design.designNo, version);
 
     await this.assertUniqueDesign(designNo, version, scope.companyId, id);
 
@@ -556,6 +571,7 @@ export class ProductsService {
 
     design.designNo = designNo;
     design.version = version;
+    design.designNo = designNo;
     design.companyId = scope.companyId;
     design.branchId = scope.branchId;
     if (dto.jewelryGroup !== undefined) design.jewelryGroup = dto.jewelryGroup.trim();
@@ -739,7 +755,8 @@ export class ProductsService {
       throw new BadRequestException('At least one image or video file is required.');
     }
 
-    const uploadDir = join(process.cwd(), 'uploads', 'design-gallery');
+    const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
+    const uploadDir = join(uploadsRoot, 'design-gallery');
     await mkdir(uploadDir, { recursive: true });
 
     const uploaded: Array<{ fileName: string; url: string }> = [];
@@ -1088,7 +1105,7 @@ export class ProductsService {
     };
 
     for (const entry of data) {
-      const option = { id: entry.id, value: entry.value };
+      const option = { id: entry.id, value: entry.value, aliasName: entry.aliasName || undefined };
       if (entry.masterType === DesignMasterType.JEWELRY_GROUP) {
         grouped.jewelryGroups.push(option);
       } else if (entry.masterType === DesignMasterType.COLLECTION) {
@@ -2621,6 +2638,20 @@ export class ProductsService {
       throw new BadRequestException('designNo is required');
     }
     return normalized;
+  }
+
+  private normalizeBaseDesignNo(value: string): string {
+    const normalized = this.normalizeDesignNo(value);
+    return normalized.replace(/-V\d+$/i, '');
+  }
+
+  private applyVersionToDesignNo(designNo: string, version: string): string {
+    const base = this.normalizeBaseDesignNo(designNo);
+    const normalizedVersion = this.normalizeVersion(version);
+    if (normalizedVersion === 'V1') {
+      return base;
+    }
+    return `${base}-${normalizedVersion}`;
   }
 
   private normalizeVersion(value?: string): string {

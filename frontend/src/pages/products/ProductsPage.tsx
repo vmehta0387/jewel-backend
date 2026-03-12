@@ -344,7 +344,18 @@ const DESIGN_GROUP_PREFIX_MAP: Record<string, string> = {
   nosepin: 'NP',
 };
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const buildDesignNoPrefix = (jewelryGroup: string): string => {
+const sanitizeDesignPrefix = (value: string): string =>
+  value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '')
+    .trim();
+
+const buildDesignNoPrefix = (jewelryGroup: string, aliasName?: string): string => {
+  const alias = aliasName?.trim();
+  if (alias) {
+    const normalizedAlias = sanitizeDesignPrefix(alias);
+    if (normalizedAlias) return normalizedAlias.slice(0, 5);
+  }
   const normalized = jewelryGroup.trim().toLowerCase();
   if (!normalized) return 'DSN';
   const mapped = DESIGN_GROUP_PREFIX_MAP[normalized];
@@ -357,8 +368,12 @@ const buildDesignNoPrefix = (jewelryGroup: string): string => {
       .split(/\s+/)[0] || 'DSN';
   return token.slice(0, 5);
 };
-const getNextDesignNo = (jewelryGroup: string, existingRows: DesignRow[]): string => {
-  const prefix = buildDesignNoPrefix(jewelryGroup);
+const getNextDesignNo = (
+  jewelryGroup: string,
+  existingRows: DesignRow[],
+  aliasName?: string,
+): string => {
+  const prefix = buildDesignNoPrefix(jewelryGroup, aliasName);
   const matcher = new RegExp(`^${escapeRegex(prefix)}-(\\d+)$`, 'i');
 
   let maxNumber = 0;
@@ -381,12 +396,21 @@ const normalizeVersionInput = (value: string): string => {
   return upper.startsWith('V') ? upper : `V${upper}`;
 };
 
+const getBaseDesignNo = (designNo: string): string => designNo.trim().toUpperCase().replace(/-V\d+$/i, '');
+
+const buildVersionedDesignNo = (designNo: string, version: string): string => {
+  const base = getBaseDesignNo(designNo);
+  const normalizedVersion = normalizeVersionInput(version);
+  if (normalizedVersion === 'V1') return base;
+  return `${base}-${normalizedVersion}`;
+};
+
 const getNextDesignVersion = (designNo: string, existingRows: DesignRow[]): string => {
-  const target = designNo.trim().toUpperCase();
+  const target = getBaseDesignNo(designNo);
   if (!target) return 'V1';
   let maxVersion = 0;
   existingRows.forEach((row) => {
-    if ((row.designNo || '').trim().toUpperCase() !== target) return;
+    if (getBaseDesignNo(row.designNo || '') !== target) return;
     const match = /V(\d+)/i.exec((row.version || '').trim());
     if (!match) return;
     const parsed = Number.parseInt(match[1], 10);
@@ -505,6 +529,12 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 20h9" />
         <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+      </svg>
+    ) : label === 'New Version' ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="4" y="4" width="12" height="12" rx="2" />
+        <path d="M8 8h4M8 12h6" />
+        <path d="M16 8h4v12a2 2 0 0 1-2 2H8" />
       </svg>
     ) : (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -947,8 +977,15 @@ export default function ProductsPage() {
     };
   };
 
+  const getJewelryGroupAlias = (jewelryGroup: string): string => {
+    const match = masterOptions.jewelryGroups.find(
+      (option) => normalizeLookupKey(option.value) === normalizeLookupKey(jewelryGroup),
+    );
+    return match?.aliasName || '';
+  };
+
   const suggestNextDesignNo = (jewelryGroup: string): string =>
-    getNextDesignNo(jewelryGroup, rows);
+    getNextDesignNo(jewelryGroup, rows, getJewelryGroupAlias(jewelryGroup));
 
   const syncDesignNoFromServer = (jewelryGroup: string) => {
     const group = jewelryGroup.trim();
@@ -1869,8 +1906,9 @@ const createDefaultVendorRow = (): VendorRow => ({
   const fetchNextVersionFromServer = async (designNo: string): Promise<string> => {
     const trimmed = designNo.trim();
     if (!trimmed) return 'V1';
+    const baseDesignNo = getBaseDesignNo(trimmed);
     try {
-      const response = await api.get('/products/next-version', { params: { designNo: trimmed } });
+      const response = await api.get('/products/next-version', { params: { designNo: baseDesignNo } });
       const serverVersion = String(response.data?.version || '').trim();
       if (serverVersion) {
         return normalizeVersionInput(serverVersion);
@@ -1881,18 +1919,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     return getNextDesignVersion(trimmed, rows);
   };
 
-  const openEdit = async (row: DesignRow) => {
-    if (!canModifyExistingDesigns) {
-      setSelectedId(row.id);
-      setModal('info');
-      return;
-    }
-
-    setEditingId(row.id);
-    setIsDesignNoManual(true);
-    designNoRequestSeqRef.current += 1;
-    setSelectedId(row.id);
-
+  const loadDesignDetail = async (row: DesignRow, overrides?: Partial<DesignForm>) => {
     const asInput = (value: unknown): string => {
       if (value === null || value === undefined) return '';
       return String(value);
@@ -1931,7 +1958,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
       const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
 
-      setForm({
+      const baseForm: DesignForm = {
         designNo: detail.designNo || row.designNo,
         version: normalizeVersionInput(detail.version || row.version || 'V1'),
         jewelryGroup: detail.jewelryGroup || row.jewelryGroup,
@@ -1946,7 +1973,9 @@ const createDefaultVendorRow = (): VendorRow => ({
         drawerLocation: detail.drawerLocation || '',
         designDescription: detail.designDescription || '',
         remarks: detail.remarks || row.remarks || '',
-      });
+      };
+
+      setForm({ ...baseForm, ...(overrides || {}) });
 
       setMetalRows(
         metals.length > 0
@@ -2074,7 +2103,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       setShowGalleryPicker(false);
       setShowAddModal(true);
     } catch {
-      setForm({
+      const fallbackForm: DesignForm = {
         designNo: row.designNo,
         version: normalizeVersionInput(row.version || 'V1'),
         jewelryGroup: row.jewelryGroup,
@@ -2089,7 +2118,8 @@ const createDefaultVendorRow = (): VendorRow => ({
         drawerLocation: '',
         designDescription: '',
         remarks: row.remarks,
-      });
+      };
+      setForm({ ...fallbackForm, ...(overrides || {}) });
       setMetalRows([createMetalRow(row.goldColour)]);
       setGemRows([{
         id: makeId(),
@@ -2113,6 +2143,35 @@ const createDefaultVendorRow = (): VendorRow => ({
       setShowGalleryPicker(false);
       setShowAddModal(true);
     }
+  };
+
+  const openEdit = async (row: DesignRow) => {
+    if (!canModifyExistingDesigns) {
+      setSelectedId(row.id);
+      setModal('info');
+      return;
+    }
+
+    setEditingId(row.id);
+    setIsDesignNoManual(true);
+    designNoRequestSeqRef.current += 1;
+    setSelectedId(row.id);
+
+    await loadDesignDetail(row);
+  };
+
+  const openNewVersion = async (row: DesignRow) => {
+    if (!canCreateDesign) {
+      window.alert('You do not have permission to add designs.');
+      return;
+    }
+    setEditingId(null);
+    setIsDesignNoManual(true);
+    designNoRequestSeqRef.current += 1;
+    setSelectedId(row.id);
+    const nextVersion = await fetchNextVersionFromServer(row.designNo);
+    const versionedDesignNo = buildVersionedDesignNo(row.designNo, nextVersion);
+    await loadDesignDetail(row, { version: nextVersion, designNo: versionedDesignNo });
   };
 
   const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean }) => {
@@ -2142,6 +2201,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       return;
     }
     const resolvedVersion = normalizeVersionInput(options?.overrideVersion ?? form.version);
+    const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, resolvedVersion);
 
     const usedMetalKeys = new Set<string>();
     for (const row of metalRows) {
@@ -2224,7 +2284,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
 
     const basePayload = {
-      designNo: shouldSendDesignNo ? resolvedDesignNo : undefined,
+      designNo: shouldSendDesignNo ? versionedDesignNo : undefined,
       version: resolvedVersion,
       jewelryGroup: form.jewelryGroup.trim(),
       collection: form.collection.trim() || undefined,
@@ -2313,7 +2373,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setSavingDesign(true);
     try {
       if (isUpdate) {
-        const canUpdate = /^[0-9a-fA-F-]{36}$/.test(editingId);
+        const canUpdate = /^[0-9a-fA-F-]{36}$/.test(editingId || '');
         if (canUpdate) {
           try {
             const response = await api.put(`/products/${editingId}`, createPayload);
@@ -2327,6 +2387,28 @@ const createDefaultVendorRow = (): VendorRow => ({
             if (!isNotFound) {
               throw error;
             }
+            const response = await api.post('/products', createPayload);
+            const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+            setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+            setSelectedId(saved.id);
+            if (options?.selectAfterCreate) {
+              setEditingId(saved.id);
+              setIsDesignNoManual(true);
+              setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
+            }
+          }
+        } else {
+          const response = await api.post('/products', createPayload);
+          const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+          setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+          setSelectedId(saved.id);
+          if (options?.selectAfterCreate) {
+            setEditingId(saved.id);
+            setIsDesignNoManual(true);
+            setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
+          }
+        }
+      } else {
         const response = await api.post('/products', createPayload);
         const saved = mapApiDesignToRow(response.data as ApiDesignRow);
         setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
@@ -2336,23 +2418,6 @@ const createDefaultVendorRow = (): VendorRow => ({
           setIsDesignNoManual(true);
           setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
         }
-      }
-    } else {
-      const response = await api.post('/products', createPayload);
-      const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-      setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-      setSelectedId(saved.id);
-      if (options?.selectAfterCreate) {
-        setEditingId(saved.id);
-        setIsDesignNoManual(true);
-        setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
-      }
-    }
-      } else {
-        const response = await api.post('/products', createPayload);
-        const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-        setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-        setSelectedId(saved.id);
       }
 
       setEditingId(null);
@@ -2651,7 +2716,7 @@ const createDefaultVendorRow = (): VendorRow => ({
   };
 
   const exportActionButtonClass =
-    'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)] transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
+    'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)] transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 
   return (
     <div className="space-y-4">
@@ -2681,12 +2746,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             onClick={exportPdf}
             title="Export selected rows to PDF"
           >
-            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
-              <path d="M14 2v5h5" />
-              <path d="M8 13h8M8 17h6" />
-            </svg>
-            <span>PDF</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-red-100 text-[9px] font-bold text-red-700">PDF</span>
+            <span>PDF file</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
               {selectedDesignIds.length}
             </span>
@@ -2697,13 +2758,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             onClick={exportCsv}
             title="Export design list to Excel (CSV)"
           >
-            <svg className="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
-              <path d="M14 2v5h5" />
-              <path d="M9 10h6M9 14h6M9 18h6" />
-              <path d="m8 10 8 8M16 10l-8 8" />
-            </svg>
-            <span>Excel</span>
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-emerald-100 text-[9px] font-bold text-emerald-700">XLS</span>
+            <span>Excel file</span>
           </button>
         </div>
       </div>
@@ -2858,6 +2914,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <div className="flex flex-wrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
+                      {canCreateDesign ? (
+                        <Action label="New Version" onClick={() => openNewVersion(row)} />
+                      ) : null}
                       {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
@@ -2918,13 +2977,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
                     <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      className="w-full rounded border border-gray-300 bg-slate-50 px-2 py-2 text-sm text-slate-700"
                       value={form.designNo}
-                      onChange={(event) => {
-                        setIsDesignNoManual(true);
-                        designNoRequestSeqRef.current += 1;
-                        setForm((prev) => ({ ...prev, designNo: event.target.value }));
-                      }}
+                      readOnly
                       placeholder="Design No"
                     />
                   </div>
@@ -3785,7 +3840,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   Save as New Version
                 </Button>
               ) : null}
-              <Button type="button" onClick={saveDesign} disabled={savingDesign}>
+              <Button type="button" onClick={() => saveDesign()} disabled={savingDesign}>
                 {savingDesign ? 'Saving...' : 'Save'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); }}>Close</Button>
