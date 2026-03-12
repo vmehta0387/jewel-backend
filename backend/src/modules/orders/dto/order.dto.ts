@@ -114,6 +114,14 @@ export class FindOrdersQueryDto {
   @IsOptional()
   @IsEnum(OrderStatus)
   orderStatus?: OrderStatus;
+
+  @IsOptional()
+  @IsString()
+  deliveryFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  deliveryTo?: string;
 }
 
 export class UpdateOrderStatusDto {

@@ -26,8 +26,20 @@ export class OrdersController {
   }
 
   @Get('next-order-no')
-  getNextOrderNumber() {
-    return this.ordersService.getNextOrderNumber();
+  getNextOrderNumber(@Query('companyId') companyId?: string, @Query('branchId') branchId?: string) {
+    return this.ordersService.getNextOrderNumber(companyId, branchId);
+  }
+
+  @Get('price-preview')
+  getPricePreview(
+    @Query('designId') designId?: string,
+    @Query('companyId') companyId?: string,
+    @Query('branchId') branchId?: string,
+  ) {
+    if (!designId || !companyId || !branchId) {
+      return { baseCost: 0, companyMultiplier: 1, branchMultiplier: 1, finalPrice: 0 };
+    }
+    return this.ordersService.getPricePreview({ designId, companyId, branchId });
   }
 
   @Get(':id')

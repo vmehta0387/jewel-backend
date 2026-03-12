@@ -19,7 +19,7 @@ export class OrdersService {
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
   ) {}
 
-  async getNextOrderNumber(): Promise<{ orderNumber: string }> {
+  async getNextOrderNumber(companyId?: string, branchId?: string): Promise<{ orderNumber: string }> {
     const now = new Date();
     const yy = now.getFullYear().toString().slice(-2);
     const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -42,8 +42,41 @@ export class OrdersService {
       }
     }
 
-    const orderNumber = `${prefix}${String(seq).padStart(3, '0')}`;
-    return { orderNumber };
+    const baseNumber = `${prefix}${String(seq).padStart(3, '0')}`;
+
+    if (!companyId && !branchId) {
+      return { orderNumber: baseNumber };
+    }
+
+    const normalizedCompanyId = companyId?.trim();
+    const normalizedBranchId = branchId?.trim();
+    let companyCode = '';
+    let branchCode = '';
+
+    if (normalizedCompanyId) {
+      const company = await this.companyRepo.findOne({ where: { id: normalizedCompanyId } });
+      if (!company) {
+        throw new BadRequestException('Selected company not found');
+      }
+      companyCode = (company.companyCode || '').trim().toUpperCase();
+    }
+
+    if (normalizedBranchId) {
+      const branch = await this.branchRepo.findOne({ where: { id: normalizedBranchId } });
+      if (!branch) {
+        throw new BadRequestException('Selected branch not found');
+      }
+      branchCode = (branch.code || '').trim().toUpperCase();
+      if (normalizedCompanyId && branch.companyId !== normalizedCompanyId) {
+        throw new BadRequestException('Selected branch does not belong to the company');
+      }
+    }
+
+    if (!companyCode || !branchCode) {
+      throw new BadRequestException('Company code and branch code are required for order number');
+    }
+
+    return { orderNumber: `${baseNumber}-${companyCode}-${branchCode}` };
   }
 
   async findAll(query: FindOrdersQueryDto, requester: AuthUser) {
@@ -75,6 +108,18 @@ export class OrdersService {
 
     if (query.designId) {
       qb.andWhere('order.designId = :designId', { designId: query.designId });
+    }
+
+    if (query.deliveryFrom?.trim()) {
+      qb.andWhere('DATE(order.deliveryDate) >= :deliveryFrom', {
+        deliveryFrom: query.deliveryFrom.trim(),
+      });
+    }
+
+    if (query.deliveryTo?.trim()) {
+      qb.andWhere('DATE(order.deliveryDate) <= :deliveryTo', {
+        deliveryTo: query.deliveryTo.trim(),
+      });
     }
 
     if (query.search?.trim()) {
@@ -152,7 +197,12 @@ export class OrdersService {
       this.assertDesignScope(design, requester, scope);
     }
 
-    const { orderNumber } = await this.getNextOrderNumber();
+    const { orderNumber } = await this.getNextOrderNumber(scope.companyId ?? undefined, scope.branchId ?? undefined);
+    const pricing = await this.calculateOrderPrice({
+      design,
+      companyId: scope.companyId ?? undefined,
+      branchId: scope.branchId ?? undefined,
+    });
 
     const order = this.orderRepo.create({
       orderNumber,
@@ -162,7 +212,7 @@ export class OrdersService {
       salesRepId: requester.id,
       deliveryDate: dto.deliveryDate?.trim() || null,
       quantity: dto.quantity ?? 1,
-      price: dto.price ?? 0,
+      price: pricing.finalPrice,
       shortDescription: dto.shortDescription?.trim() || null,
       notes: dto.notes?.trim() || null,
       status: OrderStatus.QUOTE,
@@ -193,13 +243,16 @@ export class OrdersService {
       }
     }
 
+    let design: Design | null = null;
     if (dto.designId) {
-      const design = await this.designRepo.findOne({ where: { id: dto.designId } });
+      design = await this.designRepo.findOne({ where: { id: dto.designId } });
       if (!design) {
         throw new NotFoundException('Design not found');
       }
       this.assertDesignScope(design, requester, scope);
       order.designId = dto.designId;
+    } else if (order.designId) {
+      design = await this.designRepo.findOne({ where: { id: order.designId } });
     }
 
     if (dto.companyId !== undefined) {
@@ -214,9 +267,12 @@ export class OrdersService {
     if (dto.quantity !== undefined) {
       order.quantity = dto.quantity;
     }
-    if (dto.price !== undefined) {
-      order.price = dto.price;
-    }
+    const pricing = await this.calculateOrderPrice({
+      design,
+      companyId: order.companyId ?? undefined,
+      branchId: order.branchId ?? undefined,
+    });
+    order.price = pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
       order.shortDescription = dto.shortDescription?.trim() || null;
     }
@@ -228,6 +284,21 @@ export class OrdersService {
     }
 
     return this.orderRepo.save(order);
+  }
+
+  async getPricePreview(params: { designId: string; companyId: string; branchId: string }) {
+    const design = await this.designRepo.findOne({ where: { id: params.designId } });
+    if (!design) {
+      throw new NotFoundException('Design not found');
+    }
+
+    const pricing = await this.calculateOrderPrice({
+      design,
+      companyId: params.companyId,
+      branchId: params.branchId,
+    });
+
+    return pricing;
   }
 
   async updateActiveStatus(id: string, isActive: boolean, requester: AuthUser) {
@@ -339,5 +410,87 @@ export class OrdersService {
     if (scope.branchId && design.branchId && design.branchId !== scope.branchId) {
       throw new BadRequestException('Design does not belong to the selected branch');
     }
+  }
+
+  private async calculateOrderPrice(params: {
+    design: Design | null;
+    companyId?: string;
+    branchId?: string;
+  }): Promise<{ baseCost: number; companyMultiplier: number; branchMultiplier: number; finalPrice: number }> {
+    const baseCost = this.toNumber(params.design?.totalValue ?? 0);
+
+    let companyMultiplier = 1;
+    let branchMultiplier = 1;
+
+    if (params.companyId) {
+      companyMultiplier = await this.resolveCompanyMultiplier(params.companyId, baseCost, params.design?.collection || undefined);
+    }
+
+    if (params.branchId) {
+      branchMultiplier = await this.resolveBranchMultiplier(params.branchId, baseCost);
+    }
+
+    const finalPrice = this.roundMoney(baseCost * companyMultiplier * branchMultiplier);
+    return { baseCost, companyMultiplier, branchMultiplier, finalPrice };
+  }
+
+  private async resolveCompanyMultiplier(companyId: string, baseCost: number, collection?: string): Promise<number> {
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId },
+      relations: ['pricingSlabs', 'collectionPricingOverrides'],
+    });
+    if (!company) {
+      throw new BadRequestException('Selected company not found');
+    }
+
+    if (company.enableCollectionPricing && collection) {
+      const override = company.collectionPricingOverrides?.find(
+        (row) => row.isActive && row.collectionType === collection,
+      );
+      if (override) {
+        return this.toNumber(override.multiplier) || 1;
+      }
+    }
+
+    if (company.enableSlabPricing) {
+      const slab = company.pricingSlabs?.find(
+        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
+      );
+      if (slab) {
+        return this.toNumber(slab.multiplier) || 1;
+      }
+    }
+
+    return this.toNumber(company.defaultMultiplier) || 1;
+  }
+
+  private async resolveBranchMultiplier(branchId: string, baseCost: number): Promise<number> {
+    const branch = await this.branchRepo.findOne({
+      where: { id: branchId },
+      relations: ['pricingSlabs'],
+    });
+    if (!branch) {
+      throw new BadRequestException('Selected branch not found');
+    }
+
+    if (branch.enableSlabPricing) {
+      const slab = branch.pricingSlabs?.find(
+        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
+      );
+      if (slab) {
+        return this.toNumber(slab.multiplier) || 1;
+      }
+    }
+
+    return this.toNumber(branch.branchMultiplier) || 1;
+  }
+
+  private toNumber(value: unknown): number {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private roundMoney(value: number): number {
+    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
   }
 }
