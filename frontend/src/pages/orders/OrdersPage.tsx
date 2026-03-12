@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Pagination from '../../components/common/Pagination';
@@ -164,6 +164,33 @@ function MediaPreview({ url, alt }: { url: string; alt: string }) {
   return <img src={resolved} alt={alt} className="h-40 w-full rounded-lg border border-slate-200 object-cover" />;
 }
 
+function OrderActionIconButton({
+  title,
+  onClick,
+  children,
+  className = '',
+  disabled = false,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+  className?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      className={`app-table-icon-action ${className}`.trim()}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Modal({
   title,
   onClose,
@@ -213,6 +240,8 @@ export default function OrdersPage() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
   const [orderNumber, setOrderNumber] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
@@ -243,6 +272,7 @@ export default function OrdersPage() {
         params: {
           page,
           limit: 15,
+          status: showInactive ? 'INACTIVE' : 'ACTIVE',
           orderStatus: filters.orderStatus || undefined,
           companyId: filters.companyId || undefined,
           deliveryFrom: filters.deliveryFrom || undefined,
@@ -272,8 +302,8 @@ export default function OrdersPage() {
     setDesignOptions(response.data?.data || []);
   };
 
-  const loadPackets = async () => {
-    if (Object.keys(packetLookup).length) return;
+  const loadPackets = async (): Promise<Record<string, string>> => {
+    if (Object.keys(packetLookup).length) return packetLookup;
     const response = await api.get('/products/packets', { params: { page: 1, limit: 200, status: 'ACTIVE' } });
     const packets = response.data?.data || [];
     const mapped: Record<string, string> = {};
@@ -283,6 +313,7 @@ export default function OrdersPage() {
       }
     });
     setPacketLookup(mapped);
+    return mapped;
   };
 
   const loadBranches = async (companyId: string) => {
@@ -311,7 +342,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     loadOrders();
-  }, [page, filters, canViewOrders]);
+  }, [page, filters, canViewOrders, showInactive]);
 
   useEffect(() => {
     if (!canViewOrders) return;
@@ -434,23 +465,28 @@ export default function OrdersPage() {
     }
   };
 
+  const fetchOrderWithDesign = async (orderId: string) => {
+    const response = await api.get(`/orders/${orderId}`);
+    const raw = response.data as any;
+    const detail: OrderRow = {
+      ...raw,
+      companyName: raw?.company?.companyName ?? raw?.companyName ?? null,
+      branchName: raw?.branch?.name ?? raw?.branchName ?? null,
+    };
+    let design: DesignDetail | null = null;
+    if (detail?.designId) {
+      const designResponse = await api.get(`/products/${detail.designId}`);
+      design = designResponse.data || null;
+    }
+    return { detail, design };
+  };
+
   const openViewModal = async (order: OrderRow) => {
     try {
-      const response = await api.get(`/orders/${order.id}`);
-      const raw = response.data as any;
-      const detail: OrderRow = {
-        ...raw,
-        companyName: raw?.company?.companyName ?? raw?.companyName ?? null,
-        branchName: raw?.branch?.name ?? raw?.branchName ?? null,
-      };
+      const { detail, design } = await fetchOrderWithDesign(order.id);
       setViewOrder(detail);
-      loadPackets();
-      if (detail?.designId) {
-        const designResponse = await api.get(`/products/${detail.designId}`);
-        setViewDesign(designResponse.data || null);
-      } else {
-        setViewDesign(null);
-      }
+      await loadPackets();
+      setViewDesign(design);
       setShowViewModal(true);
     } catch {
       setViewOrder(null);
@@ -500,6 +536,150 @@ export default function OrdersPage() {
     return packetLookup[packetId] || '-';
   };
 
+  const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
+    const confirmed = window.confirm(
+      nextActive
+        ? 'Resume this order? It will be visible in active orders again.'
+        : 'Suspend this order? It will move to inactive orders.',
+    );
+    if (!confirmed) return;
+
+    try {
+      setUpdatingOrderId(order.id);
+      await api.patch(`/orders/${order.id}/active`, { isActive: nextActive });
+      await loadOrders();
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to update order status.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
+  const buildPrintHtml = (order: OrderRow, design: DesignDetail | null, packetNames: Record<string, string>) => {
+    const stones = design?.gemstones || [];
+    const metals = design?.metals || [];
+
+    const stoneRows = stones.length
+      ? stones.map((gem) => `
+          <tr>
+            <td>${packetNames[gem.packetId || ''] || '-'}</td>
+            <td>${gem.stone || '-'}</td>
+            <td>${gem.shape || '-'}</td>
+            <td>${gem.size || '-'}</td>
+            <td>${gem.color || '-'}</td>
+            <td>${gem.quality || '-'}</td>
+            <td>${formatWeight(gem.wtPerPcs)}</td>
+            <td>${gem.pcs ?? '-'}</td>
+            <td>${formatWeight(gem.wtInCts)}</td>
+          </tr>
+        `).join('')
+      : '<tr><td colspan="9">No stone information</td></tr>';
+
+    const metalRows = metals.length
+      ? metals.map((metal) => `
+          <tr>
+            <td>${metal.metalCaratage || metal.goldColour || '-'}</td>
+            <td>${formatWeight(metal.netWt)}</td>
+            <td>${formatWeight(metal.totalWt)}</td>
+            <td>${Number(metal.value || 0).toFixed(2)}</td>
+          </tr>
+        `).join('')
+      : '<tr><td colspan="4">No metal information</td></tr>';
+
+    return `
+      <html>
+        <head>
+          <title>${order.orderNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
+            h1, h2 { margin: 0 0 12px; }
+            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin-bottom: 24px; }
+            .meta div { padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+            .label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 24px; }
+            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 12px; }
+            th { background: #f8fafc; }
+            .section { margin-top: 24px; }
+          </style>
+        </head>
+        <body>
+          <h1>Order Details</h1>
+          <div class="meta">
+            <div><span class="label">Order No</span>${order.orderNumber}</div>
+            <div><span class="label">Status</span>${order.status}${order.isActive ? '' : ' (Suspended)'}</div>
+            <div><span class="label">Company</span>${order.companyName || '-'}</div>
+            <div><span class="label">Branch</span>${order.branchName || '-'}</div>
+            <div><span class="label">Design</span>${design ? `${design.designNo}${design.version ? ` (${design.version})` : ''}` : '-'}</div>
+            <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
+            <div><span class="label">Quantity</span>${order.quantity}</div>
+            <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
+            <div><span class="label">Short Description</span>${order.shortDescription || '-'}</div>
+            <div><span class="label">Notes</span>${order.notes || '-'}</div>
+          </div>
+          <div class="section">
+            <h2>Metal Information</h2>
+            <table>
+              <thead>
+                <tr><th>Metal Caratage</th><th>Net Wt.</th><th>Total Wt.</th><th>Value</th></tr>
+              </thead>
+              <tbody>${metalRows}</tbody>
+            </table>
+          </div>
+          <div class="section">
+            <h2>Stone Information</h2>
+            <table>
+              <thead>
+                <tr><th>Packet</th><th>Stone</th><th>Shape</th><th>Size</th><th>Color</th><th>Quality</th><th>Wt/Pcs</th><th>Pcs</th><th>Wt (Cts)</th></tr>
+              </thead>
+              <tbody>${stoneRows}</tbody>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const printOrder = async (order: OrderRow) => {
+    try {
+      setUpdatingOrderId(order.id);
+      const [packetNames, { detail, design }] = await Promise.all([
+        loadPackets(),
+        fetchOrderWithDesign(order.id),
+      ]);
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc || !iframe.contentWindow) {
+        document.body.removeChild(iframe);
+        window.alert('Unable to open print view.');
+        return;
+      }
+
+      doc.open();
+      doc.write(buildPrintHtml(detail, design, packetNames));
+      doc.close();
+
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        window.setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 500);
+      };
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to print order.');
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
   if (!canViewOrders) {
     return (
       <Card>
@@ -517,18 +697,33 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
           <p className="text-sm text-slate-600">Manage designed jewelry demands and track delivery details.</p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingOrderId(null);
-            setForm(defaultForm);
-            setDesignDetail(null);
-            setBranches([]);
-            setPriceManuallyEdited(false);
-            setShowAddModal(true);
-          }}
-        >
-          + Add New Order
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setPage(1);
+              setShowInactive((prev) => !prev);
+            }}
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 12h18" />
+              <path d="M12 3v18" />
+            </svg>
+            {showInactive ? 'View Active' : 'View Inactive'}
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingOrderId(null);
+              setForm(defaultForm);
+              setDesignDetail(null);
+              setBranches([]);
+              setPriceManuallyEdited(false);
+              setShowAddModal(true);
+            }}
+          >
+            + Add New Order
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -627,21 +822,72 @@ export default function OrdersPage() {
                       {order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}
                     </td>
                     <td className="app-table-cell text-sm">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="app-table-action"
+                      <div className="flex flex-wrap gap-1.5">
+                        <OrderActionIconButton
+                          title="View Order"
                           onClick={() => openViewModal(order)}
                         >
-                          View
-                        </button>
-                        <button
-                          type="button"
-                          className="app-table-action"
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        </OrderActionIconButton>
+                        <OrderActionIconButton
+                          title="Edit Order"
                           onClick={() => openEditModal(order)}
                         >
-                          Edit
-                        </button>
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+                          </svg>
+                        </OrderActionIconButton>
+                        <OrderActionIconButton
+                          title="Print Order"
+                          onClick={() => printOrder(order)}
+                          disabled={updatingOrderId === order.id}
+                        >
+                          {updatingOrderId === order.id ? (
+                            <span className="text-[10px] font-semibold">...</span>
+                          ) : (
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M6 9V4h12v5" />
+                              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                              <path d="M6 14h12v6H6z" />
+                            </svg>
+                          )}
+                        </OrderActionIconButton>
+                        {order.isActive ? (
+                          <OrderActionIconButton
+                            title="Suspend Order"
+                            onClick={() => toggleOrderActive(order, false)}
+                            className="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={updatingOrderId === order.id}
+                          >
+                            {updatingOrderId === order.id ? (
+                              <span className="text-[10px] font-semibold">...</span>
+                            ) : (
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="6" y="5" width="4" height="14" rx="1" />
+                                <rect x="14" y="5" width="4" height="14" rx="1" />
+                              </svg>
+                            )}
+                          </OrderActionIconButton>
+                        ) : (
+                          <OrderActionIconButton
+                            title="Resume Order"
+                            onClick={() => toggleOrderActive(order, true)}
+                            className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={updatingOrderId === order.id}
+                          >
+                            {updatingOrderId === order.id ? (
+                              <span className="text-[10px] font-semibold">...</span>
+                            ) : (
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M8 5v14l11-7-11-7Z" />
+                              </svg>
+                            )}
+                          </OrderActionIconButton>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -744,6 +990,9 @@ export default function OrdersPage() {
               </select>
             </div>
 
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium text-slate-700">Jewelry Group</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -757,7 +1006,9 @@ export default function OrdersPage() {
                 {designDetail?.collection || '-'}
               </div>
             </div>
+          </div>
 
+          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_2fr_1fr]">
             <div>
               <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -765,7 +1016,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label className="text-sm font-medium text-slate-700">Metal</label>
               <div className="mt-1 flex min-h-[42px] flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {metalsDisplay.length ? metalsDisplay.map((value) => (

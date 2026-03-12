@@ -307,6 +307,57 @@ export class OrdersService {
     return this.orderRepo.save(order);
   }
 
+  async getSummary(requester: AuthUser) {
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const startOfWeek = new Date(now);
+    const weekday = startOfWeek.getDay(); // 0 Sunday
+    const diff = (weekday + 6) % 7; // Monday start
+    startOfWeek.setDate(startOfWeek.getDate() - diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const baseQuery = this.orderRepo.createQueryBuilder('order');
+    this.applyScopeFilter(baseQuery, requester);
+
+    const activeOrders = await baseQuery.clone()
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .getCount();
+
+    const ordersReceivedToday = await baseQuery.clone()
+      .andWhere('order.createdAt >= :startToday AND order.createdAt <= :endToday', {
+        startToday: startOfToday,
+        endToday: endOfToday,
+      })
+      .getCount();
+
+    const ordersDueToday = await baseQuery.clone()
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .andWhere('order.deliveryDate >= :startToday AND order.deliveryDate <= :endToday', {
+        startToday: startOfToday,
+        endToday: endOfToday,
+      })
+      .getCount();
+
+    const salesThisWeekRow = await baseQuery.clone()
+      .select('SUM(order.price)', 'total')
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .andWhere('order.createdAt >= :startOfWeek', { startOfWeek })
+      .getRawOne();
+
+    const salesThisWeek = this.toNumber(salesThisWeekRow?.total ?? 0);
+
+    return {
+      activeOrders,
+      ordersReceivedToday,
+      ordersDueToday,
+      salesThisWeek,
+    };
+  }
+
   private resolveScope(requester: AuthUser, companyId?: string, branchId?: string) {
     const normalizedCompanyId = companyId?.trim();
     const normalizedBranchId = branchId?.trim();

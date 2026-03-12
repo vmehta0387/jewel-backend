@@ -42,6 +42,11 @@ export class OrdersController {
     return this.ordersService.getPricePreview({ designId, companyId, branchId });
   }
 
+  @Get('summary')
+  getSummary(@Request() req: { user: AuthUser }) {
+    return this.ordersService.getSummary(req.user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.ordersService.findOne(id, req.user);

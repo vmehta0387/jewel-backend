@@ -259,6 +259,18 @@ const normalizeDateTimeValue = (value: string | null | undefined): string => {
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toISOString().slice(0, 19).replace('T', ' ');
 };
+const formatDetailDateTime = (value: string | null | undefined): string => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 const publicAssetsBaseUrl = apiBaseUrl.replace(/\/api$/, '');
 const resolvePublicAssetUrl = (rawUrl: string): string => {
@@ -763,6 +775,10 @@ export default function ProductsPage() {
     () => (Array.isArray(detailDesign?.gemstones) ? detailDesign.gemstones : []),
     [detailDesign],
   );
+  const detailLabors = useMemo(
+    () => (Array.isArray(detailDesign?.labors) ? detailDesign.labors : []),
+    [detailDesign],
+  );
   const detailSummary = useMemo(() => {
     return {
       metalValue: parseNumericValue(detailDesign?.metalValue),
@@ -772,6 +788,30 @@ export default function ProductsPage() {
       totalValue: parseNumericValue(detailDesign?.totalValue),
     };
   }, [detailDesign]);
+  const detailPacketNameMap = useMemo(() => {
+    const next = new Map<string, string>();
+    packetOptions.forEach((packet) => {
+      if (packet.id) {
+        next.set(packet.id, packet.packetName);
+      }
+    });
+    return next;
+  }, [packetOptions]);
+  const resolveDetailPacketName = (gem: any): string => {
+    const packetId = String(gem?.packetId || '').trim();
+    if (packetId && detailPacketNameMap.has(packetId)) {
+      return detailPacketNameMap.get(packetId) || packetId;
+    }
+
+    const match = packetOptions.find((packet) =>
+      normalizeLookupKey(packet.stone) === normalizeLookupKey(gem?.stone) &&
+      normalizeLookupKey(packet.shape) === normalizeLookupKey(gem?.shape) &&
+      normalizeLookupKey(packet.size) === normalizeLookupKey(gem?.size) &&
+      normalizeLookupKey(packet.color) === normalizeLookupKey(gem?.color) &&
+      normalizeLookupKey(packet.quality) === normalizeLookupKey(gem?.quality),
+    );
+    return match?.packetName || packetId || '-';
+  };
   const selectedTags = useMemo(
     () =>
       form.tags
@@ -2504,25 +2544,27 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
   };
 
-  const deleteDesign = async (id: string) => {
+  const setDesignActiveStatus = async (id: string, nextActive: boolean) => {
     if (!canModifyExistingDesigns) {
       window.alert('You have read-only access for designs.');
       return;
     }
 
     if (deletingId) return;
-    const confirmed = window.confirm('Disable this design? It will be marked inactive.');
+    const confirmed = window.confirm(
+      nextActive ? 'Activate this design? It will be marked active.' : 'Disable this design? It will be marked inactive.',
+    );
     if (!confirmed) return;
 
     setDeletingId(id);
     try {
-      await api.patch(`/products/${id}/status`, { isActive: false });
-      setRows((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: false } : item)));
-      if (!showInactive) {
+      await api.patch(`/products/${id}/status`, { isActive: nextActive });
+      setRows((prev) => prev.map((item) => (item.id === id ? { ...item, isActive: nextActive } : item)));
+      if ((showInactive && nextActive) || (!showInactive && !nextActive)) {
         setSelectedId((current) => (current === id ? '' : current));
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to disable design.');
+      window.alert(error?.response?.data?.message || 'Unable to update design status.');
     } finally {
       setDeletingId(null);
     }
@@ -3017,7 +3059,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-semibold tracking-[0.12em] text-slate-400">N/A</div>
                     )}
                   </td>
-                  <td className="app-table-cell text-sm font-semibold">
+                  <td className="app-table-cell text-left text-sm font-semibold">
                     <div className="flex flex-col">
                       <button
                         type="button"
@@ -3027,7 +3069,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                       >
                         {row.designNo}
                       </button>
-                      <span className="text-xs font-medium text-slate-500">{row.version || 'V1'}</span>
                     </div>
                   </td>
                   <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
@@ -3053,23 +3094,42 @@ const createDefaultVendorRow = (): VendorRow => ({
                       {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
-                          <button
-                            type="button"
-                            title={row.isActive ? 'Disable' : 'Disabled'}
-                            aria-label={row.isActive ? 'Disable' : 'Disabled'}
-                            className={`app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60 ${row.isActive ? '' : 'opacity-60'}`}
-                            onClick={() => deleteDesign(row.id)}
-                            disabled={deletingId === row.id || !row.isActive}
-                          >
-                            {deletingId === row.id ? (
-                              '...'
-                            ) : (
-                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <circle cx="12" cy="12" r="9" />
-                                <path d="M5 5l14 14" />
-                              </svg>
-                            )}
-                          </button>
+                          {row.isActive ? (
+                            <button
+                              type="button"
+                              title="Disable"
+                              aria-label="Disable"
+                              className="app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => setDesignActiveStatus(row.id, false)}
+                              disabled={deletingId === row.id}
+                            >
+                              {deletingId === row.id ? (
+                                '...'
+                              ) : (
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle cx="12" cy="12" r="9" />
+                                  <path d="M5 5l14 14" />
+                                </svg>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              title="Activate"
+                              aria-label="Activate"
+                              className="app-table-icon-action border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => setDesignActiveStatus(row.id, true)}
+                              disabled={deletingId === row.id}
+                            >
+                              {deletingId === row.id ? (
+                                '...'
+                              ) : (
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                              )}
+                            </button>
+                          )}
                         </>
                       ) : null}
                     </div>
@@ -4652,8 +4712,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{detailInfo.createdAt || '-'}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{detailInfo.updatedAt || detailInfo.modifiedAt || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.createdAt)}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.updatedAt || detailInfo.modifiedAt)}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{detailInfo.updatedByName || '-'}</td></tr>
                   </tbody>
                 </table>
@@ -4759,7 +4819,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     ) : (
                       detailGemstones.map((gem: any) => (
                         <tr key={gem.id || `${gem.stone}-${gem.sortOrder}`}>
-                          <td className="px-3 py-2">{gem.packetId || '-'}</td>
+                          <td className="px-3 py-2">{resolveDetailPacketName(gem)}</td>
                           <td className="px-3 py-2">{gem.stone || '-'}</td>
                           <td className="px-3 py-2">{gem.shape || '-'}</td>
                           <td className="px-3 py-2">{gem.size || '-'}</td>
@@ -4770,6 +4830,35 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <td className="px-3 py-2">{parseNumericValue(gem.wtInCts).toFixed(3)}</td>
                           <td className="px-3 py-2">{parseNumericValue(gem.pricePerCt).toFixed(2)}</td>
                           <td className="px-3 py-2">{parseNumericValue(gem.amount).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Labor Information</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2">Labor Head</th>
+                      <th className="px-3 py-2">Labor/Unit</th>
+                      <th className="px-3 py-2">Unit/Qty</th>
+                      <th className="px-3 py-2">Labor Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {detailLabors.length === 0 ? (
+                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={4}>No labor details available.</td></tr>
+                    ) : (
+                      detailLabors.map((labor: any) => (
+                        <tr key={labor.id || `${labor.laborHead}-${labor.sortOrder}`}>
+                          <td className="px-3 py-2">{labor.laborHead || '-'}</td>
+                          <td className="px-3 py-2">{parseNumericValue(labor.laborPerUnit).toFixed(2)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(labor.unitQty).toFixed(2)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(labor.laborValue).toFixed(2)}</td>
                         </tr>
                       ))
                     )}

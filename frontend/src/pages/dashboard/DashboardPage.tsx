@@ -169,6 +169,60 @@ function DashboardStatIcon({
   );
 }
 
+function OrderSummaryIcon({
+  kind,
+}: {
+  kind: 'received' | 'due' | 'sales' | 'active';
+}) {
+  const svgProps = {
+    className: 'h-5 w-5',
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  if (kind === 'received') {
+    return (
+      <svg {...svgProps}>
+        <path d="M21 12a9 9 0 1 1-18 0" />
+        <path d="M7 10l5 5 5-5" />
+        <path d="M12 5v10" />
+      </svg>
+    );
+  }
+
+  if (kind === 'due') {
+    return (
+      <svg {...svgProps}>
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+        <path d="M12 14h5" />
+      </svg>
+    );
+  }
+
+  if (kind === 'sales') {
+    return (
+      <svg {...svgProps}>
+        <path d="M4 18h16" />
+        <path d="M6 15l3-3 3 2 4-5 2 3" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...svgProps}>
+      <path d="M6 4h12v6H6z" />
+      <path d="M4 10h16v10H4z" />
+      <path d="M9 14h6" />
+    </svg>
+  );
+}
+
 export default function DashboardPage() {
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -206,6 +260,17 @@ export default function DashboardPage() {
     branches: null,
     designs: null,
     totalValue: null,
+  });
+  const [orderSummary, setOrderSummary] = useState<{
+    activeOrders: number | null;
+    ordersReceivedToday: number | null;
+    ordersDueToday: number | null;
+    salesThisWeek: number | null;
+  }>({
+    activeOrders: null,
+    ordersReceivedToday: null,
+    ordersDueToday: null,
+    salesThisWeek: null,
   });
 
   const selectedPacket = useMemo(
@@ -326,14 +391,20 @@ export default function DashboardPage() {
     return { designs: totalDesigns, totalValue };
   };
 
+  const fetchOrderSummary = async () => {
+    const response = await api.get('/orders/summary');
+    return response.data || {};
+  };
+
   const loadStats = async () => {
     setStatsLoading(true);
     setStatsError(null);
     try {
-      const [companiesResult, branchesResult, designsResult] = await Promise.allSettled([
+      const [companiesResult, branchesResult, designsResult, ordersResult] = await Promise.allSettled([
         fetchCompaniesCount(),
         fetchBranchesCount(),
         fetchDesignSummary(),
+        fetchOrderSummary(),
       ]);
 
       const nextStats = {
@@ -352,12 +423,25 @@ export default function DashboardPage() {
       };
 
       setStatsData(nextStats);
+      if (ordersResult.status === 'fulfilled') {
+        setOrderSummary((prev) => ({
+          activeOrders:
+            ordersResult.value?.activeOrders ?? prev.activeOrders,
+          ordersReceivedToday:
+            ordersResult.value?.ordersReceivedToday ?? prev.ordersReceivedToday,
+          ordersDueToday:
+            ordersResult.value?.ordersDueToday ?? prev.ordersDueToday,
+          salesThisWeek:
+            ordersResult.value?.salesThisWeek ?? prev.salesThisWeek,
+        }));
+      }
       setStatsUpdatedAt(new Date());
 
       if (
         companiesResult.status === 'rejected' ||
         branchesResult.status === 'rejected' ||
-        designsResult.status === 'rejected'
+        designsResult.status === 'rejected' ||
+        ordersResult.status === 'rejected'
       ) {
         setStatsError('Some dashboard metrics could not be loaded.');
       }
@@ -647,6 +731,86 @@ export default function DashboardPage() {
             </span>
           </div>
         </Card>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Order Overview</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">Order Activity</h2>
+            <p className="mt-1 text-sm text-slate-500">Daily and weekly order performance at a glance.</p>
+          </div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+            {statsUpdatedAt ? `Updated ${statsUpdatedAt.toLocaleTimeString()}` : 'Updating metrics...'}
+          </div>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Orders Received
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                  {statsLoading && orderSummary.ordersReceivedToday === null ? '--' : formatCount(orderSummary.ordersReceivedToday)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">Today</p>
+              </div>
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                <OrderSummaryIcon kind="received" />
+              </span>
+            </div>
+          </Card>
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Orders Due Today
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                  {statsLoading && orderSummary.ordersDueToday === null ? '--' : formatCount(orderSummary.ordersDueToday)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">Delivery schedule</p>
+              </div>
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                <OrderSummaryIcon kind="due" />
+              </span>
+            </div>
+          </Card>
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Sales This Week
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                  {statsLoading && orderSummary.salesThisWeek === null ? '--' : formatCurrency(orderSummary.salesThisWeek)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">Week to date</p>
+              </div>
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                <OrderSummaryIcon kind="sales" />
+              </span>
+            </div>
+          </Card>
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Active Orders
+                </p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+                  {statsLoading && orderSummary.activeOrders === null ? '--' : formatCount(orderSummary.activeOrders)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">Live pipeline</p>
+              </div>
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+                <OrderSummaryIcon kind="active" />
+              </span>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {isSuperAdmin ? (
