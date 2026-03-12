@@ -18,6 +18,7 @@ import {
   CreateStonePacketDto,
   CreateDesignMasterDto,
   GetNextDesignNoQueryDto,
+  GetNextDesignVersionQueryDto,
   FindPacketsQueryDto,
   FindDesignMastersQueryDto,
   FindProductsQueryDto,
@@ -108,6 +109,14 @@ export class ProductsController {
     @Request() req: { user: AuthUser },
   ) {
     return this.productsService.getNextDesignNo(query, req.user);
+  }
+
+  @Get('next-version')
+  getNextDesignVersion(
+    @Query() query: GetNextDesignVersionQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.getNextDesignVersion(query, req.user);
   }
 
   @Post('masters')

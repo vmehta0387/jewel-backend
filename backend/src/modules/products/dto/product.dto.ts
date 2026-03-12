@@ -405,6 +405,19 @@ export class GetNextDesignNoQueryDto {
   branchId?: string;
 }
 
+export class GetNextDesignVersionQueryDto {
+  @IsString()
+  designNo: string;
+
+  @IsString()
+  @IsOptional()
+  companyId?: string;
+
+  @IsString()
+  @IsOptional()
+  branchId?: string;
+}
+
 export class UpdateProductDto {
   @IsString()
   @IsOptional()

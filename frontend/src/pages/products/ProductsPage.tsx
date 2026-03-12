@@ -90,6 +90,7 @@ interface ApiDesignRow {
 
 interface DesignForm {
   designNo: string;
+  version: string;
   jewelryGroup: string;
   collection: string;
   stage: string;
@@ -373,6 +374,29 @@ const getNextDesignNo = (jewelryGroup: string, existingRows: DesignRow[]): strin
   return `${prefix}-${String(maxNumber + 1).padStart(4, '0')}`;
 };
 
+const normalizeVersionInput = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return 'V1';
+  const upper = trimmed.toUpperCase();
+  return upper.startsWith('V') ? upper : `V${upper}`;
+};
+
+const getNextDesignVersion = (designNo: string, existingRows: DesignRow[]): string => {
+  const target = designNo.trim().toUpperCase();
+  if (!target) return 'V1';
+  let maxVersion = 0;
+  existingRows.forEach((row) => {
+    if ((row.designNo || '').trim().toUpperCase() !== target) return;
+    const match = /V(\d+)/i.exec((row.version || '').trim());
+    if (!match) return;
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed > maxVersion) {
+      maxVersion = parsed;
+    }
+  });
+  return `V${Math.max(1, maxVersion + 1)}`;
+};
+
 const designSeed: DesignRow[] = [
   { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
   { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
@@ -386,6 +410,7 @@ const designSeed: DesignRow[] = [
 
 const defaultForm: DesignForm = {
   designNo: '',
+  version: 'V1',
   jewelryGroup: '',
   collection: '',
   stage: 'Sketch',
@@ -667,12 +692,37 @@ export default function ProductsPage() {
   const [historyRows, setHistoryRows] = useState<DesignHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [detailDesign, setDetailDesign] = useState<any | null>(null);
+  const [detailDesignLoading, setDetailDesignLoading] = useState(false);
+  const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
 
   const selected = useMemo(() => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
+  const detailInfo = detailDesign ?? selected;
+  const detailGalleryUrls = useMemo(
+    () => normalizeStringArray(detailInfo?.imageUrls).map(resolvePublicAssetUrl),
+    [detailInfo],
+  );
+  const detailMetals = useMemo(
+    () => (Array.isArray(detailDesign?.metals) ? detailDesign.metals : []),
+    [detailDesign],
+  );
+  const detailGemstones = useMemo(
+    () => (Array.isArray(detailDesign?.gemstones) ? detailDesign.gemstones : []),
+    [detailDesign],
+  );
+  const detailSummary = useMemo(() => {
+    return {
+      metalValue: parseNumericValue(detailDesign?.metalValue),
+      gemValue: parseNumericValue(detailDesign?.gemValue),
+      laborValue: parseNumericValue(detailDesign?.laborValue),
+      findingValue: parseNumericValue(detailDesign?.findingValue),
+      totalValue: parseNumericValue(detailDesign?.totalValue),
+    };
+  }, [detailDesign]);
   const selectedTags = useMemo(
     () =>
       form.tags
@@ -772,6 +822,35 @@ export default function ProductsPage() {
     inlineMetalPurity,
     inlineSelectedPurityToken,
   ]);
+
+  useEffect(() => {
+    if (modal !== 'info' || !selectedId) {
+      setDetailDesign(null);
+      setDetailDesignLoading(false);
+      setDetailDesignError(null);
+      return;
+    }
+
+    let active = true;
+    setDetailDesignLoading(true);
+    setDetailDesignError(null);
+    void (async () => {
+      try {
+        const response = await api.get(`/products/${selectedId}`);
+        if (!active) return;
+        setDetailDesign(response.data);
+      } catch (error: any) {
+        if (!active) return;
+        setDetailDesignError(String(error?.response?.data?.message || 'Unable to load design details.'));
+      } finally {
+        if (active) setDetailDesignLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [modal, selectedId]);
   useEffect(() => {
     if (inlineMasterType !== 'METAL_CARATAGE') return;
     const selectedMetal = masterOptions.metalNames.find(
@@ -1747,6 +1826,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setForm({
       ...defaultForm,
       designNo: autoDesignNo,
+      version: defaultForm.version,
       jewelryGroup: initialJewelryGroup,
       stage: masterOptions.stages[0]?.value || defaultForm.stage,
       diamondType: masterOptions.diamondTypes[0]?.value || defaultForm.diamondType,
@@ -1784,6 +1864,21 @@ const createDefaultVendorRow = (): VendorRow => ({
     setFindingRows([]);
     setVendorRows([createDefaultVendorRow()]);
     setShowAddModal(true);
+  };
+
+  const fetchNextVersionFromServer = async (designNo: string): Promise<string> => {
+    const trimmed = designNo.trim();
+    if (!trimmed) return 'V1';
+    try {
+      const response = await api.get('/products/next-version', { params: { designNo: trimmed } });
+      const serverVersion = String(response.data?.version || '').trim();
+      if (serverVersion) {
+        return normalizeVersionInput(serverVersion);
+      }
+    } catch {
+      // fall back to local calculation
+    }
+    return getNextDesignVersion(trimmed, rows);
   };
 
   const openEdit = async (row: DesignRow) => {
@@ -1838,6 +1933,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       setForm({
         designNo: detail.designNo || row.designNo,
+        version: normalizeVersionInput(detail.version || row.version || 'V1'),
         jewelryGroup: detail.jewelryGroup || row.jewelryGroup,
         collection: detail.collection || row.collection,
         stage: detail.stage || row.stage || '',
@@ -1980,6 +2076,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     } catch {
       setForm({
         designNo: row.designNo,
+        version: normalizeVersionInput(row.version || 'V1'),
         jewelryGroup: row.jewelryGroup,
         collection: row.collection,
         stage: row.stage,
@@ -2018,8 +2115,10 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
   };
 
-  const saveDesign = async () => {
-    if (editingId) {
+  const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean }) => {
+    const forceCreate = Boolean(options?.forceCreate);
+    const isUpdate = Boolean(editingId) && !forceCreate;
+    if (isUpdate) {
       if (!canModifyExistingDesigns) {
         window.alert('You have read-only access for existing designs.');
         return;
@@ -2036,12 +2135,13 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
 
     const resolvedDesignNo =
-      form.designNo.trim() || (!editingId ? suggestNextDesignNo(form.jewelryGroup) : '');
-    const shouldSendDesignNo = Boolean(editingId) || isDesignNoManual;
+      form.designNo.trim() || (!isUpdate ? suggestNextDesignNo(form.jewelryGroup) : '');
+    const shouldSendDesignNo = isUpdate || isDesignNoManual || forceCreate;
     if (shouldSendDesignNo && !resolvedDesignNo) {
       window.alert('Design No is required.');
       return;
     }
+    const resolvedVersion = normalizeVersionInput(options?.overrideVersion ?? form.version);
 
     const usedMetalKeys = new Set<string>();
     for (const row of metalRows) {
@@ -2125,6 +2225,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const basePayload = {
       designNo: shouldSendDesignNo ? resolvedDesignNo : undefined,
+      version: resolvedVersion,
       jewelryGroup: form.jewelryGroup.trim(),
       collection: form.collection.trim() || undefined,
       stage: form.stage.trim() || undefined,
@@ -2211,7 +2312,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     setSavingDesign(true);
     try {
-      if (editingId) {
+      if (isUpdate) {
         const canUpdate = /^[0-9a-fA-F-]{36}$/.test(editingId);
         if (canUpdate) {
           try {
@@ -2226,17 +2327,27 @@ const createDefaultVendorRow = (): VendorRow => ({
             if (!isNotFound) {
               throw error;
             }
-            const response = await api.post('/products', createPayload);
-            const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-            setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-            setSelectedId(saved.id);
-          }
-        } else {
-          const response = await api.post('/products', createPayload);
-          const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-          setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
-          setSelectedId(saved.id);
+        const response = await api.post('/products', createPayload);
+        const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+        setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        setSelectedId(saved.id);
+        if (options?.selectAfterCreate) {
+          setEditingId(saved.id);
+          setIsDesignNoManual(true);
+          setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
         }
+      }
+    } else {
+      const response = await api.post('/products', createPayload);
+      const saved = mapApiDesignToRow(response.data as ApiDesignRow);
+      setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+      setSelectedId(saved.id);
+      if (options?.selectAfterCreate) {
+        setEditingId(saved.id);
+        setIsDesignNoManual(true);
+        setForm((prev) => ({ ...prev, version: saved.version || resolvedVersion }));
+      }
+    }
       } else {
         const response = await api.post('/products', createPayload);
         const saved = mapApiDesignToRow(response.data as ApiDesignRow);
@@ -2274,6 +2385,20 @@ const createDefaultVendorRow = (): VendorRow => ({
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const saveAsNewVersion = async () => {
+    if (!canCreateDesign) {
+      window.alert('You do not have permission to add designs.');
+      return;
+    }
+    const designNo = form.designNo.trim();
+    if (!designNo) {
+      window.alert('Design No is required to create a new version.');
+      return;
+    }
+    const nextVersion = await fetchNextVersionFromServer(designNo);
+    await saveDesign({ forceCreate: true, overrideVersion: nextVersion, selectAfterCreate: true });
   };
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
@@ -2704,14 +2829,17 @@ const createDefaultVendorRow = (): VendorRow => ({
                     )}
                   </td>
                   <td className="app-table-cell text-sm font-semibold">
-                    <button
-                      type="button"
-                      className="text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
-                      onClick={() => openEdit(row)}
-                      title="Edit design"
-                    >
-                      {row.designNo}
-                    </button>
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        className="text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
+                        onClick={() => openEdit(row)}
+                        title="Edit design"
+                      >
+                        {row.designNo}
+                      </button>
+                      <span className="text-xs font-medium text-slate-500">{row.version || 'V1'}</span>
+                    </div>
                   </td>
                   <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
                   <td className="app-table-cell text-sm text-slate-700">{row.jewelrySize}</td>
@@ -2779,7 +2907,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 [&_input]:rounded-md [&_input]:border-slate-300 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-300 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-300 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
-              <p className="font-semibold text-slate-700">Version: V1</p>
+              <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
             </div>
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
@@ -2798,6 +2926,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                         setForm((prev) => ({ ...prev, designNo: event.target.value }));
                       }}
                       placeholder="Design No"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Version</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.version}
+                      onChange={(event) =>
+                        setForm((prev) => ({ ...prev, version: event.target.value }))
+                      }
+                      placeholder="V1"
+                      disabled={Boolean(editingId)}
                     />
                   </div>
                   <div>
@@ -3640,6 +3780,11 @@ const createDefaultVendorRow = (): VendorRow => ({
             </div>
 
             <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 pt-3 shadow-[0_-6px_18px_rgba(15,23,42,0.08)]">
+              {editingId ? (
+                <Button type="button" variant="secondary" onClick={saveAsNewVersion} disabled={savingDesign}>
+                  Save as New Version
+                </Button>
+              ) : null}
               <Button type="button" onClick={saveDesign} disabled={savingDesign}>
                 {savingDesign ? 'Saving...' : 'Save'}
               </Button>
@@ -4304,43 +4449,49 @@ const createDefaultVendorRow = (): VendorRow => ({
         </Modal>
       )}
 
-      {modal === 'info' && selected && (
-        <Modal title={`DESIGN DETAILS (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-7xl">
+      {modal === 'info' && detailInfo && (
+        <Modal title={`DESIGN DETAILS (${detailInfo.designNo || ''})`} onClose={() => setModal(null)} size="max-w-7xl">
           <div className="space-y-4">
+            {detailDesignLoading ? (
+              <p className="text-sm text-blue-700">Loading design details...</p>
+            ) : null}
+            {detailDesignError ? (
+              <p className="text-sm text-red-600">{detailDesignError}</p>
+            ) : null}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="rounded border border-gray-200">
                 <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Design Information</div>
                 <table className="min-w-full text-sm">
                   <tbody>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{selected.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{selected.version}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{selected.stage}</td><td className="px-3 py-2 font-medium">Jewelry Group</td><td className="px-3 py-2">{selected.jewelryGroup}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{selected.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{selected.diamondSpread || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{selected.collection}</td><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{selected.tags.join(', ') || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{selected.jewelrySize}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{selected.status}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(selected.price)}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{selected.remarks || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{selected.createdAt}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{selected.modifiedAt}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{selected.updatedByName || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td><td className="px-3 py-2 font-medium">Jewelry Group</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{detailInfo.createdAt || '-'}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{detailInfo.updatedAt || detailInfo.modifiedAt || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{detailInfo.updatedByName || '-'}</td></tr>
                   </tbody>
                 </table>
               </div>
               <div className="rounded border border-gray-200">
                 <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
                 <div className="p-3">
-                  {selected.imageUrls?.length ? (
+                  {detailGalleryUrls.length ? (
                     <div className="space-y-3">
                       <MediaPreview
-                        url={selected.imageUrls[0]}
-                        alt={`${selected.designNo} primary`}
+                        url={detailGalleryUrls[0]}
+                        alt={`${detailInfo.designNo} primary`}
                         className="h-44 w-full rounded border border-gray-300 object-cover"
-                        controls={isVideoUrl(selected.imageUrls[0])}
+                        controls={isVideoUrl(detailGalleryUrls[0])}
                       />
-                      {selected.imageUrls.length > 1 ? (
+                      {detailGalleryUrls.length > 1 ? (
                         <div className="grid grid-cols-3 gap-2">
-                          {selected.imageUrls.slice(1).map((url, index) => (
+                          {detailGalleryUrls.slice(1).map((url, index) => (
                             <MediaPreview
                               key={`${url}-${index}`}
                               url={url}
-                              alt={`${selected.designNo} gallery ${index + 2}`}
+                              alt={`${detailInfo.designNo} gallery ${index + 2}`}
                               className="h-16 w-full rounded border border-gray-200 object-cover"
                             />
                           ))}
@@ -4356,15 +4507,92 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Metal Value</p><p className="font-semibold">{costTotals.metal.toFixed(2)}</p></div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gem Value</p><p className="font-semibold">{costTotals.gem.toFixed(2)}</p></div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Labor Value</p><p className="font-semibold">{costTotals.labor.toFixed(2)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Metal Value</p><p className="font-semibold">{detailSummary.metalValue.toFixed(2)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gem Value</p><p className="font-semibold">{detailSummary.gemValue.toFixed(2)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Labor Value</p><p className="font-semibold">{detailSummary.laborValue.toFixed(2)}</p></div>
               {FINDING_FEATURE_ENABLED ? (
-                <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Finding Value</p><p className="font-semibold">{costTotals.finding.toFixed(2)}</p></div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Finding Value</p><p className="font-semibold">{detailSummary.findingValue.toFixed(2)}</p></div>
               ) : null}
-              <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{costTotals.total.toFixed(2)}</p></div>
+              <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{detailSummary.totalValue.toFixed(2)}</p></div>
             </div>
-            <div className="rounded border border-gray-200 p-3 text-sm text-gray-700"><p className="font-semibold">Pricing Tier</p><p className="mt-1">Design pricing tier detail is not available for this view.</p></div>
+            <div className="rounded border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2">Metal Caratage</th>
+                      <th className="px-3 py-2">Net Wt.</th>
+                      <th className="px-3 py-2">Wastage %</th>
+                      <th className="px-3 py-2">Wastage Wt.</th>
+                      <th className="px-3 py-2">Total Wt.</th>
+                      <th className="px-3 py-2">@(Per Gm)</th>
+                      <th className="px-3 py-2">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {detailMetals.length === 0 ? (
+                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={7}>No metal details available.</td></tr>
+                    ) : (
+                      detailMetals.map((metal: any) => (
+                        <tr key={metal.id || `${metal.goldColour}-${metal.sortOrder}`}>
+                          <td className="px-3 py-2">{metal.metalCaratage || metal.goldColour || '-'}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.netWt).toFixed(3)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.wastagePercent).toFixed(2)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.wastageWt).toFixed(3)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.totalWt).toFixed(3)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.pricePerGm).toFixed(2)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(metal.value).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded border border-slate-200">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Gemstone Information</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2">Packet</th>
+                      <th className="px-3 py-2">Stone</th>
+                      <th className="px-3 py-2">Shape</th>
+                      <th className="px-3 py-2">Size</th>
+                      <th className="px-3 py-2">Color</th>
+                      <th className="px-3 py-2">Quality</th>
+                      <th className="px-3 py-2">Wt/Pcs</th>
+                      <th className="px-3 py-2">Pcs</th>
+                      <th className="px-3 py-2">Wt (Cts)</th>
+                      <th className="px-3 py-2">@(P/Ct)</th>
+                      <th className="px-3 py-2">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {detailGemstones.length === 0 ? (
+                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={11}>No gemstone details available.</td></tr>
+                    ) : (
+                      detailGemstones.map((gem: any) => (
+                        <tr key={gem.id || `${gem.stone}-${gem.sortOrder}`}>
+                          <td className="px-3 py-2">{gem.packetId || '-'}</td>
+                          <td className="px-3 py-2">{gem.stone || '-'}</td>
+                          <td className="px-3 py-2">{gem.shape || '-'}</td>
+                          <td className="px-3 py-2">{gem.size || '-'}</td>
+                          <td className="px-3 py-2">{gem.color || '-'}</td>
+                          <td className="px-3 py-2">{gem.quality || '-'}</td>
+                          <td className="px-3 py-2">{parseNumericValue(gem.wtPerPcs).toFixed(3)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(gem.pcs).toFixed(0)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(gem.wtInCts).toFixed(3)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(gem.pricePerCt).toFixed(2)}</td>
+                          <td className="px-3 py-2">{parseNumericValue(gem.amount).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </Modal>
       )}

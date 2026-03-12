@@ -14,6 +14,7 @@ import {
   CreateProductDto,
   CreateDesignMasterDto,
   GetNextDesignNoQueryDto,
+  GetNextDesignVersionQueryDto,
   DesignFindingDto,
   DesignGemstoneDto,
   DesignLaborDto,
@@ -273,6 +274,32 @@ export class ProductsService {
       designNo,
       prefix,
     };
+  }
+
+  async getNextDesignVersion(
+    query: GetNextDesignVersionQueryDto,
+    requester: AuthUser,
+  ): Promise<{ version: string }> {
+    const designNo = this.normalizeDesignNo(query.designNo?.trim() || '');
+    const scope = await this.resolveScope(query.companyId, query.branchId, requester);
+
+    const rows = await this.designRepo.find({
+      where: { designNo, companyId: scope.companyId },
+      select: ['version'],
+    });
+
+    let maxVersion = 0;
+    for (const row of rows) {
+      const match = /V(\d+)/i.exec((row.version || '').trim());
+      if (!match) continue;
+      const parsed = Number.parseInt(match[1], 10);
+      if (Number.isFinite(parsed) && parsed > maxVersion) {
+        maxVersion = parsed;
+      }
+    }
+
+    const nextVersion = `V${Math.max(1, maxVersion + 1)}`;
+    return { version: nextVersion };
   }
 
   async findAll(query: FindProductsQueryDto, requester: AuthUser): Promise<any> {
