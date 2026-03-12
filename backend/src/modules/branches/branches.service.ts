@@ -11,6 +11,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { User } from '../users/entities/user.entity';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { BranchPricingSlab } from './entities/branch-pricing-slab.entity';
+import { BranchShipToType } from './enums/branch-ship-to-type.enum';
 
 @Injectable()
 export class BranchesService {
@@ -34,6 +35,7 @@ export class BranchesService {
     const normalizedCode = this.normalizeCode(dto.code);
     await this.assertUniqueCode(dto.companyId, normalizedCode);
     this.validatePricingSlabs(dto.pricingSlabs);
+    this.validateShippingConfig(dto.shipToType ?? BranchShipToType.BRANCH_ADDRESS, dto.shipStreetAddress);
 
     const {
       pricingSlabs,
@@ -48,6 +50,7 @@ export class BranchesService {
       branchMultiplier: dto.branchMultiplier ?? 1.0,
       enableSlabPricing: dto.enableSlabPricing ?? false,
       branchManagerId: null,
+      shipToType: dto.shipToType ?? BranchShipToType.BRANCH_ADDRESS,
     });
 
     const saved = await this.branchRepo.save(branch);
@@ -169,10 +172,19 @@ export class BranchesService {
     if (dto.country !== undefined) branch.country = dto.country;
     if (dto.email !== undefined) branch.email = dto.email;
     if (dto.phone !== undefined) branch.phone = dto.phone;
+    if (dto.shipToType !== undefined) branch.shipToType = dto.shipToType;
+    if (dto.shipStreetAddress !== undefined) branch.shipStreetAddress = dto.shipStreetAddress;
+    if (dto.shipCity !== undefined) branch.shipCity = dto.shipCity;
+    if (dto.shipStateProvince !== undefined) branch.shipStateProvince = dto.shipStateProvince;
+    if (dto.shipPostalCode !== undefined) branch.shipPostalCode = dto.shipPostalCode;
+    if (dto.shipCountry !== undefined) branch.shipCountry = dto.shipCountry;
     if (dto.branchMultiplier !== undefined) branch.branchMultiplier = dto.branchMultiplier;
     if (dto.enableSlabPricing !== undefined) branch.enableSlabPricing = dto.enableSlabPricing;
 
     this.validatePricingSlabs(dto.pricingSlabs);
+    const nextShipToType = dto.shipToType ?? branch.shipToType;
+    const nextShipStreetAddress = dto.shipStreetAddress ?? branch.shipStreetAddress;
+    this.validateShippingConfig(nextShipToType, nextShipStreetAddress);
 
     await this.branchRepo.save(branch);
 
@@ -379,6 +391,12 @@ export class BranchesService {
       if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
         throw new BadRequestException('Branch pricing slab ranges cannot overlap');
       }
+    }
+  }
+
+  private validateShippingConfig(shipToType: BranchShipToType, shipStreetAddress?: string | null): void {
+    if (shipToType === BranchShipToType.CUSTOM && !shipStreetAddress?.trim()) {
+      throw new BadRequestException('Shipping address is required for custom shipping');
     }
   }
 }

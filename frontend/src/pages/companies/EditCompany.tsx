@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import PricingSlabTable from '../../components/forms/PricingSlabTable';
+import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable from '../../components/forms/CollectionPricingTable';
 import api from '../../services/api';
 
@@ -174,6 +174,16 @@ export default function EditCompany() {
     }
     if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
       newErrors.defaultMultiplier = 'Multiplier must be between 1 and 10';
+    }
+    if (formData.enableSlabPricing) {
+      if (slabs.length === 0) {
+        newErrors.slabs = 'Add at least one pricing slab';
+      } else {
+        const slabError = validatePricingSlabs(slabs);
+        if (slabError) {
+          newErrors.slabs = slabError;
+        }
+      }
     }
 
     setErrors(newErrors);

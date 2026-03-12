@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
@@ -220,6 +220,7 @@ export class CompaniesService {
   }
 
   async updatePricingSlabs(companyId: string, slabs: PricingSlabDto[]): Promise<void> {
+    this.validatePricingSlabs(slabs);
     await this.slabRepo.delete({ companyId });
 
     if (slabs && slabs.length > 0) {
@@ -232,6 +233,36 @@ export class CompaniesService {
       );
 
       await this.slabRepo.save(newSlabs);
+    }
+  }
+
+  private validatePricingSlabs(slabs?: PricingSlabDto[]): void {
+    if (!slabs || slabs.length === 0) {
+      return;
+    }
+
+    const sorted = [...slabs].sort((a, b) => a.minCost - b.minCost);
+    for (let index = 0; index < sorted.length; index += 1) {
+      const slab = sorted[index];
+      if (Number.isNaN(slab.minCost) || Number.isNaN(slab.maxCost) || Number.isNaN(slab.multiplier)) {
+        throw new BadRequestException('Company pricing slabs contain invalid numeric values');
+      }
+
+      if (slab.minCost < 0 || slab.maxCost < 0) {
+        throw new BadRequestException('Company pricing slab costs cannot be negative');
+      }
+
+      if (slab.maxCost < slab.minCost) {
+        throw new BadRequestException('Company pricing slab maxCost must be greater than or equal to minCost');
+      }
+
+      if (slab.multiplier < 1 || slab.multiplier > 10) {
+        throw new BadRequestException('Company pricing slab multiplier must be between 1 and 10');
+      }
+
+      if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
+        throw new BadRequestException('Company pricing slab ranges cannot overlap');
+      }
     }
   }
 

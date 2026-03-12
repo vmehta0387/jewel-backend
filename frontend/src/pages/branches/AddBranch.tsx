@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import PricingSlabTable from '../../components/forms/PricingSlabTable';
+import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import api from '../../services/api';
 
 interface BranchManagerOption {
@@ -40,6 +40,12 @@ export default function AddBranch() {
     country: '',
     email: '',
     phone: '',
+    shipToType: 'BRANCH_ADDRESS',
+    shipStreetAddress: '',
+    shipCity: '',
+    shipStateProvince: '',
+    shipPostalCode: '',
+    shipCountry: '',
     branchMultiplier: 1,
     enableSlabPricing: false,
     branchManagerId: '',
@@ -93,6 +99,14 @@ export default function AddBranch() {
     }
     if (formData.enableSlabPricing && slabs.length === 0) {
       newErrors.pricingSlabs = 'Add at least one pricing slab';
+    } else if (formData.enableSlabPricing) {
+      const slabError = validatePricingSlabs(slabs);
+      if (slabError) {
+        newErrors.pricingSlabs = slabError;
+      }
+    }
+    if (formData.shipToType === 'CUSTOM' && !formData.shipStreetAddress.trim()) {
+      newErrors.shipStreetAddress = 'Shipping address is required for custom shipping';
     }
     if (pendingManagerData && !pendingManagerData.email) {
       newErrors.branchManagerId = 'Branch manager setup is incomplete';
@@ -201,6 +215,73 @@ export default function AddBranch() {
               onChange={(event) => setFormData({ ...formData, phone: event.target.value })}
               placeholder="+1-555-0100"
             />
+          </div>
+        </Card>
+
+        <Card title="Shipping Configuration">
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="shipToType"
+                  value="BRANCH_ADDRESS"
+                  checked={formData.shipToType === 'BRANCH_ADDRESS'}
+                  onChange={(e) => setFormData({ ...formData, shipToType: e.target.value })}
+                  className="w-4 h-4 text-primary-600"
+                />
+                <span className="text-sm font-medium text-gray-700">Ship to Branch Address</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="shipToType"
+                  value="CUSTOM"
+                  checked={formData.shipToType === 'CUSTOM'}
+                  onChange={(e) => setFormData({ ...formData, shipToType: e.target.value })}
+                  className="w-4 h-4 text-primary-600"
+                />
+                <span className="text-sm font-medium text-gray-700">Custom Shipping Address</span>
+              </label>
+            </div>
+
+            {formData.shipToType === 'CUSTOM' && (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="col-span-2">
+                  <Input
+                    label="Street Address"
+                    value={formData.shipStreetAddress}
+                    onChange={(e) => setFormData({ ...formData, shipStreetAddress: e.target.value })}
+                    placeholder="456 Shipping Lane"
+                    error={errors.shipStreetAddress}
+                  />
+                </div>
+                <Input
+                  label="City"
+                  value={formData.shipCity}
+                  onChange={(e) => setFormData({ ...formData, shipCity: e.target.value })}
+                  placeholder="Los Angeles"
+                />
+                <Input
+                  label="State/Province"
+                  value={formData.shipStateProvince}
+                  onChange={(e) => setFormData({ ...formData, shipStateProvince: e.target.value })}
+                  placeholder="CA"
+                />
+                <Input
+                  label="Postal Code"
+                  value={formData.shipPostalCode}
+                  onChange={(e) => setFormData({ ...formData, shipPostalCode: e.target.value })}
+                  placeholder="90001"
+                />
+                <Input
+                  label="Country"
+                  value={formData.shipCountry}
+                  onChange={(e) => setFormData({ ...formData, shipCountry: e.target.value })}
+                  placeholder="USA"
+                />
+              </div>
+            )}
           </div>
         </Card>
 

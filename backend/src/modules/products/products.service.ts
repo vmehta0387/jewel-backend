@@ -631,8 +631,14 @@ export class ProductsService {
   async remove(id: string, requester: AuthUser): Promise<{ deleted: boolean }> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
-    await this.designRepo.remove(design);
-    return { deleted: true };
+    if (!design.isActive) {
+      return { deleted: false };
+    }
+    design.isActive = false;
+    design.updatedBy = requester.id;
+    await this.designRepo.save(design);
+    await this.addHistory(id, 'DISABLED', 'Design disabled.', requester.id);
+    return { deleted: false };
   }
 
   async replaceRelevantDesigns(

@@ -1,6 +1,6 @@
 import Button from '../common/Button';
 
-interface Slab {
+export interface Slab {
   minCost: number;
   maxCost: number;
   multiplier: number;
@@ -10,6 +10,35 @@ interface Props {
   slabs: Slab[];
   setSlabs: (slabs: Slab[]) => void;
 }
+
+export const validatePricingSlabs = (slabs: Slab[]): string | null => {
+  if (!slabs || slabs.length === 0) {
+    return null;
+  }
+
+  const sorted = [...slabs].sort((a, b) => a.minCost - b.minCost);
+  for (let index = 0; index < sorted.length; index += 1) {
+    const slab = sorted[index];
+    const values = [slab.minCost, slab.maxCost, slab.multiplier];
+    if (values.some((value) => Number.isNaN(value) || !Number.isFinite(value))) {
+      return 'Pricing slab values must be valid numbers';
+    }
+    if (slab.minCost < 0 || slab.maxCost < 0) {
+      return 'Pricing slab costs cannot be negative';
+    }
+    if (slab.maxCost < slab.minCost) {
+      return 'Max Cost must be greater than or equal to Min Cost';
+    }
+    if (slab.multiplier < 1 || slab.multiplier > 10) {
+      return 'Multiplier must be between 1 and 10';
+    }
+    if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
+      return 'Pricing slab ranges cannot overlap';
+    }
+  }
+
+  return null;
+};
 
 export default function PricingSlabTable({ slabs, setSlabs }: Props) {
   const addSlab = () => {

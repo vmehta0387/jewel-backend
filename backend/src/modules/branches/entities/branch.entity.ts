@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { Company } from '../../companies/entities/company.entity';
 import { User } from '../../users/entities/user.entity';
 import { BranchPricingSlab } from './branch-pricing-slab.entity';
+import { BranchShipToType } from '../enums/branch-ship-to-type.enum';
 
 @Entity('branches')
 export class Branch {
@@ -41,6 +42,24 @@ export class Branch {
 
   @Column({ nullable: true })
   phone: string;
+
+  @Column({ name: 'ship_to_type', type: 'enum', enum: BranchShipToType, default: BranchShipToType.BRANCH_ADDRESS })
+  shipToType: BranchShipToType;
+
+  @Column({ name: 'ship_street_address', nullable: true })
+  shipStreetAddress: string;
+
+  @Column({ name: 'ship_city', nullable: true })
+  shipCity: string;
+
+  @Column({ name: 'ship_state_province', nullable: true })
+  shipStateProvince: string;
+
+  @Column({ name: 'ship_postal_code', nullable: true })
+  shipPostalCode: string;
+
+  @Column({ name: 'ship_country', nullable: true })
+  shipCountry: string;
 
   @Column({ name: 'branch_manager_id', nullable: true })
   branchManagerId: string;

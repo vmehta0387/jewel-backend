@@ -58,6 +58,7 @@ interface DesignRow {
   stage: string;
   status: string;
   remarks: string;
+  isActive: boolean;
   imageUrls?: string[];
   createdAt: string;
   modifiedAt: string;
@@ -81,6 +82,7 @@ interface ApiDesignRow {
   designStatus?: string | null;
   remarks?: string | null;
   imageUrls?: unknown;
+  isActive?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
   updatedByName?: string | null;
@@ -323,6 +325,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     stage: design.stage || '',
     status: design.designStatus || '',
     remarks: design.remarks || '',
+    isActive: design.isActive !== false,
     imageUrls,
     createdAt: normalizeDateTimeValue(design.createdAt) || '',
     modifiedAt: normalizeDateTimeValue(design.updatedAt) || '',
@@ -371,14 +374,14 @@ const getNextDesignNo = (jewelryGroup: string, existingRows: DesignRow[]): strin
 };
 
 const designSeed: DesignRow[] = [
-  { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
-  { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
-  { id: '3', designNo: 'RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
-  { id: '4', designNo: 'RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
-  { id: '5', designNo: 'NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
-  { id: '6', designNo: 'RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
-  { id: '7', designNo: 'RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
-  { id: '8', designNo: 'E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
+  { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
+  { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
+  { id: '3', designNo: 'RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
+  { id: '4', designNo: 'RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
+  { id: '5', designNo: 'NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
+  { id: '6', designNo: 'RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
+  { id: '7', designNo: 'RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
+  { id: '8', designNo: 'E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
 ];
 
 const defaultForm: DesignForm = {
@@ -630,7 +633,7 @@ export default function ProductsPage() {
     { id: makeId(), stage: 'Casting', netWeight: '5', duration: '90', remarks: 'Primary cast run' },
   ]);
   const [pricingRows, setPricingRows] = useState<PricingRow[]>([{ id: makeId(), title: 'Retail Tier', qty: '10', rate: '1745.45' }]);
-  const [vendorRows, setVendorRows] = useState<VendorRow[]>([{ id: makeId(), supplier: 'Prime Vendor', stockType: 'Completed', supplierStyleNo: 'PV-RING-006' }]);
+  const [vendorRows, setVendorRows] = useState<VendorRow[]>([{ id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }]);
   const [relevantSelection, setRelevantSelection] = useState<string[]>([]);
   const [masterOptions, setMasterOptions] = useState(emptyMasterOptions);
   const [mastersLoading, setMastersLoading] = useState(false);
@@ -1708,11 +1711,17 @@ export default function ProductsPage() {
 
   const getLaborValue = (row: LaborRow): number =>
     parseNum(row.unitQty) * parseNum(row.laborPerUnit);
-  const getFindingValue = (row: FindingRow): number => {
-    const manual = parseNum(row.findingValue);
-    if (manual > 0) return manual;
-    return parseNum(row.units) * parseNum(row.pricePerUnit);
-  };
+const getFindingValue = (row: FindingRow): number => {
+  const manual = parseNum(row.findingValue);
+  if (manual > 0) return manual;
+  return parseNum(row.units) * parseNum(row.pricePerUnit);
+};
+const createDefaultVendorRow = (): VendorRow => ({
+  id: makeId(),
+  supplier: '',
+  stockType: 'Production',
+  supplierStyleNo: '',
+});
 
   const costTotals = useMemo(() => {
     const metal = metalRows.reduce((sum, row) => sum + getMetalValue(row), 0);
@@ -1773,6 +1782,7 @@ export default function ProductsPage() {
       laborValue: '',
     }]);
     setFindingRows([]);
+    setVendorRows([createDefaultVendorRow()]);
     setShowAddModal(true);
   };
 
@@ -1960,7 +1970,7 @@ export default function ProductsPage() {
               stockType: item.stockType || '',
               supplierStyleNo: item.supplierStyleNo || '',
             }))
-          : [],
+          : [createDefaultVendorRow()],
       );
 
       setTagPicker('');
@@ -2002,6 +2012,7 @@ export default function ProductsPage() {
       }]);
       setTagPicker('');
       setGalleryUrls(row.imageUrls || []);
+      setVendorRows([createDefaultVendorRow()]);
       setShowGalleryPicker(false);
       setShowAddModal(true);
     }
@@ -2251,21 +2262,15 @@ export default function ProductsPage() {
     }
 
     if (deletingId) return;
-    const confirmed = window.confirm('Delete this design? This action cannot be undone.');
+    const confirmed = window.confirm('Disable this design? It will be marked inactive.');
     if (!confirmed) return;
 
     setDeletingId(id);
     try {
-      await api.delete(`/products/${id}`);
-      setRows((prev) => {
-        const next = prev.filter((item) => item.id !== id);
-        if (selectedId === id) {
-          setSelectedId(next[0]?.id || '');
-        }
-        return next;
-      });
+      await api.patch(`/products/${id}/status`, { isActive: false });
+      await fetchDesignRows(selectedId);
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to delete design.');
+      window.alert(error?.response?.data?.message || 'Unable to disable design.');
     } finally {
       setDeletingId(null);
     }
@@ -2730,8 +2735,8 @@ export default function ProductsPage() {
                           <Action label="Edit" onClick={() => openEdit(row)} />
                           <button
                             type="button"
-                            title="Delete"
-                            aria-label="Delete"
+                            title="Disable"
+                            aria-label="Disable"
                             className="app-table-icon-action border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
                             onClick={() => deleteDesign(row.id)}
                             disabled={deletingId === row.id}
@@ -3032,6 +3037,56 @@ export default function ProductsPage() {
                         ))
                       )}
                     </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.supplier || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, supplier: value }, ...rest];
+                        });
+                      }}
+                      placeholder="Vendor name"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor SKU</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.supplierStyleNo || ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, supplierStyleNo: value }, ...rest];
+                        });
+                      }}
+                      placeholder="Vendor SKU"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
+                    <select
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={vendorRows[0]?.stockType || 'Production'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setVendorRows((prev) => {
+                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                          const [first, ...rest] = base;
+                          return [{ ...first, stockType: value }, ...rest];
+                        });
+                      }}
+                    >
+                      <option value="Production">Production</option>
+                      <option value="Purchase">Purchase</option>
+                    </select>
                   </div>
                   <div className="xl:col-span-2">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Description</label>
@@ -4444,7 +4499,23 @@ export default function ProductsPage() {
                   {vendorRows.map((item) => (
                     <tr key={item.id} className="border-t border-gray-200">
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.supplier} onChange={(event) => setVendorRows((prev) => prev.map((row) => row.id === item.id ? { ...row, supplier: event.target.value } : row))} /></td>
-                      <td className="px-3 py-2"><select className="w-full rounded border border-gray-300 px-2 py-1" value={item.stockType} onChange={(event) => setVendorRows((prev) => prev.map((row) => row.id === item.id ? { ...row, stockType: event.target.value } : row))}><option>Completed</option><option>In Progress</option></select></td>
+                      <td className="px-3 py-2">
+                        <select
+                          className="w-full rounded border border-gray-300 px-2 py-1"
+                          value={item.stockType}
+                          onChange={(event) =>
+                            setVendorRows((prev) =>
+                              prev.map((row) => row.id === item.id ? { ...row, stockType: event.target.value } : row),
+                            )
+                          }
+                        >
+                          <option value="Production">Production</option>
+                          <option value="Purchase">Purchase</option>
+                          {item.stockType && !['Production', 'Purchase'].includes(item.stockType) ? (
+                            <option value={item.stockType}>{item.stockType}</option>
+                          ) : null}
+                        </select>
+                      </td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.supplierStyleNo} onChange={(event) => setVendorRows((prev) => prev.map((row) => row.id === item.id ? { ...row, supplierStyleNo: event.target.value } : row))} /></td>
                       <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setVendorRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
@@ -4452,7 +4523,7 @@ export default function ProductsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Completed', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}

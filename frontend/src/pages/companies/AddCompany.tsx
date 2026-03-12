@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import PricingSlabTable from '../../components/forms/PricingSlabTable';
+import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable from '../../components/forms/CollectionPricingTable';
 import api from '../../services/api';
 
@@ -161,6 +161,11 @@ export default function AddCompany() {
 
     if (formData.enableSlabPricing && slabs.length === 0) {
       newErrors.slabs = 'Add at least one pricing slab';
+    } else if (formData.enableSlabPricing) {
+      const slabError = validatePricingSlabs(slabs);
+      if (slabError) {
+        newErrors.slabs = slabError;
+      }
     }
 
     if (formData.enableCollectionPricing && collectionOverrides.length === 0) {
@@ -184,6 +189,11 @@ export default function AddCompany() {
     }
     if (newBranchData.enableSlabPricing && newBranchSlabs.length === 0) {
       nextErrors.newBranchPricingSlabs = 'Add at least one branch pricing slab';
+    } else if (newBranchData.enableSlabPricing) {
+      const slabError = validatePricingSlabs(newBranchSlabs);
+      if (slabError) {
+        nextErrors.newBranchPricingSlabs = slabError;
+      }
     }
 
     setErrors((prev) => {

@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsEmail, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { BranchShipToType } from '../enums/branch-ship-to-type.enum';
 
 export class BranchPricingSlabDto {
   @IsNumber()
@@ -68,6 +69,30 @@ export class CreateBranchDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsEnum(BranchShipToType)
+  shipToType?: BranchShipToType;
+
+  @IsOptional()
+  @IsString()
+  shipStreetAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  shipCity?: string;
+
+  @IsOptional()
+  @IsString()
+  shipStateProvince?: string;
+
+  @IsOptional()
+  @IsString()
+  shipPostalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  shipCountry?: string;
 
   @IsOptional()
   @IsString()
@@ -139,6 +164,30 @@ export class UpdateBranchDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsEnum(BranchShipToType)
+  shipToType?: BranchShipToType;
+
+  @IsOptional()
+  @IsString()
+  shipStreetAddress?: string;
+
+  @IsOptional()
+  @IsString()
+  shipCity?: string;
+
+  @IsOptional()
+  @IsString()
+  shipStateProvince?: string;
+
+  @IsOptional()
+  @IsString()
+  shipPostalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  shipCountry?: string;
 
   @IsOptional()
   @IsString()
