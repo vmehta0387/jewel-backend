@@ -3126,8 +3126,10 @@ export class ProductsService {
       return null;
     }
     if (!this.s3Client) {
+      const endpoint = this.optionalText(process.env.AWS_S3_ENDPOINT);
       this.s3Client = new S3Client({
         region: config.region,
+        endpoint: endpoint || undefined,
         credentials: {
           accessKeyId: config.accessKeyId,
           secretAccessKey: config.secretAccessKey,
