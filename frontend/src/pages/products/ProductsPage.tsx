@@ -61,6 +61,7 @@ interface DesignRow {
   remarks: string;
   isActive: boolean;
   imageUrls?: string[];
+  imageKeys?: string[];
   createdAt: string;
   modifiedAt: string;
   updatedByName: string;
@@ -83,10 +84,16 @@ interface ApiDesignRow {
   designStatus?: string | null;
   remarks?: string | null;
   imageUrls?: unknown;
+  imageKeys?: unknown;
   isActive?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
   updatedByName?: string | null;
+}
+
+interface GalleryItem {
+  key: string;
+  url: string;
 }
 
 interface DesignForm {
@@ -322,6 +329,7 @@ const normalizeStringArray = (value: unknown): string[] => {
 };
 const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   const imageUrls = normalizeStringArray(design.imageUrls).map(resolvePublicAssetUrl);
+  const imageKeys = normalizeStringArray(design.imageKeys ?? design.imageUrls);
   const tags = normalizeStringArray(design.tags);
   return {
     id: design.id,
@@ -341,6 +349,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     remarks: design.remarks || '',
     isActive: design.isActive !== false,
     imageUrls,
+    imageKeys,
     createdAt: normalizeDateTimeValue(design.createdAt) || '',
     modifiedAt: normalizeDateTimeValue(design.updatedAt) || '',
     updatedByName: design.updatedByName || '',
@@ -730,7 +739,7 @@ export default function ProductsPage() {
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
-  const [galleryUrls, setGalleryUrls] = useState<string[]>([]);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [showGalleryPicker, setShowGalleryPicker] = useState(false);
   const [showInlineMasterModal, setShowInlineMasterModal] = useState(false);
@@ -973,19 +982,22 @@ export default function ProductsPage() {
     packetNameManuallyEdited,
     showPacketMasterModal,
   ]);
-  const galleryLibraryUrls = useMemo(() => {
+  const galleryLibraryItems = useMemo(() => {
     const seen = new Set<string>();
-    const urls: string[] = [];
+    const items: GalleryItem[] = [];
 
     rows.forEach((row) => {
-      (row.imageUrls || []).forEach((url) => {
-        if (!url || seen.has(url)) return;
-        seen.add(url);
-        urls.push(url);
+      const urls = row.imageUrls || [];
+      const keys = row.imageKeys && row.imageKeys.length ? row.imageKeys : urls;
+      urls.forEach((url, index) => {
+        const key = keys[index] || url;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        items.push({ url, key });
       });
     });
 
-    return urls;
+    return items;
   }, [rows]);
 
   const getMetalRate = (metalCaratage: string): number | undefined => {
@@ -1090,32 +1102,48 @@ export default function ProductsPage() {
     }
   };
 
-  const addGalleryUrls = (urls: string[]) => {
-    setGalleryUrls((prev) => {
+  const galleryKeys = useMemo(() => galleryItems.map((item) => item.key), [galleryItems]);
+
+  const buildGalleryItems = (urls: string[], keys?: string[]): GalleryItem[] => {
+    const normalizedUrls = urls.filter(Boolean);
+    const normalizedKeys = (keys && keys.length ? keys : urls).filter(Boolean);
+    return normalizedUrls.map((url, index) => ({
+      url,
+      key: normalizedKeys[index] || url,
+    }));
+  };
+
+  const addGalleryItems = (items: Array<{ url: string; key?: string }>) => {
+    setGalleryItems((prev) => {
       const next = [...prev];
-      const seen = new Set(next);
-      urls.forEach((url) => {
-        if (!url || seen.has(url)) return;
-        seen.add(url);
-        next.push(url);
+      const seen = new Set(next.map((item) => item.key));
+      items.forEach((item) => {
+        const url = item.url?.trim();
+        if (!url) return;
+        const key = (item.key || url).trim();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        next.push({ url, key });
       });
       return next;
     });
   };
 
-  const removeGalleryUrl = (url: string) => {
-    setGalleryUrls((prev) => prev.filter((item) => item !== url));
+  const removeGalleryItem = (index: number) => {
+    setGalleryItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  const setPrimaryGalleryUrl = (url: string) => {
-    setGalleryUrls((prev) => {
-      if (!prev.includes(url)) return prev;
-      return [url, ...prev.filter((item) => item !== url)];
+  const setPrimaryGalleryItem = (index: number) => {
+    setGalleryItems((prev) => {
+      if (index < 0 || index >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(index, 1);
+      return [item, ...next];
     });
   };
 
-  const moveGalleryUrl = (index: number, step: -1 | 1) => {
-    setGalleryUrls((prev) => {
+  const moveGalleryItem = (index: number, step: -1 | 1) => {
+    setGalleryItems((prev) => {
       const target = index + step;
       if (target < 0 || target >= prev.length) return prev;
       const next = [...prev];
@@ -1143,14 +1171,17 @@ export default function ProductsPage() {
       const response = await api.post('/products/gallery-files', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const urls = (response.data?.files || [])
-        .map((file: { url?: string }) => file?.url || '')
-        .filter((url: string) => Boolean(url));
+      const items = (response.data?.files || [])
+        .map((file: { url?: string; key?: string }) => ({
+          url: file?.url || '',
+          key: file?.key || file?.url || '',
+        }))
+        .filter((item: { url: string; key: string }) => Boolean(item.url));
 
-      if (urls.length === 0) {
+      if (items.length === 0) {
         window.alert('No media files were uploaded.');
       } else {
-        addGalleryUrls(urls);
+        addGalleryItems(items);
       }
 
       if (mediaFiles.length !== files.length) {
@@ -1977,7 +2008,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     });
     syncDesignNoFromServer(initialJewelryGroup);
     setTagPicker('');
-    setGalleryUrls([]);
+    setGalleryItems([]);
     setShowGalleryPicker(false);
     setMetalRows([createMetalRow('')]);
     setGemRows([{
@@ -2054,6 +2085,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       const tags = normalizeStringArray(detail.tags);
       const imageUrls = normalizeStringArray(detail.imageUrls).map(resolvePublicAssetUrl);
+      const imageKeys = normalizeStringArray(detail.imageKeys ?? detail.imageUrls);
       const metals = Array.isArray(detail.metals) ? detail.metals : [];
       const gemstones = Array.isArray(detail.gemstones) ? detail.gemstones : [];
       const labors = Array.isArray(detail.labors) ? detail.labors : [];
@@ -2204,7 +2236,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       );
 
       setTagPicker('');
-      setGalleryUrls(imageUrls);
+      setGalleryItems(buildGalleryItems(imageUrls, imageKeys));
       setShowGalleryPicker(false);
       setShowAddModal(true);
     } catch {
@@ -2244,7 +2276,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         amount: '',
       }]);
       setTagPicker('');
-      setGalleryUrls(row.imageUrls || []);
+      setGalleryItems(buildGalleryItems(row.imageUrls || [], row.imageKeys || row.imageUrls || []));
       setVendorRows([createDefaultVendorRow()]);
       setShowGalleryPicker(false);
       setShowAddModal(true);
@@ -2410,7 +2442,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       designDescription: form.designDescription.trim() || undefined,
       remarks: form.remarks.trim() || undefined,
       tags: selectedTags,
-      imageUrls: galleryUrls,
+      imageUrls: galleryKeys,
     };
     const createPayload = {
       ...basePayload,
@@ -3515,25 +3547,25 @@ const createDefaultVendorRow = (): VendorRow => ({
                     className="hidden"
                     onChange={handleGalleryUploadChange}
                   />
-                  {galleryUrls.length === 0 ? (
+                  {galleryItems.length === 0 ? (
                     <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-5 text-center text-xs text-gray-500">
                       No media added yet.
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-violet-700">
-                        {galleryUrls.length} media item{galleryUrls.length > 1 ? 's' : ''} selected
+                        {galleryItems.length} media item{galleryItems.length > 1 ? 's' : ''} selected
                       </p>
                       <div className="grid grid-cols-2 gap-2">
-                        {galleryUrls.map((url, index) => (
-                          <div key={`${url}-${index}`} className="rounded border border-gray-200 bg-gray-50 p-1.5">
+                        {galleryItems.map((item, index) => (
+                          <div key={`${item.key}-${index}`} className="rounded border border-gray-200 bg-gray-50 p-1.5">
                             <div className="relative">
                               <MediaPreview
-                                url={url}
+                                url={item.url}
                                 alt={`Design media ${index + 1}`}
                                 className="h-24 w-full rounded object-cover"
                               />
-                              {isVideoUrl(url) ? (
+                              {isVideoUrl(item.url) ? (
                                 <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
                                   Video
                                 </span>
@@ -3544,7 +3576,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <button
                                   type="button"
                                   className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
-                                  onClick={() => setPrimaryGalleryUrl(url)}
+                                  onClick={() => setPrimaryGalleryItem(index)}
                                 >
                                   Make Primary
                                 </button>
@@ -3556,7 +3588,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <button
                                 type="button"
                                 className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                                onClick={() => moveGalleryUrl(index, -1)}
+                                onClick={() => moveGalleryItem(index, -1)}
                                 disabled={index === 0}
                               >
                                 ↑
@@ -3564,15 +3596,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <button
                                 type="button"
                                 className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
-                                onClick={() => moveGalleryUrl(index, 1)}
-                                disabled={index === galleryUrls.length - 1}
+                                onClick={() => moveGalleryItem(index, 1)}
+                                disabled={index === galleryItems.length - 1}
                               >
                                 ↓
                               </button>
                               <button
                                 type="button"
                                 className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
-                                onClick={() => removeGalleryUrl(url)}
+                                onClick={() => removeGalleryItem(index)}
                               >
                                 Remove
                               </button>
@@ -4041,23 +4073,23 @@ const createDefaultVendorRow = (): VendorRow => ({
       {showAddModal && showGalleryPicker && (
         <Modal title="CHOOSE FROM GALLERY" size="max-w-5xl" onClose={() => setShowGalleryPicker(false)}>
           <div className="space-y-4">
-            {galleryLibraryUrls.length === 0 ? (
+            {galleryLibraryItems.length === 0 ? (
               <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
                 No media found in existing designs yet.
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {galleryLibraryUrls.map((url, index) => {
-                  const selectedInCurrent = galleryUrls.includes(url);
+                {galleryLibraryItems.map((item, index) => {
+                  const selectedInCurrent = galleryKeys.includes(item.key);
                   return (
-                    <div key={`${url}-${index}`} className="rounded border border-gray-200 bg-white p-2 shadow-sm">
+                    <div key={`${item.key}-${index}`} className="rounded border border-gray-200 bg-white p-2 shadow-sm">
                       <div className="relative">
                         <MediaPreview
-                          url={url}
+                          url={item.url}
                           alt={`Gallery ${index + 1}`}
                           className="h-28 w-full rounded object-cover"
                         />
-                        {isVideoUrl(url) ? (
+                        {isVideoUrl(item.url) ? (
                           <span className="absolute left-1.5 top-1.5 rounded-full bg-slate-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white">
                             Video
                           </span>
@@ -4072,7 +4104,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         }`}
                         onClick={() => {
                           if (selectedInCurrent) return;
-                          addGalleryUrls([url]);
+                          addGalleryItems([{ url: item.url, key: item.key }]);
                         }}
                       >
                         {selectedInCurrent ? 'Selected' : 'Add'}

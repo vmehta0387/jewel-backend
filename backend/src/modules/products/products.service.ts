@@ -4,6 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { mkdir, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
@@ -118,6 +121,8 @@ interface GlobalRateMaps {
 
 @Injectable()
 export class ProductsService {
+  private s3Client: S3Client | null = null;
+
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -225,7 +230,7 @@ export class ProductsService {
       grossWeight: summary.grossWeight,
       livePrice: summary.totalValue,
       stlFileUrl: this.optionalText(dto.stlFileUrl),
-      imageUrls: dto.imageUrls || [],
+      imageUrls: this.normalizeGalleryUrls(dto.imageUrls),
       isActive: dto.isActive ?? true,
       createdBy: requester.id,
       updatedBy: requester.id,
@@ -459,10 +464,14 @@ export class ProductsService {
     const updatedByMap = await this.resolveUserNames(
       data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
     );
-    const enrichedData = data.map((design) => ({
-      ...design,
-      updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
-    }));
+    const enrichedData = await Promise.all(
+      data.map(async (design) => ({
+        ...design,
+        imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+        updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+      })),
+    );
 
     return {
       data: enrichedData,
@@ -514,9 +523,12 @@ export class ProductsService {
       design.updatedBy ? [design.updatedBy] : [],
     );
     const updatedByName = design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null;
+    const resolvedImageUrls = await this.resolveGalleryUrls(design.imageUrls || []);
 
     return {
       ...design,
+      imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+      imageUrls: resolvedImageUrls,
       updatedByName,
       relevantDesigns: (design.relevantDesignLinks || []).map((link) => ({
         id: link.relatedDesign?.id,
@@ -593,7 +605,7 @@ export class ProductsService {
       design.designDescription = this.optionalText(dto.designDescription);
     }
     if (dto.remarks !== undefined) design.remarks = this.optionalText(dto.remarks);
-    if (dto.imageUrls !== undefined) design.imageUrls = dto.imageUrls || [];
+    if (dto.imageUrls !== undefined) design.imageUrls = this.normalizeGalleryUrls(dto.imageUrls);
     if (dto.stlFileUrl !== undefined) design.stlFileUrl = this.optionalText(dto.stlFileUrl);
     if (dto.isActive !== undefined) design.isActive = dto.isActive;
     design.metalValue = summary.metalValue;
@@ -746,7 +758,7 @@ export class ProductsService {
   async uploadGalleryFiles(
     files: Array<{ originalname?: string; mimetype?: string; buffer?: Buffer }>,
     request: any,
-  ): Promise<{ files: Array<{ fileName: string; url: string }> }> {
+  ): Promise<{ files: Array<{ fileName: string; url: string; key?: string }> }> {
     const requester: AuthUser | undefined = request?.user;
     if (requester) {
       this.assertDesignCreateAccess(requester);
@@ -755,11 +767,59 @@ export class ProductsService {
       throw new BadRequestException('At least one image or video file is required.');
     }
 
+    const uploaded: Array<{ fileName: string; url: string }> = [];
+    const s3Config = this.getS3Client();
+
+    if (s3Config) {
+      const { client, bucket } = s3Config;
+      const now = new Date();
+      const prefix = `design-gallery/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(
+        now.getDate(),
+      ).padStart(2, '0')}`;
+
+      for (const file of files) {
+        if (!file?.buffer || !file.originalname) continue;
+
+        if (!this.isGalleryMimeType(file.mimetype)) {
+          throw new BadRequestException(
+            `Unsupported file type: ${file.originalname}. Only image and video files are allowed.`,
+          );
+        }
+
+        const extension = this.resolveGalleryExtension(file.originalname, file.mimetype);
+        const fileName = `${Date.now()}-${randomUUID()}${extension}`;
+        const key = `${prefix}/${fileName}`;
+
+        const upload = new Upload({
+          client,
+          params: {
+            Bucket: bucket,
+            Key: key,
+            Body: file.buffer,
+            ContentType: file.mimetype || 'application/octet-stream',
+          },
+        });
+
+        await upload.done();
+
+        const signedUrl = await this.createSignedUrl(client, bucket, key);
+        uploaded.push({
+          fileName,
+          url: signedUrl,
+          key: `s3://${bucket}/${key}`,
+        } as any);
+      }
+
+      if (uploaded.length === 0) {
+        throw new BadRequestException('No valid image or video files uploaded.');
+      }
+
+      return { files: uploaded };
+    }
+
     const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
     const uploadDir = join(uploadsRoot, 'design-gallery');
     await mkdir(uploadDir, { recursive: true });
-
-    const uploaded: Array<{ fileName: string; url: string }> = [];
 
     for (const file of files) {
       if (!file?.buffer || !file.originalname) continue;
@@ -3039,6 +3099,144 @@ export class ProductsService {
     }
 
     return parsed;
+  }
+
+  private getS3Config(): {
+    bucket: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  } | null {
+    const bucket = this.optionalText(process.env.AWS_S3_BUCKET);
+    const region = this.optionalText(process.env.AWS_REGION);
+    const accessKeyId = this.optionalText(process.env.AWS_ACCESS_KEY_ID) || this.optionalText(process.env.AWS_ACCESS_KEY);
+    const secretAccessKey =
+      this.optionalText(process.env.AWS_SECRET_ACCESS_KEY) || this.optionalText(process.env.AWS_SECRET_KEY);
+
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      return null;
+    }
+
+    return { bucket, region, accessKeyId, secretAccessKey };
+  }
+
+  private getS3Client(): { client: S3Client; bucket: string; region: string } | null {
+    const config = this.getS3Config();
+    if (!config) {
+      return null;
+    }
+    if (!this.s3Client) {
+      this.s3Client = new S3Client({
+        region: config.region,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
+    }
+    return { client: this.s3Client, bucket: config.bucket, region: config.region };
+  }
+
+  private buildS3PublicUrl(bucket: string, region: string, key: string): string {
+    const base = this.optionalText(process.env.AWS_S3_PUBLIC_BASE_URL);
+    if (base) {
+      return `${base.replace(/\/+$/, '')}/${key}`;
+    }
+    return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+  }
+
+  private getSignedUrlExpiresIn(): number {
+    const raw = this.optionalText(process.env.AWS_S3_SIGNED_URL_EXPIRES);
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+    return 3600;
+  }
+
+  private parseS3KeyFromUrl(value: string, bucket: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('s3://')) {
+      const withoutScheme = trimmed.slice(5);
+      const [bucketName, ...rest] = withoutScheme.split('/');
+      if (!bucketName || rest.length === 0) return null;
+      if (bucketName !== bucket) return null;
+      return rest.join('/');
+    }
+
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(trimmed);
+    } catch {
+      return null;
+    }
+
+    const host = parsedUrl.hostname;
+    const path = parsedUrl.pathname.replace(/^\/+/, '');
+
+    if (host.startsWith(`${bucket}.s3`)) {
+      return path || null;
+    }
+
+    if (host.startsWith('s3') && path.startsWith(`${bucket}/`)) {
+      return path.slice(bucket.length + 1) || null;
+    }
+
+    return null;
+  }
+
+  private normalizeGalleryUrls(urls: string[] | null | undefined): string[] {
+    if (!Array.isArray(urls)) {
+      return [];
+    }
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return urls.filter((url) => typeof url === 'string').map((url) => url.trim()).filter(Boolean);
+    }
+
+    const { bucket } = s3Config;
+    return urls
+      .filter((url): url is string => typeof url === 'string')
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((url) => {
+        const key = this.parseS3KeyFromUrl(url, bucket);
+        return key ? `s3://${bucket}/${key}` : url;
+      });
+  }
+
+  private async resolveGalleryUrls(urls: string[] | null | undefined): Promise<string[]> {
+    if (!Array.isArray(urls) || urls.length === 0) {
+      return [];
+    }
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return urls;
+    }
+
+    const { client, bucket } = s3Config;
+
+    return Promise.all(
+      urls.map(async (url) => {
+        if (typeof url !== 'string') return '';
+        const trimmed = url.trim();
+        if (!trimmed) return '';
+        const key = this.parseS3KeyFromUrl(trimmed, bucket);
+        if (!key) return trimmed;
+
+        return this.createSignedUrl(client, bucket, key);
+      }),
+    ).then((items) => items.filter(Boolean));
+  }
+
+  private async createSignedUrl(client: S3Client, bucket: string, key: string): Promise<string> {
+    const expiresIn = this.getSignedUrlExpiresIn();
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    return getSignedUrl(client, command, { expiresIn });
   }
 
   private isGalleryMimeType(mimeType?: string | null): boolean {

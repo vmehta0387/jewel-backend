@@ -728,7 +728,7 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -739,12 +739,12 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 text-xs text-slate-500">Active + inactive</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/30 text-[#4c6b82] shadow-sm">
               <DashboardStatIcon kind="companies" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/40 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -755,12 +755,12 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 text-xs text-slate-500">Across all companies</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#F3E3D0]/70 bg-[#F3E3D0]/70 text-[#8a6a4d] shadow-sm">
               <DashboardStatIcon kind="branches" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#D2C4B4]/35 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -771,12 +771,12 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 text-xs text-slate-500">All design entries</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#D2C4B4]/70 bg-[#D2C4B4]/60 text-[#6d5a45] shadow-sm">
               <DashboardStatIcon kind="designs" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -787,14 +787,14 @@ export default function DashboardPage() {
               </p>
               <p className="mt-2 text-xs text-slate-500">Aggregate value</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
               <DashboardStatIcon kind="revenue" />
             </span>
           </div>
         </Card>
       </div>
 
-      <div className="rounded-2xl border border-slate-200/80 bg-white/80 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
+      <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/25 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Order Overview</p>
@@ -807,7 +807,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/20 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -818,12 +818,12 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-2 text-xs text-slate-500">Today</p>
               </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/25 text-[#4c6b82] shadow-sm">
                 <OrderSummaryIcon kind="received" />
               </span>
             </div>
           </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#D2C4B4]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -834,12 +834,12 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-2 text-xs text-slate-500">Delivery schedule</p>
               </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#D2C4B4]/60 bg-[#D2C4B4]/45 text-[#6d5a45] shadow-sm">
                 <OrderSummaryIcon kind="due" />
               </span>
             </div>
           </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/22 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -850,12 +850,12 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-2 text-xs text-slate-500">Week to date</p>
               </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
                 <OrderSummaryIcon kind="sales" />
               </span>
             </div>
           </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/80 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/30 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -866,7 +866,7 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-2 text-xs text-slate-500">Live pipeline</p>
               </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#F3E3D0]/70 bg-[#F3E3D0]/60 text-[#8a6a4d] shadow-sm">
                 <OrderSummaryIcon kind="active" />
               </span>
             </div>
@@ -875,7 +875,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/20 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -886,7 +886,7 @@ export default function DashboardPage() {
                 {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
               </p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/25 text-[#4c6b82] shadow-sm">
               <OrderSummaryIcon kind="received" />
             </span>
           </div>
@@ -894,7 +894,7 @@ export default function DashboardPage() {
             <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-slate-50/90 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/22 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -905,7 +905,7 @@ export default function DashboardPage() {
                 {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
               </p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
               <OrderSummaryIcon kind="sales" />
             </span>
           </div>
