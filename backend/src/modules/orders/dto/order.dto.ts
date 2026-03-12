@@ -27,6 +27,10 @@ export class CreateOrderDto {
   price: number;
 
   @IsOptional()
+  @IsEnum(OrderStatus)
+  status?: OrderStatus;
+
+  @IsOptional()
   @IsString()
   shortDescription?: string;
 

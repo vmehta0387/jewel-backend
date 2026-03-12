@@ -1624,6 +1624,30 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
+    if (!packetOptions.length) return;
+    setGemRows((prev) => {
+      let changed = false;
+      const next = prev.map((row) => {
+        if (row.packetId) return row;
+        if (!row.stone && !row.shape && !row.size && !row.color && !row.quality) {
+          return row;
+        }
+        const match = packetOptions.find((packet) =>
+          normalizeLookupKey(packet.stone) === normalizeLookupKey(row.stone) &&
+          normalizeLookupKey(packet.shape) === normalizeLookupKey(row.shape) &&
+          normalizeLookupKey(packet.size) === normalizeLookupKey(row.size) &&
+          normalizeLookupKey(packet.color) === normalizeLookupKey(row.color) &&
+          normalizeLookupKey(packet.quality) === normalizeLookupKey(row.quality),
+        );
+        if (!match) return row;
+        changed = true;
+        return { ...row, packetId: match.id };
+      });
+      return changed ? next : prev;
+    });
+  }, [packetOptions, gemRows]);
+
+  useEffect(() => {
     if (modal !== 'history' || !selectedId) return;
     fetchDesignHistory(selectedId);
   }, [modal, selectedId]);
@@ -1974,7 +1998,6 @@ const createDefaultVendorRow = (): VendorRow => ({
         normalized(packet.stone) === normalized(gem?.stone) &&
         normalized(packet.shape) === normalized(gem?.shape) &&
         normalized(packet.size) === normalized(gem?.size) &&
-        normalized(packet.cut) === normalized(gem?.cut) &&
         normalized(packet.color) === normalized(gem?.color) &&
         normalized(packet.quality) === normalized(gem?.quality),
       );

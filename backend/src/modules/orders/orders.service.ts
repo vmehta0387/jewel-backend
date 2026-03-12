@@ -215,7 +215,7 @@ export class OrdersService {
       price: pricing.finalPrice,
       shortDescription: dto.shortDescription?.trim() || null,
       notes: dto.notes?.trim() || null,
-      status: OrderStatus.QUOTE,
+      status: dto.status ?? OrderStatus.QUOTE,
       isActive: true,
     });
 

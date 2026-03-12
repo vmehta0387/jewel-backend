@@ -88,6 +88,7 @@ interface OrderFormState {
   branchId: string;
   designId: string;
   deliveryDate: string;
+  status: string;
   price: string;
   quantity: string;
   shortDescription: string;
@@ -99,6 +100,7 @@ const defaultForm: OrderFormState = {
   branchId: '',
   designId: '',
   deliveryDate: '',
+  status: 'QUOTE',
   price: '',
   quantity: '1',
   shortDescription: '',
@@ -110,6 +112,7 @@ const orderStatusOptions = [
   'PENDING_APPROVAL',
   'APPROVED',
   'IN_PRODUCTION',
+  'SHIPPED',
   'COMPLETED',
   'CANCELLED',
 ];
@@ -208,6 +211,7 @@ export default function OrdersPage() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
   const [orderNumber, setOrderNumber] = useState('');
@@ -225,6 +229,8 @@ export default function OrdersPage() {
     deliveryFrom: '',
     deliveryTo: '',
   });
+
+  const isEditing = Boolean(editingOrderId);
 
   const pageOffset = (page - 1) * 15;
 
@@ -315,9 +321,11 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!showAddModal) return;
     loadDesigns();
-    loadOrderNumber(form.companyId, form.branchId);
+    if (!editingOrderId) {
+      loadOrderNumber(form.companyId, form.branchId);
+    }
     loadPackets();
-  }, [showAddModal]);
+  }, [showAddModal, editingOrderId]);
 
   useEffect(() => {
     if (!showViewModal) return;
@@ -335,12 +343,13 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!showAddModal) return;
+    if (editingOrderId) return;
     if (!form.companyId || !form.branchId) {
       setOrderNumber('');
       return;
     }
     loadOrderNumber(form.companyId, form.branchId);
-  }, [form.companyId, form.branchId, showAddModal]);
+  }, [form.companyId, form.branchId, showAddModal, editingOrderId]);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -390,7 +399,7 @@ export default function OrdersPage() {
     fetchDetail();
   }, [form.designId]);
 
-  const handleCreateOrder = async () => {
+  const handleSaveOrder = async () => {
     try {
       setSavingOrder(true);
       const payload = {
@@ -398,19 +407,27 @@ export default function OrdersPage() {
         branchId: form.branchId,
         designId: form.designId,
         deliveryDate: form.deliveryDate || undefined,
+        status: form.status || undefined,
         price: Number(form.price || 0),
         quantity: Number(form.quantity || 1),
         shortDescription: form.shortDescription?.trim() || undefined,
         notes: form.notes?.trim() || undefined,
       };
 
-      await api.post('/orders', payload);
+      if (editingOrderId) {
+        await api.put(`/orders/${editingOrderId}`, payload);
+      } else {
+        await api.post('/orders', payload);
+      }
       setShowAddModal(false);
+      setEditingOrderId(null);
       setForm(defaultForm);
       setDesignDetail(null);
       loadOrders();
     } catch (err: any) {
-      const message = err?.response?.data?.message || 'Failed to create order';
+      const message =
+        err?.response?.data?.message ||
+        (editingOrderId ? 'Failed to update order' : 'Failed to create order');
       alert(message);
     } finally {
       setSavingOrder(false);
@@ -440,6 +457,28 @@ export default function OrdersPage() {
       setViewDesign(null);
       setShowViewModal(true);
     }
+  };
+
+  const openEditModal = async (order: OrderRow) => {
+    setEditingOrderId(order.id);
+    setPriceManuallyEdited(false);
+    setForm({
+      companyId: order.companyId || '',
+      branchId: order.branchId || '',
+      designId: order.designId || '',
+      deliveryDate: order.deliveryDate || '',
+      status: order.status || 'QUOTE',
+      price: order.price !== undefined && order.price !== null ? String(order.price) : '',
+      quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
+      shortDescription: order.shortDescription || '',
+      notes: order.notes || '',
+    });
+    setOrderNumber(order.orderNumber || '');
+    setDesignDetail(null);
+    if (order.companyId) {
+      loadBranches(order.companyId);
+    }
+    setShowAddModal(true);
   };
 
   const selectedDesignLabel = useMemo(() => {
@@ -478,7 +517,18 @@ export default function OrdersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
           <p className="text-sm text-slate-600">Manage designed jewelry demands and track delivery details.</p>
         </div>
-        <Button onClick={() => { setForm(defaultForm); setDesignDetail(null); setBranches([]); setPriceManuallyEdited(false); setShowAddModal(true); }}>+ Add New Order</Button>
+        <Button
+          onClick={() => {
+            setEditingOrderId(null);
+            setForm(defaultForm);
+            setDesignDetail(null);
+            setBranches([]);
+            setPriceManuallyEdited(false);
+            setShowAddModal(true);
+          }}
+        >
+          + Add New Order
+        </Button>
       </div>
 
       <Card>
@@ -577,13 +627,22 @@ export default function OrdersPage() {
                       {order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}
                     </td>
                     <td className="app-table-cell text-sm">
-                      <button
-                        type="button"
-                        className="app-table-action"
-                        onClick={() => openViewModal(order)}
-                      >
-                        View
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="app-table-action"
+                          onClick={() => openViewModal(order)}
+                        >
+                          View
+                        </button>
+                        <button
+                          type="button"
+                          className="app-table-action"
+                          onClick={() => openEditModal(order)}
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -596,7 +655,14 @@ export default function OrdersPage() {
       </Card>
 
       {showAddModal && (
-        <Modal title="ADD DESIGNED JEWELRY DEMAND" onClose={() => setShowAddModal(false)} size="max-w-6xl">
+        <Modal
+          title={isEditing ? 'EDIT DESIGNED JEWELRY DEMAND' : 'ADD DESIGNED JEWELRY DEMAND'}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingOrderId(null);
+          }}
+          size="max-w-6xl"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <span className="text-xs text-rose-700">* Required fields</span>
             <span className="text-sm font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
@@ -608,6 +674,7 @@ export default function OrdersPage() {
               <select
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 value={form.designId}
+                disabled={isEditing}
                 onChange={(event) => {
                   setPriceManuallyEdited(false);
                   setForm((prev) => ({ ...prev, designId: event.target.value }));
@@ -627,6 +694,7 @@ export default function OrdersPage() {
               <select
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 value={form.companyId}
+                disabled={isEditing}
                 onChange={(event) => {
                   setPriceManuallyEdited(false);
                   setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '' }));
@@ -646,16 +714,31 @@ export default function OrdersPage() {
               <select
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                 value={form.branchId}
+                disabled={isEditing || !form.companyId}
                 onChange={(event) => {
                   setPriceManuallyEdited(false);
                   setForm((prev) => ({ ...prev, branchId: event.target.value }));
                 }}
-                disabled={!form.companyId}
               >
                 <option value="">Select Branch</option>
                 {branches.map((branch) => (
                   <option key={branch.id} value={branch.id}>
                     {branch.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-slate-700">Status*</label>
+              <select
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                value={form.status}
+                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+              >
+                {orderStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
                   </option>
                 ))}
               </select>
@@ -814,11 +897,22 @@ export default function OrdersPage() {
           </div>
 
           <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button variant="secondary" type="button" onClick={() => setShowAddModal(false)}>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => {
+                setShowAddModal(false);
+                setEditingOrderId(null);
+              }}
+            >
               Close
             </Button>
-            <Button type="button" disabled={savingOrder || !form.designId || !form.companyId || !form.branchId} onClick={handleCreateOrder}>
-              {savingOrder ? 'Saving...' : 'Save'}
+            <Button
+              type="button"
+              disabled={savingOrder || !form.designId || !form.companyId || !form.branchId}
+              onClick={handleSaveOrder}
+            >
+              {savingOrder ? 'Saving...' : isEditing ? 'Update' : 'Save'}
             </Button>
           </div>
         </Modal>
