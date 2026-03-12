@@ -2236,7 +2236,7 @@ export class ProductsService {
     return rows.map((row) => {
       const laborPerUnit = this.toNumber(row.laborPerUnit);
       const unitQty = this.toNumber(row.unitQty);
-      const laborValue = row.laborValue !== undefined ? this.toNumber(row.laborValue) : laborPerUnit * unitQty;
+      const laborValue = laborPerUnit * unitQty;
 
       return {
         laborHead: this.optionalText(row.laborHead),

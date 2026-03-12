@@ -2169,7 +2169,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         laborHead: row.laborHead.trim() || undefined,
         laborPerUnit: parseNum(row.laborPerUnit),
         unitQty: parseNum(row.unitQty),
-        laborValue: parseNum(row.laborValue),
+        laborValue: getLaborValue(row),
       })),
       findings: FINDING_FEATURE_ENABLED
         ? findingRows.map((row) => ({
@@ -2745,10 +2745,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                               '...'
                             ) : (
                               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18" />
-                                <path d="M8 6V4h8v2" />
-                                <path d="M19 6l-1 14H6L5 6" />
-                                <path d="M10 11v6M14 11v6" />
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M5 5l14 14" />
                               </svg>
                             )}
                           </button>
