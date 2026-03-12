@@ -401,7 +401,25 @@ export class OrdersService {
     const rows = await qb.getRawMany();
     const byDate = new Map<string, { orders: number; sales: number }>();
     rows.forEach((row: any) => {
-      const dateKey = String(row.date);
+      const raw = row.date;
+      let dateKey = '';
+      if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        dateKey = raw.toISOString().slice(0, 10);
+      } else if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+          dateKey = trimmed.slice(0, 10);
+        } else {
+          const parsed = new Date(trimmed);
+          if (!Number.isNaN(parsed.getTime())) {
+            dateKey = parsed.toISOString().slice(0, 10);
+          }
+        }
+      }
+
+      if (!dateKey) {
+        return;
+      }
       byDate.set(dateKey, {
         orders: this.toNumber(row.orders),
         sales: this.toNumber(row.sales),
