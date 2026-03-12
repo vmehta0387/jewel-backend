@@ -25,29 +25,6 @@ export class OrdersService {
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const prefix = `JB${yy}${mm}`;
 
-    const last = await this.orderRepo
-      .createQueryBuilder('order')
-      .where('order.orderNumber LIKE :prefix', { prefix: `${prefix}%` })
-      .orderBy('order.orderNumber', 'DESC')
-      .getOne();
-
-    let seq = 1;
-    if (last?.orderNumber) {
-      const match = new RegExp(`^${prefix}(\\d+)$`).exec(last.orderNumber.trim().toUpperCase());
-      if (match) {
-        const parsed = Number.parseInt(match[1], 10);
-        if (Number.isFinite(parsed)) {
-          seq = parsed + 1;
-        }
-      }
-    }
-
-    const baseNumber = `${prefix}${String(seq).padStart(3, '0')}`;
-
-    if (!companyId && !branchId) {
-      return { orderNumber: baseNumber };
-    }
-
     const normalizedCompanyId = companyId?.trim();
     const normalizedBranchId = branchId?.trim();
     let companyCode = '';
@@ -76,7 +53,30 @@ export class OrdersService {
       throw new BadRequestException('Company code and branch code are required for order number');
     }
 
-    return { orderNumber: `${baseNumber}-${companyCode}-${branchCode}` };
+    const suffix = companyCode && branchCode ? `-${companyCode}-${branchCode}` : '';
+    const likePattern = `${prefix}%${suffix}`;
+    const last = await this.orderRepo
+      .createQueryBuilder('order')
+      .where('order.orderNumber LIKE :pattern', { pattern: likePattern })
+      .orderBy('order.orderNumber', 'DESC')
+      .getOne();
+
+    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    let seq = 1;
+    if (last?.orderNumber) {
+      const normalized = last.orderNumber.trim().toUpperCase();
+      const match = new RegExp(`^${escapeRegex(prefix)}(\\d+)${escapeRegex(suffix)}$`).exec(normalized);
+      if (match) {
+        const parsed = Number.parseInt(match[1], 10);
+        if (Number.isFinite(parsed)) {
+          seq = parsed + 1;
+        }
+      }
+    }
+
+    const baseNumber = `${prefix}${String(seq).padStart(3, '0')}`;
+    return { orderNumber: suffix ? `${baseNumber}${suffix}` : baseNumber };
   }
 
   async findAll(query: FindOrdersQueryDto, requester: AuthUser) {
@@ -197,29 +197,46 @@ export class OrdersService {
       this.assertDesignScope(design, requester, scope);
     }
 
-    const { orderNumber } = await this.getNextOrderNumber(scope.companyId ?? undefined, scope.branchId ?? undefined);
     const pricing = await this.calculateOrderPrice({
       design,
       companyId: scope.companyId ?? undefined,
       branchId: scope.branchId ?? undefined,
     });
 
-    const order = this.orderRepo.create({
-      orderNumber,
-      companyId: scope.companyId ?? null,
-      branchId: scope.branchId ?? null,
-      designId: dto.designId ?? null,
-      salesRepId: requester.id,
-      deliveryDate: dto.deliveryDate?.trim() || null,
-      quantity: dto.quantity ?? 1,
-      price: pricing.finalPrice,
-      shortDescription: dto.shortDescription?.trim() || null,
-      notes: dto.notes?.trim() || null,
-      status: dto.status ?? OrderStatus.QUOTE,
-      isActive: true,
-    });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const { orderNumber } = await this.getNextOrderNumber(
+        scope.companyId ?? undefined,
+        scope.branchId ?? undefined,
+      );
+      const order = this.orderRepo.create({
+        orderNumber,
+        companyId: scope.companyId ?? null,
+        branchId: scope.branchId ?? null,
+        designId: dto.designId ?? null,
+        salesRepId: requester.id,
+        deliveryDate: dto.deliveryDate?.trim() || null,
+        quantity: dto.quantity ?? 1,
+        price: pricing.finalPrice,
+        shortDescription: dto.shortDescription?.trim() || null,
+        notes: dto.notes?.trim() || null,
+        status: dto.status ?? OrderStatus.QUOTE,
+        isActive: true,
+      });
 
-    return this.orderRepo.save(order);
+      try {
+        return await this.orderRepo.save(order);
+      } catch (error: any) {
+        const isDuplicate =
+          error?.code === 'ER_DUP_ENTRY' ||
+          String(error?.message || '').includes('Duplicate entry');
+        if (isDuplicate && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new BadRequestException('Unable to generate unique order number. Please retry.');
   }
 
   async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {
