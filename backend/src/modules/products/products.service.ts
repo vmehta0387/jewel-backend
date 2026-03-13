@@ -1770,7 +1770,9 @@ export class ProductsService {
       throw new ForbiddenException('You cannot access another company data');
     }
 
-    qb.andWhere('design.companyId = :scopeCompanyId', { scopeCompanyId: requester.companyId });
+    qb.andWhere('(design.companyId = :scopeCompanyId OR design.companyId IS NULL)', {
+      scopeCompanyId: requester.companyId,
+    });
 
     if (requester.branchId) {
       if (normalizedBranchId && normalizedBranchId !== requester.branchId) {
