@@ -1,14 +1,34 @@
 ﻿import { apiRequest } from './client';
 import type { OrdersResponse, Order } from '../types';
 
-export const fetchOrders = (token: string, page = 1, limit = 25) => {
+export const fetchOrders = (
+  token: string,
+  page = 1,
+  limit = 25,
+  status: 'ACTIVE' | 'INACTIVE' | 'ALL' = 'ACTIVE',
+) => {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
-    status: 'ACTIVE',
+    status,
   });
   return apiRequest<OrdersResponse>(`/orders?${params.toString()}`, { method: 'GET' }, token);
 };
+
+export const fetchOrderSummary = (token: string) =>
+  apiRequest<{
+    ordersReceivedToday: number;
+    ordersDueToday: number;
+    salesThisWeek: number;
+    activeOrders: number;
+  }>('/orders/summary', { method: 'GET' }, token);
+
+export const fetchOrderTrends = (token: string) =>
+  apiRequest<{
+    range: string[];
+    orders: number[];
+    sales: number[];
+  }>('/orders/trends', { method: 'GET' }, token);
 
 export const fetchOrder = (token: string, id: string) =>
   apiRequest<Order>(`/orders/${id}`, { method: 'GET' }, token);

@@ -1,11 +1,13 @@
-﻿export const formatCurrency = (value: number, currency = 'USD') => {
-  if (Number.isNaN(value)) return `${currency} 0.00`;
-  return `${currency} ${value.toFixed(2)}`;
+﻿export const formatCurrency = (value: number | string | null | undefined, currency = 'USD') => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return `${currency} 0.00`;
+  return `${currency} ${numeric.toFixed(2)}`;
 };
 
-export const formatNumber = (value: number, decimals = 2) => {
-  if (Number.isNaN(value)) return `0.${'0'.repeat(decimals)}`;
-  return value.toFixed(decimals);
+export const formatNumber = (value: number | string | null | undefined, decimals = 2) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return `0.${'0'.repeat(decimals)}`;
+  return numeric.toFixed(decimals);
 };
 
 export const formatDate = (value?: string | Date | null) => {

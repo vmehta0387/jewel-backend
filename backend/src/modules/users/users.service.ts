@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
@@ -8,6 +14,8 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-employee.dto';
 import { CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
 
 export interface UserResponse {
@@ -225,6 +233,87 @@ export class UsersService {
     return this.findOne(id);
   }
 
+  async findBranchEmployees(requester: AuthUser): Promise<UserResponse[]> {
+    const scope = await this.resolveBranchEmployeeScope(requester);
+    const users = await this.userRepo.find({
+      where: {
+        role: UserRole.SALES_REP,
+        companyId: scope.companyId ?? null,
+        ...(scope.branchId ? { branchId: scope.branchId } : {}),
+      },
+      order: { createdAt: 'DESC' },
+      relations: ['company', 'branch'],
+    });
+
+    const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
+    return users.map((user) => this.toResponse(user, managedCompaniesMap.get(user.id) || []));
+  }
+
+  async createBranchEmployee(dto: CreateBranchEmployeeDto, requester: AuthUser): Promise<UserResponse> {
+    const scope = await this.resolveBranchEmployeeScope(requester, dto.branchId);
+
+    const payload: CreateUserDto = {
+      email: dto.email,
+      password: dto.password,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phone: dto.phone,
+      role: UserRole.SALES_REP,
+      companyId: scope.companyId ?? undefined,
+      branchId: scope.branchId ?? undefined,
+    };
+
+    return this.create(payload);
+  }
+
+  async updateBranchEmployee(
+    id: string,
+    dto: UpdateBranchEmployeeDto,
+    requester: AuthUser,
+  ): Promise<UserResponse> {
+    this.assertBranchEmployeeManagerAccess(requester);
+    const employee = await this.userRepo.findOne({ where: { id } });
+    if (!employee) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.assertEmployeeScopeMatch(employee, requester);
+
+    if (employee.role !== UserRole.SALES_REP) {
+      throw new ForbiddenException('Only sales reps can be managed from mobile');
+    }
+
+    const payload: UpdateUserDto = {
+      email: dto.email,
+      password: dto.password,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phone: dto.phone,
+    };
+
+    return this.update(id, payload);
+  }
+
+  async updateBranchEmployeeStatus(
+    id: string,
+    isActive: boolean,
+    requester: AuthUser,
+  ): Promise<UserResponse> {
+    this.assertBranchEmployeeManagerAccess(requester);
+    const employee = await this.userRepo.findOne({ where: { id } });
+    if (!employee) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.assertEmployeeScopeMatch(employee, requester);
+
+    if (employee.role !== UserRole.SALES_REP) {
+      throw new ForbiddenException('Only sales reps can be managed from mobile');
+    }
+
+    return this.updateStatus(id, isActive);
+  }
+
   private async resolveScope(
     role: UserRole,
     companyId?: string | null,
@@ -295,6 +384,91 @@ export class UsersService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  async findBranchEmployeeBranches(requester: AuthUser): Promise<{ id: string; name: string; code: string }[]> {
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (!requester.branchId) {
+        throw new ForbiddenException('Branch manager must be assigned to a branch');
+      }
+      const branch = await this.branchRepo.findOne({ where: { id: requester.branchId } });
+      if (!branch) {
+        throw new NotFoundException('Branch not found');
+      }
+      return [{ id: branch.id, name: branch.name, code: branch.code }];
+    }
+
+    if (requester.role !== UserRole.COMPANY_ADMIN) {
+      throw new ForbiddenException('Only company admins or branch managers can access branches');
+    }
+    if (!requester.companyId) {
+      throw new ForbiddenException('Company admin must be assigned to a company');
+    }
+    const branches = await this.branchRepo.find({
+      where: { companyId: requester.companyId, isActive: true },
+      order: { name: 'ASC' },
+    });
+    return branches.map((branch) => ({ id: branch.id, name: branch.name, code: branch.code }));
+  }
+
+  private assertBranchEmployeeManagerAccess(requester: AuthUser): void {
+    if (requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.COMPANY_ADMIN) {
+      throw new ForbiddenException('Only branch managers or company admins can manage branch employees');
+    }
+  }
+
+  private assertEmployeeScopeMatch(employee: User, requester: AuthUser): void {
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (!requester.branchId) {
+        throw new ForbiddenException('Branch manager must be assigned to a branch');
+      }
+      if (employee.branchId !== requester.branchId) {
+        throw new ForbiddenException('You can only manage employees in your branch');
+      }
+      return;
+    }
+
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new ForbiddenException('Company admin must be assigned to a company');
+      }
+      if (employee.companyId !== requester.companyId) {
+        throw new ForbiddenException('You can only manage employees in your company');
+      }
+    }
+  }
+
+  private async resolveBranchEmployeeScope(
+    requester: AuthUser,
+    branchId?: string,
+  ): Promise<{ companyId: string | null; branchId: string | null }> {
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (!requester.companyId || !requester.branchId) {
+        throw new ForbiddenException('Branch manager must be assigned to a company and branch');
+      }
+      return { companyId: requester.companyId, branchId: requester.branchId };
+    }
+
+    if (requester.role !== UserRole.COMPANY_ADMIN) {
+      throw new ForbiddenException('Only branch managers or company admins can manage branch employees');
+    }
+
+    if (!requester.companyId) {
+      throw new ForbiddenException('Company admin must be assigned to a company');
+    }
+
+    if (!branchId?.trim()) {
+      return { companyId: requester.companyId, branchId: null };
+    }
+
+    const branch = await this.branchRepo.findOne({ where: { id: branchId.trim() } });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+    if (branch.companyId !== requester.companyId) {
+      throw new ForbiddenException('Branch does not belong to your company');
+    }
+    return { companyId: requester.companyId, branchId: branch.id };
   }
 
   private async getManagedCompaniesMap(

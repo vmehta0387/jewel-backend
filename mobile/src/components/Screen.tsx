@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { SafeAreaView, StyleSheet, ViewStyle } from 'react-native';
+import { SafeAreaView, StyleSheet, ViewStyle } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 
 const Screen: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ children, style }) => (

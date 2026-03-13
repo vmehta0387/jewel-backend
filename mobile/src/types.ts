@@ -69,6 +69,27 @@ export type OrdersResponse = {
   totalPages: number;
 };
 
+export type BranchEmployee = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  phone?: string | null;
+  isActive: boolean;
+  branch?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+};
+
+export type BranchOption = {
+  id: string;
+  name: string;
+  code: string;
+};
+
 export type MasterOption = {
   id: string;
   value: string;

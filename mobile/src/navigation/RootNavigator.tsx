@@ -11,6 +11,8 @@ import DesignDetailScreen from '../screens/DesignDetailScreen';
 import FinalizeDesignScreen from '../screens/FinalizeDesignScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
+import BranchTeamScreen from '../screens/BranchTeamScreen';
+import type { UserRole } from '../types';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -67,7 +69,7 @@ const OrdersNavigator = () => (
   </OrdersStack.Navigator>
 );
 
-const AppTabs = () => (
+const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => (
   <Tabs.Navigator
     screenOptions={{
       headerShown: false,
@@ -78,6 +80,9 @@ const AppTabs = () => (
   >
     <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Designs' }} />
     <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
+    {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
+      <Tabs.Screen name="TeamTab" component={BranchTeamScreen} options={{ title: 'Team' }} />
+    ) : null}
   </Tabs.Navigator>
 );
 
@@ -88,7 +93,7 @@ const LoadingScreen = () => (
 );
 
 const RootNavigator = () => {
-  const { token, isLoading } = useAuth();
+  const { token, isLoading, user } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -98,7 +103,9 @@ const RootNavigator = () => {
     <NavigationContainer theme={navigationTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <RootStack.Screen name="App" component={AppTabs} />
+          <RootStack.Screen name="App">
+            {() => <AppTabs role={user?.role} />}
+          </RootStack.Screen>
         ) : (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
         )}

@@ -6,16 +6,22 @@ import Screen from '../components/Screen';
 import Card from '../components/Card';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { fetchOrders } from '../api/orders';
+import { fetchOrders, fetchOrderSummary } from '../api/orders';
 import type { Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
 import { formatCurrency, formatDate } from '../utils/format';
 
 const OrdersScreen = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<{
+    ordersReceivedToday: number;
+    ordersDueToday: number;
+    salesThisWeek: number;
+    activeOrders: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
@@ -23,14 +29,20 @@ const OrdersScreen = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchOrders(token);
+      const fullAccess = user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN';
+      const response = await fetchOrders(token, 1, 25, fullAccess ? 'ALL' : 'ACTIVE');
       setOrders(response.data || []);
+
+      if (fullAccess) {
+        const summaryData = await fetchOrderSummary(token);
+        setSummary(summaryData);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, user?.role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -44,6 +56,27 @@ const OrdersScreen = () => {
         <Text style={styles.title}>Orders</Text>
         <Text style={styles.subtitle}>Track recent orders and delivery schedule.</Text>
       </View>
+
+      {summary && user?.role === 'BRANCH_MANAGER' ? (
+        <View style={styles.summaryRow}>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Orders Received</Text>
+            <Text style={styles.summaryValue}>{summary.ordersReceivedToday}</Text>
+          </Card>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Due Today</Text>
+            <Text style={styles.summaryValue}>{summary.ordersDueToday}</Text>
+          </Card>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Sales This Week</Text>
+            <Text style={styles.summaryValue}>{formatCurrency(summary.salesThisWeek)}</Text>
+          </Card>
+          <Card style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Active Orders</Text>
+            <Text style={styles.summaryValue}>{summary.activeOrders}</Text>
+          </Card>
+        </View>
+      ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -83,6 +116,23 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 4,
     color: colors.textMuted,
+  },
+  summaryRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  summaryCard: {
+    marginBottom: spacing.sm,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  summaryValue: {
+    marginTop: spacing.xs,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
   },
   error: {
     color: colors.danger,
