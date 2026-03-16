@@ -1,9 +1,13 @@
-﻿import React, { useCallback, useState } from 'react';
+﻿import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
+import Button from '../components/Button';
+import SearchBar from '../components/SearchBar';
+import ScreenHeader from '../components/ScreenHeader';
+import StatCard from '../components/StatCard';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrders, fetchOrderSummary } from '../api/orders';
@@ -12,7 +16,7 @@ import type { OrdersStackParamList } from '../navigation/RootNavigator';
 import { formatCurrency, formatDate } from '../utils/format';
 
 const OrdersScreen = () => {
-  const { token, user } = useAuth();
+  const { token, user, signOut } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,13 +27,15 @@ const OrdersScreen = () => {
     activeOrders: number;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const fullAccess = user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN';
+      const fullAccess =
+        user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
       const response = await fetchOrders(token, 1, 25, fullAccess ? 'ALL' : 'ACTIVE');
       setOrders(response.data || []);
 
@@ -50,38 +56,45 @@ const OrdersScreen = () => {
     }, [loadOrders]),
   );
 
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return orders;
+    return orders.filter((order) =>
+      [order.orderNumber, order.designNo, order.companyName, order.branchName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [orders, search]);
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <Text style={styles.title}>Orders</Text>
-        <Text style={styles.subtitle}>Track recent orders and delivery schedule.</Text>
+      <ScreenHeader
+        title="Orders"
+        subtitle="Track open, past, and current orders."
+        rightSlot={<Button title="Sign Out" variant="ghost" onPress={signOut} />}
+      />
+
+      <View style={styles.searchWrapper}>
+        <SearchBar placeholder="Search order number, design, company" value={search} onChange={setSearch} />
       </View>
 
-      {summary && user?.role === 'BRANCH_MANAGER' ? (
-        <View style={styles.summaryRow}>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Orders Received</Text>
-            <Text style={styles.summaryValue}>{summary.ordersReceivedToday}</Text>
-          </Card>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Due Today</Text>
-            <Text style={styles.summaryValue}>{summary.ordersDueToday}</Text>
-          </Card>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Sales This Week</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(summary.salesThisWeek)}</Text>
-          </Card>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Active Orders</Text>
-            <Text style={styles.summaryValue}>{summary.activeOrders}</Text>
-          </Card>
+      {summary ? (
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryRow}>
+            <StatCard label="Orders Received" value={String(summary.ordersReceivedToday)} hint="Today" />
+            <StatCard label="Due Today" value={String(summary.ordersDueToday)} hint="Delivery" />
+          </View>
+          <View style={styles.summaryRow}>
+            <StatCard label="Sales This Week" value={formatCurrency(summary.salesThisWeek)} hint="Week to date" />
+            <StatCard label="Active Orders" value={String(summary.activeOrders)} hint="Pipeline" />
+          </View>
         </View>
       ) : null}
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
-        data={orders}
+        data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshing={loading}
@@ -89,12 +102,12 @@ const OrdersScreen = () => {
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}>
             <Card style={styles.card}>
-              <Text style={styles.orderNumber}>{item.orderNumber}</Text>
-              <Text style={styles.meta}>{item.designNo || 'Design'} • {item.status}</Text>
-              <View style={styles.row}>
-                <Text style={styles.meta}>{formatDate(item.deliveryDate)}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.orderNumber}>{item.orderNumber}</Text>
                 <Text style={styles.price}>{formatCurrency(item.price)}</Text>
               </View>
+              <Text style={styles.meta}>{item.designNo || 'Design'} • {item.status}</Text>
+              <Text style={styles.meta}>Delivery: {formatDate(item.deliveryDate)}</Text>
             </Card>
           </TouchableOpacity>
         )}
@@ -104,35 +117,18 @@ const OrdersScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    padding: spacing.lg,
+  searchWrapper: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    marginTop: 4,
-    color: colors.textMuted,
-  },
-  summaryRow: {
+  summaryGrid: {
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
-  summaryCard: {
-    marginBottom: spacing.sm,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  summaryValue: {
-    marginTop: spacing.xs,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+  summaryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   error: {
     color: colors.danger,
@@ -147,6 +143,11 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.md,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   orderNumber: {
     fontSize: 16,
     fontWeight: '700',
@@ -154,12 +155,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: colors.textMuted,
-    marginTop: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    marginTop: 6,
   },
   price: {
     fontWeight: '600',

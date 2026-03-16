@@ -1,11 +1,13 @@
 ﻿import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
-import SectionHeader from '../components/SectionHeader';
+import Button from '../components/Button';
+import ScreenHeader from '../components/ScreenHeader';
+import StatCard from '../components/StatCard';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrder, updateOrder } from '../api/orders';
@@ -73,7 +75,7 @@ const OrderDetailScreen = () => {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.container}>
-        <SectionHeader title={order.orderNumber} subtitle={order.designNo || 'Design'} />
+        <ScreenHeader title={order.orderNumber} subtitle={order.designNo || 'Design'} />
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Card>
@@ -90,23 +92,17 @@ const OrderDetailScreen = () => {
           </View>
           <View style={styles.row}>
             <View style={styles.infoBlock}>
-              <Text style={styles.label}>Status</Text>
-              <Text style={styles.value}>{order.status}</Text>
-            </View>
-            <View style={styles.infoBlock}>
               <Text style={styles.label}>Created</Text>
               <Text style={styles.value}>{formatDate(order.createdAt)}</Text>
             </View>
-          </View>
-          <View style={styles.row}>
             <View style={styles.infoBlock}>
               <Text style={styles.label}>Delivery</Text>
               <Text style={styles.value}>{formatDate(order.deliveryDate)}</Text>
             </View>
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>Total</Text>
-              <Text style={styles.value}>{formatCurrency(order.price)}</Text>
-            </View>
+          </View>
+          <View style={styles.statRow}>
+            <StatCard label="Status" value={order.status || '-'} />
+            <StatCard label="Total" value={formatCurrency(order.price)} />
           </View>
         </Card>
 
@@ -130,9 +126,7 @@ const OrderDetailScreen = () => {
               onChangeText={setDeliveryDate}
             />
 
-            <TouchableOpacity style={styles.primaryButton} onPress={handleUpdate} disabled={saving}>
-              <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : 'Update Order'}</Text>
-            </TouchableOpacity>
+            <Button title={saving ? 'Saving...' : 'Update Order'} onPress={handleUpdate} disabled={saving} />
           </Card>
         ) : null}
       </ScrollView>
@@ -166,6 +160,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: spacing.sm,
   },
+  statRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
   infoBlock: {
     width: '47%',
   },
@@ -198,17 +197,6 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     marginTop: spacing.xs,
     backgroundColor: '#fff',
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    marginTop: spacing.md,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
   },
 });
 

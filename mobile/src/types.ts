@@ -88,6 +88,14 @@ export type BranchOption = {
   id: string;
   name: string;
   code: string;
+  streetAddress?: string | null;
+  streetAddress2?: string | null;
+  city?: string | null;
+  stateProvince?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  email?: string | null;
+  phone?: string | null;
 };
 
 export type MasterOption = {

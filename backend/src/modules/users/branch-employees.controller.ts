@@ -12,27 +12,30 @@ import {
 } from './dto/branch-employee.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
 @Controller('branch-employees')
 export class BranchEmployeesController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('branches')
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN, UserRole.SALES_REP)
   findBranches(@Request() req: { user: AuthUser }) {
     return this.usersService.findBranchEmployeeBranches(req.user);
   }
 
   @Get()
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   findAll(@Request() req: { user: AuthUser }) {
     return this.usersService.findBranchEmployees(req.user);
   }
 
   @Post()
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   create(@Body() dto: CreateBranchEmployeeDto, @Request() req: { user: AuthUser }) {
     return this.usersService.createBranchEmployee(dto, req.user);
   }
 
   @Patch(':id')
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   update(
     @Param('id') id: string,
     @Body() dto: UpdateBranchEmployeeDto,
@@ -42,6 +45,7 @@ export class BranchEmployeesController {
   }
 
   @Patch(':id/status')
+  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateBranchEmployeeStatusDto,

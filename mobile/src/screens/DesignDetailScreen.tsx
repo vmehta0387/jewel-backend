@@ -1,11 +1,12 @@
 ﻿import React, { useCallback, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Image } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
-import SectionHeader from '../components/SectionHeader';
+import Button from '../components/Button';
+import ScreenHeader from '../components/ScreenHeader';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesign } from '../api/designs';
@@ -48,7 +49,10 @@ const DesignDetailScreen = () => {
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.container}>
-        <SectionHeader title={design.designNo} subtitle={design.jewelryGroup} />
+        <ScreenHeader
+          title={design.designNo}
+          subtitle={`${design.jewelryGroup || 'Design'} • ${design.jewelrySize || 'Size N/A'}`}
+        />
 
         <Card style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>Design Summary</Text>
@@ -56,10 +60,6 @@ const DesignDetailScreen = () => {
             <View style={styles.gridItem}>
               <Text style={styles.label}>Metal</Text>
               <Text style={styles.value}>{design.goldColour || '—'}</Text>
-            </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Size</Text>
-              <Text style={styles.value}>{design.jewelrySize || '—'}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Diamond Spread</Text>
@@ -71,11 +71,15 @@ const DesignDetailScreen = () => {
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Gross Wt</Text>
-              <Text style={styles.value}>{formatNumber(design.grossWeight || 0, 3)}</Text>
+              <Text style={styles.value}>{formatNumber(design.grossWeight || 0, 3)} g</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Total Value</Text>
               <Text style={styles.value}>{formatCurrency(design.totalValue || 0)}</Text>
+            </View>
+            <View style={styles.gridItem}>
+              <Text style={styles.label}>Status</Text>
+              <Text style={styles.value}>{design.designStatus || '—'}</Text>
             </View>
           </View>
         </Card>
@@ -93,12 +97,10 @@ const DesignDetailScreen = () => {
           )}
         </Card>
 
-        <TouchableOpacity
-          style={styles.primaryButton}
+        <Button
+          title="Finalize Design"
           onPress={() => navigation.navigate('FinalizeDesign', { designId: design.id })}
-        >
-          <Text style={styles.primaryButtonText}>Finalize Design</Text>
-        </TouchableOpacity>
+        />
       </ScrollView>
     </Screen>
   );
@@ -151,16 +153,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginRight: spacing.sm,
     backgroundColor: colors.border,
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
   },
 });
 

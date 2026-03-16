@@ -4,7 +4,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
@@ -13,7 +12,9 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
-import SectionHeader from '../components/SectionHeader';
+import Button from '../components/Button';
+import ScreenHeader from '../components/ScreenHeader';
+import StatCard from '../components/StatCard';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesign } from '../api/designs';
@@ -44,6 +45,8 @@ const FinalizeDesignScreen = () => {
   const [selectedMetalKarat, setSelectedMetalKarat] = useState('');
   const [selectedMetalColor, setSelectedMetalColor] = useState('');
   const [selectedRingSize, setSelectedRingSize] = useState('');
+  const steps = ['Metal', 'Stone', 'Review'];
+  const [step, setStep] = useState(0);
 
   const loadDesign = useCallback(async () => {
     if (!token) return;
@@ -92,6 +95,9 @@ const FinalizeDesignScreen = () => {
     const meleeCt = design.gemstones?.reduce((sum, gem) => sum + Number(gem.wtInCts || 0), 0) || 0;
     return { polishedWt, meleeCt };
   }, [design]);
+
+  const goNext = () => setStep((current) => Math.min(current + 1, steps.length - 1));
+  const goBack = () => setStep((current) => Math.max(current - 1, 0));
 
   const handleCreateOrder = async () => {
     if (!token || !design) return;
@@ -145,115 +151,188 @@ const FinalizeDesignScreen = () => {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.container}>
-        <SectionHeader title="Finalize Design" subtitle={design.designNo} />
+        <ScrollView contentContainerStyle={styles.container}>
+          <ScreenHeader title="Finalize Design" subtitle={design.designNo} />
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <View style={styles.summaryRow}>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Estimated Shipping</Text>
-            <TextInput
-              style={styles.summaryInput}
-              placeholder="dd-mm-yyyy"
-              value={deliveryDate}
-              onChangeText={setDeliveryDate}
-            />
-          </Card>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Polished Wt</Text>
-            <Text style={styles.summaryValue}>{formatNumber(derived.polishedWt, 3)} g</Text>
-          </Card>
-        </View>
-        <View style={styles.summaryRow}>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Melee CT</Text>
-            <Text style={styles.summaryValue}>{formatNumber(derived.meleeCt, 3)} ct</Text>
-          </Card>
-          <Card style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total Price</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(design.totalValue || 0)}</Text>
-          </Card>
-        </View>
-
-        <Card>
-          <Text style={styles.sectionTitle}>Selections</Text>
-
-          <Text style={styles.fieldLabel}>Stone Shape</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedStoneShape} onValueChange={setSelectedStoneShape}>
-              {selectedStoneShape ? null : <Picker.Item label="Select" value="" />}
-              {uniqueValues(design.gemstones?.map((gem) => gem.shape) || []).map((shape) => (
-                <Picker.Item key={shape} label={shape} value={shape} />
-              ))}
-            </Picker>
+          <View style={styles.stepper}>
+            {steps.map((label, index) => (
+              <View key={label} style={[styles.stepChip, index <= step ? styles.stepChipActive : null]}>
+                <Text style={[styles.stepChipText, index <= step ? styles.stepChipTextActive : null]}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${((step + 1) / steps.length) * 100}%` }]} />
           </View>
 
-          <Text style={styles.fieldLabel}>Stone Spread</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedStoneSpread} onValueChange={setSelectedStoneSpread}>
-              {design.diamondSpread ? (
-                <Picker.Item label={design.diamondSpread} value={design.diamondSpread} />
-              ) : (
-                <Picker.Item label="Select" value="" />
-              )}
-            </Picker>
+          {step === 0 ? (
+            <Card>
+              <Text style={styles.sectionTitle}>Step 1: Select Metal</Text>
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Metal Karat</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedMetalKarat} onValueChange={setSelectedMetalKarat}>
+                      {selectedMetalKarat ? null : <Picker.Item label="Select" value="" />}
+                      {uniqueValues(
+                        design.metals?.map((metal) => metal.metalCaratage || metal.goldColour || null) || [],
+                      ).map((karat) => (
+                        <Picker.Item key={karat} label={karat} value={karat} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Metal Color</Text>
+                  <TextInput style={styles.input} value={selectedMetalColor} onChangeText={setSelectedMetalColor} />
+                </View>
+              </View>
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Ring Size</Text>
+                  <TextInput style={styles.input} value={selectedRingSize} onChangeText={setSelectedRingSize} />
+                </View>
+              </View>
+            </Card>
+          ) : null}
+
+          {step === 1 ? (
+            <Card>
+              <Text style={styles.sectionTitle}>Step 2: Stone Details</Text>
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Stone Shape</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedStoneShape} onValueChange={setSelectedStoneShape}>
+                      {selectedStoneShape ? null : <Picker.Item label="Select" value="" />}
+                      {uniqueValues(design.gemstones?.map((gem) => gem.shape) || []).map((shape) => (
+                        <Picker.Item key={shape} label={shape} value={shape} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Stone Spread</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedStoneSpread} onValueChange={setSelectedStoneSpread}>
+                      {design.diamondSpread ? (
+                        <Picker.Item label={design.diamondSpread} value={design.diamondSpread} />
+                      ) : (
+                        <Picker.Item label="Select" value="" />
+                      )}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Setting Type</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedSettingType} onValueChange={setSelectedSettingType}>
+                      {selectedSettingType ? null : <Picker.Item label="Select" value="" />}
+                      {uniqueValues(design.gemstones?.map((gem) => gem.stoneType) || []).map((setting) => (
+                        <Picker.Item key={setting} label={setting} value={setting} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Carat Weight</Text>
+                  <TextInput style={styles.input} value={selectedCaratWeight} editable={false} />
+                </View>
+              </View>
+
+              <View style={styles.fieldRow}>
+                <View style={[styles.fieldBlock, styles.half]}>
+                  <Text style={styles.fieldLabel}>Diamond Quality</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker selectedValue={selectedQuality} onValueChange={setSelectedQuality}>
+                      {selectedQuality ? null : <Picker.Item label="Select" value="" />}
+                      {uniqueValues(design.gemstones?.map((gem) => gem.quality) || []).map((quality) => (
+                        <Picker.Item key={quality} label={quality} value={quality} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+            </Card>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <Card>
+                <Text style={styles.sectionTitle}>Step 3: Review</Text>
+                <View style={styles.fieldRow}>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Estimated Shipping</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="dd-mm-yyyy"
+                      value={deliveryDate}
+                      onChangeText={setDeliveryDate}
+                    />
+                  </View>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Quantity</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={quantity}
+                      onChangeText={setQuantity}
+                      keyboardType="number-pad"
+                    />
+                  </View>
+                </View>
+                <View style={styles.fieldRow}>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Selected Metal</Text>
+                    <Text style={styles.reviewValue}>{selectedMetalKarat || '—'} {selectedMetalColor || ''}</Text>
+                  </View>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Ring Size</Text>
+                    <Text style={styles.reviewValue}>{selectedRingSize || '—'}</Text>
+                  </View>
+                </View>
+                <View style={styles.fieldRow}>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Stone</Text>
+                    <Text style={styles.reviewValue}>{selectedStoneShape || '—'} • {selectedQuality || '—'}</Text>
+                  </View>
+                  <View style={[styles.fieldBlock, styles.half]}>
+                    <Text style={styles.fieldLabel}>Spread</Text>
+                    <Text style={styles.reviewValue}>{selectedStoneSpread || '—'}</Text>
+                  </View>
+                </View>
+              </Card>
+
+              <Card>
+                <Text style={styles.sectionTitle}>Summary</Text>
+                <View style={styles.statsRow}>
+                  <StatCard label="Polished Wt" value={`${formatNumber(derived.polishedWt, 3)} g`} />
+                  <StatCard label="Melee CT" value={`${formatNumber(derived.meleeCt, 3)} ct`} />
+                </View>
+                <View style={styles.statsRow}>
+                  <StatCard label="Total Price" value={formatCurrency(design.totalValue || 0)} />
+                </View>
+              </Card>
+            </>
+          ) : null}
+
+          <View style={styles.stepActions}>
+            {step > 0 ? (
+              <Button title="Back" variant="ghost" onPress={goBack} style={styles.actionButton} />
+            ) : null}
+            {step < steps.length - 1 ? (
+              <Button title="Next" onPress={goNext} style={styles.actionButton} />
+            ) : (
+              <Button title={saving ? 'Saving...' : 'Create Order'} onPress={handleCreateOrder} disabled={saving} style={styles.actionButton} />
+            )}
           </View>
-
-          <Text style={styles.fieldLabel}>Setting Type</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedSettingType} onValueChange={setSelectedSettingType}>
-              {selectedSettingType ? null : <Picker.Item label="Select" value="" />}
-              {uniqueValues(design.gemstones?.map((gem) => gem.stoneType) || []).map((setting) => (
-                <Picker.Item key={setting} label={setting} value={setting} />
-              ))}
-            </Picker>
-          </View>
-
-          <Text style={styles.fieldLabel}>Carat Weight</Text>
-          <TextInput style={styles.input} value={selectedCaratWeight} editable={false} />
-
-          <Text style={styles.fieldLabel}>Diamond Quality</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedQuality} onValueChange={setSelectedQuality}>
-              {selectedQuality ? null : <Picker.Item label="Select" value="" />}
-              {uniqueValues(design.gemstones?.map((gem) => gem.quality) || []).map((quality) => (
-                <Picker.Item key={quality} label={quality} value={quality} />
-              ))}
-            </Picker>
-          </View>
-
-          <Text style={styles.fieldLabel}>Metal Karat</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker selectedValue={selectedMetalKarat} onValueChange={setSelectedMetalKarat}>
-              {selectedMetalKarat ? null : <Picker.Item label="Select" value="" />}
-              {uniqueValues(
-                design.metals?.map((metal) => metal.metalCaratage || metal.goldColour || null) || [],
-              ).map((karat) => (
-                <Picker.Item key={karat} label={karat} value={karat} />
-              ))}
-            </Picker>
-          </View>
-
-          <Text style={styles.fieldLabel}>Metal Color</Text>
-          <TextInput style={styles.input} value={selectedMetalColor} onChangeText={setSelectedMetalColor} />
-
-          <Text style={styles.fieldLabel}>Ring Size</Text>
-          <TextInput style={styles.input} value={selectedRingSize} onChangeText={setSelectedRingSize} />
-
-          <Text style={styles.fieldLabel}>Quantity</Text>
-          <TextInput
-            style={styles.input}
-            value={quantity}
-            onChangeText={setQuantity}
-            keyboardType="number-pad"
-          />
-        </Card>
-
-        <TouchableOpacity style={styles.primaryButton} onPress={handleCreateOrder} disabled={saving}>
-          <Text style={styles.primaryButtonText}>{saving ? 'Saving...' : 'Create Order'}</Text>
-        </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
     </Screen>
   );
 };
@@ -273,30 +352,41 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
   },
-  summaryRow: {
+  stepper: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
-  summaryCard: {
+  stepChip: {
     flex: 1,
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  summaryValue: {
-    marginTop: spacing.xs,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  summaryInput: {
-    marginTop: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
-    padding: spacing.sm,
+    borderRadius: 999,
+    paddingVertical: 6,
+    alignItems: 'center',
     backgroundColor: '#fff',
+  },
+  stepChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accent,
+  },
+  stepChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  stepChipTextActive: {
+    color: colors.primaryDark,
+  },
+  progressTrack: {
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: spacing.xs,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
   },
   sectionTitle: {
     fontSize: 15,
@@ -304,10 +394,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     color: colors.text,
   },
+  fieldRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  fieldBlock: {
+    marginBottom: spacing.sm,
+  },
+  half: {
+    flex: 1,
+  },
   fieldLabel: {
-    marginTop: spacing.sm,
     fontSize: 12,
     color: colors.textMuted,
+    marginBottom: 4,
   },
   pickerWrapper: {
     borderWidth: 1,
@@ -322,18 +422,25 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.md,
     padding: spacing.sm,
-    marginTop: spacing.xs,
     backgroundColor: '#fff',
   },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
+  reviewValue: {
+    marginTop: 2,
+    fontSize: 14,
     fontWeight: '600',
+    color: colors.text,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  stepActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  actionButton: {
+    flex: 1,
   },
 });
 

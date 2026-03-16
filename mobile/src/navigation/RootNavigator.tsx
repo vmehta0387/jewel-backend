@@ -2,7 +2,9 @@
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
@@ -12,6 +14,8 @@ import FinalizeDesignScreen from '../screens/FinalizeDesignScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
+import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
+import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import type { UserRole } from '../types';
 
 export type RootStackParamList = {
@@ -30,10 +34,16 @@ export type OrdersStackParamList = {
   OrderDetail: { orderId: string };
 };
 
+export type TeamStackParamList = {
+  TeamList: undefined;
+  BranchEmployeeForm: { mode: 'create' } | { mode: 'edit'; employeeId: string };
+};
+
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator();
 const DesignsStack = createNativeStackNavigator<DesignsStackParamList>();
 const OrdersStack = createNativeStackNavigator<OrdersStackParamList>();
+const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
 
 const navigationTheme = {
@@ -55,7 +65,7 @@ const AuthNavigator = () => (
 );
 
 const DesignsNavigator = () => (
-  <DesignsStack.Navigator>
+  <DesignsStack.Navigator screenOptions={{ headerShown: false }}>
     <DesignsStack.Screen name="Designs" component={DesignsScreen} options={{ title: 'Designs' }} />
     <DesignsStack.Screen name="DesignDetail" component={DesignDetailScreen} options={{ title: 'Design Detail' }} />
     <DesignsStack.Screen name="FinalizeDesign" component={FinalizeDesignScreen} options={{ title: 'Finalize Design' }} />
@@ -63,28 +73,83 @@ const DesignsNavigator = () => (
 );
 
 const OrdersNavigator = () => (
-  <OrdersStack.Navigator>
+  <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
     <OrdersStack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Orders' }} />
     <OrdersStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Detail' }} />
   </OrdersStack.Navigator>
 );
 
-const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => (
-  <Tabs.Navigator
-    screenOptions={{
+const TeamNavigator = () => (
+  <TeamStack.Navigator screenOptions={{ headerShown: false }}>
+    <TeamStack.Screen name="TeamList" component={BranchTeamScreen} options={{ title: 'Team' }} />
+    <TeamStack.Screen name="BranchEmployeeForm" component={BranchEmployeeFormScreen} options={{ title: 'Employee' }} />
+  </TeamStack.Navigator>
+);
+
+const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Tabs.Navigator
+      screenOptions={({ route }) => ({
       headerShown: false,
-      tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+      tabBarStyle: {
+        backgroundColor: colors.card,
+        borderTopColor: colors.border,
+        borderTopWidth: 1,
+        height: 60 + insets.bottom,
+        paddingBottom: 8 + insets.bottom,
+        paddingTop: 6,
+        marginHorizontal: 0,
+        marginBottom: 0,
+        borderRadius: 0,
+      },
+      tabBarItemStyle: {
+        paddingVertical: 2,
+      },
+      tabBarLabelStyle: {
+        fontSize: 10,
+        fontWeight: '600',
+        marginTop: 2,
+        lineHeight: 12,
+      },
       tabBarActiveTintColor: colors.primaryDark,
       tabBarInactiveTintColor: colors.textMuted,
-    }}
-  >
+      tabBarIcon: ({ color, size, focused }) => {
+        const iconSize = size ? Math.max(18, size - 2) : 19;
+        const name = (() => {
+          switch (route.name) {
+            case 'DashboardTab':
+              return focused ? 'grid' : 'grid-outline';
+            case 'DesignsTab':
+              return focused ? 'diamond' : 'diamond-outline';
+            case 'OrdersTab':
+              return focused ? 'receipt' : 'receipt-outline';
+            case 'TeamTab':
+              return focused ? 'people' : 'people-outline';
+            default:
+              return 'grid-outline';
+          }
+        })();
+        return (
+          <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
+            <Ionicons name={name} size={iconSize} color={color} />
+          </View>
+        );
+      },
+      })}
+    >
+    {role === 'BRANCH_MANAGER' || role === 'SALES_REP' ? (
+      <Tabs.Screen name="DashboardTab" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
+    ) : null}
     <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Designs' }} />
     <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
     {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
-      <Tabs.Screen name="TeamTab" component={BranchTeamScreen} options={{ title: 'Team' }} />
+      <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />
     ) : null}
-  </Tabs.Navigator>
-);
+    </Tabs.Navigator>
+  );
+};
 
 const LoadingScreen = () => (
   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -115,3 +180,16 @@ const RootNavigator = () => {
 };
 
 export default RootNavigator;
+
+const styles = StyleSheet.create({
+  tabIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconActive: {
+    backgroundColor: colors.accent,
+  },
+});

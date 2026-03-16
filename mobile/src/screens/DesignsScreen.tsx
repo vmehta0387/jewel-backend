@@ -1,8 +1,11 @@
-﻿import React, { useCallback, useState } from 'react';
+﻿import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
+import Button from '../components/Button';
+import SearchBar from '../components/SearchBar';
+import ScreenHeader from '../components/ScreenHeader';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesigns } from '../api/designs';
@@ -12,11 +15,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatCurrency } from '../utils/format';
 
 const DesignsScreen = () => {
-  const { token } = useAuth();
+  const { token, signOut } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const loadDesigns = useCallback(async () => {
     if (!token) return;
@@ -38,17 +42,32 @@ const DesignsScreen = () => {
     }, [loadDesigns]),
   );
 
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return designs;
+    return designs.filter((design) =>
+      [design.designNo, design.jewelryGroup, design.jewelrySize]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)),
+    );
+  }, [designs, search]);
+
   return (
     <Screen>
-      <View style={styles.header}>
-        <Text style={styles.title}>Available Designs</Text>
-        <Text style={styles.subtitle}>Select a design to finalize with the customer.</Text>
+      <ScreenHeader
+        title="Designs"
+        subtitle="Select a design to finalize with the customer."
+        rightSlot={<Button title="Sign Out" variant="ghost" onPress={signOut} />}
+      />
+
+      <View style={styles.searchWrapper}>
+        <SearchBar placeholder="Search design number, group, size" value={search} onChange={setSearch} />
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
-        data={designs}
+        data={filtered}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshing={loading}
@@ -58,12 +77,12 @@ const DesignsScreen = () => {
             onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
           >
             <Card style={styles.card}>
-              <Text style={styles.designNo}>{item.designNo}</Text>
-              <Text style={styles.meta}>{item.jewelryGroup}</Text>
-              <View style={styles.row}>
-                <Text style={styles.meta}>{item.jewelrySize || '-'}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.designNo}>{item.designNo}</Text>
                 <Text style={styles.price}>{formatCurrency(item.totalValue || 0)}</Text>
               </View>
+              <Text style={styles.meta}>{item.jewelryGroup}</Text>
+              <Text style={styles.meta}>Size: {item.jewelrySize || '-'}</Text>
             </Card>
           </TouchableOpacity>
         )}
@@ -73,18 +92,9 @@ const DesignsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    padding: spacing.lg,
+  searchWrapper: {
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  subtitle: {
-    marginTop: 4,
-    color: colors.textMuted,
   },
   error: {
     color: colors.danger,
@@ -99,6 +109,11 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.md,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   designNo: {
     fontSize: 16,
     fontWeight: '700',
@@ -106,12 +121,7 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: colors.textMuted,
-    marginTop: 4,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
+    marginTop: 6,
   },
   price: {
     fontWeight: '600',

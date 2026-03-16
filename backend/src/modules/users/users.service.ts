@@ -386,21 +386,51 @@ export class UsersService {
     return email.trim().toLowerCase();
   }
 
-  async findBranchEmployeeBranches(requester: AuthUser): Promise<{ id: string; name: string; code: string }[]> {
-    if (requester.role === UserRole.BRANCH_MANAGER) {
-      if (!requester.branchId) {
-        throw new ForbiddenException('Branch manager must be assigned to a branch');
-      }
-      const branch = await this.branchRepo.findOne({ where: { id: requester.branchId } });
-      if (!branch) {
-        throw new NotFoundException('Branch not found');
-      }
-      return [{ id: branch.id, name: branch.name, code: branch.code }];
+  async findBranchEmployeeBranches(
+    requester: AuthUser,
+  ): Promise<
+    {
+      id: string;
+      name: string;
+      code: string;
+      streetAddress?: string | null;
+      streetAddress2?: string | null;
+      city?: string | null;
+      stateProvince?: string | null;
+      postalCode?: string | null;
+      country?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    }[]
+  > {
+      if (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) {
+        if (!requester.branchId) {
+          throw new ForbiddenException('User must be assigned to a branch');
+        }
+        const branch = await this.branchRepo.findOne({ where: { id: requester.branchId } });
+        if (!branch) {
+          throw new NotFoundException('Branch not found');
+        }
+        return [
+        {
+          id: branch.id,
+          name: branch.name,
+          code: branch.code,
+          streetAddress: branch.streetAddress,
+          streetAddress2: branch.streetAddress2,
+          city: branch.city,
+          stateProvince: branch.stateProvince,
+          postalCode: branch.postalCode,
+          country: branch.country,
+          email: branch.email,
+          phone: branch.phone,
+        },
+      ];
     }
 
-    if (requester.role !== UserRole.COMPANY_ADMIN) {
-      throw new ForbiddenException('Only company admins or branch managers can access branches');
-    }
+      if (requester.role !== UserRole.COMPANY_ADMIN) {
+        throw new ForbiddenException('Only company admins, branch managers, or sales reps can access branches');
+      }
     if (!requester.companyId) {
       throw new ForbiddenException('Company admin must be assigned to a company');
     }
@@ -408,7 +438,19 @@ export class UsersService {
       where: { companyId: requester.companyId, isActive: true },
       order: { name: 'ASC' },
     });
-    return branches.map((branch) => ({ id: branch.id, name: branch.name, code: branch.code }));
+    return branches.map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      code: branch.code,
+      streetAddress: branch.streetAddress,
+      streetAddress2: branch.streetAddress2,
+      city: branch.city,
+      stateProvince: branch.stateProvince,
+      postalCode: branch.postalCode,
+      country: branch.country,
+      email: branch.email,
+      phone: branch.phone,
+    }));
   }
 
   private assertBranchEmployeeManagerAccess(requester: AuthUser): void {
