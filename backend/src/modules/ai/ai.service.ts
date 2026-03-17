@@ -157,13 +157,13 @@ export class AiService {
     };
   }
 
-  private async getFetcher() {
+  private async getFetcher(): Promise<(url: string, init?: any) => Promise<any>> {
     if (typeof fetch !== 'undefined') {
-      return fetch;
+      return fetch as unknown as (url: string, init?: any) => Promise<any>;
     }
     try {
       const mod = await import('node-fetch');
-      return mod.default as typeof fetch;
+      return mod.default as unknown as (url: string, init?: any) => Promise<any>;
     } catch {
       throw new BadRequestException('Fetch API not available on server runtime');
     }
