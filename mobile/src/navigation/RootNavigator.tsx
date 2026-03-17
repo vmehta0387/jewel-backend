@@ -16,6 +16,7 @@ import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
 import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
+import AiChatScreen from '../screens/AiChatScreen';
 import type { UserRole } from '../types';
 
 export type RootStackParamList = {
@@ -125,6 +126,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
               return focused ? 'diamond' : 'diamond-outline';
             case 'OrdersTab':
               return focused ? 'receipt' : 'receipt-outline';
+            case 'AiTab':
+              return focused ? 'sparkles' : 'sparkles-outline';
             case 'TeamTab':
               return focused ? 'people' : 'people-outline';
             default:
@@ -144,6 +147,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
     ) : null}
     <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Designs' }} />
     <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
+    <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI' }} />
     {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
       <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />
     ) : null}

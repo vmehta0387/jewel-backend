@@ -1,16 +1,27 @@
-﻿import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import type { AuthUser } from '../types';
 import { login as loginApi, me as meApi } from '../api/auth';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
+const BIOMETRIC_KEY = 'auth_biometric_enabled';
+const BIOMETRIC_PROMPTED_KEY = 'auth_biometric_prompted';
+const SECURE_TOKEN_KEY = 'auth_secure_token';
 
 type AuthContextValue = {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
+  biometricAvailable: boolean;
+  biometricEnabled: boolean;
+  biometricRequired: boolean;
+  biometricPrompted: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  biometricSignIn: () => Promise<void>;
+  setBiometricPreference: (enabled: boolean) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -21,12 +32,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricRequired, setBiometricRequired] = useState(false);
+  const [biometricPrompted, setBiometricPrompted] = useState(false);
+
+  const checkBiometricAvailable = useCallback(async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      if (!hasHardware) return false;
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      return enrolled;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const loadStored = useCallback(async () => {
     setIsLoading(true);
     try {
       const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
       const storedUser = await AsyncStorage.getItem(USER_KEY);
+      const biometricFlag = await AsyncStorage.getItem(BIOMETRIC_KEY);
+      const biometricPromptedFlag = await AsyncStorage.getItem(BIOMETRIC_PROMPTED_KEY);
+      const available = await checkBiometricAvailable();
+      const biometricOn = biometricFlag === 'true' && available;
+      setBiometricAvailable(available);
+      setBiometricPrompted(biometricPromptedFlag === 'true');
+
+      if (biometricOn) {
+        const secureToken = await SecureStore.getItemAsync(SECURE_TOKEN_KEY);
+        if (secureToken) {
+          setBiometricEnabled(true);
+          setBiometricRequired(true);
+          return;
+        }
+        await AsyncStorage.removeItem(BIOMETRIC_KEY);
+        await AsyncStorage.removeItem(BIOMETRIC_PROMPTED_KEY);
+        setBiometricEnabled(false);
+        setBiometricPrompted(false);
+      } else {
+        setBiometricEnabled(false);
+      }
+
       if (storedToken) {
         setToken(storedToken);
         if (storedUser) {
@@ -40,26 +88,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [checkBiometricAvailable]);
 
   useEffect(() => {
     loadStored();
   }, [loadStored]);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const response = await loginApi(email, password);
-    setToken(response.accessToken);
-    setUser(response.user);
-    await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
-    await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
-  }, []);
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const response = await loginApi(email, password);
+      setToken(response.accessToken);
+      setUser(response.user);
+      await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+
+      const available = await checkBiometricAvailable();
+      setBiometricAvailable(available);
+    },
+    [checkBiometricAvailable],
+  );
+
+  const setBiometricPreference = useCallback(async (enabled: boolean) => {
+    setBiometricPrompted(true);
+    await AsyncStorage.setItem(BIOMETRIC_PROMPTED_KEY, 'true');
+    if (!enabled) {
+      setBiometricEnabled(false);
+      await AsyncStorage.removeItem(BIOMETRIC_KEY);
+      await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+      return;
+    }
+    const currentToken = token || (await AsyncStorage.getItem(TOKEN_KEY));
+    if (!currentToken) {
+      setBiometricEnabled(false);
+      await AsyncStorage.removeItem(BIOMETRIC_KEY);
+      return;
+    }
+    await SecureStore.setItemAsync(SECURE_TOKEN_KEY, currentToken);
+    await AsyncStorage.setItem(BIOMETRIC_KEY, 'true');
+    setBiometricEnabled(true);
+  }, [token]);
+
+  const biometricSignIn = useCallback(async () => {
+    const enabledFlag = await AsyncStorage.getItem(BIOMETRIC_KEY);
+    if (enabledFlag !== 'true') {
+      throw new Error('Biometric login not enabled');
+    }
+    const available = await checkBiometricAvailable();
+    setBiometricAvailable(available);
+    if (!available) {
+      throw new Error('Biometric authentication not available');
+    }
+    const storedToken = await SecureStore.getItemAsync(SECURE_TOKEN_KEY);
+    if (!storedToken) {
+      await AsyncStorage.removeItem(BIOMETRIC_KEY);
+      await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+      setBiometricEnabled(false);
+      setBiometricPrompted(false);
+      throw new Error('Please sign in once to enable biometrics');
+    }
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Unlock with biometrics',
+      cancelLabel: 'Cancel',
+      fallbackLabel: 'Use password',
+    });
+    if (!result.success) {
+      throw new Error('Biometric authentication cancelled');
+    }
+    const me = await meApi(storedToken);
+    setUser(me);
+    await AsyncStorage.setItem(TOKEN_KEY, storedToken);
+    await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
+    setToken(storedToken);
+    setBiometricRequired(false);
+  }, [checkBiometricAvailable]);
 
   const signOut = useCallback(async () => {
     setUser(null);
     setToken(null);
+    setBiometricRequired(biometricEnabled);
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(USER_KEY);
-  }, []);
+  }, [biometricEnabled]);
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -69,8 +178,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token]);
 
   const value = useMemo(
-    () => ({ user, token, isLoading, signIn, signOut, refresh }),
-    [user, token, isLoading, signIn, signOut, refresh],
+    () => ({
+      user,
+      token,
+      isLoading,
+      biometricAvailable,
+      biometricEnabled,
+      biometricRequired,
+      biometricPrompted,
+      signIn,
+      biometricSignIn,
+      setBiometricPreference,
+      signOut,
+      refresh,
+    }),
+    [
+      user,
+      token,
+      isLoading,
+      biometricAvailable,
+      biometricEnabled,
+      biometricRequired,
+      biometricPrompted,
+      signIn,
+      biometricSignIn,
+      setBiometricPreference,
+      signOut,
+      refresh,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

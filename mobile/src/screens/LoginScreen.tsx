@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
@@ -7,12 +7,20 @@ import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = () => {
-  const { signIn } = useAuth();
+  const {
+    signIn,
+    biometricAvailable,
+    biometricEnabled,
+    biometricRequired,
+    biometricPrompted,
+    biometricSignIn,
+    setBiometricPreference,
+  } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
@@ -20,10 +28,32 @@ const LoginScreen = () => {
     setLoading(true);
     try {
       await signIn(email.trim(), password);
+      if (biometricAvailable && !biometricEnabled && !biometricPrompted) {
+        Alert.alert(
+          'Enable biometrics?',
+          'Use Face ID or fingerprint for faster sign-in on this device.',
+          [
+            { text: 'Not now', style: 'cancel', onPress: () => setBiometricPreference(false) },
+            { text: 'Enable', onPress: () => setBiometricPreference(true) },
+          ],
+        );
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to sign in');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometric = async () => {
+    setError(null);
+    setBiometricLoading(true);
+    try {
+      await biometricSignIn();
+    } catch (err: any) {
+      setError(err?.message || 'Biometric login failed');
+    } finally {
+      setBiometricLoading(false);
     }
   };
 
@@ -38,54 +68,54 @@ const LoginScreen = () => {
       <View style={styles.content}>
         <View style={styles.frame}>
           <View style={styles.card}>
-          <View style={styles.brandRow}>
-            <View style={styles.brandBadge}>
-              <Text style={styles.brandBadgeText}>JS</Text>
-            </View>
-            <Text style={styles.brandTitle}>Jewelry Sales</Text>
-          </View>
-
-          <Text style={styles.welcomeTitle}>WELCOME</Text>
-          <Text style={styles.welcomeSubtitle}>Please enter your details to continue.</Text>
-
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={colors.textMuted}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-
-          <Text style={styles.label}>Password</Text>
-          <View style={styles.inputGroup}>
-            <TextInput
-              style={[styles.input, styles.inputWithIcon]}
-              placeholder="Password"
-              placeholderTextColor={colors.textMuted}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
-              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.helperRow}>
-            <TouchableOpacity style={styles.rememberRow} onPress={() => setRememberMe((prev) => !prev)}>
-              <View style={[styles.checkbox, rememberMe ? styles.checkboxChecked : null]}>
-                {rememberMe ? <View style={styles.checkboxDot} /> : null}
+            <View style={styles.brandRow}>
+              <View style={styles.brandBadge}>
+                <Text style={styles.brandBadgeText}>JS</Text>
               </View>
-              <Text style={styles.helperText}>Remember for 30 Days</Text>
-            </TouchableOpacity>
-          </View>
+              <Text style={styles.brandTitle}>Jewelry Sales</Text>
+            </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Text style={styles.welcomeTitle}>WELCOME</Text>
+            <Text style={styles.welcomeSubtitle}>Please enter your details to continue.</Text>
 
-          <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor={colors.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.inputGroup}>
+              <TextInput
+                style={[styles.input, styles.inputWithIcon]}
+                placeholder="Password"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
+                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
+            {biometricAvailable && biometricEnabled ? (
+              <Button
+                title={biometricRequired ? 'Unlock with Biometrics' : 'Use Biometrics'}
+                onPress={handleBiometric}
+                loading={biometricLoading}
+                variant="secondary"
+                style={styles.biometricButton}
+              />
+            ) : null}
           </View>
         </View>
       </View>
@@ -229,43 +259,11 @@ const styles = StyleSheet.create({
     bottom: spacing.md,
     justifyContent: 'center',
   },
-  helperRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  rememberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  checkbox: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#d9c9b6',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  checkboxChecked: {
-    borderColor: '#d59a5a',
-    backgroundColor: '#d59a5a',
-  },
-  checkboxDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: '#fff',
-  },
-  helperText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
   signInButton: {
     backgroundColor: '#111827',
+  },
+  biometricButton: {
+    marginTop: spacing.sm,
   },
   error: {
     color: colors.danger,

@@ -12,7 +12,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to securely sign in."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +24,16 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.vmehta0387.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "91a68c90-064d-4a53-9f1b-9b704b828945"
+      }
     }
   }
 }
