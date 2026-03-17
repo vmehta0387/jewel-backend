@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
 import ScreenHeader from '../components/ScreenHeader';
@@ -17,13 +18,20 @@ import Card from '../components/Card';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { chatDesigns } from '../api/ai';
-import { formatCurrency } from '../utils/format';
+import type { NavigationProp } from '@react-navigation/native';
 
 type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   text: string;
   images?: string[];
+  designs?: {
+    id: string;
+    designNo?: string;
+    jewelryGroup?: string;
+    collection?: string;
+    goldColour?: string;
+  }[];
 };
 
 const AiChatScreen = () => {
@@ -32,6 +40,7 @@ const AiChatScreen = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
+  const navigation = useNavigation<NavigationProp<any>>();
 
   const canSend = input.trim().length > 0 && !loading;
 
@@ -59,14 +68,20 @@ const AiChatScreen = () => {
         .filter(Boolean)
         .slice(0, 6);
 
-      const priceHint = response.designs?.[0]?.pricing?.finalPrice;
-      const priceLine = typeof priceHint === 'number' ? `\n\nPrice: ${formatCurrency(priceHint)}` : '';
+      const designList = (response.designs || []).map((design: any) => ({
+        id: design.id,
+        designNo: design.designNo,
+        jewelryGroup: design.jewelryGroup,
+        collection: design.collection,
+        goldColour: design.goldColour,
+      }));
 
       const assistantMessage: ChatMessage = {
         id: `${Date.now()}-assistant`,
         role: 'assistant',
-        text: `${response.reply}${priceLine}`,
+        text: response.reply,
         images: images?.length ? images : undefined,
+        designs: designList.length ? designList : undefined,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (err: any) {
@@ -116,6 +131,27 @@ const AiChatScreen = () => {
                   <View style={styles.imageGrid}>
                     {item.images.map((uri) => (
                       <Image key={uri} source={{ uri }} style={styles.imageThumb} />
+                    ))}
+                  </View>
+                ) : null}
+                {item.designs && item.designs.length ? (
+                  <View style={styles.designList}>
+                    {item.designs.map((design) => (
+                      <TouchableOpacity
+                        key={design.id}
+                        style={styles.designItem}
+                        onPress={() =>
+                          navigation.navigate('DesignsTab', {
+                            screen: 'DesignDetail',
+                            params: { designId: design.id },
+                          })
+                        }
+                      >
+                        <Text style={styles.designTitle}>{design.designNo || 'Design'}</Text>
+                        <Text style={styles.designMeta}>
+                          {[design.jewelryGroup, design.collection, design.goldColour].filter(Boolean).join(' • ')}
+                        </Text>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 ) : null}
@@ -205,6 +241,27 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: radii.md,
     backgroundColor: colors.border,
+  },
+  designList: {
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  designItem: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  designTitle: {
+    fontWeight: '600',
+    color: colors.text,
+  },
+  designMeta: {
+    marginTop: 2,
+    color: colors.textMuted,
+    fontSize: 12,
   },
   inputBar: {
     flexDirection: 'row',

@@ -1,29 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
+import { OrdersService } from '../orders/orders.service';
 import { DesignChatDto } from './dto/ai-chat.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 
-type TogetherMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
 @Injectable()
 export class AiService {
   constructor(
-    private readonly configService: ConfigService,
     private readonly productsService: ProductsService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   async chatDesigns(dto: DesignChatDto, requester: AuthUser) {
-    const apiKey = this.configService.get<string>('TOGETHER_API_KEY');
-    if (!apiKey) {
-      throw new BadRequestException('TOGETHER_API_KEY is not configured');
-    }
-
-    const limit = dto.limit ?? 5;
+    const limit = dto.limit ?? 10;
     const readUser: AuthUser = {
       ...requester,
       role: UserRole.INTERNAL_REP,
@@ -32,21 +22,28 @@ export class AiService {
     };
 
     const search = dto.message?.trim() || '';
-    const inferredFilters = this.inferDesignFilters(search);
+    const aiQuery = this.parseAiQuery(search);
+    const companyId = dto.companyId || requester.companyId || undefined;
+    const branchId = dto.branchId || requester.branchId || undefined;
+    if (aiQuery.needsPricing && (!companyId || !branchId)) {
+      return { reply: 'No matching results found', designs: [] };
+    }
+    const inferredFilters = aiQuery.filters;
+    const baseLimit = Math.max(limit, aiQuery.needsPricing ? 50 : limit);
     let results = inferredFilters
       ? await this.productsService.findAll(
-          { ...inferredFilters, page: 1, limit, status: 'ACTIVE' },
+          { ...inferredFilters, page: 1, limit: baseLimit, status: 'ACTIVE' },
           readUser,
         )
       : await this.productsService.findAll(
-          { search, page: 1, limit, status: 'ACTIVE' },
+          { search, page: 1, limit: baseLimit, status: 'ACTIVE' },
           readUser,
         );
 
     let candidates = results?.data || [];
     if (candidates.length === 0) {
       results = await this.productsService.findAll(
-        { search, page: 1, limit, status: 'ACTIVE' },
+        { search, page: 1, limit: baseLimit, status: 'ACTIVE' },
         readUser,
       );
       candidates = results?.data || [];
@@ -54,7 +51,7 @@ export class AiService {
 
     if (candidates.length === 0) {
       results = await this.productsService.findAll(
-        { page: 1, limit, status: 'ACTIVE' },
+        { page: 1, limit: baseLimit, status: 'ACTIVE' },
         readUser,
       );
       candidates = results?.data || [];
@@ -62,15 +59,29 @@ export class AiService {
 
     if (candidates.length === 0) {
       return {
-        reply: 'No designs are available yet. Please add designs in the admin portal.',
+        reply: 'No matching results found',
         designs: [],
       };
     }
+
     const details = await Promise.all(
-      candidates.slice(0, 3).map((design) => this.productsService.findOne(design.id, readUser)),
+      candidates.slice(0, baseLimit).map((design) => this.productsService.findOne(design.id, readUser)),
     );
 
-    const context = details.map((design) => {
+    const pricing = aiQuery.needsPricing
+      ? await this.resolvePricing(details, companyId, branchId)
+      : [];
+
+    const filteredDetails = this.filterByPrice(details, pricing, aiQuery.priceMin, aiQuery.priceMax);
+    if (filteredDetails.length === 0) {
+      return { reply: 'No matching results found', designs: [] };
+    }
+
+    const topDetails = filteredDetails.slice(0, limit);
+    const reply = this.buildReply(aiQuery, topDetails, pricing);
+
+    const context = topDetails.map((design) => {
+      const priceInfo = pricing.find((row) => row.designId === design.id);
       return {
         id: design.id,
         designNo: design.designNo,
@@ -103,50 +114,10 @@ export class AiService {
           pcs: gem.pcs,
           wtInCts: gem.wtInCts,
         })),
+        pricing: aiQuery.needsPricing ? priceInfo ?? null : null,
+        detailPath: `/designs/${design.id}`,
       };
     });
-
-    const systemPrompt = [
-      'You are a helpful assistant for a jewelry design system.',
-      'Answer using ONLY the provided design data.',
-      'If the answer is not available, say so clearly.',
-      'Do NOT include any prices, costs, or monetary values in your response.',
-      'Include relevant image URLs when the user asks for visuals or when it helps.',
-      'Keep answers concise and professional.',
-      'Do not reveal your reasoning or internal thoughts. Provide only the final answer.',
-    ].join(' ');
-
-    const messages: TogetherMessage[] = [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: `User question: ${dto.message}\n\nDesign data (JSON):\n${JSON.stringify(context, null, 2)}`,
-      },
-    ];
-
-    const model = this.configService.get<string>('TOGETHER_MODEL') || 'ServiceNow-AI/Apriel-1.6-15b-Thinker';
-    const fetcher = await this.getFetcher();
-    const response = await fetcher('https://api.together.xyz/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.2,
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new BadRequestException(text || 'AI service error');
-    }
-
-    const data = await response.json();
-    const replyRaw = data?.choices?.[0]?.message?.content?.trim() || 'No response.';
-    const reply = this.sanitizeAiReply(replyRaw);
 
     return {
       reply,
@@ -154,37 +125,42 @@ export class AiService {
     };
   }
 
-  private async getFetcher(): Promise<(url: string, init?: any) => Promise<any>> {
-    if (typeof fetch !== 'undefined') {
-      return fetch as unknown as (url: string, init?: any) => Promise<any>;
-    }
-    try {
-      const mod = await import('node-fetch');
-      return mod.default as unknown as (url: string, init?: any) => Promise<any>;
-    } catch {
-      throw new BadRequestException('Fetch API not available on server runtime');
-    }
-  }
-
-  private inferDesignFilters(message: string):
-    | {
-        jewelryGroup?: string;
-        stone?: string;
-        shape?: string;
-        cut?: string;
-        color?: string;
-        quality?: string;
-      }
-    | null {
-    const text = message.toLowerCase();
-    const filters: {
+  private parseAiQuery(message: string): {
+    filters: {
+      search?: string;
       jewelryGroup?: string;
       stone?: string;
       shape?: string;
       cut?: string;
       color?: string;
       quality?: string;
+      goldColour?: string;
+    } | null;
+    needsPricing: boolean;
+    priceMin?: number;
+    priceMax?: number;
+    wantsPrice: boolean;
+    designNo?: string;
+  } {
+    const text = message.toLowerCase();
+    const filters: {
+      search?: string;
+      jewelryGroup?: string;
+      stone?: string;
+      shape?: string;
+      cut?: string;
+      color?: string;
+      quality?: string;
+      goldColour?: string;
     } = {};
+
+    const wantsPrice =
+      /price|cost|under|below|less than|over|above|greater than|\$|usd|inr|eur|gbp|aud|cad/.test(text);
+
+    const designNoMatch = /\b[A-Z]{2,}[A-Z0-9]*-\d{2,}(?:-[A-Z0-9]+)?(?:-V\d+)?\b/i.exec(message);
+    if (designNoMatch) {
+      filters.search = designNoMatch[0];
+    }
 
     const groupMap: Record<string, string> = {
       ring: 'Ring',
@@ -235,10 +211,11 @@ export class AiService {
       filters.cut = cutMatch.charAt(0).toUpperCase() + cutMatch.slice(1);
     }
 
-    const colors = ['white', 'yellow', 'pink', 'blue', 'green', 'black', 'brown', 'navy', 'red'];
+    const colors = ['white', 'yellow', 'pink', 'blue', 'green', 'black', 'brown', 'navy', 'red', 'rose'];
     const colorMatch = colors.find((color) => text.includes(color));
     if (colorMatch) {
-      filters.color = colorMatch.charAt(0).toUpperCase() + colorMatch.slice(1);
+      filters.color = colorMatch === 'rose' ? 'Rose' : colorMatch.charAt(0).toUpperCase() + colorMatch.slice(1);
+      filters.goldColour = filters.color;
     }
 
     const qualityMatch = /(vvs|vs|si|if)\b/i.exec(message);
@@ -246,20 +223,139 @@ export class AiService {
       filters.quality = qualityMatch[1].toUpperCase();
     }
 
-    return Object.keys(filters).length ? filters : null;
+    const searchTokens: string[] = [];
+    if (text.includes('eternity')) searchTokens.push('eternity');
+    if (text.includes('engagement')) searchTokens.push('engagement');
+    if (text.includes('solitaire')) searchTokens.push('solitaire');
+    if (text.includes('lab')) searchTokens.push('lab');
+    if (text.includes('natural')) searchTokens.push('natural');
+    if (!filters.search && searchTokens.length) {
+      filters.search = searchTokens.join(' ');
+    } else if (filters.search && searchTokens.length) {
+      filters.search = `${filters.search} ${searchTokens.join(' ')}`.trim();
+    }
+
+    const { priceMin, priceMax } = this.extractPriceRange(text);
+    const needsPricing = Boolean(priceMin !== undefined || priceMax !== undefined || wantsPrice);
+
+    return {
+      filters: Object.keys(filters).length ? filters : null,
+      needsPricing,
+      priceMin,
+      priceMax,
+      wantsPrice,
+      designNo: designNoMatch?.[0],
+    };
   }
 
-  private sanitizeAiReply(text: string) {
-    const strippedThink = text
-      .replace(/<think>[\s\S]*?<\/think>/gi, '')
-      .replace(/^\s*(thoughts?|reasoning|analysis)\s*:\s*[\s\S]*?(\n\n|$)/gi, '')
-      .trim();
+  private extractPriceRange(text: string): { priceMin?: number; priceMax?: number } {
+    const normalizeAmount = (value: string) => {
+      const numeric = Number.parseFloat(value.replace(/,/g, ''));
+      return Number.isFinite(numeric) ? numeric : undefined;
+    };
 
-    const noPrices = strippedThink
-      .replace(/\b(usd|inr|eur|gbp|aud|cad)\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi, '[price hidden]')
-      .replace(/\$\s*\d[\d,]*(?:\.\d+)?/g, '[price hidden]')
-      .replace(/\b\d[\d,]*(?:\.\d+)?\s*(usd|inr|eur|gbp|aud|cad)\b/gi, '[price hidden]');
+    const betweenMatch = /between\s+\$?\s*([\d,]+(?:\.\d+)?)\s+and\s+\$?\s*([\d,]+(?:\.\d+)?)/i.exec(text);
+    if (betweenMatch) {
+      const min = normalizeAmount(betweenMatch[1]);
+      const max = normalizeAmount(betweenMatch[2]);
+      return { priceMin: min, priceMax: max };
+    }
 
-    return noPrices || 'No response.';
+    const underMatch = /(under|below|less than|<=)\s*\$?\s*([\d,]+(?:\.\d+)?)/i.exec(text);
+    if (underMatch) {
+      const max = normalizeAmount(underMatch[2]);
+      return { priceMax: max };
+    }
+
+    const overMatch = /(over|above|greater than|>=)\s*\$?\s*([\d,]+(?:\.\d+)?)/i.exec(text);
+    if (overMatch) {
+      const min = normalizeAmount(overMatch[2]);
+      return { priceMin: min };
+    }
+
+    return {};
+  }
+
+  private async resolvePricing(
+    designs: any[],
+    companyId?: string,
+    branchId?: string,
+  ): Promise<{ designId: string; finalPrice: number | null; companyMultiplier: number | null; branchMultiplier: number | null }[]> {
+    return Promise.all(
+      designs.map(async (design) => {
+        try {
+          const preview = await this.ordersService.getPricePreview({
+            designId: design.id,
+            companyId,
+            branchId,
+          });
+          return { designId: design.id, ...preview };
+        } catch {
+          return { designId: design.id, finalPrice: null, companyMultiplier: null, branchMultiplier: null };
+        }
+      }),
+    );
+  }
+
+  private filterByPrice(
+    designs: any[],
+    pricing: { designId: string; finalPrice: number | null }[],
+    min?: number,
+    max?: number,
+  ) {
+    if (min === undefined && max === undefined) return designs;
+    return designs.filter((design) => {
+      const priceInfo = pricing.find((row) => row.designId === design.id);
+      if (!priceInfo || priceInfo.finalPrice === null) return false;
+      const price = priceInfo.finalPrice;
+      if (min !== undefined && price < min) return false;
+      if (max !== undefined && price > max) return false;
+      return true;
+    });
+  }
+
+  private buildReply(
+    aiQuery: { wantsPrice: boolean; designNo?: string },
+    designs: any[],
+    pricing: { designId: string; finalPrice: number | null }[],
+  ) {
+    if (!designs.length) {
+      return 'No matching results found';
+    }
+
+    if (aiQuery.designNo) {
+      const match = designs.find((design) => design.designNo?.toLowerCase() === aiQuery.designNo?.toLowerCase());
+      if (match && aiQuery.wantsPrice) {
+        const priceInfo = pricing.find((row) => row.designId === match.id);
+        if (!priceInfo || priceInfo.finalPrice === null) {
+          return 'No matching results found';
+        }
+        return `Price for ${match.designNo} is USD ${priceInfo.finalPrice.toFixed(2)}.`;
+      }
+    }
+
+    if (aiQuery.wantsPrice) {
+      const hasAnyPrice = pricing.some((row) => row.finalPrice !== null && row.finalPrice !== undefined);
+      if (!hasAnyPrice) {
+        return 'No matching results found';
+      }
+    }
+
+    const lines = designs.map((design) => {
+      const parts = [design.designNo];
+      if (design.jewelryGroup) parts.push(design.jewelryGroup);
+      if (design.collection) parts.push(design.collection);
+      if (design.goldColour) parts.push(design.goldColour);
+      if (aiQuery.wantsPrice) {
+        const priceInfo = pricing.find((row) => row.designId === design.id);
+        if (priceInfo?.finalPrice !== null && priceInfo?.finalPrice !== undefined) {
+          parts.push(`USD ${priceInfo.finalPrice.toFixed(2)}`);
+        }
+      }
+      return `- ${parts.join(' | ')}`;
+    });
+
+    const header = `Found ${designs.length} design${designs.length === 1 ? '' : 's'}:`;
+    return [header, ...lines].join('\n');
   }
 }
