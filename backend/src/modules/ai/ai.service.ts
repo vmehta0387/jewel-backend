@@ -24,7 +24,24 @@ export class AiService {
     const search = dto.message?.trim() || '';
     const aiQuery = this.parseAiQuery(search);
     if (!aiQuery.isDesignQuery) {
-      return { reply: 'No matching results found', designs: [] };
+      if (aiQuery.isGreeting) {
+        return {
+          reply: 'Hi! I can help you with jewelry designs, pricing, or orders. What would you like to explore?',
+          designs: [],
+        };
+      }
+      if (aiQuery.isSmallTalk) {
+        return {
+          reply:
+            "Sorry! I'm here to help with jewelry-related queries like designs, pricing, or orders only.",
+          designs: [],
+        };
+      }
+      return {
+        reply:
+          "I’m currently focused on helping with jewelry-related queries. Let me know if you’d like to explore designs or pricing.",
+        designs: [],
+      };
     }
     const companyId = dto.companyId || requester.companyId || undefined;
     const branchId = dto.branchId || requester.branchId || undefined;
@@ -145,6 +162,8 @@ export class AiService {
     wantsPrice: boolean;
     designNo?: string;
     isDesignQuery: boolean;
+    isGreeting: boolean;
+    isSmallTalk: boolean;
   } {
     const text = message.toLowerCase();
     const filters: {
@@ -246,6 +265,10 @@ export class AiService {
       /^(hi|hello|hey|good morning|good evening|good afternoon|yo|hola|thanks|thank you)\b/i.test(
         message.trim(),
       );
+    const isSmallTalk =
+      /(how are you|how r you|how are you doing|what'?s up|whats up|tell me a joke|joke|weather|your name|who are you|who r you|help me with something else)/i.test(
+        message,
+      );
     const mentionsDesign =
       /\bdesigns?\b/i.test(message) ||
       /show|list|find|search|looking for/i.test(message) ||
@@ -261,6 +284,8 @@ export class AiService {
       wantsPrice,
       designNo: designNoMatch?.[0],
       isDesignQuery,
+      isGreeting,
+      isSmallTalk,
     };
   }
 
