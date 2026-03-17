@@ -34,12 +34,40 @@ export class AiService {
     };
 
     const search = dto.message?.trim() || '';
-    const results = await this.productsService.findAll(
-      { search, page: 1, limit, status: 'ACTIVE' },
-      readUser,
-    );
+    const inferredFilters = this.inferDesignFilters(search);
+    let results = inferredFilters
+      ? await this.productsService.findAll(
+          { ...inferredFilters, page: 1, limit, status: 'ACTIVE' },
+          readUser,
+        )
+      : await this.productsService.findAll(
+          { search, page: 1, limit, status: 'ACTIVE' },
+          readUser,
+        );
 
-    const candidates = results?.data || [];
+    let candidates = results?.data || [];
+    if (candidates.length === 0) {
+      results = await this.productsService.findAll(
+        { search, page: 1, limit, status: 'ACTIVE' },
+        readUser,
+      );
+      candidates = results?.data || [];
+    }
+
+    if (candidates.length === 0) {
+      results = await this.productsService.findAll(
+        { page: 1, limit, status: 'ACTIVE' },
+        readUser,
+      );
+      candidates = results?.data || [];
+    }
+
+    if (candidates.length === 0) {
+      return {
+        reply: 'No designs are available yet. Please add designs in the admin portal.',
+        designs: [],
+      };
+    }
     const details = await Promise.all(
       candidates.slice(0, 3).map((design) => this.productsService.findOne(design.id, readUser)),
     );
@@ -167,5 +195,88 @@ export class AiService {
     } catch {
       throw new BadRequestException('Fetch API not available on server runtime');
     }
+  }
+
+  private inferDesignFilters(message: string):
+    | {
+        jewelryGroup?: string;
+        stone?: string;
+        shape?: string;
+        cut?: string;
+        color?: string;
+        quality?: string;
+      }
+    | null {
+    const text = message.toLowerCase();
+    const filters: {
+      jewelryGroup?: string;
+      stone?: string;
+      shape?: string;
+      cut?: string;
+      color?: string;
+      quality?: string;
+    } = {};
+
+    const groupMap: Record<string, string> = {
+      ring: 'Ring',
+      bracelet: 'Bracelet',
+      bangle: 'Bangle',
+      necklace: 'Necklace',
+      pendant: 'Pendant',
+      earrings: 'Earrings',
+      earring: 'Earrings',
+      chain: 'Chain',
+    };
+
+    for (const key of Object.keys(groupMap)) {
+      if (text.includes(key)) {
+        filters.jewelryGroup = groupMap[key];
+        break;
+      }
+    }
+
+    if (text.includes('diamond')) {
+      filters.stone = 'Diamond';
+    }
+
+    const shapes = [
+      'round',
+      'oval',
+      'princess',
+      'emerald',
+      'pear',
+      'marquise',
+      'cushion',
+      'radiant',
+      'asscher',
+      'heart',
+      'trillion',
+      'hexagon',
+      'square',
+      'rectangle',
+    ];
+    const shapeMatch = shapes.find((shape) => text.includes(shape));
+    if (shapeMatch) {
+      filters.shape = shapeMatch.charAt(0).toUpperCase() + shapeMatch.slice(1);
+    }
+
+    const cuts = ['excellent', 'very good', 'good', 'fair', 'ideal', 'brilliant'];
+    const cutMatch = cuts.find((cut) => text.includes(cut));
+    if (cutMatch) {
+      filters.cut = cutMatch.charAt(0).toUpperCase() + cutMatch.slice(1);
+    }
+
+    const colors = ['white', 'yellow', 'pink', 'blue', 'green', 'black', 'brown', 'navy', 'red'];
+    const colorMatch = colors.find((color) => text.includes(color));
+    if (colorMatch) {
+      filters.color = colorMatch.charAt(0).toUpperCase() + colorMatch.slice(1);
+    }
+
+    const qualityMatch = /(vvs|vs|si|if)\b/i.exec(message);
+    if (qualityMatch) {
+      filters.quality = qualityMatch[1].toUpperCase();
+    }
+
+    return Object.keys(filters).length ? filters : null;
   }
 }
