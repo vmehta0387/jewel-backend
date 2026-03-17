@@ -23,6 +23,9 @@ export class AiService {
 
     const search = dto.message?.trim() || '';
     const aiQuery = this.parseAiQuery(search);
+    if (!aiQuery.isDesignQuery) {
+      return { reply: 'No matching results found', designs: [] };
+    }
     const companyId = dto.companyId || requester.companyId || undefined;
     const branchId = dto.branchId || requester.branchId || undefined;
     if (aiQuery.needsPricing && (!companyId || !branchId)) {
@@ -141,6 +144,7 @@ export class AiService {
     priceMax?: number;
     wantsPrice: boolean;
     designNo?: string;
+    isDesignQuery: boolean;
   } {
     const text = message.toLowerCase();
     const filters: {
@@ -238,6 +242,17 @@ export class AiService {
     const { priceMin, priceMax } = this.extractPriceRange(text);
     const needsPricing = Boolean(priceMin !== undefined || priceMax !== undefined || wantsPrice);
 
+    const isGreeting =
+      /^(hi|hello|hey|good morning|good evening|good afternoon|yo|hola|thanks|thank you)\b/i.test(
+        message.trim(),
+      );
+    const mentionsDesign =
+      /\bdesigns?\b/i.test(message) ||
+      /show|list|find|search|looking for/i.test(message) ||
+      Boolean(Object.keys(filters).length) ||
+      Boolean(designNoMatch);
+    const isDesignQuery = !isGreeting && (mentionsDesign || needsPricing);
+
     return {
       filters: Object.keys(filters).length ? filters : null,
       needsPricing,
@@ -245,6 +260,7 @@ export class AiService {
       priceMax,
       wantsPrice,
       designNo: designNoMatch?.[0],
+      isDesignQuery,
     };
   }
 

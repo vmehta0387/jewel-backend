@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -43,6 +43,7 @@ const AiChatScreen = () => {
   const navigation = useNavigation<NavigationProp<any>>();
 
   const canSend = input.trim().length > 0 && !loading;
+  const canClear = messages.length > 0 && !loading;
 
   const handleSend = async () => {
     if (!token || !canSend) return;
@@ -63,10 +64,13 @@ const AiChatScreen = () => {
         branchId: user?.branchId || undefined,
         limit: 5,
       });
-      const images = response.designs
-        ?.flatMap((design) => design.imageUrls || [])
-        .filter(Boolean)
-        .slice(0, 6);
+      const images = Array.from(
+        new Set(
+          (response.designs || [])
+            .flatMap((design: any) => design.imageUrls || [])
+            .filter(Boolean),
+        ),
+      ).slice(0, 6);
 
       const designList = (response.designs || []).map((design: any) => ({
         id: design.id,
@@ -108,9 +112,37 @@ const AiChatScreen = () => {
     [],
   );
 
+  const renderItem = useCallback(
+    ({ item }: { item: ChatMessage }) => (
+      <ChatBubble
+        item={item}
+        onPressDesign={(designId) =>
+          navigation.navigate('DesignsTab', {
+            screen: 'DesignDetail',
+            params: { designId },
+          })
+        }
+      />
+    ),
+    [navigation],
+  );
+
   return (
     <Screen>
-      <ScreenHeader title="AI" subtitle="Design assistant" />
+      <ScreenHeader
+        title="AI"
+        subtitle="Design assistant"
+        rightSlot={
+          <TouchableOpacity
+            onPress={() => setMessages([])}
+            disabled={!canClear}
+            style={[styles.clearButton, !canClear ? styles.clearDisabled : null]}
+          >
+            <Ionicons name="trash-outline" size={16} color={canClear ? colors.text : colors.textMuted} />
+            <Text style={[styles.clearText, !canClear ? styles.clearTextDisabled : null]}>Clear</Text>
+          </TouchableOpacity>
+        }
+      />
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -121,45 +153,13 @@ const AiChatScreen = () => {
           ref={listRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={[styles.messageRow, item.role === 'user' ? styles.messageRowRight : null]}>
-              <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-                <Text style={[styles.messageText, item.role === 'user' ? styles.userText : styles.assistantText]}>
-                  {item.text}
-                </Text>
-                {item.images && item.images.length ? (
-                  <View style={styles.imageGrid}>
-                    {item.images.map((uri) => (
-                      <Image key={uri} source={{ uri }} style={styles.imageThumb} />
-                    ))}
-                  </View>
-                ) : null}
-                {item.designs && item.designs.length ? (
-                  <View style={styles.designList}>
-                    {item.designs.map((design) => (
-                      <TouchableOpacity
-                        key={design.id}
-                        style={styles.designItem}
-                        onPress={() =>
-                          navigation.navigate('DesignsTab', {
-                            screen: 'DesignDetail',
-                            params: { designId: design.id },
-                          })
-                        }
-                      >
-                        <Text style={styles.designTitle}>{design.designNo || 'Design'}</Text>
-                        <Text style={styles.designMeta}>
-                          {[design.jewelryGroup, design.collection, design.goldColour].filter(Boolean).join(' • ')}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          )}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={listEmpty}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         />
 
@@ -293,6 +293,70 @@ const styles = StyleSheet.create({
   sendDisabled: {
     opacity: 0.5,
   },
+  clearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  clearDisabled: {
+    opacity: 0.5,
+  },
+  clearText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  clearTextDisabled: {
+    color: colors.textMuted,
+  },
 });
+
+const ChatBubble = React.memo(
+  ({
+    item,
+    onPressDesign,
+  }: {
+    item: ChatMessage;
+    onPressDesign: (designId: string) => void;
+  }) => (
+    <View style={[styles.messageRow, item.role === 'user' ? styles.messageRowRight : null]}>
+      <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+        <Text style={[styles.messageText, item.role === 'user' ? styles.userText : styles.assistantText]}>
+          {item.text}
+        </Text>
+        {item.images && item.images.length ? (
+          <View style={styles.imageGrid}>
+            {item.images.map((uri, index) => (
+              <Image key={`${uri}-${index}`} source={{ uri }} style={styles.imageThumb} />
+            ))}
+          </View>
+        ) : null}
+        {item.designs && item.designs.length ? (
+          <View style={styles.designList}>
+            {item.designs.map((design) => (
+              <TouchableOpacity
+                key={design.id}
+                style={styles.designItem}
+                onPress={() => onPressDesign(design.id)}
+              >
+                <Text style={styles.designTitle}>{design.designNo || 'Design'}</Text>
+                <Text style={styles.designMeta}>
+                  {[design.jewelryGroup, design.collection, design.goldColour].filter(Boolean).join(' • ')}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </View>
+  ),
+);
+ChatBubble.displayName = 'ChatBubble';
 
 export default AiChatScreen;
