@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ProductsService } from '../products/products.service';
-import { OrdersService } from '../orders/orders.service';
 import { DesignChatDto } from './dto/ai-chat.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
@@ -16,7 +15,6 @@ export class AiService {
   constructor(
     private readonly configService: ConfigService,
     private readonly productsService: ProductsService,
-    private readonly ordersService: OrdersService,
   ) {}
 
   async chatDesigns(dto: DesignChatDto, requester: AuthUser) {
@@ -72,28 +70,7 @@ export class AiService {
       candidates.slice(0, 3).map((design) => this.productsService.findOne(design.id, readUser)),
     );
 
-    const pricing = await Promise.all(
-      details.map(async (design) => {
-        const companyId = dto.companyId || requester.companyId || undefined;
-        const branchId = dto.branchId || requester.branchId || undefined;
-        if (!companyId || !branchId) {
-          return { designId: design.id, finalPrice: null, companyMultiplier: null, branchMultiplier: null };
-        }
-        try {
-          const preview = await this.ordersService.getPricePreview({
-            designId: design.id,
-            companyId,
-            branchId,
-          });
-          return { designId: design.id, ...preview };
-        } catch {
-          return { designId: design.id, finalPrice: null, companyMultiplier: null, branchMultiplier: null };
-        }
-      }),
-    );
-
     const context = details.map((design) => {
-      const priceInfo = pricing.find((row) => row.designId === design.id);
       return {
         id: design.id,
         designNo: design.designNo,
@@ -106,11 +83,6 @@ export class AiService {
         diamondType: design.diamondType,
         goldColour: design.goldColour,
         tags: design.tags,
-        grossWeight: design.grossWeight,
-        metalValue: design.metalValue,
-        gemValue: design.gemValue,
-        laborValue: design.laborValue,
-        totalValue: design.totalValue,
         imageUrls: design.imageUrls || [],
         metals: (design.metals || []).map((metal) => ({
           metalCaratage: metal.metalCaratage,
@@ -119,8 +91,6 @@ export class AiService {
           wastagePercent: metal.wastagePercent,
           wastageWt: metal.wastageWt,
           totalWt: metal.totalWt,
-          pricePerGram: metal.pricePerGram,
-          value: metal.value,
         })),
         gemstones: (design.gemstones || []).map((gem) => ({
           packetId: gem.packetId,
@@ -132,10 +102,7 @@ export class AiService {
           wtPerPcs: gem.wtPerPcs,
           pcs: gem.pcs,
           wtInCts: gem.wtInCts,
-          pricePerCt: gem.pricePerCt,
-          amount: gem.amount,
         })),
-        pricing: priceInfo,
       };
     });
 
@@ -143,9 +110,10 @@ export class AiService {
       'You are a helpful assistant for a jewelry design system.',
       'Answer using ONLY the provided design data.',
       'If the answer is not available, say so clearly.',
-      'Pricing must use the computed pricing values (finalPrice) based on company and branch multipliers. Do not use base design price unless finalPrice is missing.',
+      'Do NOT include any prices, costs, or monetary values in your response.',
       'Include relevant image URLs when the user asks for visuals or when it helps.',
       'Keep answers concise and professional.',
+      'Do not reveal your reasoning or internal thoughts. Provide only the final answer.',
     ].join(' ');
 
     const messages: TogetherMessage[] = [
@@ -177,7 +145,8 @@ export class AiService {
     }
 
     const data = await response.json();
-    const reply = data?.choices?.[0]?.message?.content?.trim() || 'No response.';
+    const replyRaw = data?.choices?.[0]?.message?.content?.trim() || 'No response.';
+    const reply = this.sanitizeAiReply(replyRaw);
 
     return {
       reply,
@@ -278,5 +247,19 @@ export class AiService {
     }
 
     return Object.keys(filters).length ? filters : null;
+  }
+
+  private sanitizeAiReply(text: string) {
+    const strippedThink = text
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/^\s*(thoughts?|reasoning|analysis)\s*:\s*[\s\S]*?(\n\n|$)/gi, '')
+      .trim();
+
+    const noPrices = strippedThink
+      .replace(/\b(usd|inr|eur|gbp|aud|cad)\s*\$?\s*\d[\d,]*(?:\.\d+)?/gi, '[price hidden]')
+      .replace(/\$\s*\d[\d,]*(?:\.\d+)?/g, '[price hidden]')
+      .replace(/\b\d[\d,]*(?:\.\d+)?\s*(usd|inr|eur|gbp|aud|cad)\b/gi, '[price hidden]');
+
+    return noPrices || 'No response.';
   }
 }
