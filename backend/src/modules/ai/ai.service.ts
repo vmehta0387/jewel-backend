@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ProductsService } from '../products/products.service';
 import { OrdersService } from '../orders/orders.service';
@@ -22,7 +22,7 @@ export class AiService {
   async chatDesigns(dto: DesignChatDto, requester: AuthUser) {
     const apiKey = this.configService.get<string>('TOGETHER_API_KEY');
     if (!apiKey) {
-      throw new Error('TOGETHER_API_KEY is not configured');
+      throw new BadRequestException('TOGETHER_API_KEY is not configured');
     }
 
     const limit = dto.limit ?? 5;
@@ -129,7 +129,8 @@ export class AiService {
     ];
 
     const model = this.configService.get<string>('TOGETHER_MODEL') || 'ServiceNow-AI/Apriel-1.6-15b-Thinker';
-    const response = await fetch('https://api.together.xyz/v1/chat/completions', {
+    const fetcher = await this.getFetcher();
+    const response = await fetcher('https://api.together.xyz/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -144,7 +145,7 @@ export class AiService {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || 'AI service error');
+      throw new BadRequestException(text || 'AI service error');
     }
 
     const data = await response.json();
@@ -154,5 +155,17 @@ export class AiService {
       reply,
       designs: context,
     };
+  }
+
+  private async getFetcher() {
+    if (typeof fetch !== 'undefined') {
+      return fetch;
+    }
+    try {
+      const mod = await import('node-fetch');
+      return mod.default as typeof fetch;
+    } catch {
+      throw new BadRequestException('Fetch API not available on server runtime');
+    }
   }
 }
