@@ -1,9 +1,15 @@
-﻿import Constants from 'expo-constants';
+import Constants from 'expo-constants';
 
-const fallbackUrl = 'http://localhost:8000/api';
-const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-const extraUrl = Constants.expoConfig?.extra?.apiBaseUrl;
+const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+const extraUrl =
+  typeof Constants.expoConfig?.extra?.apiBaseUrl === 'string'
+    ? Constants.expoConfig.extra.apiBaseUrl.trim()
+    : undefined;
 
-const resolved = (envUrl || extraUrl || fallbackUrl).replace(/\/$/, '');
+const resolved = envUrl || extraUrl;
 
-export const API_BASE_URL = resolved;
+if (!resolved) {
+  throw new Error('Missing EXPO_PUBLIC_API_BASE_URL in mobile/.env');
+}
+
+export const API_BASE_URL = resolved.replace(/\/$/, '');
