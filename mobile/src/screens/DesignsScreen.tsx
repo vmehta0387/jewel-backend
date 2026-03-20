@@ -1,27 +1,73 @@
-﻿import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
-import Card from '../components/Card';
-import Button from '../components/Button';
-import SearchBar from '../components/SearchBar';
-import ScreenHeader from '../components/ScreenHeader';
-import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesigns } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatCurrency } from '../utils/format';
 
+type BadgeTone = 'champagne' | 'mint' | 'rose';
+
+const BADGE_PRESETS: Array<{ label: string; tone: BadgeTone }> = [
+  { label: 'Bestseller', tone: 'champagne' },
+  { label: 'New', tone: 'mint' },
+  { label: 'Editor Pick', tone: 'rose' },
+];
+
+const getBadge = (index: number) => BADGE_PRESETS[index % BADGE_PRESETS.length];
+
+const getDisplayPrice = (design: Design, role?: string) =>
+  role === 'BRANCH_MANAGER' || role === 'SALES_REP'
+    ? design.displayPrice ?? design.totalValue ?? 0
+    : design.totalValue ?? 0;
+
+const getDesignMeta = (design: Design) => {
+  const sizeLabel = design.jewelrySize ? `Size ${design.jewelrySize}` : 'Size N/A';
+  const toneLabel =
+    design.goldColour ||
+    design.metals?.find((metal) => metal.goldColour)?.goldColour ||
+    design.metals?.find((metal) => metal.metalCaratage)?.metalCaratage ||
+    design.version;
+
+  return toneLabel ? `${sizeLabel} - ${toneLabel}` : sizeLabel;
+};
+
+const getSearchableFields = (design: Design) =>
+  [
+    design.designNo,
+    design.jewelryGroup,
+    design.jewelrySize,
+    design.goldColour,
+    design.version,
+    ...(design.metals?.flatMap((metal) => [metal.goldColour, metal.metalCaratage]) || []),
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+
 const DesignsScreen = () => {
-  const { token, signOut, user } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
 
   const loadDesigns = useCallback(async () => {
     if (!token) return;
@@ -37,27 +83,29 @@ const DesignsScreen = () => {
 
       if (!shouldApplyPricing) {
         setDesigns(baseDesigns);
-      } else {
-        const companyId = user?.companyId as string;
-        const branchId = user?.branchId as string;
-        const pricedDesigns = await Promise.all(
-          baseDesigns.map(async (design) => {
-            try {
-              const preview = await fetchPricePreview(token, design.id, companyId, branchId);
-              return { ...design, displayPrice: preview.finalPrice };
-            } catch {
-              return { ...design, displayPrice: design.totalValue ?? 0 };
-            }
-          }),
-        );
-        setDesigns(pricedDesigns);
+        return;
       }
+
+      const companyId = user.companyId as string;
+      const branchId = user.branchId as string;
+      const pricedDesigns = await Promise.all(
+        baseDesigns.map(async (design) => {
+          try {
+            const preview = await fetchPricePreview(token, design.id, companyId, branchId);
+            return { ...design, displayPrice: preview.finalPrice };
+          } catch {
+            return { ...design, displayPrice: design.totalValue ?? 0 };
+          }
+        }),
+      );
+
+      setDesigns(pricedDesigns);
     } catch (err: any) {
       setError(err?.message || 'Unable to load designs');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, user?.role, user?.companyId, user?.branchId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,96 +113,389 @@ const DesignsScreen = () => {
     }, [loadDesigns]),
   );
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return designs;
-    return designs.filter((design) =>
-      [design.designNo, design.jewelryGroup, design.jewelrySize]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
+  const categories = useMemo(() => {
+    const orderedGroups = Array.from(
+      new Set(
+        designs
+          .map((design) => design.jewelryGroup?.trim())
+          .filter(Boolean) as string[],
+      ),
     );
-  }, [designs, search]);
+
+    return ['All', ...orderedGroups];
+  }, [designs]);
+
+  const filteredDesigns = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    return designs.filter((design) => {
+      const matchesCategory =
+        selectedCategory === 'All' ||
+        (design.jewelryGroup || '').toLowerCase() === selectedCategory.toLowerCase();
+      const matchesSearch = !term || getSearchableFields(design).some((value) => value.includes(term));
+
+      return matchesCategory && matchesSearch;
+    });
+  }, [designs, search, selectedCategory]);
+
+  const renderDesignCard = ({ item, index }: { item: Design; index: number }) => {
+    const badge = getBadge(index);
+    const imageUrl = item.imageUrls?.[0];
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.92}
+        style={styles.cardTouchable}
+        onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
+      >
+        <View style={styles.designCard}>
+          <View style={styles.badgeRow}>
+            <View
+              style={[
+                styles.badge,
+                badge.tone === 'mint' ? styles.badgeMint : null,
+                badge.tone === 'rose' ? styles.badgeRose : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.badgeText,
+                  badge.tone === 'mint' ? styles.badgeTextMint : null,
+                  badge.tone === 'rose' ? styles.badgeTextRose : null,
+                ]}
+              >
+                {badge.label}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.imageShell}>
+            {imageUrl ? (
+              <Image source={{ uri: imageUrl }} style={styles.designImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.placeholderImage}>
+                <Ionicons name="diamond-outline" size={34} color="#cfb49a" />
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.designName} numberOfLines={2}>
+            {item.designNo}
+          </Text>
+          <Text style={styles.designMeta} numberOfLines={1}>
+            {getDesignMeta(item)}
+          </Text>
+          <Text style={styles.designPrice}>{formatCurrency(getDisplayPrice(item, user?.role))}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (loading && designs.length === 0) {
+      return (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="small" color="#8a6b55" />
+          <Text style={styles.loadingText}>Loading designs...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.emptyState}>
+        <View style={styles.emptyIcon}>
+          <Ionicons name="sparkles-outline" size={28} color="#8a6b55" />
+        </View>
+        <Text style={styles.emptyTitle}>No designs match your search</Text>
+        <Text style={styles.emptyText}>Try another keyword or reset the filters to explore the full catalog.</Text>
+      </View>
+    );
+  };
 
   return (
-    <Screen>
-      <ScreenHeader
-        title="Designs"
-        subtitle="Select a design to finalize with the customer."
-        rightSlot={<Button title="Sign Out" variant="ghost" onPress={signOut} />}
-      />
+    <Screen style={styles.screen}>
+      <View style={styles.fixedHeader}>
+        <View style={styles.searchShell}>
+          <Ionicons name="search-outline" size={18} color="#a79687" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search designs, styles, groups..."
+            placeholderTextColor="#a79687"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={18} color="#b2a294" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
-      <View style={styles.searchWrapper}>
-        <SearchBar placeholder="Search design number, group, size" value={search} onChange={setSearch} />
+        <View style={styles.filterRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipList}
+          >
+            {categories.map((item) => {
+              const selected = item === selectedCategory;
+
+              return (
+                <TouchableOpacity
+                  key={item}
+                  activeOpacity={0.9}
+                  onPress={() => setSelectedCategory(item)}
+                  style={[styles.chip, selected ? styles.chipActive : null]}
+                >
+                  <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{item}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => {
+              setSelectedCategory('All');
+              setSearch('');
+            }}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="options-outline" size={16} color="#6f6257" />
+          </TouchableOpacity>
+        </View>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
       <FlatList
-        data={filtered}
+        data={filteredDesigns}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        refreshing={loading}
-        onRefresh={loadDesigns}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
-          >
-            <Card style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.designNo}>{item.designNo}</Text>
-                <Text style={styles.price}>
-                  {formatCurrency(
-                    (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP')
-                      ? item.displayPrice ?? item.totalValue ?? 0
-                      : item.totalValue ?? 0,
-                  )}
-                </Text>
-              </View>
-              <Text style={styles.meta}>{item.jewelryGroup}</Text>
-              <Text style={styles.meta}>Size: {item.jewelrySize || '-'}</Text>
-            </Card>
-          </TouchableOpacity>
-        )}
+        numColumns={2}
+        renderItem={renderDesignCard}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmpty}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={loadDesigns}
+            tintColor="#8a6b55"
+            colors={['#8a6b55']}
+          />
+        }
       />
     </Screen>
   );
 };
 
 const styles = StyleSheet.create({
-  searchWrapper: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+  screen: {
+    backgroundColor: '#f5efe8',
+  },
+  fixedHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 10,
+    backgroundColor: '#f5efe8',
+  },
+  searchShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#efe4d8',
+    shadowColor: '#9c7f64',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 1,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#2d221c',
+    height: 40,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  chipList: {
+    gap: 8,
+    paddingRight: 12,
+  },
+  chip: {
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3ebe2',
+    borderWidth: 1,
+    borderColor: '#eadfce',
+  },
+  chipActive: {
+    backgroundColor: '#211711',
+    borderColor: '#211711',
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7f6d60',
+  },
+  chipTextActive: {
+    color: '#fff9f4',
+  },
+  filterButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3ebe2',
+    borderWidth: 1,
+    borderColor: '#eadfce',
+    marginLeft: 10,
   },
   error: {
-    color: colors.danger,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginTop: 12,
+    color: '#b14b42',
+    fontSize: 13,
   },
-  list: {
-    padding: spacing.lg,
-    paddingTop: spacing.sm,
-    gap: spacing.md,
+  listContent: {
+    paddingHorizontal: 18,
+    paddingTop: 6,
+    paddingBottom: 28,
+    flexGrow: 1,
   },
-  card: {
-    marginBottom: spacing.md,
-  },
-  cardHeader: {
-    flexDirection: 'row',
+  gridRow: {
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 14,
   },
-  designNo: {
-    fontSize: 16,
+  cardTouchable: {
+    width: '48.3%',
+  },
+  designCard: {
+    backgroundColor: '#fffaf5',
+    borderRadius: 22,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#efe3d6',
+    shadowColor: '#513829',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+  },
+  badge: {
+    backgroundColor: '#f5dfb6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  badgeMint: {
+    backgroundColor: '#daf0e4',
+  },
+  badgeRose: {
+    backgroundColor: '#f3dedd',
+  },
+  badgeText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: colors.text,
+    color: '#966c26',
   },
-  meta: {
-    color: colors.textMuted,
-    marginTop: 6,
+  badgeTextMint: {
+    color: '#36775a',
   },
-  price: {
-    fontWeight: '600',
-    color: colors.primaryDark,
+  badgeTextRose: {
+    color: '#8a4a4a',
+  },
+  imageShell: {
+    height: 128,
+    borderRadius: 18,
+    backgroundColor: '#f6efe7',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  designImage: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderImage: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  designName: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#2c2019',
+    minHeight: 36,
+  },
+  designMeta: {
+    fontSize: 11,
+    color: '#8c7a6c',
+    marginTop: 4,
+  },
+  designPrice: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2c2019',
+    marginTop: 10,
+  },
+  loadingState: {
+    alignItems: 'center',
+    paddingVertical: 44,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#8a786a',
+    marginTop: 10,
+  },
+  emptyState: {
+    alignItems: 'center',
+    backgroundColor: '#fbf7f2',
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingVertical: 34,
+    borderWidth: 1,
+    borderColor: '#ece2d7',
+    marginTop: 10,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#f2e7da',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#2b2019',
+    marginBottom: 6,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#8a786a',
+    lineHeight: 20,
   },
 });
 
