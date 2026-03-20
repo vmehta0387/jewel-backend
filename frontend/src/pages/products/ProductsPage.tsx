@@ -689,6 +689,7 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
+  const [importingDesigns, setImportingDesigns] = useState(false);
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
@@ -790,6 +791,7 @@ export default function ProductsPage() {
   const [detailDesignLoading, setDetailDesignLoading] = useState(false);
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
   const [showStlViewerModal, setShowStlViewerModal] = useState(false);
+  const designImportInputRef = useRef<HTMLInputElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -2803,16 +2805,87 @@ const createDefaultVendorRow = (): VendorRow => ({
     setter((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
   };
 
-  const exportCsv = () => {
-    const csv = [['Design No', 'Design Name', 'Version', 'Jewelry Group', 'Jewelry Size', 'Metal Caratage', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
-      .map((line) => line.join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const downloadBlob = (blob: Blob, fileName: string) => {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'design-list.csv';
+    link.download = fileName;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+  };
+
+  const exportExcel = async () => {
+    try {
+      const exportIds = filteredRows.map((item) => item.id);
+      const response = await api.post(
+        '/products/export/by-ids',
+        { ids: exportIds },
+        { responseType: 'blob' },
+      );
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'designs-export.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to export designs.');
+    }
+  };
+
+  const downloadDesignTemplate = async () => {
+    try {
+      const response = await api.get('/products/export/template', {
+        responseType: 'blob',
+      });
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'designs-import-template.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to download design import template.');
+    }
+  };
+
+  const handleImportDesigns = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setImportingDesigns(true);
+    try {
+      const response = await api.post('/products/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const summary = response.data as {
+        totalRows: number;
+        created: number;
+        updated: number;
+        failed: number;
+        errors: string[];
+      };
+      const errorPreview =
+        summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
+      window.alert(
+        `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
+      );
+      await fetchDesignRows();
+    } catch (error: any) {
+      console.error(error);
+      const message = error?.response?.data?.message;
+      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import designs.');
+    } finally {
+      setImportingDesigns(false);
+    }
   };
 
   const exportPdf = () => {
@@ -2985,6 +3058,25 @@ const createDefaultVendorRow = (): VendorRow => ({
           <button
             type="button"
             className={exportActionButtonClass}
+            onClick={downloadDesignTemplate}
+            title="Download design import template"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">TPL</span>
+            <span>Template</span>
+          </button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
+            onClick={() => designImportInputRef.current?.click()}
+            disabled={importingDesigns}
+            title="Import designs from Excel workbook"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-sky-100 text-[9px] font-bold text-sky-700">IMP</span>
+            <span>{importingDesigns ? 'Importing...' : 'Import Excel'}</span>
+          </button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
             onClick={exportPdf}
             title="Export selected rows to PDF"
           >
@@ -2997,13 +3089,20 @@ const createDefaultVendorRow = (): VendorRow => ({
           <button
             type="button"
             className={exportActionButtonClass}
-            onClick={exportCsv}
-            title="Export design list to Excel (CSV)"
+            onClick={exportExcel}
+            title="Export design list to Excel workbook"
           >
             <span className="flex h-6 w-6 items-center justify-center rounded bg-emerald-100 text-[9px] font-bold text-emerald-700">XLS</span>
             <span>Excel file</span>
           </button>
         </div>
+        <input
+          ref={designImportInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportDesigns}
+        />
       </div>
 
       <Card>
