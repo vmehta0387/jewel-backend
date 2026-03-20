@@ -8,16 +8,16 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Screen from '../components/Screen';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchDesigns } from '../api/designs';
 
 const APP_VERSION = '1.0.0';
 
-const BG = '#F5F0EB';
+const BG = '#F6EAD9';
 const DARK_CARD = '#1C1C1E';
 const WHITE = '#FFFFFF';
 const TEXT_DARK = '#1C1C1E';
@@ -75,6 +75,7 @@ const BranchDashboardScreen = () => {
   const navigation = useNavigation<any>();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
+  const [profileAnchor, setProfileAnchor] = useState({ top: 0, left: 0, width: 38, height: 38 });
   const profileBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
 
   const [summary, setSummary] = useState<{
@@ -86,6 +87,11 @@ const BranchDashboardScreen = () => {
 
   const [weekChange, setWeekChange] = useState<number | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+
+  const openNotifications = useCallback(() => {
+    const targetNavigation = navigation.getParent?.() ?? navigation;
+    targetNavigation.dispatch(CommonActions.navigate('Notifications'));
+  }, [navigation]);
 
   const loadDashboard = useCallback(async () => {
     if (!token) return;
@@ -104,13 +110,10 @@ const BranchDashboardScreen = () => {
 
     // Week-over-week % change from trends (last 7 days vs prior 7 days)
     if (trendsRes.status === 'fulfilled') {
-      const points = trendsRes.value.points ?? [];
-      // points is last 7 days; use first 3 as "last week partial" vs last 4 as "this week partial"
-      // Better: compare sum of all 7 days vs salesThisWeek from summary
-      // We use the trends to get last week's total by summing the older half
-      const half = Math.floor(points.length / 2);
-      const lastWeekSales = points.slice(0, half).reduce((s: number, p: { sales: number }) => s + (p.sales ?? 0), 0);
-      const thisWeekSales = points.slice(half).reduce((s: number, p: { sales: number }) => s + (p.sales ?? 0), 0);
+      const salesPoints = trendsRes.value.sales ?? [];
+      const half = Math.floor(salesPoints.length / 2);
+      const lastWeekSales = salesPoints.slice(0, half).reduce((sum, value) => sum + (value ?? 0), 0);
+      const thisWeekSales = salesPoints.slice(half).reduce((sum, value) => sum + (value ?? 0), 0);
       if (lastWeekSales > 0) {
         setWeekChange(((thisWeekSales - lastWeekSales) / lastWeekSales) * 100);
       } else if (thisWeekSales > 0) {
@@ -184,7 +187,7 @@ const BranchDashboardScreen = () => {
     : null;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen style={styles.safe}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -199,25 +202,33 @@ const BranchDashboardScreen = () => {
             </Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconBtn}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={openNotifications}
+            >
               <Ionicons name="notifications-outline" size={22} color={TEXT_DARK} />
             </TouchableOpacity>
             <TouchableOpacity
               ref={profileBtnRef}
-              style={styles.iconBtn}
+              style={[styles.iconBtn, profileMenuVisible ? styles.iconBtnActive : null]}
               onPress={() => {
                 profileBtnRef.current?.measureInWindow((
-                  _x: number,
+                  x: number,
                   y: number,
-                  _w: number,
+                  w: number,
                   h: number,
                 ) => {
+                  setProfileAnchor({ top: y, left: x, width: w, height: h });
                   setMenuPosition({ top: y + h + 6, right: 20 });
                   setProfileMenuVisible(true);
                 });
               }}
             >
-              <Ionicons name="person-circle-outline" size={24} color={TEXT_DARK} />
+              <Ionicons
+                name="person-circle-outline"
+                size={profileMenuVisible ? 26 : 24}
+                color={profileMenuVisible ? '#5C4737' : TEXT_DARK}
+              />
             </TouchableOpacity>
           </View>
         </View>
@@ -231,8 +242,29 @@ const BranchDashboardScreen = () => {
         >
           <TouchableWithoutFeedback onPress={() => setProfileMenuVisible(false)}>
             <View style={styles.modalOverlay}>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.profileIconFocus,
+                  {
+                    top: profileAnchor.top,
+                    left: profileAnchor.left,
+                    width: profileAnchor.width,
+                    height: profileAnchor.height,
+                  },
+                ]}
+              >
+                <View style={[styles.iconBtn, styles.iconBtnActive, styles.profileIconFocusInner]}>
+                  <Ionicons name="person-circle-outline" size={26} color="#5C4737" />
+                </View>
+              </View>
+
               <TouchableWithoutFeedback>
                 <View style={[styles.profileMenu, { top: menuPosition.top, right: menuPosition.right }]}>
+                  <View style={styles.profileMenuArrow}>
+                    <View style={styles.profileMenuArrowBorder} />
+                    <View style={styles.profileMenuArrowFill} />
+                  </View>
 
                   <View style={styles.menuBlock}>
                     <View style={styles.menuRow}>
@@ -366,12 +398,12 @@ const BranchDashboardScreen = () => {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { flex: 1 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 32 },
   header: {
@@ -414,8 +446,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconBtnActive: {
+    backgroundColor: '#F8EFE5',
+    borderWidth: 1,
+    borderColor: '#DCCBBB',
+    transform: [{ scale: 1.08 }],
+    shadowColor: '#3A2416',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    elevation: 4,
+  },
   modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(28,24,21,0.18)',
+  },
+  profileIconFocus: {
+    position: 'absolute',
+    zIndex: 4,
+  },
+  profileIconFocusInner: {
+    width: '100%',
+    height: '100%',
   },
   profileMenu: {
     position: 'absolute',
@@ -423,6 +475,40 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minWidth: 230,
     gap: 0,
+  },
+  profileMenuArrow: {
+    position: 'absolute',
+    top: -9,
+    right: 16,
+    width: 18,
+    height: 10,
+    zIndex: 2,
+  },
+  profileMenuArrowBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: BORDER,
+  },
+  profileMenuArrowFill: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 9,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: WHITE,
   },
   menuBlock: {
     backgroundColor: WHITE,

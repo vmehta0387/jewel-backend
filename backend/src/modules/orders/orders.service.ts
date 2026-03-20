@@ -10,6 +10,28 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.dto';
 
+type NotificationTone = 'gold' | 'blue' | 'green' | 'rose';
+type NotificationCategory = 'ORDER' | 'UPDATE';
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  icon: string;
+  tone: NotificationTone;
+  category: NotificationCategory;
+  createdAt: string;
+  isUnread: boolean;
+  orderId?: string | null;
+  designId?: string | null;
+}
+
+interface NotificationsResponse {
+  data: NotificationItem[];
+  total: number;
+  unread: number;
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -442,6 +464,251 @@ export class OrdersService {
     return { points };
   }
 
+  async getNotifications(requester: AuthUser, limit = 12): Promise<NotificationsResponse> {
+    const normalizedLimit = Math.min(Math.max(Math.trunc(Number(limit) || 12), 1), 20);
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const dueSoonUntil = new Date(startOfToday);
+    dueSoonUntil.setDate(dueSoonUntil.getDate() + 2);
+    dueSoonUntil.setHours(23, 59, 59, 999);
+    const recentDesignCutoff = new Date(now);
+    recentDesignCutoff.setDate(recentDesignCutoff.getDate() - 7);
+
+    const recentOrdersQuery = this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.design', 'design')
+      .where('order.isActive = :isActive', { isActive: true })
+      .orderBy('order.updatedAt', 'DESC')
+      .take(Math.max(normalizedLimit, 8));
+    this.applyScopeFilter(recentOrdersQuery, requester);
+
+    const dueSoonQuery = this.orderRepo
+      .createQueryBuilder('order')
+      .where('order.isActive = :isActive', { isActive: true })
+      .andWhere('order.status NOT IN (:...closedStatuses)', {
+        closedStatuses: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
+      })
+      .andWhere('order.deliveryDate IS NOT NULL')
+      .andWhere('order.deliveryDate >= :startOfToday', { startOfToday })
+      .andWhere('order.deliveryDate <= :dueSoonUntil', { dueSoonUntil });
+    this.applyScopeFilter(dueSoonQuery, requester);
+
+    const recentDesignsQuery = this.designRepo
+      .createQueryBuilder('design')
+      .where('design.isActive = :isActive', { isActive: true })
+      .orderBy('design.updatedAt', 'DESC')
+      .take(4);
+    this.applyDesignScopeFilter(recentDesignsQuery, requester);
+
+    const recentDesignCountQuery = this.designRepo
+      .createQueryBuilder('design')
+      .select('COUNT(*)', 'count')
+      .where('design.isActive = :isActive', { isActive: true })
+      .andWhere('design.createdAt >= :recentDesignCutoff', { recentDesignCutoff });
+    this.applyDesignScopeFilter(recentDesignCountQuery, requester);
+
+    const [recentOrders, summary, dueSoonCount, recentDesigns, recentDesignCountRow] = await Promise.all([
+      recentOrdersQuery.getMany(),
+      this.getSummary(requester),
+      dueSoonQuery.getCount(),
+      recentDesignsQuery.getMany(),
+      recentDesignCountQuery.getRawOne(),
+    ]);
+
+    const orderItems = recentOrders.map((order, index) => this.buildOrderNotification(order, index));
+    const updateItems = this.buildUpdateNotifications({
+      summary,
+      dueSoonCount,
+      recentDesignCount: this.toNumber(recentDesignCountRow?.count ?? 0),
+      recentDesigns,
+      now,
+    });
+
+    const unreadCutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const data = [...orderItems, ...updateItems]
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .slice(0, normalizedLimit)
+      .map((item, index) => ({
+        ...item,
+        isUnread: index < 3 || new Date(item.createdAt).getTime() >= unreadCutoff,
+      }));
+
+    return {
+      data,
+      total: data.length,
+      unread: data.filter((item) => item.isUnread).length,
+    };
+  }
+
+  private buildOrderNotification(order: Order, index: number): Omit<NotificationItem, 'isUnread'> {
+    const designLabel = order.design?.designNo?.trim() || order.shortDescription?.trim() || 'Jewelry design';
+    const deliveryLabel = this.formatShortDate(order.deliveryDate);
+    const createdAt = this.toIsoString(order.updatedAt || order.createdAt, index * 60 * 60 * 1000);
+
+    switch (order.status) {
+      case OrderStatus.SHIPPED:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} is ready to ship`,
+          body: `${designLabel} is packed and ready${deliveryLabel ? ` for ${deliveryLabel}` : ''}.`,
+          icon: 'paper-plane-outline',
+          tone: 'green',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      case OrderStatus.IN_PRODUCTION:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} moved into production`,
+          body: `${designLabel} is actively being crafted right now.`,
+          icon: 'construct-outline',
+          tone: 'blue',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      case OrderStatus.COMPLETED:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} has been completed`,
+          body: `${designLabel} is complete${deliveryLabel ? ` and was due ${deliveryLabel}` : ''}.`,
+          icon: 'checkmark-done-circle-outline',
+          tone: 'green',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      case OrderStatus.PENDING_APPROVAL:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} is awaiting approval`,
+          body: `${designLabel} is waiting for final confirmation.`,
+          icon: 'time-outline',
+          tone: 'gold',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      case OrderStatus.APPROVED:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} has been approved`,
+          body: `${designLabel} is cleared for the next production step.`,
+          icon: 'checkmark-circle-outline',
+          tone: 'green',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      case OrderStatus.CANCELLED:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} was cancelled`,
+          body: `${designLabel} has been removed from the active queue.`,
+          icon: 'close-circle-outline',
+          tone: 'rose',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+      default:
+        return {
+          id: `order-${order.id}`,
+          title: `${order.orderNumber} was updated`,
+          body: `${designLabel} now has fresh activity${deliveryLabel ? ` and is due ${deliveryLabel}` : ''}.`,
+          icon: 'sparkles-outline',
+          tone: 'gold',
+          category: 'ORDER',
+          createdAt,
+          orderId: order.id,
+          designId: order.designId,
+        };
+    }
+  }
+
+  private buildUpdateNotifications(params: {
+    summary: {
+      ordersReceivedToday: number;
+      ordersDueToday: number;
+      salesThisWeek: number;
+      activeOrders: number;
+    };
+    dueSoonCount: number;
+    recentDesignCount: number;
+    recentDesigns: Design[];
+    now: Date;
+  }): Array<Omit<NotificationItem, 'isUnread'>> {
+    const items: Array<Omit<NotificationItem, 'isUnread'>> = [];
+
+    if (params.dueSoonCount > 0) {
+      items.push({
+        id: 'update-due-soon',
+        title: `${params.dueSoonCount} order${params.dueSoonCount > 1 ? 's need' : ' needs'} attention soon`,
+        body: 'Review due dates and keep the branch queue moving smoothly.',
+        icon: 'alarm-outline',
+        tone: 'gold',
+        category: 'UPDATE',
+        createdAt: new Date(params.now.getTime() - 20 * 60 * 1000).toISOString(),
+      });
+    }
+
+    if (params.recentDesignCount > 0) {
+      const latestDesign = params.recentDesigns[0];
+      items.push({
+        id: 'update-design-catalog',
+        title: 'Fresh catalog styles are ready to browse',
+        body: `${params.recentDesignCount} active design${params.recentDesignCount > 1 ? 's were' : ' was'} added in the last 7 days.`,
+        icon: 'diamond-outline',
+        tone: 'rose',
+        category: 'UPDATE',
+        createdAt: this.toIsoString(latestDesign?.updatedAt || latestDesign?.createdAt || params.now),
+        designId: latestDesign?.id ?? null,
+      });
+    }
+
+    if (params.summary.ordersReceivedToday > 0 || params.summary.activeOrders > 0 || params.summary.ordersDueToday > 0) {
+      items.push({
+        id: 'update-branch-overview',
+        title: 'Today\'s branch summary is ready',
+        body: `${params.summary.ordersReceivedToday} new order${params.summary.ordersReceivedToday === 1 ? '' : 's'} today, ${params.summary.activeOrders} active, ${params.summary.ordersDueToday} due today.`,
+        icon: 'grid-outline',
+        tone: 'blue',
+        category: 'UPDATE',
+        createdAt: new Date(params.now.getTime() - 3 * 60 * 60 * 1000).toISOString(),
+      });
+    }
+
+    return items;
+  }
+
+  private applyDesignScopeFilter(qb: any, requester: AuthUser): void {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (!requester.companyId) {
+      throw new ForbiddenException('User is not assigned to a company');
+    }
+
+    qb.andWhere('(design.companyId = :scopeCompanyId OR design.companyId IS NULL)', {
+      scopeCompanyId: requester.companyId,
+    });
+
+    if (requester.branchId) {
+      qb.andWhere('(design.branchId = :scopeBranchId OR design.branchId IS NULL)', {
+        scopeBranchId: requester.branchId,
+      });
+    }
+  }
+
   private resolveScope(requester: AuthUser, companyId?: string, branchId?: string) {
     const normalizedCompanyId = companyId?.trim();
     const normalizedBranchId = branchId?.trim();
@@ -618,6 +885,33 @@ export class OrdersService {
     }
 
     return this.toNumber(branch.branchMultiplier) || 1;
+  }
+
+  private formatShortDate(value?: string | Date | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
+  private toIsoString(value?: string | Date | null, fallbackOffsetMs = 0): string {
+    if (value) {
+      const parsed = value instanceof Date ? value : new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+
+    return new Date(Date.now() - fallbackOffsetMs).toISOString();
   }
 
   private toNumber(value: unknown): number {

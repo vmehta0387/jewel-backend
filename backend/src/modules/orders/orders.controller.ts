@@ -52,6 +52,11 @@ export class OrdersController {
     return this.ordersService.getTrends(req.user);
   }
 
+  @Get('notifications')
+  getNotifications(@Request() req: { user: AuthUser }, @Query('limit') limit?: string) {
+    return this.ordersService.getNotifications(req.user, limit ? Number(limit) : undefined);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.ordersService.findOne(id, req.user);

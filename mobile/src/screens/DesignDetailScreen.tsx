@@ -1,18 +1,29 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
+  Modal,
   ScrollView,
   Share,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  type PanGestureHandlerStateChangeEvent,
+  PinchGestureHandler,
+  State,
+  type PinchGestureHandlerStateChangeEvent,
+} from 'react-native-gesture-handler';
 import Screen from '../components/Screen';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesign } from '../api/designs';
@@ -72,11 +83,29 @@ const DesignDetailScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [design, setDesign] = useState<Design | null>(null);
   const [displayPrice, setDisplayPrice] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [saved, setSaved] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState(1.15);
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [brokenImageUris, setBrokenImageUris] = useState<Record<string, true>>({});
+  const [viewerScale, setViewerScale] = useState(1);
+  const baseScale = useRef(new Animated.Value(1)).current;
+  const pinchScale = useRef(new Animated.Value(1)).current;
+  const baseTranslateX = useRef(new Animated.Value(0)).current;
+  const baseTranslateY = useRef(new Animated.Value(0)).current;
+  const dragTranslateX = useRef(new Animated.Value(0)).current;
+  const dragTranslateY = useRef(new Animated.Value(0)).current;
+  const zoomScale = useRef(Animated.multiply(baseScale, pinchScale)).current;
+  const translateX = useRef(Animated.add(baseTranslateX, dragTranslateX)).current;
+  const translateY = useRef(Animated.add(baseTranslateY, dragTranslateY)).current;
+  const lastScale = useRef(1);
+  const lastOffset = useRef({ x: 0, y: 0 });
+  const pinchHandlerRef = useRef<PinchGestureHandler>(null);
+  const panHandlerRef = useRef<PanGestureHandler>(null);
 
   const loadDesign = useCallback(async () => {
     if (!token) return;
@@ -87,6 +116,7 @@ const DesignDetailScreen = () => {
       const data = await fetchDesign(token, route.params.designId);
       setDesign(data);
       setSelectedImageIndex(0);
+      setBrokenImageUris({});
 
       const shouldApplyPricing =
         (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
@@ -116,6 +146,14 @@ const DesignDetailScreen = () => {
 
   const gallery = useMemo(() => design?.imageUrls?.filter(Boolean) || [], [design?.imageUrls]);
   const activeImage = gallery[selectedImageIndex] || gallery[0];
+  const canShowActiveImage = Boolean(activeImage && !brokenImageUris[activeImage]);
+  const viewerImageFrame = useMemo(
+    () => ({
+      width: screenWidth,
+      height: screenHeight,
+    }),
+    [screenHeight, screenWidth],
+  );
   const metalLabel = design ? getMetalLabel(design) : 'Unavailable';
   const detailMeta = design ? `Size ${design.jewelrySize || 'N/A'} - ${metalLabel}` : '';
   const specRows = useMemo(
@@ -139,6 +177,159 @@ const DesignDetailScreen = () => {
       title: design.designNo,
     });
   }, [design, detailMeta, displayPrice]);
+
+  const handleImageShare = useCallback(async () => {
+    if (!design) return;
+
+    const message = [design.designNo, activeImage].filter(Boolean).join('\n');
+    await Share.share({
+      message,
+      title: `${design.designNo} image`,
+    });
+  }, [activeImage, design]);
+
+  const getPanBounds = useCallback(
+    (scale: number) => {
+      const x = Math.max(0, (viewerImageFrame.width * scale - viewerImageFrame.width) / 2);
+      const y = Math.max(0, (viewerImageFrame.height * scale - viewerImageFrame.height) / 2);
+      return { x, y };
+    },
+    [viewerImageFrame.height, viewerImageFrame.width],
+  );
+
+  const clampOffset = useCallback(
+    (scale: number, x: number, y: number) => {
+      const bounds = getPanBounds(scale);
+      return {
+        x: Math.max(-bounds.x, Math.min(x, bounds.x)),
+        y: Math.max(-bounds.y, Math.min(y, bounds.y)),
+      };
+    },
+    [getPanBounds],
+  );
+
+  const resetViewerPosition = useCallback(() => {
+    lastOffset.current = { x: 0, y: 0 };
+    baseTranslateX.setValue(0);
+    baseTranslateY.setValue(0);
+    dragTranslateX.setValue(0);
+    dragTranslateY.setValue(0);
+  }, [baseTranslateX, baseTranslateY, dragTranslateX, dragTranslateY]);
+
+  const resetViewerZoom = useCallback(() => {
+    lastScale.current = 1;
+    setViewerScale(1);
+    baseScale.setValue(1);
+    pinchScale.setValue(1);
+    resetViewerPosition();
+  }, [baseScale, pinchScale, resetViewerPosition]);
+
+  const zoomTo = useCallback(
+    (nextScale: number) => {
+      const clamped = Math.max(1, Math.min(nextScale, 4));
+      const nextOffset = clamped <= 1
+        ? { x: 0, y: 0 }
+        : clampOffset(clamped, lastOffset.current.x, lastOffset.current.y);
+
+      lastScale.current = clamped;
+      setViewerScale(clamped);
+      baseScale.setValue(clamped);
+      pinchScale.setValue(1);
+      lastOffset.current = nextOffset;
+      baseTranslateX.setValue(nextOffset.x);
+      baseTranslateY.setValue(nextOffset.y);
+      dragTranslateX.setValue(0);
+      dragTranslateY.setValue(0);
+    },
+    [baseScale, baseTranslateX, baseTranslateY, clampOffset, dragTranslateX, dragTranslateY, pinchScale],
+  );
+
+  const handlePinchGestureEvent = useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { scale: pinchScale } }], {
+        useNativeDriver: true,
+      }),
+    [pinchScale],
+  );
+
+  const handlePanGestureEvent = useMemo(
+    () =>
+      Animated.event(
+        [{ nativeEvent: { translationX: dragTranslateX, translationY: dragTranslateY } }],
+        {
+          useNativeDriver: true,
+        },
+      ),
+    [dragTranslateX, dragTranslateY],
+  );
+
+  const handlePinchStateChange = useCallback(
+    (event: PinchGestureHandlerStateChangeEvent) => {
+      if (event.nativeEvent.oldState === State.ACTIVE) {
+        zoomTo(lastScale.current * event.nativeEvent.scale);
+      }
+    },
+    [zoomTo],
+  );
+
+  const handlePanStateChange = useCallback(
+    (event: PanGestureHandlerStateChangeEvent) => {
+      if (event.nativeEvent.oldState === State.ACTIVE) {
+        const proposedX = lastOffset.current.x + event.nativeEvent.translationX;
+        const proposedY = lastOffset.current.y + event.nativeEvent.translationY;
+        const nextOffset = viewerScale <= 1
+          ? { x: 0, y: 0 }
+          : clampOffset(viewerScale, proposedX, proposedY);
+
+        lastOffset.current = nextOffset;
+        baseTranslateX.setValue(nextOffset.x);
+        baseTranslateY.setValue(nextOffset.y);
+        dragTranslateX.setValue(0);
+        dragTranslateY.setValue(0);
+      }
+    },
+    [baseTranslateX, baseTranslateY, clampOffset, dragTranslateX, dragTranslateY, viewerScale],
+  );
+
+  const markImageBroken = useCallback((uri?: string) => {
+    if (!uri) return;
+
+    setBrokenImageUris((current) => {
+      if (current[uri]) return current;
+      return { ...current, [uri]: true };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeImage || brokenImageUris[activeImage]) {
+      setImageAspectRatio(1.15);
+      return;
+    }
+
+    let cancelled = false;
+
+    Image.getSize(
+      activeImage,
+      (width, height) => {
+        if (!cancelled && width > 0 && height > 0) {
+          setImageAspectRatio(width / height);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setImageAspectRatio(1.15);
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeImage, brokenImageUris]);
+
+  useEffect(() => {
+    resetViewerZoom();
+  }, [resetViewerZoom, selectedImageIndex, viewerVisible]);
 
   if (!design && !error) {
     return (
@@ -167,17 +358,6 @@ const DesignDetailScreen = () => {
     <Screen style={styles.screen}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroArea}>
-          <View style={styles.heroImageShell}>
-            {activeImage ? (
-              <Image source={{ uri: activeImage }} style={styles.heroImage} resizeMode="cover" />
-            ) : (
-              <View style={styles.placeholderHero}>
-                <Ionicons name="diamond-outline" size={44} color="#c5a890" />
-                <Text style={styles.placeholderText}>Image coming soon</Text>
-              </View>
-            )}
-          </View>
-
           <View style={styles.heroTopBar}>
             <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()} activeOpacity={0.88}>
               <Ionicons name="arrow-back" size={18} color="#2f2119" />
@@ -196,6 +376,30 @@ const DesignDetailScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
+
+          <TouchableOpacity
+            activeOpacity={0.94}
+            style={[styles.heroImageShell, { aspectRatio: imageAspectRatio }]}
+            disabled={!canShowActiveImage}
+            onPress={() => setViewerVisible(true)}
+          >
+            {canShowActiveImage ? (
+              <Image
+                source={{ uri: activeImage }}
+                style={styles.heroImage}
+                resizeMode="contain"
+                onError={() => markImageBroken(activeImage)}
+              />
+            ) : (
+              <View style={[styles.placeholderHero, styles.placeholderHeroLarge]}>
+                <View style={styles.placeholderBadge}>
+                  <Ionicons name="diamond-outline" size={28} color="#bc9672" />
+                </View>
+                <Text style={styles.placeholderTitle}>Design Image Coming Soon</Text>
+                <Text style={styles.placeholderText}>This jewelry preview will appear here once the image is available.</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {gallery.length > 1 ? (
@@ -215,13 +419,29 @@ const DesignDetailScreen = () => {
                   index === selectedImageIndex ? styles.thumbnailFrameActive : null,
                 ]}
               >
-                <Image source={{ uri: imageUrl }} style={styles.thumbnailImage} resizeMode="cover" />
+                {brokenImageUris[imageUrl] ? (
+                  <View style={styles.thumbnailPlaceholder}>
+                    <Ionicons name="diamond-outline" size={16} color="#b99472" />
+                  </View>
+                ) : (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.thumbnailImage}
+                    resizeMode="cover"
+                    onError={() => markImageBroken(imageUrl)}
+                  />
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
         ) : null}
 
-        <View style={styles.detailCard}>
+        <View
+          style={[
+            styles.detailCard,
+            gallery.length > 1 ? styles.detailCardWithThumbnails : null,
+          ]}
+        >
           <View style={styles.titleBlock}>
             <Text style={styles.designName}>{design.designNo}</Text>
             <Text style={styles.designPrice}>{formatDetailPrice(displayPrice)}</Text>
@@ -262,26 +482,172 @@ const DesignDetailScreen = () => {
           </View>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={viewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          resetViewerZoom();
+          setViewerVisible(false);
+        }}
+      >
+        <GestureHandlerRootView style={styles.viewerOverlay}>
+          <View style={styles.viewerTopBar}>
+            <TouchableOpacity
+              style={styles.viewerAction}
+              activeOpacity={0.88}
+              onPress={() => {
+                resetViewerZoom();
+                setViewerVisible(false);
+              }}
+            >
+              <Ionicons name="close" size={22} color="#b8b8be" />
+            </TouchableOpacity>
+
+            <View style={styles.viewerActionsRight}>
+              <TouchableOpacity
+                style={styles.viewerAction}
+                activeOpacity={0.88}
+                onPress={() => zoomTo(lastScale.current - 0.5)}
+              >
+                <Ionicons name="remove" size={20} color="#b8b8be" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.viewerAction}
+                activeOpacity={0.88}
+                onPress={() => zoomTo(lastScale.current + 0.5)}
+              >
+                <Ionicons name="add" size={20} color="#b8b8be" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.viewerAction}
+                activeOpacity={0.88}
+                onPress={handleImageShare}
+              >
+                <Ionicons name="arrow-redo-outline" size={20} color="#b8b8be" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.viewerStage}>
+            <PinchGestureHandler
+              ref={pinchHandlerRef}
+              simultaneousHandlers={panHandlerRef}
+              onGestureEvent={handlePinchGestureEvent}
+              onHandlerStateChange={handlePinchStateChange}
+            >
+              <Animated.View>
+                <PanGestureHandler
+                  ref={panHandlerRef}
+                  simultaneousHandlers={pinchHandlerRef}
+                  enabled={viewerScale > 1.01}
+                  onGestureEvent={handlePanGestureEvent}
+                  onHandlerStateChange={handlePanStateChange}
+                >
+                  <Animated.View
+                    style={[
+                      styles.viewerZoomSurface,
+                      viewerImageFrame,
+                      {
+                        transform: [
+                          { scale: zoomScale },
+                          { translateX },
+                          { translateY },
+                        ],
+                      },
+                    ]}
+                  >
+                    {canShowActiveImage ? (
+                      <Image
+                        source={{ uri: activeImage }}
+                        style={[styles.viewerImage, viewerImageFrame]}
+                        resizeMode="contain"
+                        onError={() => markImageBroken(activeImage)}
+                      />
+                    ) : (
+                      <View style={[styles.placeholderHero, styles.viewerPlaceholder, viewerImageFrame]}>
+                        <View style={styles.placeholderBadge}>
+                          <Ionicons name="diamond-outline" size={28} color="#d8b18d" />
+                        </View>
+                        <Text style={styles.viewerPlaceholderTitle}>Image unavailable</Text>
+                        <Text style={[styles.placeholderText, styles.viewerPlaceholderText]}>
+                          This design image could not be loaded right now.
+                        </Text>
+                      </View>
+                    )}
+                  </Animated.View>
+                </PanGestureHandler>
+              </Animated.View>
+            </PinchGestureHandler>
+          </View>
+
+          <View style={styles.viewerFooter}>
+            {gallery.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.viewerThumbnailRow}
+                style={styles.viewerThumbnailScroller}
+              >
+                {gallery.map((imageUrl, index) => {
+                  const selected = index === selectedImageIndex;
+                  const broken = Boolean(brokenImageUris[imageUrl]);
+
+                  return (
+                    <TouchableOpacity
+                      key={`viewer-${imageUrl}-${index}`}
+                      activeOpacity={0.9}
+                      onPress={() => setSelectedImageIndex(index)}
+                      style={[
+                        styles.viewerThumbnailFrame,
+                        selected ? styles.viewerThumbnailFrameActive : null,
+                      ]}
+                    >
+                      {broken ? (
+                        <View style={[styles.thumbnailPlaceholder, styles.viewerThumbnailPlaceholder]}>
+                          <Ionicons name="diamond-outline" size={15} color="#d6b18c" />
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: imageUrl }}
+                          style={styles.thumbnailImage}
+                          resizeMode="cover"
+                          onError={() => markImageBroken(imageUrl)}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
+          </View>
+        </GestureHandlerRootView>
+      </Modal>
     </Screen>
   );
 };
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#f7f0e8',
+    backgroundColor: 'transparent',
   },
   container: {
     paddingTop: 0,
     paddingBottom: 0,
   },
   heroArea: {
+    width: '100%',
     position: 'relative',
   },
   heroTopBar: {
     position: 'absolute',
-    top: 14,
+    top: 12,
     left: 18,
     right: 18,
+    zIndex: 2,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -296,15 +662,14 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.86)',
+    backgroundColor: 'rgba(255,255,255,0.58)',
     borderWidth: 1,
-    borderColor: '#ebdfd1',
+    borderColor: 'rgba(235,223,209,0.55)',
   },
   heroImageShell: {
-    height: 300,
+    width: '100%',
     borderRadius: 0,
-    overflow: 'hidden',
-    backgroundColor: '#f0e5d8',
+    backgroundColor: 'transparent',
   },
   heroImage: {
     width: '100%',
@@ -315,10 +680,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
+    paddingHorizontal: 24,
+  },
+  placeholderHeroLarge: {
+    minHeight: 320,
+  },
+  placeholderBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    backgroundColor: 'rgba(247,233,216,0.95)',
+    borderWidth: 1,
+    borderColor: '#ead7c3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#6f5746',
   },
   placeholderText: {
     fontSize: 13,
     color: '#8a786a',
+    textAlign: 'center',
+    lineHeight: 19,
   },
   thumbnailRow: {
     paddingTop: 14,
@@ -345,6 +731,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  thumbnailPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f7eee3',
+  },
   detailCard: {
     marginTop: -34,
     backgroundColor: '#fffdf9',
@@ -357,6 +749,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 28,
     elevation: 5,
+  },
+  detailCardWithThumbnails: {
+    marginTop: 16,
   },
   titleBlock: {
     marginBottom: 14,
@@ -482,7 +877,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: '#f7f0e8',
+    backgroundColor: 'transparent',
   },
   stateCard: {
     width: '100%',
@@ -520,6 +915,96 @@ const styles = StyleSheet.create({
     color: '#fffdf8',
     fontSize: 14,
     fontWeight: '700',
+  },
+  viewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(12,12,14,0.96)',
+  },
+  viewerTopBar: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    right: 18,
+    zIndex: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  viewerActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  viewerAction: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(142,142,147,0.75)',
+  },
+  viewerStage: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  viewerZoomSurface: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    alignSelf: 'center',
+  },
+  viewerPlaceholder: {
+    alignSelf: 'center',
+  },
+  viewerPlaceholderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff6ef',
+  },
+  viewerPlaceholderText: {
+    color: 'rgba(255,246,239,0.72)',
+  },
+  viewerFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 18,
+    zIndex: 4,
+    justifyContent: 'flex-end',
+  },
+  viewerThumbnailScroller: {
+    flexGrow: 0,
+  },
+  viewerThumbnailRow: {
+    paddingHorizontal: 18,
+    paddingTop: 0,
+    paddingBottom: 0,
+    gap: 10,
+    alignItems: 'center',
+  },
+  viewerThumbnailFrame: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(142,142,147,0.55)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  viewerThumbnailFrameActive: {
+    borderColor: '#f2d6b8',
+    borderWidth: 2,
+  },
+  viewerThumbnailPlaceholder: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
 });
 

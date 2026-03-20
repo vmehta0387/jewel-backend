@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Screen from '../components/Screen';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
@@ -17,11 +18,13 @@ import BranchTeamScreen from '../screens/BranchTeamScreen';
 import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import AiChatScreen from '../screens/AiChatScreen';
+import NotificationScreen from '../screens/NotificationScreen';
 import type { UserRole } from '../types';
 
 export type RootStackParamList = {
   Auth: undefined;
   App: undefined;
+  Notifications: undefined;
 };
 
 export type DesignsStackParamList = {
@@ -94,6 +97,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
     <Tabs.Navigator
       screenOptions={({ route }) => ({
       headerShown: false,
+      tabBarHideOnKeyboard: true,
       tabBarStyle: {
         backgroundColor: colors.card,
         borderTopColor: colors.border,
@@ -156,9 +160,9 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
 };
 
 const LoadingScreen = () => (
-  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+  <Screen style={styles.loadingScreen}>
     <ActivityIndicator size="large" color={colors.primary} />
-  </View>
+  </Screen>
 );
 
 const RootNavigator = () => {
@@ -172,9 +176,12 @@ const RootNavigator = () => {
     <NavigationContainer theme={navigationTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
-          <RootStack.Screen name="App">
-            {() => <AppTabs role={user?.role} />}
-          </RootStack.Screen>
+          <>
+            <RootStack.Screen name="App">
+              {() => <AppTabs role={user?.role} />}
+            </RootStack.Screen>
+            <RootStack.Screen name="Notifications" component={NotificationScreen} />
+          </>
         ) : (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
         )}
@@ -195,5 +202,9 @@ const styles = StyleSheet.create({
   },
   tabIconActive: {
     backgroundColor: colors.accent,
+  },
+  loadingScreen: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

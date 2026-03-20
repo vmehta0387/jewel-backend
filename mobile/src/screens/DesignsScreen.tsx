@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
   FlatList,
   Image,
   RefreshControl,
@@ -23,6 +24,7 @@ import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatCurrency } from '../utils/format';
 
 type BadgeTone = 'champagne' | 'mint' | 'rose';
+type SkeletonDesignItem = { id: string; skeleton: true };
 
 const BADGE_PRESETS: Array<{ label: string; tone: BadgeTone }> = [
   { label: 'Bestseller', tone: 'champagne' },
@@ -65,13 +67,24 @@ const DesignsScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const designsRef = useRef<Design[]>([]);
+  const skeletonPulse = useRef(new Animated.Value(0.58)).current;
 
-  const loadDesigns = useCallback(async () => {
+  const loadDesigns = useCallback(async (options?: { refresh?: boolean }) => {
     if (!token) return;
-    setLoading(true);
+    const isRefresh = options?.refresh === true;
+    const showSkeleton = !isRefresh && designsRef.current.length === 0;
+
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (showSkeleton) {
+      setLoading(true);
+    }
+
     setError(null);
     try {
       const response = await fetchDesigns(token);
@@ -82,6 +95,7 @@ const DesignsScreen = () => {
         Boolean(user?.branchId);
 
       if (!shouldApplyPricing) {
+        designsRef.current = baseDesigns;
         setDesigns(baseDesigns);
         return;
       }
@@ -99,11 +113,16 @@ const DesignsScreen = () => {
         }),
       );
 
+      designsRef.current = pricedDesigns;
       setDesigns(pricedDesigns);
     } catch (err: any) {
       setError(err?.message || 'Unable to load designs');
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else if (showSkeleton) {
+        setLoading(false);
+      }
     }
   }, [token, user?.role, user?.companyId, user?.branchId]);
 
@@ -112,6 +131,31 @@ const DesignsScreen = () => {
       loadDesigns();
     }, [loadDesigns]),
   );
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.58,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    pulseLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [skeletonPulse]);
 
   const categories = useMemo(() => {
     const orderedGroups = Array.from(
@@ -137,6 +181,21 @@ const DesignsScreen = () => {
       return matchesCategory && matchesSearch;
     });
   }, [designs, search, selectedCategory]);
+
+  const skeletonCount = useMemo(() => {
+    const visibleCount = refreshing
+      ? Math.max(filteredDesigns.length, Math.min(designs.length, 6))
+      : filteredDesigns.length;
+    const baseCount = visibleCount > 0 ? Math.min(Math.max(visibleCount, 4), 6) : 6;
+    return baseCount % 2 === 0 ? baseCount : baseCount + 1;
+  }, [designs.length, filteredDesigns.length, refreshing]);
+
+  const skeletonItems = useMemo<SkeletonDesignItem[]>(
+    () => Array.from({ length: skeletonCount }, (_, index) => ({ id: `skeleton-${index}`, skeleton: true })),
+    [skeletonCount],
+  );
+  const showGridSkeleton = (loading && designs.length === 0) || refreshing;
+  const gridData = showGridSkeleton ? skeletonItems : filteredDesigns;
 
   const renderDesignCard = ({ item, index }: { item: Design; index: number }) => {
     const badge = getBadge(index);
@@ -192,15 +251,6 @@ const DesignsScreen = () => {
   };
 
   const renderEmpty = () => {
-    if (loading && designs.length === 0) {
-      return (
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="small" color="#8a6b55" />
-          <Text style={styles.loadingText}>Loading designs...</Text>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyIcon}>
@@ -211,6 +261,35 @@ const DesignsScreen = () => {
       </View>
     );
   };
+
+  const renderSkeletonCard = ({ index }: { index: number }) => (
+    <View style={styles.cardTouchable}>
+      <View style={styles.designCard}>
+        <View style={styles.badgeRow}>
+          <Animated.View style={[styles.skeletonBadge, { opacity: skeletonPulse }]} />
+        </View>
+
+        <Animated.View style={[styles.imageShell, styles.skeletonBlock, { opacity: skeletonPulse }]}>
+          <View style={styles.skeletonImageGlow} />
+          <View style={styles.skeletonImageCore} />
+        </Animated.View>
+        <Animated.View style={[styles.skeletonLine, styles.skeletonTitleLine, { opacity: skeletonPulse }]} />
+        <Animated.View style={[styles.skeletonLine, styles.skeletonTitleLineShort, { opacity: skeletonPulse }]} />
+        <Animated.View style={[styles.skeletonLine, styles.skeletonMetaLine, { opacity: skeletonPulse }]} />
+        <Animated.View
+          style={[
+            styles.skeletonLine,
+            styles.skeletonPriceLine,
+            index % 2 === 0 ? styles.skeletonPriceLineWide : null,
+            { opacity: skeletonPulse },
+          ]}
+        />
+      </View>
+    </View>
+  );
+
+  const renderGridItem = ({ item, index }: { item: Design | SkeletonDesignItem; index: number }) =>
+    'skeleton' in item ? renderSkeletonCard({ index }) : renderDesignCard({ item, index });
 
   return (
     <Screen style={styles.screen}>
@@ -269,18 +348,18 @@ const DesignsScreen = () => {
       </View>
 
       <FlatList
-        data={filteredDesigns}
+        data={gridData}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        renderItem={renderDesignCard}
+        renderItem={renderGridItem}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={renderEmpty}
+        ListEmptyComponent={showGridSkeleton ? null : renderEmpty}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={loadDesigns}
+            refreshing={false}
+            onRefresh={() => loadDesigns({ refresh: true })}
             tintColor="#8a6b55"
             colors={['#8a6b55']}
           />
@@ -292,13 +371,13 @@ const DesignsScreen = () => {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#f5efe8',
+    backgroundColor: 'transparent',
   },
   fixedHeader: {
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 10,
-    backgroundColor: '#f5efe8',
+    backgroundColor: 'transparent',
   },
   searchShell: {
     flexDirection: 'row',
@@ -458,14 +537,53 @@ const styles = StyleSheet.create({
     color: '#2c2019',
     marginTop: 10,
   },
-  loadingState: {
-    alignItems: 'center',
-    paddingVertical: 44,
+  skeletonBlock: {
+    backgroundColor: '#f1e5d8',
   },
-  loadingText: {
-    fontSize: 13,
-    color: '#8a786a',
+  skeletonBadge: {
+    width: 74,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#f0e2d3',
+  },
+  skeletonImageGlow: {
+    position: 'absolute',
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+  },
+  skeletonImageCore: {
+    width: '72%',
+    height: '72%',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  skeletonLine: {
+    borderRadius: 999,
+    backgroundColor: '#efe2d3',
+  },
+  skeletonTitleLine: {
+    height: 14,
+    width: '84%',
+  },
+  skeletonTitleLineShort: {
+    height: 14,
+    width: '62%',
+    marginTop: 6,
+  },
+  skeletonMetaLine: {
+    height: 10,
+    width: '66%',
     marginTop: 10,
+  },
+  skeletonPriceLine: {
+    height: 14,
+    width: '42%',
+    marginTop: 12,
+  },
+  skeletonPriceLineWide: {
+    width: '48%',
   },
   emptyState: {
     alignItems: 'center',

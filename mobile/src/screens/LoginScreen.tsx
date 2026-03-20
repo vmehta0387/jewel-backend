@@ -1,6 +1,21 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 import { colors, radii, spacing } from '../theme';
@@ -16,12 +31,92 @@ const LoginScreen = () => {
     biometricSignIn,
     setBiometricPreference,
   } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const activeInputRef = useRef<TextInput | null>(null);
+  const scrollOffsetRef = useRef(0);
+  const keyboardTopRef = useRef<number | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+  const keyboardVisible = keyboardInset > 0;
+
+  React.useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const scrollFocusedInputIntoView = () => {
+      const targetInput = activeInputRef.current;
+      const keyboardTop = keyboardTopRef.current;
+
+      if (!targetInput || keyboardTop === null) {
+        return;
+      }
+
+      targetInput.measureInWindow((_x, y, _width, height) => {
+        const gap = 14;
+        const inputBottom = y + height;
+        const visibleBottom = keyboardTop - gap;
+
+        if (inputBottom <= visibleBottom) {
+          return;
+        }
+
+        const neededOffset = inputBottom - visibleBottom;
+        const nextOffset = Math.max(0, scrollOffsetRef.current + neededOffset);
+        scrollRef.current?.scrollTo({ y: nextOffset, animated: true });
+      });
+    };
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      const height = Math.max(0, event.endCoordinates.height - insets.bottom);
+      keyboardTopRef.current =
+        event.endCoordinates.screenY ?? Math.max(0, windowHeight - event.endCoordinates.height);
+      setKeyboardInset(height);
+      requestAnimationFrame(scrollFocusedInputIntoView);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      keyboardTopRef.current = null;
+      setKeyboardInset(0);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom, windowHeight]);
+
+  const scrollToFocusedInput = (inputRef: TextInput | null) => {
+    activeInputRef.current = inputRef;
+
+    if (keyboardTopRef.current === null) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      inputRef?.measureInWindow((_x, y, _width, height) => {
+        const gap = 14;
+        const inputBottom = y + height;
+        const visibleBottom = keyboardTopRef.current! - gap;
+
+        if (inputBottom <= visibleBottom) {
+          return;
+        }
+
+        const neededOffset = inputBottom - visibleBottom;
+        const nextOffset = Math.max(0, scrollOffsetRef.current + neededOffset);
+        scrollRef.current?.scrollTo({ y: nextOffset, animated: true });
+      });
+    });
+  };
 
   const handleLogin = async () => {
     setError(null);
@@ -59,66 +154,97 @@ const LoginScreen = () => {
 
   return (
     <Screen style={styles.container}>
-      <View style={styles.background}>
-        <View style={styles.topWash} />
-        <View style={styles.bottomWash} />
-        <View style={styles.sideWash} />
-      </View>
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View
+          style={[
+            styles.contentStage,
+            { minHeight: Math.max(0, windowHeight - insets.top - spacing.lg * 2) },
+          ]}
+        >
+          <View style={styles.content}>
+            <View style={styles.frame}>
+              <View style={styles.card}>
+                <View style={styles.brandRow}>
+                  <View style={styles.brandBadge}>
+                    <Text style={styles.brandBadgeText}>JS</Text>
+                  </View>
+                  <Text style={styles.brandTitle}>Jewelry Sales</Text>
+                </View>
 
-      <View style={styles.content}>
-        <View style={styles.frame}>
-          <View style={styles.card}>
-            <View style={styles.brandRow}>
-              <View style={styles.brandBadge}>
-                <Text style={styles.brandBadgeText}>JS</Text>
+                <Text style={styles.welcomeTitle}>WELCOME</Text>
+                <Text style={styles.welcomeSubtitle}>Please enter your details to continue.</Text>
+
+                <Text style={styles.label}>Email</Text>
+                <TextInput
+                  ref={emailInputRef}
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={colors.textMuted}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  onFocus={() => scrollToFocusedInput(emailInputRef.current)}
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                />
+
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.inputGroup}>
+                  <TextInput
+                    ref={passwordInputRef}
+                    style={[styles.input, styles.inputWithIcon]}
+                    placeholder="Password"
+                    placeholderTextColor={colors.textMuted}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    returnKeyType="done"
+                    onFocus={() => scrollToFocusedInput(passwordInputRef.current)}
+                    onSubmitEditing={handleLogin}
+                  />
+                  <TouchableOpacity
+                    style={styles.iconButton}
+                    onPress={() => setShowPassword((prev) => !prev)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {error ? <Text style={styles.error}>{error}</Text> : null}
+
+                <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
+                {biometricAvailable && biometricEnabled ? (
+                  <Button
+                    title={biometricRequired ? 'Unlock with Biometrics' : 'Use Biometrics'}
+                    onPress={handleBiometric}
+                    loading={biometricLoading}
+                    variant="secondary"
+                    style={styles.biometricButton}
+                  />
+                ) : null}
               </View>
-              <Text style={styles.brandTitle}>Jewelry Sales</Text>
             </View>
-
-            <Text style={styles.welcomeTitle}>WELCOME</Text>
-            <Text style={styles.welcomeSubtitle}>Please enter your details to continue.</Text>
-
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.inputGroup}>
-              <TextInput
-                style={[styles.input, styles.inputWithIcon]}
-                placeholder="Password"
-                placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
-                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
-            {biometricAvailable && biometricEnabled ? (
-              <Button
-                title={biometricRequired ? 'Unlock with Biometrics' : 'Use Biometrics'}
-                onPress={handleBiometric}
-                loading={biometricLoading}
-                variant="secondary"
-                style={styles.biometricButton}
-              />
-            ) : null}
           </View>
         </View>
-      </View>
+        {keyboardVisible ? <View style={{ height: keyboardInset + spacing.sm }} /> : null}
+      </ScrollView>
 
       {loading ? (
         <View style={styles.loadingOverlay}>
@@ -131,47 +257,18 @@ const LoginScreen = () => {
 
 const styles = StyleSheet.create({
   container: {
-    justifyContent: 'center',
     padding: spacing.lg,
   },
-  background: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.background,
+  scrollContent: {
+    flexGrow: 1,
+    paddingVertical: spacing.xl,
   },
-  topWash: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 220,
-    backgroundColor: colors.accent,
-    opacity: 0.2,
-  },
-  bottomWash: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-    backgroundColor: colors.muted,
-    opacity: 0.18,
-  },
-  sideWash: {
-    position: 'absolute',
-    top: 120,
-    right: -40,
-    width: 180,
-    height: 260,
-    borderRadius: 120,
-    backgroundColor: colors.secondary,
-    opacity: 0.18,
+  contentStage: {
+    justifyContent: 'center',
   },
   content: {
     zIndex: 1,
+    width: '100%',
   },
   frame: {
     backgroundColor: '#f4ede2',
@@ -270,8 +367,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   loadingOverlay: {
-    marginTop: spacing.lg,
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(246,234,217,0.4)',
   },
 });
 

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
 import ScreenHeader from '../components/ScreenHeader';
 import Card from '../components/Card';
@@ -41,6 +42,7 @@ const AiChatScreen = () => {
   const [loading, setLoading] = useState(false);
   const listRef = useRef<FlatList<ChatMessage> | null>(null);
   const navigation = useNavigation<NavigationProp<any>>();
+  const insets = useSafeAreaInsets();
 
   const canSend = input.trim().length > 0 && !loading;
   const canClear = messages.length > 0 && !loading;
@@ -146,8 +148,8 @@ const AiChatScreen = () => {
 
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : insets.bottom}
       >
         <FlatList
           ref={listRef}
@@ -160,6 +162,7 @@ const AiChatScreen = () => {
           maxToRenderPerBatch={8}
           windowSize={7}
           removeClippedSubviews
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         />
 

@@ -1,5 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -19,6 +21,7 @@ import type { Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
 
 type FilterKey = 'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'URGENT';
+type SkeletonOrderItem = { id: string; skeleton: true };
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'ALL', label: 'All' },
@@ -134,28 +137,77 @@ const OrdersScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('ALL');
+  const ordersRef = useRef<Order[]>([]);
+  const skeletonPulse = useRef(new Animated.Value(0.58)).current;
 
-  const loadOrders = useCallback(async () => {
-    if (!token) return;
+  useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.58,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
 
-    setLoading(true);
+    pulseLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [skeletonPulse]);
+
+  const loadOrders = useCallback(async (options?: { refresh?: boolean }) => {
+    const isRefresh = options?.refresh === true;
+    const showSkeleton = !hasLoaded && ordersRef.current.length === 0;
+
+    if (!token) {
+      setLoading(false);
+      setRefreshing(false);
+      setHasLoaded(true);
+      return;
+    }
+
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (showSkeleton) {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
       const fullAccess =
         user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
       const response = await fetchOrders(token, 1, 25, fullAccess ? 'ALL' : 'ACTIVE');
-      setOrders(response.data || []);
+      const nextOrders = response.data || [];
+      ordersRef.current = nextOrders;
+      setOrders(nextOrders);
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else if (showSkeleton) {
+        setLoading(false);
+      }
+      setHasLoaded(true);
     }
-  }, [token, user?.role]);
+  }, [hasLoaded, token, user?.role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -182,6 +234,21 @@ const OrdersScreen = () => {
       return matchesSearch && matchesFilter;
     });
   }, [orders, search, selectedFilter]);
+
+  const skeletonCount = useMemo(() => {
+    const visibleCount = refreshing
+      ? Math.max(filteredOrders.length, Math.min(orders.length, 6))
+      : filteredOrders.length;
+    return Math.min(Math.max(visibleCount || 5, 4), 6);
+  }, [filteredOrders.length, orders.length, refreshing]);
+
+  const skeletonItems = useMemo<SkeletonOrderItem[]>(
+    () => Array.from({ length: skeletonCount }, (_, index) => ({ id: `skeleton-order-${index}`, skeleton: true })),
+    [skeletonCount],
+  );
+
+  const showListSkeleton = ((!hasLoaded || loading) && orders.length === 0) || refreshing;
+  const listData = showListSkeleton ? skeletonItems : filteredOrders;
 
   const renderOrder = ({ item, index }: { item: Order; index: number }) => {
     const statusMeta = getStatusMeta(item.status);
@@ -236,11 +303,34 @@ const OrdersScreen = () => {
     </View>
   );
 
+  const renderSkeletonOrder = ({ index }: { index: number }) => (
+    <Animated.View style={[styles.orderCard, styles.skeletonOrderCard, { opacity: skeletonPulse }]}>
+      <View style={[styles.thumbnailWrap, styles.skeletonThumbWrap]}>
+        <View style={styles.skeletonThumbInner} />
+      </View>
+
+      <View style={styles.orderBody}>
+        <View style={styles.topRow}>
+          <View style={[styles.skeletonLine, styles.skeletonTitleLine]} />
+          <View style={[styles.skeletonLine, styles.skeletonStatusLine]} />
+        </View>
+
+        <View style={[styles.skeletonLine, styles.skeletonDesignLine, index % 2 === 0 ? styles.skeletonDesignLineWide : null]} />
+
+        <View style={styles.bottomRow}>
+          <View style={[styles.skeletonLine, styles.skeletonMetaLine]} />
+          <View style={[styles.skeletonLine, styles.skeletonPriceLine, index % 2 === 0 ? styles.skeletonPriceLineWide : null]} />
+        </View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderListItem = ({ item, index }: { item: Order | SkeletonOrderItem; index: number }) =>
+    'skeleton' in item ? renderSkeletonOrder({ index }) : renderOrder({ item, index });
+
   return (
     <Screen style={styles.screen}>
       <View style={styles.fixedHeader}>
-        <Text style={styles.pageTitle}>Orders</Text>
-
         <View style={styles.searchShell}>
           <Ionicons name="search-outline" size={18} color="#a79687" />
           <TextInput
@@ -280,16 +370,16 @@ const OrdersScreen = () => {
       </View>
 
       <FlatList
-        data={filteredOrders}
+        data={listData}
         keyExtractor={(item) => item.id}
-        renderItem={renderOrder}
+        renderItem={renderListItem}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
+        ListEmptyComponent={showListSkeleton ? null : renderEmpty}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={loadOrders}
+            refreshing={false}
+            onRefresh={() => loadOrders({ refresh: true })}
             tintColor="#8a6b55"
             colors={['#8a6b55']}
           />
@@ -301,20 +391,13 @@ const OrdersScreen = () => {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#f5efe8',
+    backgroundColor: 'transparent',
   },
   fixedHeader: {
     paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingTop: 10,
     paddingBottom: 10,
-    backgroundColor: '#f5efe8',
-  },
-  pageTitle: {
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '700',
-    color: '#231913',
-    marginBottom: 14,
+    backgroundColor: 'transparent',
   },
   searchShell: {
     flexDirection: 'row',
@@ -390,6 +473,9 @@ const styles = StyleSheet.create({
     elevation: 2,
     marginBottom: 12,
   },
+  skeletonOrderCard: {
+    backgroundColor: '#ffffff',
+  },
   thumbnailWrap: {
     width: 74,
     height: 74,
@@ -397,6 +483,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginRight: 12,
     backgroundColor: '#f3e9de',
+  },
+  skeletonThumbWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skeletonThumbInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   thumbnailPlaceholder: {
     flex: 1,
@@ -452,6 +548,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     color: '#2f2119',
+  },
+  skeletonLine: {
+    borderRadius: 999,
+    backgroundColor: '#eedfce',
+  },
+  skeletonTitleLine: {
+    height: 13,
+    width: '50%',
+  },
+  skeletonStatusLine: {
+    height: 18,
+    width: 78,
+  },
+  skeletonDesignLine: {
+    height: 12,
+    width: '62%',
+    marginTop: 6,
+  },
+  skeletonDesignLineWide: {
+    width: '72%',
+  },
+  skeletonMetaLine: {
+    height: 10,
+    width: '40%',
+  },
+  skeletonPriceLine: {
+    height: 14,
+    width: 62,
+  },
+  skeletonPriceLineWide: {
+    width: 74,
   },
   emptyState: {
     alignItems: 'center',
