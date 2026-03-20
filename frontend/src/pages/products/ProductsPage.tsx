@@ -46,6 +46,7 @@ interface MasterOption {
 interface DesignRow {
   id: string;
   designNo: string;
+  designName: string;
   version: string;
   jewelryGroup: string;
   jewelrySize: string;
@@ -70,6 +71,7 @@ interface DesignRow {
 interface ApiDesignRow {
   id: string;
   designNo?: string;
+  designName?: string | null;
   version?: string;
   jewelryGroup?: string;
   jewelrySize?: string | null;
@@ -96,8 +98,15 @@ interface GalleryItem {
   url: string;
 }
 
+interface StlItem {
+  url: string;
+  key: string;
+  fileName: string;
+}
+
 interface DesignForm {
   designNo: string;
+  designName: string;
   version: string;
   jewelryGroup: string;
   collection: string;
@@ -304,6 +313,17 @@ const isVideoUrl = (url: string): boolean => {
 };
 const isGalleryUploadFile = (file: File): boolean =>
   Boolean(file.type) && (file.type.startsWith('image/') || file.type.startsWith('video/'));
+const isStlUploadFile = (file: File): boolean => {
+  const name = (file.name || '').trim().toLowerCase();
+  const type = (file.type || '').trim().toLowerCase();
+  return name.endsWith('.stl') || ['model/stl', 'application/sla', 'model/x.stl-ascii'].includes(type);
+};
+const getFileNameFromUrl = (url: string): string => {
+  const clean = stripUrlSuffix(url || '').trim();
+  if (!clean) return 'design.stl';
+  const parts = clean.split('/');
+  return parts[parts.length - 1] || 'design.stl';
+};
 const normalizeStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -334,6 +354,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   return {
     id: design.id,
     designNo: design.designNo || '',
+    designName: design.designName || design.designNo || '',
     version: design.version || 'V1',
     jewelryGroup: design.jewelryGroup || '',
     jewelrySize: design.jewelrySize || 'N/A',
@@ -444,18 +465,19 @@ const getNextDesignVersion = (designNo: string, existingRows: DesignRow[]): stri
 };
 
 const designSeed: DesignRow[] = [
-  { id: '1', designNo: 'RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
-  { id: '2', designNo: 'BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
-  { id: '3', designNo: 'RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
-  { id: '4', designNo: 'RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
-  { id: '5', designNo: 'NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
-  { id: '6', designNo: 'RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
-  { id: '7', designNo: 'RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
-  { id: '8', designNo: 'E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
+  { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
+  { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
+  { id: '3', designNo: 'RING-0005', designName: 'Ring RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
+  { id: '4', designNo: 'RING-0004', designName: 'Ring RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
+  { id: '5', designNo: 'NP-0001', designName: 'Nose Pin NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
+  { id: '6', designNo: 'RING-0003', designName: 'Ring RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
+  { id: '7', designNo: 'RING-0002', designName: 'Ring RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
+  { id: '8', designNo: 'E-0001', designName: 'Earring E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
 ];
 
 const defaultForm: DesignForm = {
   designNo: '',
+  designName: '',
   version: 'V1',
   jewelryGroup: '',
   collection: '',
@@ -741,6 +763,8 @@ export default function ProductsPage() {
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [stlItem, setStlItem] = useState<StlItem | null>(null);
+  const [stlUploading, setStlUploading] = useState(false);
   const [showGalleryPicker, setShowGalleryPicker] = useState(false);
   const [showInlineMasterModal, setShowInlineMasterModal] = useState(false);
   const [inlineMasterType, setInlineMasterType] = useState<DesignMasterType | null>(null);
@@ -767,6 +791,7 @@ export default function ProductsPage() {
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const stlUploadInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
 
@@ -1191,6 +1216,49 @@ export default function ProductsPage() {
       window.alert(error?.response?.data?.message || 'Unable to upload media.');
     } finally {
       setGalleryUploading(false);
+    }
+  };
+
+  const handleStlUploadChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const stlFiles = files.filter(isStlUploadFile);
+    if (stlFiles.length === 0) {
+      window.alert('Please select STL files only.');
+      return;
+    }
+
+    const formData = new FormData();
+    stlFiles.forEach((file) => formData.append('files', file));
+
+    setStlUploading(true);
+    try {
+      const response = await api.post('/products/stl-files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const uploaded = (response.data?.files || [])
+        .map((file: { url?: string; key?: string; fileName?: string }) => ({
+          url: file?.url || '',
+          key: file?.key || file?.url || '',
+          fileName: file?.fileName || getFileNameFromUrl(file?.url || ''),
+        }))
+        .filter((item: StlItem) => Boolean(item.url));
+
+      if (uploaded.length === 0) {
+        window.alert('No STL files were uploaded.');
+      } else {
+        setStlItem(uploaded[0]);
+      }
+
+      if (stlFiles.length !== files.length) {
+        window.alert('Only STL files were uploaded. Unsupported files were skipped.');
+      }
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to upload STL file.');
+    } finally {
+      setStlUploading(false);
     }
   };
 
@@ -1780,7 +1848,7 @@ export default function ProductsPage() {
     const q = search.trim().toLowerCase();
     return rows.filter((item) => {
       if (showInactive ? item.isActive : !item.isActive) return false;
-      const hay = [item.designNo, item.version, item.jewelryGroup, item.jewelrySize, item.diamondType, item.diamondSpread, item.goldColour, item.collection, item.stoneInfo, item.tags.join(' '), item.stage, item.status].join(' ').toLowerCase();
+      const hay = [item.designNo, item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.diamondType, item.diamondSpread, item.goldColour, item.collection, item.stoneInfo, item.tags.join(' '), item.stage, item.status].join(' ').toLowerCase();
       if (q && !hay.includes(q)) return false;
       if (filters.jewelryGroup && item.jewelryGroup !== filters.jewelryGroup) return false;
       if (filters.collection && item.collection !== filters.collection) return false;
@@ -1999,6 +2067,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setForm({
       ...defaultForm,
       designNo: autoDesignNo,
+      designName: `${initialJewelryGroup} ${autoDesignNo}`.trim(),
       version: defaultForm.version,
       jewelryGroup: initialJewelryGroup,
       stage: masterOptions.stages[0]?.value || defaultForm.stage,
@@ -2009,6 +2078,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     syncDesignNoFromServer(initialJewelryGroup);
     setTagPicker('');
     setGalleryItems([]);
+    setStlItem(null);
     setShowGalleryPicker(false);
     setMetalRows([createMetalRow('')]);
     setGemRows([{
@@ -2097,6 +2167,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       const baseForm: DesignForm = {
         designNo: detail.designNo || row.designNo,
+        designName: detail.designName || row.designName || detail.designNo || row.designNo,
         version: normalizeVersionInput(detail.version || row.version || 'V1'),
         jewelryGroup: detail.jewelryGroup || row.jewelryGroup,
         collection: detail.collection || row.collection,
@@ -2237,11 +2308,24 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       setTagPicker('');
       setGalleryItems(buildGalleryItems(imageUrls, imageKeys));
+      setStlItem(
+        detail.stlFileUrl
+          ? {
+              url: resolvePublicAssetUrl(detail.stlFileUrl),
+              key: String(detail.stlFileUrl),
+              fileName:
+                typeof detail.stlFiles?.[0]?.fileName === 'string' && detail.stlFiles[0].fileName.trim()
+                  ? detail.stlFiles[0].fileName.trim()
+                  : getFileNameFromUrl(String(detail.stlFileUrl)),
+            }
+          : null,
+      );
       setShowGalleryPicker(false);
       setShowAddModal(true);
     } catch {
       const fallbackForm: DesignForm = {
         designNo: row.designNo,
+        designName: row.designName || row.designNo,
         version: normalizeVersionInput(row.version || 'V1'),
         jewelryGroup: row.jewelryGroup,
         collection: row.collection,
@@ -2277,6 +2361,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       }]);
       setTagPicker('');
       setGalleryItems(buildGalleryItems(row.imageUrls || [], row.imageKeys || row.imageUrls || []));
+      setStlItem(null);
       setVendorRows([createDefaultVendorRow()]);
       setShowGalleryPicker(false);
       setShowAddModal(true);
@@ -2430,6 +2515,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const basePayload = {
       designNo: shouldSendDesignNo ? versionedDesignNo : undefined,
+      designName: form.designName.trim() || undefined,
       version: resolvedVersion,
       jewelryGroup: form.jewelryGroup.trim(),
       collection: form.collection.trim() || undefined,
@@ -2443,6 +2529,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       remarks: form.remarks.trim() || undefined,
       tags: selectedTags,
       imageUrls: galleryKeys,
+      stlFileUrl: stlItem?.key || stlItem?.url || undefined,
     };
     const createPayload = {
       ...basePayload,
@@ -2711,7 +2798,7 @@ const createDefaultVendorRow = (): VendorRow => ({
   };
 
   const exportCsv = () => {
-    const csv = [['Design No', 'Version', 'Jewelry Group', 'Jewelry Size', 'Metal Caratage', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
+    const csv = [['Design No', 'Design Name', 'Version', 'Jewelry Group', 'Jewelry Size', 'Metal Caratage', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
       .map((line) => line.join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -3101,6 +3188,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       >
                         {row.designNo}
                       </button>
+                      <span className="text-xs font-medium text-slate-500">{row.designName || '-'}</span>
                     </div>
                   </td>
                   <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
@@ -3219,6 +3307,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                       }
                       placeholder="V1"
                       disabled={Boolean(editingId)}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Design Name</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.designName}
+                      onChange={(event) => setForm((prev) => ({ ...prev, designName: event.target.value }))}
+                      placeholder="Design Name"
                     />
                   </div>
                   <div>
@@ -3538,6 +3635,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                     >
                       {galleryUploading ? 'Uploading...' : 'Add Media'}
                     </button>
+                    <button
+                      type="button"
+                      className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => stlUploadInputRef.current?.click()}
+                      disabled={stlUploading}
+                    >
+                      {stlUploading ? 'Uploading STL...' : 'Add STL'}
+                    </button>
                   </div>
                   <input
                     ref={galleryUploadInputRef}
@@ -3547,6 +3652,43 @@ const createDefaultVendorRow = (): VendorRow => ({
                     className="hidden"
                     onChange={handleGalleryUploadChange}
                   />
+                  <input
+                    ref={stlUploadInputRef}
+                    type="file"
+                    accept=".stl,model/stl,application/sla"
+                    multiple={false}
+                    className="hidden"
+                    onChange={handleStlUploadChange}
+                  />
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">STL File</p>
+                        <p className="text-sm text-slate-700">
+                          {stlItem ? stlItem.fileName : 'No STL uploaded for this design version yet.'}
+                        </p>
+                      </div>
+                      {stlItem ? (
+                        <div className="flex flex-wrap gap-2">
+                          <a
+                            href={resolvePublicAssetUrl(stlItem.url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded border border-emerald-300 bg-white px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                          >
+                            Open STL
+                          </a>
+                          <button
+                            type="button"
+                            className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            onClick={() => setStlItem(null)}
+                          >
+                            Remove STL
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                   {galleryItems.length === 0 ? (
                     <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-5 text-center text-xs text-gray-500">
                       No media added yet.
@@ -4740,11 +4882,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <table className="min-w-full text-sm">
                   <tbody>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td><td className="px-3 py-2 font-medium">Jewelry Group</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Design Name</td><td className="px-3 py-2">{detailInfo.designName || '-'}</td><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Group</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Remarks</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.createdAt)}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.updatedAt || detailInfo.modifiedAt)}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{detailInfo.updatedByName || '-'}</td></tr>
                   </tbody>

@@ -9,13 +9,14 @@ import ScreenHeader from '../components/ScreenHeader';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesigns } from '../api/designs';
+import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { formatCurrency } from '../utils/format';
 
 const DesignsScreen = () => {
-  const { token, signOut } = useAuth();
+  const { token, signOut, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,29 @@ const DesignsScreen = () => {
     setError(null);
     try {
       const response = await fetchDesigns(token);
-      setDesigns(response.data || []);
+      const baseDesigns = response.data || [];
+      const shouldApplyPricing =
+        (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
+        Boolean(user?.companyId) &&
+        Boolean(user?.branchId);
+
+      if (!shouldApplyPricing) {
+        setDesigns(baseDesigns);
+      } else {
+        const companyId = user?.companyId as string;
+        const branchId = user?.branchId as string;
+        const pricedDesigns = await Promise.all(
+          baseDesigns.map(async (design) => {
+            try {
+              const preview = await fetchPricePreview(token, design.id, companyId, branchId);
+              return { ...design, displayPrice: preview.finalPrice };
+            } catch {
+              return { ...design, displayPrice: design.totalValue ?? 0 };
+            }
+          }),
+        );
+        setDesigns(pricedDesigns);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load designs');
     } finally {
@@ -79,7 +102,13 @@ const DesignsScreen = () => {
             <Card style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.designNo}>{item.designNo}</Text>
-                <Text style={styles.price}>{formatCurrency(item.totalValue || 0)}</Text>
+                <Text style={styles.price}>
+                  {formatCurrency(
+                    (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP')
+                      ? item.displayPrice ?? item.totalValue ?? 0
+                      : item.totalValue ?? 0,
+                  )}
+                </Text>
               </View>
               <Text style={styles.meta}>{item.jewelryGroup}</Text>
               <Text style={styles.meta}>Size: {item.jewelrySize || '-'}</Text>

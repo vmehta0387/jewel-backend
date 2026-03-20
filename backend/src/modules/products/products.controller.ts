@@ -75,6 +75,12 @@ export class ProductsController {
     return this.productsService.uploadGalleryFiles(files || [], req);
   }
 
+  @Post('stl-files/upload')
+  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: 100 * 1024 * 1024 } }))
+  uploadStlFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
+    return this.productsService.uploadStlFiles(files || [], req);
+  }
+
   @Put('packets/:id')
   updatePacket(
     @Param('id') id: string,

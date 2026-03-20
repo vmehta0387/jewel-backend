@@ -18,7 +18,7 @@ import StatCard from '../components/StatCard';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesign } from '../api/designs';
-import { createOrder } from '../api/orders';
+import { createOrder, fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatCurrency, formatNumber } from '../utils/format';
@@ -32,6 +32,7 @@ const FinalizeDesignScreen = () => {
   const route = useRoute<RouteProp<DesignsStackParamList, 'FinalizeDesign'>>();
 
   const [design, setDesign] = useState<Design | null>(null);
+  const [displayPrice, setDisplayPrice] = useState<number>(0);
   const [deliveryDate, setDeliveryDate] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [saving, setSaving] = useState(false);
@@ -54,6 +55,20 @@ const FinalizeDesignScreen = () => {
     try {
       const data = await fetchDesign(token, route.params.designId);
       setDesign(data);
+      const shouldApplyPricing =
+        (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
+        Boolean(user?.companyId) &&
+        Boolean(user?.branchId);
+      if (shouldApplyPricing) {
+        try {
+          const preview = await fetchPricePreview(token, data.id, user?.companyId as string, user?.branchId as string);
+          setDisplayPrice(preview.finalPrice ?? data.totalValue ?? 0);
+        } catch {
+          setDisplayPrice(data.totalValue ?? 0);
+        }
+      } else {
+        setDisplayPrice(data.totalValue ?? 0);
+      }
 
       const shapes = uniqueValues(data.gemstones?.map((gem) => gem.shape) || []);
       const qualities = uniqueValues(data.gemstones?.map((gem) => gem.quality) || []);
@@ -81,7 +96,7 @@ const FinalizeDesignScreen = () => {
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
-  }, [route.params.designId, token]);
+  }, [route.params.designId, token, user?.role, user?.companyId, user?.branchId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -316,7 +331,7 @@ const FinalizeDesignScreen = () => {
                   <StatCard label="Melee CT" value={`${formatNumber(derived.meleeCt, 3)} ct`} />
                 </View>
                 <View style={styles.statsRow}>
-                  <StatCard label="Total Price" value={formatCurrency(design.totalValue || 0)} />
+                  <StatCard label="Total Price" value={formatCurrency(displayPrice)} />
                 </View>
               </Card>
             </>

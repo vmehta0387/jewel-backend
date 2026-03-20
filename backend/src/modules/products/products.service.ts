@@ -206,6 +206,7 @@ export class ProductsService {
 
     const design = this.designRepo.create({
       designNo,
+      designName: this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo),
       version,
       companyId: scope.companyId,
       branchId: scope.branchId,
@@ -350,6 +351,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('design.designNo LIKE :search', { search })
+            .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
             .orWhere('design.jewelryGroup LIKE :search', { search })
             .orWhere('design.collection LIKE :search', { search })
@@ -584,6 +586,11 @@ export class ProductsService {
     design.designNo = designNo;
     design.version = version;
     design.designNo = designNo;
+    if (dto.designName !== undefined) {
+      design.designName = this.optionalText(dto.designName);
+    } else if (!this.optionalText(design.designName)) {
+      design.designName = this.buildDefaultDesignName(design.jewelryGroup, designNo);
+    }
     design.companyId = scope.companyId;
     design.branchId = scope.branchId;
     if (dto.jewelryGroup !== undefined) design.jewelryGroup = dto.jewelryGroup.trim();
@@ -844,6 +851,95 @@ export class ProductsService {
 
     if (uploaded.length === 0) {
       throw new BadRequestException('No valid image or video files uploaded.');
+    }
+
+    return { files: uploaded };
+  }
+
+  async uploadStlFiles(
+    files: Array<{ originalname?: string; mimetype?: string; buffer?: Buffer }>,
+    request: any,
+  ): Promise<{ files: Array<{ fileName: string; url: string; key?: string }> }> {
+    const requester: AuthUser | undefined = request?.user;
+    if (requester) {
+      this.assertDesignCreateAccess(requester);
+    }
+    if (!files || files.length === 0) {
+      throw new BadRequestException('At least one STL file is required.');
+    }
+
+    const uploaded: Array<{ fileName: string; url: string; key?: string }> = [];
+    const s3Config = this.getS3Client();
+
+    if (s3Config) {
+      const { client, bucket } = s3Config;
+      const now = new Date();
+      const prefix = `design-stl/${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(
+        now.getDate(),
+      ).padStart(2, '0')}`;
+
+      for (const file of files) {
+        if (!file?.buffer || !file.originalname) continue;
+        if (!this.isStlFile(file.originalname, file.mimetype)) {
+          throw new BadRequestException(
+            `Unsupported file type: ${file.originalname}. Only STL files are allowed.`,
+          );
+        }
+
+        const fileName = `${Date.now()}-${randomUUID()}${this.resolveStlExtension(file.originalname)}`;
+        const key = `${prefix}/${fileName}`;
+
+        const upload = new Upload({
+          client,
+          params: {
+            Bucket: bucket,
+            Key: key,
+            Body: file.buffer,
+            ContentType: file.mimetype || 'model/stl',
+          },
+        });
+
+        await upload.done();
+
+        const signedUrl = await this.createSignedUrl(client, bucket, key);
+        uploaded.push({
+          fileName,
+          url: signedUrl,
+          key: `s3://${bucket}/${key}`,
+        });
+      }
+
+      if (uploaded.length === 0) {
+        throw new BadRequestException('No valid STL files uploaded.');
+      }
+
+      return { files: uploaded };
+    }
+
+    const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
+    const uploadDir = join(uploadsRoot, 'design-stl');
+    await mkdir(uploadDir, { recursive: true });
+
+    for (const file of files) {
+      if (!file?.buffer || !file.originalname) continue;
+      if (!this.isStlFile(file.originalname, file.mimetype)) {
+        throw new BadRequestException(
+          `Unsupported file type: ${file.originalname}. Only STL files are allowed.`,
+        );
+      }
+
+      const fileName = `${Date.now()}-${randomUUID()}${this.resolveStlExtension(file.originalname)}`;
+      const outputPath = join(uploadDir, fileName);
+      await writeFile(outputPath, file.buffer);
+
+      uploaded.push({
+        fileName,
+        url: this.buildPublicAssetUrl(request, `/uploads/design-stl/${fileName}`),
+      });
+    }
+
+    if (uploaded.length === 0) {
+      throw new BadRequestException('No valid STL files uploaded.');
     }
 
     return { files: uploaded };
@@ -3249,6 +3345,18 @@ export class ProductsService {
     return normalized.startsWith('image/') || normalized.startsWith('video/');
   }
 
+  private isStlFile(originalName?: string | null, mimeType?: string | null): boolean {
+    const extension = extname(originalName || '').toLowerCase();
+    if (extension === '.stl') {
+      return true;
+    }
+
+    const normalized = (mimeType || '').trim().toLowerCase();
+    return ['model/stl', 'application/sla', 'model/x.stl-ascii', 'application/octet-stream'].includes(
+      normalized,
+    );
+  }
+
   private resolveGalleryExtension(originalName: string, mimeType?: string | null): string {
     const ext = extname(originalName || '').toLowerCase();
     const allowed = new Set([
@@ -3293,6 +3401,11 @@ export class ProductsService {
       return mimeMap[normalizedMime];
     }
     return normalizedMime.startsWith('video/') ? '.mp4' : '.jpg';
+  }
+
+  private resolveStlExtension(originalName: string): string {
+    const extension = extname(originalName || '').toLowerCase();
+    return extension === '.stl' ? extension : '.stl';
   }
 
   private buildPublicAssetUrl(request: any, assetPath: string): string {
@@ -3476,6 +3589,15 @@ export class ProductsService {
       throw new BadRequestException('packetName is required');
     }
     return normalized;
+  }
+
+  private buildDefaultDesignName(jewelryGroup: string | null | undefined, designNo: string): string {
+    const normalizedGroup = this.optionalText(jewelryGroup);
+    const normalizedDesignNo = this.normalizeDesignNo(designNo);
+    if (normalizedGroup && normalizedDesignNo) {
+      return `${normalizedGroup} ${normalizedDesignNo}`;
+    }
+    return normalizedDesignNo || normalizedGroup || 'Design';
   }
 
   private normalizePacketWeightUnit(value?: string): StoneWeightUnit {

@@ -276,6 +276,10 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  designName?: string;
+
+  @IsString()
+  @IsOptional()
   version?: string;
 
   @IsString()
@@ -422,6 +426,10 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   designNo?: string;
+
+  @IsString()
+  @IsOptional()
+  designName?: string;
 
   @IsString()
   @IsOptional()

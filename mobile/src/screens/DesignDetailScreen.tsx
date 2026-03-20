@@ -10,15 +10,17 @@ import ScreenHeader from '../components/ScreenHeader';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesign } from '../api/designs';
+import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatCurrency, formatNumber } from '../utils/format';
 
 const DesignDetailScreen = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const [design, setDesign] = useState<Design | null>(null);
+  const [displayPrice, setDisplayPrice] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   const loadDesign = useCallback(async () => {
@@ -27,10 +29,24 @@ const DesignDetailScreen = () => {
     try {
       const data = await fetchDesign(token, route.params.designId);
       setDesign(data);
+      const shouldApplyPricing =
+        (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
+        Boolean(user?.companyId) &&
+        Boolean(user?.branchId);
+      if (shouldApplyPricing) {
+        try {
+          const preview = await fetchPricePreview(token, data.id, user?.companyId as string, user?.branchId as string);
+          setDisplayPrice(preview.finalPrice ?? data.totalValue ?? 0);
+        } catch {
+          setDisplayPrice(data.totalValue ?? 0);
+        }
+      } else {
+        setDisplayPrice(data.totalValue ?? 0);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
-  }, [token, route.params.designId]);
+  }, [token, route.params.designId, user?.role, user?.companyId, user?.branchId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,7 +91,7 @@ const DesignDetailScreen = () => {
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Total Value</Text>
-              <Text style={styles.value}>{formatCurrency(design.totalValue || 0)}</Text>
+              <Text style={styles.value}>{formatCurrency(displayPrice)}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Status</Text>

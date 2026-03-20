@@ -32,6 +32,9 @@ export class Design {
   @Column({ name: 'design_no' })
   designNo: string;
 
+  @Column({ name: 'design_name', nullable: true })
+  designName: string | null;
+
   @Column({ default: 'V1' })
   version: string;
 

@@ -33,6 +33,20 @@ export const fetchOrderTrends = (token: string) =>
 export const fetchOrder = (token: string, id: string) =>
   apiRequest<Order>(`/orders/${id}`, { method: 'GET' }, token);
 
+export const fetchPricePreview = (
+  token: string,
+  designId: string,
+  companyId: string,
+  branchId: string,
+) =>
+  apiRequest<{ baseCost: number; companyMultiplier: number; branchMultiplier: number; finalPrice: number }>(
+    `/orders/price-preview?designId=${encodeURIComponent(designId)}&companyId=${encodeURIComponent(
+      companyId,
+    )}&branchId=${encodeURIComponent(branchId)}`,
+    { method: 'GET' },
+    token,
+  );
+
 export type CreateOrderPayload = {
   companyId: string;
   branchId: string;

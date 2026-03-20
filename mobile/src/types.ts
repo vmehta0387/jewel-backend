@@ -21,6 +21,7 @@ export type Design = {
   diamondType?: string | null;
   goldColour?: string | null;
   totalValue?: number;
+  displayPrice?: number;
   grossWeight?: number;
   imageUrls?: string[];
   metals?: Array<{
