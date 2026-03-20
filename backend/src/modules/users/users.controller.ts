@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  StreamableFile,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,6 +33,30 @@ export class UsersController {
   @Get()
   findAll(@Query() query: FindUsersQueryDto) {
     return this.usersService.findAll(query);
+  }
+
+  @Get('export/template')
+  async downloadImportTemplate() {
+    const file = await this.usersService.generateImportTemplate();
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Get('export')
+  async exportUsers(@Query() query: FindUsersQueryDto) {
+    const file = await this.usersService.exportUsers(query);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  importUsers(@UploadedFile() file: { buffer?: Buffer; originalname?: string }) {
+    return this.usersService.importUsers(file);
   }
 
   @Get(':id')

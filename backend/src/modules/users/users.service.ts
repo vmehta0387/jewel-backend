@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import * as XLSX from 'xlsx';
 import { User } from './entities/user.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
@@ -48,6 +49,19 @@ export interface UserResponse {
   updatedAt: Date;
 }
 
+interface UserImportRow {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  companyCode: string;
+  branchCode: string;
+  phone: string;
+  password: string;
+  status: string;
+  taskPermissions: string;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -60,6 +74,18 @@ export class UsersService {
   ) {}
 
   private readonly allPermissions: TaskPermission[] = Object.values(TaskPermission);
+  private readonly userImportHeaders = [
+    'Email',
+    'First Name',
+    'Last Name',
+    'Role',
+    'Company Code',
+    'Branch Code',
+    'Phone',
+    'Password',
+    'Status',
+    'Task Permissions',
+  ] as const;
 
   private readonly defaultPermissionsByRole: Record<UserRole, TaskPermission[]> = {
     [UserRole.SUPER_ADMIN]: this.allPermissions,
@@ -233,6 +259,173 @@ export class UsersService {
     return this.findOne(id);
   }
 
+  async generateImportTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
+    const workbook = XLSX.utils.book_new();
+    const templateRows = [
+      {
+        Email: 'manager@example.com',
+        'First Name': 'Branch',
+        'Last Name': 'Manager',
+        Role: 'BRANCH_MANAGER',
+        'Company Code': 'BRILL',
+        'Branch Code': 'BRILLD',
+        Phone: '9876543210',
+        Password: 'Admin@123',
+        Status: 'ACTIVE',
+        'Task Permissions': 'DESIGN_ENTRIES,ORDER_ENTRIES,ORDER_APPROVALS,VIEW_REPORTS',
+      },
+    ];
+    const referenceRows = [
+      { Field: 'Role', AllowedValues: Object.values(UserRole).join(', '), Notes: 'Required' },
+      { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
+      {
+        Field: 'Task Permissions',
+        AllowedValues: Object.values(TaskPermission).join(', '),
+        Notes: 'Optional comma-separated values. Leave blank to use role defaults.',
+      },
+      {
+        Field: 'Password',
+        AllowedValues: 'Minimum 8 characters',
+        Notes: 'Required for new users. Optional when updating existing users by email.',
+      },
+      {
+        Field: 'Company Code',
+        AllowedValues: 'Existing company code',
+        Notes: 'Required for COMPANY_ADMIN, BRANCH_MANAGER, SALES_REP',
+      },
+      {
+        Field: 'Branch Code',
+        AllowedValues: 'Existing branch code',
+        Notes: 'Required for BRANCH_MANAGER and SALES_REP',
+      },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(templateRows, { header: [...this.userImportHeaders] }), 'Users');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(referenceRows), 'Reference');
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: 'users-import-template.xlsx',
+    };
+  }
+
+  async exportUsers(query: FindUsersQueryDto = {}): Promise<{ buffer: Buffer; fileName: string }> {
+    const users = await this.findAll(query);
+    const workbook = XLSX.utils.book_new();
+    const rows = users.map((user) => ({
+      Email: user.email,
+      'First Name': user.firstName,
+      'Last Name': user.lastName,
+      Role: user.role,
+      'Company Code': user.company?.companyCode || '',
+      'Company Name': user.company?.companyName || '',
+      'Branch Code': user.branch?.code || '',
+      'Branch Name': user.branch?.name || '',
+      Phone: user.phone || '',
+      Status: user.isActive ? 'ACTIVE' : 'INACTIVE',
+      'Task Permissions': (user.taskPermissions || []).join(','),
+      'Created At': user.createdAt,
+      'Updated At': user.updatedAt,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Users');
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `users-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async importUsers(file?: { buffer?: Buffer; originalname?: string }): Promise<{
+    totalRows: number;
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException('The uploaded workbook is empty');
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<UserImportRow>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    if (rows.length === 0) {
+      throw new BadRequestException('The uploaded sheet does not contain any rows');
+    }
+
+    const companyMap = await this.getCompanyCodeMap();
+    const branchMap = await this.getBranchCodeMap();
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      const line = index + 2;
+
+      try {
+        const payload = await this.buildUserImportPayload(row, companyMap, branchMap, line);
+        const existing = await this.userRepo.findOne({ where: { email: payload.email } });
+
+        if (existing) {
+          const updateDto: UpdateUserDto = {
+            email: payload.email,
+            firstName: payload.firstName,
+            lastName: payload.lastName,
+            role: payload.role,
+            companyId: payload.companyId,
+            branchId: payload.branchId,
+            phone: payload.phone,
+            isActive: payload.isActive,
+            taskPermissions: payload.taskPermissions,
+          };
+          if (payload.password) {
+            updateDto.password = payload.password;
+          }
+          await this.update(existing.id, updateDto);
+          updated += 1;
+        } else {
+          if (!payload.password) {
+            throw new BadRequestException('Password is required for new users');
+          }
+          const createDto: CreateUserDto = {
+            email: payload.email,
+            password: payload.password,
+            firstName: payload.firstName,
+            lastName: payload.lastName,
+            role: payload.role,
+            companyId: payload.companyId,
+            branchId: payload.branchId,
+            phone: payload.phone,
+            isActive: payload.isActive,
+            taskPermissions: payload.taskPermissions,
+          };
+          await this.create(createDto);
+          created += 1;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Row ${line}: ${message}`);
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      created,
+      updated,
+      failed: errors.length,
+      errors,
+    };
+  }
+
   async findBranchEmployees(requester: AuthUser): Promise<UserResponse[]> {
     const scope = await this.resolveBranchEmployeeScope(requester);
     const users = await this.userRepo.find({
@@ -384,6 +577,134 @@ export class UsersService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private workbookToBuffer(workbook: XLSX.WorkBook): Buffer {
+    const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+
+  private async getCompanyCodeMap(): Promise<Map<string, Company>> {
+    const companies = await this.companyRepo.find();
+    return new Map(companies.map((company) => [company.companyCode.trim().toUpperCase(), company]));
+  }
+
+  private async getBranchCodeMap(): Promise<Map<string, Branch[]>> {
+    const branches = await this.branchRepo.find();
+    const map = new Map<string, Branch[]>();
+    branches.forEach((branch) => {
+      const key = branch.code.trim().toUpperCase();
+      const bucket = map.get(key) || [];
+      bucket.push(branch);
+      map.set(key, bucket);
+    });
+    return map;
+  }
+
+  private async buildUserImportPayload(
+    row: UserImportRow,
+    companyMap: Map<string, Company>,
+    branchMap: Map<string, Branch[]>,
+    line: number,
+  ): Promise<CreateUserDto> {
+    const email = this.normalizeEmail(String(row.email || ''));
+    if (!email) {
+      throw new BadRequestException('Email is required');
+    }
+
+    const firstName = String(row.firstName || '').trim();
+    const lastName = String(row.lastName || '').trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException('First Name and Last Name are required');
+    }
+
+    const roleValue = String(row.role || '').trim().toUpperCase() as UserRole;
+    if (!Object.values(UserRole).includes(roleValue)) {
+      throw new BadRequestException(`Invalid role "${row.role}"`);
+    }
+
+    const companyCode = String(row.companyCode || '').trim().toUpperCase();
+    const branchCode = String(row.branchCode || '').trim().toUpperCase();
+    const status = String(row.status || 'ACTIVE').trim().toUpperCase();
+    const taskPermissions = this.parseTaskPermissions(row.taskPermissions);
+    const phone = String(row.phone || '').trim() || undefined;
+    const password = String(row.password || '').trim();
+
+    let companyId: string | null | undefined;
+    let branchId: string | null | undefined;
+
+    if (companyCode) {
+      const company = companyMap.get(companyCode);
+      if (!company) {
+        throw new BadRequestException(`Company Code "${companyCode}" not found`);
+      }
+      companyId = company.id;
+    }
+
+    if (branchCode) {
+      const branchMatches = branchMap.get(branchCode) || [];
+      if (branchMatches.length === 0) {
+        throw new BadRequestException(`Branch Code "${branchCode}" not found`);
+      }
+
+      const branch =
+        companyId !== undefined && companyId !== null
+          ? branchMatches.find((item) => item.companyId === companyId)
+          : branchMatches.length === 1
+            ? branchMatches[0]
+            : null;
+
+      if (!branch) {
+        throw new BadRequestException(
+          companyId
+            ? `Branch Code "${branchCode}" does not belong to Company Code "${companyCode}"`
+            : `Branch Code "${branchCode}" matches multiple companies. Provide Company Code as well.`,
+        );
+      }
+
+      branchId = branch.id;
+      companyId = branch.companyId;
+    }
+
+    if (status && !['ACTIVE', 'INACTIVE'].includes(status)) {
+      throw new BadRequestException(`Invalid status "${row.status}"`);
+    }
+
+    if (password && password.length < 8) {
+      throw new BadRequestException('Password must be at least 8 characters');
+    }
+
+    return {
+      email,
+      password,
+      firstName,
+      lastName,
+      role: roleValue,
+      companyId,
+      branchId,
+      phone,
+      isActive: status !== 'INACTIVE',
+      taskPermissions,
+    };
+  }
+
+  private parseTaskPermissions(value: string): TaskPermission[] | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    const permissions = normalized
+      .split(',')
+      .map((item) => item.trim().toUpperCase())
+      .filter(Boolean) as TaskPermission[];
+
+    const invalid = permissions.filter((permission) => !Object.values(TaskPermission).includes(permission));
+    if (invalid.length > 0) {
+      throw new BadRequestException(`Invalid task permission(s): ${invalid.join(', ')}`);
+    }
+
+    return permissions;
   }
 
   async findBranchEmployeeBranches(

@@ -6,7 +6,7 @@ import StlViewer from '../../components/common/StlViewer';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
 
-type ModalType = 'info' | 'relevant' | 'stl' | 'process' | 'history' | 'pricing' | 'vendor' | null;
+type ModalType = 'info' | 'relevant' | 'process' | 'history' | 'pricing' | 'vendor' | null;
 
 type DesignMasterType =
   | 'JEWELRY_GROUP'
@@ -789,6 +789,7 @@ export default function ProductsPage() {
   const [detailDesign, setDetailDesign] = useState<any | null>(null);
   const [detailDesignLoading, setDetailDesignLoading] = useState(false);
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
+  const [showStlViewerModal, setShowStlViewerModal] = useState(false);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -3281,7 +3282,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       </Card>
 
       {showAddModal && (
-        <Modal title="ADD NEW DESIGN" size="max-w-[98vw]" onClose={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); }}>
+        <Modal title="ADD NEW DESIGN" size="max-w-[98vw]" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
           <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 [&_input]:rounded-md [&_input]:border-slate-300 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-300 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-300 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
@@ -4873,7 +4874,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {modal === 'info' && detailInfo && (
-        <Modal title={`DESIGN DETAILS (${detailInfo.designNo || ''})`} onClose={() => setModal(null)} size="max-w-7xl">
+        <Modal title={`DESIGN DETAILS (${detailInfo.designNo || ''})`} onClose={() => { setShowStlViewerModal(false); setModal(null); }} size="max-w-7xl">
           <div className="space-y-4">
             {detailDesignLoading ? (
               <p className="text-sm text-blue-700">Loading design details...</p>
@@ -4937,7 +4938,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <button
                         type="button"
                         className="text-xs font-semibold text-[#81A6C6] hover:text-[#6f93b0]"
-                        onClick={() => setModal('stl')}
+                        onClick={() => setShowStlViewerModal(true)}
                       >
                         Expand Viewer
                       </button>
@@ -5113,12 +5114,17 @@ const createDefaultVendorRow = (): VendorRow => ({
         </Modal>
       )}
 
-      {modal === 'stl' && selected && (
-        <Modal title={`STL FILE (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-6xl">
+      {showStlViewerModal && detailInfo && (
+        <Modal
+          title={`STL FILE (${detailInfo.designNo})`}
+          onClose={() => setShowStlViewerModal(false)}
+          size="max-w-6xl"
+          zIndexClass="z-[80]"
+        >
           <div className="space-y-4">
             {detailStlUrl ? (
               <>
-                <StlViewer designId={selected.id} className="h-[32rem]" />
+                <StlViewer designId={detailInfo.id} className="h-[32rem]" />
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-800">{getFileNameFromUrl(detailStlUrl)}</p>

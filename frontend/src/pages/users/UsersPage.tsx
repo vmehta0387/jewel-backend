@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -24,11 +24,13 @@ export default function UsersPage() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [role, setRole] = useState<RoleFilter>('ALL');
   const [page, setPage] = useState(1);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const pageSize = 15;
   const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
@@ -95,6 +97,100 @@ export default function UsersPage() {
       fetchUsers();
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const getCurrentParams = (): Record<string, string> => {
+    const params: Record<string, string> = {
+      status,
+    };
+    if (searchTerm) {
+      params.search = searchTerm;
+    }
+    if (role !== 'ALL') {
+      params.role = role;
+    }
+    return params;
+  };
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleExport = async () => {
+    try {
+      const response = await api.get('/users/export', {
+        params: getCurrentParams(),
+        responseType: 'blob',
+      });
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'users-export.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to export users.');
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/users/export/template', {
+        responseType: 'blob',
+      });
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'users-import-template.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to download users import template.');
+    }
+  };
+
+  const handleImportChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setImporting(true);
+    try {
+      const response = await api.post('/users/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const summary = response.data as {
+        totalRows: number;
+        created: number;
+        updated: number;
+        failed: number;
+        errors: string[];
+      };
+      const errorPreview =
+        summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
+      window.alert(
+        `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
+      );
+      fetchUsers();
+    } catch (error: any) {
+      console.error(error);
+      const message = error?.response?.data?.message;
+      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import users.');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -218,7 +314,25 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
           <p className="text-sm text-gray-600 mt-1">Manage role assignments and task-level access control.</p>
         </div>
-        <Button onClick={() => navigate('/users/add')}>+ Add User</Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
+            Template
+          </Button>
+          <Button type="button" variant="secondary" onClick={handleExport}>
+            Export Excel
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => importInputRef.current?.click()} disabled={importing}>
+            {importing ? 'Importing...' : 'Import Excel'}
+          </Button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleImportChange}
+          />
+          <Button onClick={() => navigate('/users/add')}>+ Add User</Button>
+        </div>
       </div>
 
       <Card className="mb-6">
