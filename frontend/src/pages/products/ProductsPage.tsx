@@ -4946,7 +4946,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <div className="space-y-3 p-3">
                     {detailStlUrl ? (
                       <>
-                        <StlViewer url={detailStlUrl} className="h-72" />
+                        <StlViewer designId={detailInfo.id} className="h-72" />
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-800">
@@ -5118,7 +5118,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           <div className="space-y-4">
             {detailStlUrl ? (
               <>
-                <StlViewer url={detailStlUrl} className="h-[32rem]" />
+                <StlViewer designId={selected.id} className="h-[32rem]" />
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-slate-800">{getFileNameFromUrl(detailStlUrl)}</p>

@@ -9,6 +9,7 @@ import {
   Put,
   Query,
   Request,
+  StreamableFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -79,6 +80,15 @@ export class ProductsController {
   @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: 100 * 1024 * 1024 } }))
   uploadStlFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
     return this.productsService.uploadStlFiles(files || [], req);
+  }
+
+  @Get(':id/stl-file')
+  async getStlFile(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    const file = await this.productsService.getStlFileContent(id, req.user);
+    return new StreamableFile(file.buffer, {
+      type: 'model/stl',
+      disposition: `inline; filename="${file.fileName}"`,
+    });
   }
 
   @Put('packets/:id')

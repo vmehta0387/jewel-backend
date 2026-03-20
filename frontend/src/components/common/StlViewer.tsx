@@ -2,20 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import api from '../../services/api';
 
 interface StlViewerProps {
-  url: string;
+  designId: string;
   className?: string;
 }
 
-export default function StlViewer({ url, className = '' }: StlViewerProps) {
+export default function StlViewer({ designId, className = '' }: StlViewerProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const mountNode = mountRef.current;
-    if (!mountNode || !url) {
+    if (!mountNode || !designId) {
       setStatus('error');
       setErrorMessage('No STL file available.');
       return;
@@ -96,9 +97,15 @@ export default function StlViewer({ url, className = '' }: StlViewerProps) {
       controls.autoRotate = false;
 
       const loader = new STLLoader();
-      loader.load(
-        url,
-        (geometry: THREE.BufferGeometry) => {
+      api
+        .get<ArrayBuffer>(`/products/${designId}/stl-file`, {
+          responseType: 'arraybuffer',
+        })
+        .then((response) => {
+          if (disposed) {
+            return;
+          }
+          const geometry = loader.parse(response.data);
           if (disposed) {
             geometry.dispose();
             return;
@@ -119,15 +126,13 @@ export default function StlViewer({ url, className = '' }: StlViewerProps) {
           scene.add(mesh);
           fitCameraToObject(mesh);
           setStatus('ready');
-        },
-        undefined,
-        (error: unknown) => {
+        })
+        .catch((error: unknown) => {
           if (disposed) return;
           console.error('Failed to load STL file', error);
           setStatus('error');
           setErrorMessage('Unable to load this STL file.');
-        },
-      );
+        });
     } catch (error) {
       console.error('Unable to initialize STL viewer', error);
       setStatus('error');
@@ -172,7 +177,7 @@ export default function StlViewer({ url, className = '' }: StlViewerProps) {
         }
       }
     };
-  }, [url]);
+  }, [designId]);
 
   return (
     <div className={`relative overflow-hidden rounded-2xl border border-slate-200 bg-white ${className}`}>

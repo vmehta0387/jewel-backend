@@ -7,7 +7,7 @@ import {
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
@@ -763,6 +763,23 @@ export class ProductsService {
 
     await this.addHistory(id, 'STL_UPLOADED', 'STL file uploaded successfully.', requester.id);
     return this.findOne(id, requester);
+  }
+
+  async getStlFileContent(
+    id: string,
+    requester: AuthUser,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const design = await this.getDesignForRead(id, requester);
+    const stlFileUrl = this.optionalText(design.stlFileUrl);
+    if (!stlFileUrl) {
+      throw new NotFoundException('No STL file uploaded for this design');
+    }
+
+    const buffer = await this.resolveAssetBuffer(stlFileUrl);
+    return {
+      buffer,
+      fileName: this.deriveFileNameFromUrl(stlFileUrl),
+    };
   }
 
   async uploadGalleryFiles(
@@ -3358,6 +3375,69 @@ export class ProductsService {
     }
 
     return this.createSignedUrl(client, bucket, key);
+  }
+
+  private async resolveAssetBuffer(url: string): Promise<Buffer> {
+    const trimmed = url.trim();
+    const s3Config = this.getS3Client();
+    if (s3Config) {
+      const { client, bucket } = s3Config;
+      const key = this.parseS3KeyFromUrl(trimmed, bucket);
+      if (key) {
+        const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+        const response = await client.send(command);
+        const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
+        if (!body?.transformToByteArray) {
+          throw new NotFoundException('Unable to read STL file from storage');
+        }
+        const bytes = await body.transformToByteArray();
+        return Buffer.from(bytes);
+      }
+    }
+
+    const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
+    const localRelativePath = this.extractLocalUploadPath(trimmed);
+    if (localRelativePath) {
+      return readFile(join(uploadsRoot, localRelativePath));
+    }
+
+    const response = await fetch(trimmed);
+    if (!response.ok) {
+      throw new NotFoundException('Unable to fetch STL file');
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
+  private extractLocalUploadPath(value: string): string | null {
+    const normalized = (value || '').trim();
+    if (!normalized) {
+      return null;
+    }
+
+    const mapUploadPath = (pathValue: string): string | null => {
+      const cleanPath = pathValue.replace(/\\/g, '/');
+      const marker = '/uploads/';
+      const markerIndex = cleanPath.indexOf(marker);
+      if (markerIndex >= 0) {
+        return cleanPath.slice(markerIndex + marker.length) || null;
+      }
+      if (cleanPath.startsWith('uploads/')) {
+        return cleanPath.slice('uploads/'.length) || null;
+      }
+      return null;
+    };
+
+    if (/^https?:\/\//i.test(normalized)) {
+      try {
+        const parsed = new URL(normalized);
+        return mapUploadPath(parsed.pathname);
+      } catch {
+        return null;
+      }
+    }
+
+    return mapUploadPath(normalized);
   }
 
   private async createSignedUrl(client: S3Client, bucket: string, key: string): Promise<string> {
