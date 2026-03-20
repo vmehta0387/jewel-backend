@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import StlViewer from '../../components/common/StlViewer';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
 
@@ -799,6 +800,10 @@ export default function ProductsPage() {
   const detailInfo = detailDesign ?? selected;
   const detailGalleryUrls = useMemo(
     () => normalizeStringArray(detailInfo?.imageUrls).map(resolvePublicAssetUrl),
+    [detailInfo],
+  );
+  const detailStlUrl = useMemo(
+    () => (detailInfo?.stlFileUrl ? resolvePublicAssetUrl(detailInfo.stlFileUrl) : ''),
     [detailInfo],
   );
   const detailMetals = useMemo(
@@ -4893,35 +4898,81 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </tbody>
                 </table>
               </div>
-              <div className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
-                <div className="p-3">
-                  {detailGalleryUrls.length ? (
-                    <div className="space-y-3">
-                      <MediaPreview
-                        url={detailGalleryUrls[0]}
-                        alt={`${detailInfo.designNo} primary`}
-                        className="h-44 w-full rounded border border-gray-300 object-cover"
-                        controls={isVideoUrl(detailGalleryUrls[0])}
-                      />
-                      {detailGalleryUrls.length > 1 ? (
-                        <div className="grid grid-cols-3 gap-2">
-                          {detailGalleryUrls.slice(1).map((url, index) => (
-                            <MediaPreview
-                              key={`${url}-${index}`}
-                              url={url}
-                              alt={`${detailInfo.designNo} gallery ${index + 2}`}
-                              className="h-16 w-full rounded border border-gray-200 object-cover"
-                            />
-                          ))}
+              <div className="space-y-4">
+                <div className="rounded border border-gray-200">
+                  <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
+                  <div className="p-3">
+                    {detailGalleryUrls.length ? (
+                      <div className="space-y-3">
+                        <MediaPreview
+                          url={detailGalleryUrls[0]}
+                          alt={`${detailInfo.designNo} primary`}
+                          className="h-44 w-full rounded border border-gray-300 object-cover"
+                          controls={isVideoUrl(detailGalleryUrls[0])}
+                        />
+                        {detailGalleryUrls.length > 1 ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {detailGalleryUrls.slice(1).map((url, index) => (
+                              <MediaPreview
+                                key={`${url}-${index}`}
+                                url={url}
+                                alt={`${detailInfo.designNo} gallery ${index + 2}`}
+                                className="h-16 w-full rounded border border-gray-200 object-cover"
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="flex h-36 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs font-semibold text-gray-500">
+                        No gallery media
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200">
+                  <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
+                    <span className="text-sm font-semibold text-gray-800">3D STL Model</span>
+                    {detailStlUrl ? (
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-[#81A6C6] hover:text-[#6f93b0]"
+                        onClick={() => setModal('stl')}
+                      >
+                        Expand Viewer
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="space-y-3 p-3">
+                    {detailStlUrl ? (
+                      <>
+                        <StlViewer url={detailStlUrl} className="h-72" />
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              {getFileNameFromUrl(detailStlUrl)}
+                            </p>
+                            <p className="text-xs text-slate-500">Interactive STL preview for this design version.</p>
+                          </div>
+                          <a
+                            href={detailStlUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#D2C4B4] bg-[#F3E3D0] px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-[#e9d8c4]"
+                          >
+                            Open File
+                          </a>
                         </div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="flex h-36 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs font-semibold text-gray-500">
-                      No gallery media
-                    </div>
-                  )}
+                      </>
+                    ) : (
+                      <div className="flex h-48 flex-col items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 px-4 text-center">
+                        <p className="text-sm font-semibold text-slate-700">No STL uploaded</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Upload an STL in the design gallery section to preview the 3D model here.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -5063,8 +5114,35 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {modal === 'stl' && selected && (
-        <Modal title={`STL FILE (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-3xl">
-          <div className="rounded border border-gray-200 bg-gray-50 p-6 text-2xl font-medium text-gray-600">Coming soon...</div>
+        <Modal title={`STL FILE (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-6xl">
+          <div className="space-y-4">
+            {detailStlUrl ? (
+              <>
+                <StlViewer url={detailStlUrl} className="h-[32rem]" />
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800">{getFileNameFromUrl(detailStlUrl)}</p>
+                    <p className="text-xs text-slate-500">Rotate, zoom, and inspect the STL model before production.</p>
+                  </div>
+                  <a
+                    href={detailStlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#D2C4B4] bg-[#F3E3D0] px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-[#e9d8c4]"
+                  >
+                    Open STL
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-72 flex-col items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+                <p className="text-base font-semibold text-slate-700">No STL uploaded for this design</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Add the STL from the gallery section in the design form to preview it here.
+                </p>
+              </div>
+            )}
+          </div>
         </Modal>
       )}
 

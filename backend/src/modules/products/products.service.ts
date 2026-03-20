@@ -471,6 +471,7 @@ export class ProductsService {
         ...design,
         imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+        stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
         updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
       })),
     );
@@ -526,11 +527,13 @@ export class ProductsService {
     );
     const updatedByName = design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null;
     const resolvedImageUrls = await this.resolveGalleryUrls(design.imageUrls || []);
+    const resolvedStlFileUrl = await this.resolveAssetUrl(design.stlFileUrl);
 
     return {
       ...design,
       imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
       imageUrls: resolvedImageUrls,
+      stlFileUrl: resolvedStlFileUrl,
       updatedByName,
       relevantDesigns: (design.relevantDesignLinks || []).map((link) => ({
         id: link.relatedDesign?.id,
@@ -3331,6 +3334,30 @@ export class ProductsService {
         return this.createSignedUrl(client, bucket, key);
       }),
     ).then((items) => items.filter(Boolean));
+  }
+
+  private async resolveAssetUrl(url: string | null | undefined): Promise<string | null> {
+    if (typeof url !== 'string') {
+      return null;
+    }
+
+    const trimmed = url.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return trimmed;
+    }
+
+    const { client, bucket } = s3Config;
+    const key = this.parseS3KeyFromUrl(trimmed, bucket);
+    if (!key) {
+      return trimmed;
+    }
+
+    return this.createSignedUrl(client, bucket, key);
   }
 
   private async createSignedUrl(client: S3Client, bucket: string, key: string): Promise<string> {
