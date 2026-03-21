@@ -1,16 +1,20 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
@@ -40,12 +44,112 @@ const AiChatScreen = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const listRef = useRef<FlatList<ChatMessage> | null>(null);
-  const navigation = useNavigation<NavigationProp<any>>();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(64);
+  const [androidOverlayLift, setAndroidOverlayLift] = useState(0);
+  const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const listRef = useRef<FlatList<ChatMessage> | null>(null);
+  const initialWindowHeightRef = useRef(windowHeight);
+  const androidResizeSessionRef = useRef(false);
+  const composerBottom = useRef(new Animated.Value(tabBarHeight)).current;
+  const navigation = useNavigation<NavigationProp<any>>();
 
   const canSend = input.trim().length > 0 && !loading;
   const canClear = messages.length > 0 && !loading;
+  const androidResizeDelta = Platform.OS === 'android' ? Math.max(0, initialWindowHeightRef.current - windowHeight) : 0;
+  const androidUsingResize = Platform.OS === 'android' && (androidResizeDelta > 0 || androidResizeSessionRef.current);
+  const composerDocked = Platform.OS === 'android' ? androidUsingResize || keyboardVisible : keyboardVisible;
+  const composerBottomStyle =
+    Platform.OS === 'android'
+      ? androidUsingResize
+        ? 0
+        : keyboardVisible
+          ? androidOverlayLift
+          : tabBarHeight
+      : composerBottom;
+  const listBottomPadding = composerHeight + (composerDocked ? spacing.lg : tabBarHeight + spacing.lg);
+
+  const animateComposer = useCallback(
+    (toValue: number, duration = 220) => {
+      Animated.timing(composerBottom, {
+        toValue,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    },
+    [composerBottom],
+  );
+
+  useEffect(() => {
+    if (!keyboardVisible && windowHeight > initialWindowHeightRef.current) {
+      initialWindowHeightRef.current = windowHeight;
+    }
+  }, [keyboardVisible, windowHeight]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+
+    if (androidResizeDelta > 0) {
+      androidResizeSessionRef.current = true;
+      return;
+    }
+
+    if (!keyboardVisible) {
+      androidResizeSessionRef.current = false;
+    }
+  }, [androidResizeDelta, keyboardVisible]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android' && !keyboardVisible) {
+      composerBottom.setValue(tabBarHeight);
+    }
+  }, [composerBottom, keyboardVisible, tabBarHeight]);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      const frameSub = Keyboard.addListener('keyboardWillChangeFrame', (event) => {
+        const keyboardHeight = Math.max(
+          0,
+          windowHeight - (event.endCoordinates?.screenY ?? windowHeight) - insets.bottom,
+        );
+        const nextVisible = keyboardHeight > 0;
+        setKeyboardVisible(nextVisible);
+        animateComposer(nextVisible ? keyboardHeight : tabBarHeight, event.duration ?? 250);
+      });
+
+      return () => {
+        frameSub.remove();
+      };
+    }
+
+    const showSub = Keyboard.addListener('keyboardDidShow', (event) => {
+      const overlayFromHeight = Math.max(0, event.endCoordinates?.height ?? 0);
+      const overlayFromScreenY = Math.max(
+        0,
+        initialWindowHeightRef.current - (event.endCoordinates?.screenY ?? initialWindowHeightRef.current),
+      );
+      const keyboardHeight = Math.max(overlayFromHeight, overlayFromScreenY);
+      const resizedWindowHeight = Math.max(0, initialWindowHeightRef.current - windowHeight);
+      const composerLift = Math.max(0, keyboardHeight - resizedWindowHeight);
+
+      setKeyboardVisible(true);
+      setAndroidOverlayLift(resizedWindowHeight > 0 ? 0 : composerLift);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      setAndroidOverlayLift(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [androidUsingResize, insets.bottom, windowHeight]);
 
   const handleSend = async () => {
     if (!token || !canSend) return;
@@ -129,6 +233,46 @@ const AiChatScreen = () => {
     [navigation],
   );
 
+  const renderContent = () => (
+    <>
+      <FlatList
+        ref={listRef}
+        data={messages}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
+        ListEmptyComponent={listEmpty}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews
+        automaticallyAdjustKeyboardInsets={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+      />
+
+      <Animated.View
+        style={[styles.inputBarShell, { bottom: composerBottomStyle }]}
+        onLayout={(event) => setComposerHeight(Math.ceil(event.nativeEvent.layout.height))}
+      >
+        <View style={styles.inputBar}>
+          <TextInput
+            style={styles.input}
+            placeholder="Ask about a design..."
+            placeholderTextColor={colors.textMuted}
+            value={input}
+            onChangeText={setInput}
+            multiline
+          />
+          <TouchableOpacity style={[styles.sendButton, !canSend ? styles.sendDisabled : null]} onPress={handleSend}>
+            <Ionicons name="send" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    </>
+  );
+
   return (
     <Screen>
       <ScreenHeader
@@ -146,40 +290,7 @@ const AiChatScreen = () => {
         }
       />
 
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : insets.bottom}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={listEmpty}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={7}
-          removeClippedSubviews
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        />
-
-        <View style={styles.inputBar}>
-          <TextInput
-            style={styles.input}
-            placeholder="Ask about a design..."
-            placeholderTextColor={colors.textMuted}
-            value={input}
-            onChangeText={setInput}
-            multiline
-          />
-          <TouchableOpacity style={[styles.sendButton, !canSend ? styles.sendDisabled : null]} onPress={handleSend}>
-            <Ionicons name="send" size={18} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      <View style={styles.container}>{renderContent()}</View>
     </Screen>
   );
 };
@@ -187,11 +298,10 @@ const AiChatScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    position: 'relative',
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
   },
   listContent: {
-    paddingBottom: spacing.lg,
     gap: spacing.sm,
   },
   emptyTitle: {
@@ -266,13 +376,27 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
   },
+  inputBarShell: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    backgroundColor: colors.card,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 10,
   },
   input: {
     flex: 1,

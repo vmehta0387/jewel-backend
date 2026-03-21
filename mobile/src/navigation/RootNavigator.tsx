@@ -108,6 +108,16 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         marginHorizontal: 0,
         marginBottom: 0,
         borderRadius: 0,
+        ...(route.name === 'AiTab'
+          ? {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }
+          : {
+              position: 'relative',
+            }),
       },
       tabBarItemStyle: {
         paddingVertical: 2,
