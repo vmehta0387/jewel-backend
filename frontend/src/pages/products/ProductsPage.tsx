@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
+import SearchableSelect from '../../components/common/SearchableSelect';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
@@ -612,7 +613,7 @@ const FINDING_FEATURE_ENABLED = false;
 
 function Tag({ text }: { text: string }) {
   return (
-    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+    <span className="inline-flex shrink-0 resize-none items-center justify-center whitespace-nowrap rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-0.5 text-[0.7rem] font-bold uppercase tracking-wider text-amber-700 shadow-sm ring-1 ring-amber-500/10">
       {text}
     </span>
   );
@@ -697,20 +698,22 @@ function Modal({
   zIndexClass?: string;
 }) {
   return (
-    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]`}>
-      <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/40 p-3 sm:p-5 backdrop-blur-sm transition-all duration-300`}>
+      <div className={`relative w-full ${size} max-h-[95vh] overflow-y-auto rounded-2xl border border-white/20 bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)]`}>
+        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/80 px-6 py-4 backdrop-blur-md">
+          <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-lg font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="group flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/50 text-slate-500 transition-all hover:bg-slate-200 hover:text-slate-900"
             onClick={onClose}
             aria-label="Close"
           >
-            x
+            <svg className="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5 sm:p-6">{children}</div>
       </div>
     </div>
   );
@@ -3315,93 +3318,75 @@ const createDefaultVendorRow = (): VendorRow => ({
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.jewelryGroup}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelryGroup: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.jewelryGroups.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelryGroup: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.jewelryGroups.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Collection</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.collection}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, collection: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.collections.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, collection: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.collections.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Size</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.jewelrySize}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.jewelrySizes.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelrySize: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.jewelrySizes.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Tags</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.tags}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, tags: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.tags.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, tags: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.tags.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Stone Packet</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.stonePacket}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, stonePacket: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {packetOptions.map((option) => (
-                    <option key={option.id} value={option.packetName}>
-                      {option.packetName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, stonePacket: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...packetOptions.map(o => ({ value: o.packetName, label: o.packetName }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Metal Caratage</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.goldColour}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.metalCaratages.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, goldColour: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.metalCaratages.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
             </div>
           </div>
@@ -3516,8 +3501,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                   {isColumnVisible('metalInfo') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.goldColour || '-'}</td> : null}
                   {isColumnVisible('collection') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.collection}</td> : null}
                   {isColumnVisible('stoneInfo') ? (
-                  <td className="app-table-cell text-sm text-slate-700">
-                    <span className="inline-flex whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
+                  <td className="app-table-cell">
+                    <span className="inline-flex shrink-0 resize-none items-center justify-center whitespace-nowrap rounded-full border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-0.5 text-[0.7rem] font-bold uppercase tracking-wider text-cyan-700 shadow-sm ring-1 ring-cyan-500/10">
                       {row.stoneInfo}
                     </span>
                   </td>
@@ -3605,7 +3590,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       {showAddModal && (
         <Modal title="ADD NEW DESIGN" size="max-w-[98vw]" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
-          <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 [&_input]:rounded-md [&_input]:border-slate-300 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-300 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-300 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
+          <div className="space-y-6 rounded-2xl border border-slate-200/60 bg-slate-50/30 p-5 sm:p-6 shadow-[inset_0_2px_15px_rgba(0,0,0,0.02)] ring-1 ring-slate-900/5 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
               <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
@@ -3613,8 +3598,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-              <div className="rounded-xl border border-sky-200 bg-white shadow-sm [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
-                <div className="border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">General Information</div>
+              <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
+                <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">General Information</div>
                 <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
@@ -3945,7 +3930,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
               <div className="space-y-4">
                 <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
-                <div className="border-b border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">Media Gallery</div>
+                <div className="border-b border-violet-200/60 bg-violet-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-violet-800 backdrop-blur-sm">Media Gallery</div>
                 <div className="space-y-3 p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -4134,8 +4119,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
-                  <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Metal Information</div>
+                <div className="overflow-hidden rounded-2xl border border-amber-200/60 bg-white shadow-sm ring-1 ring-amber-900/5 transition-all hover:shadow-md overflow-hidden">
+                  <div className="border-b border-amber-200/60 bg-amber-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-amber-800 backdrop-blur-sm">Metal Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="w-full min-w-[1020px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -4244,7 +4229,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 placeholder={getMetalValue(item).toFixed(2)}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-slate-100 text-sm font-bold text-slate-900">
@@ -4260,7 +4245,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
                     <button
                       type="button"
-                      className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                      className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                       onClick={addMetalLine}
                     >
                       + Add Line
@@ -4269,7 +4254,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
 
                 <div className="rounded-xl border border-cyan-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-800">
+                  <div className="flex items-center justify-between border-b border-cyan-200/60 bg-cyan-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan-800 backdrop-blur-sm">
                     <span>Gemstone Information</span>
                     {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
                   </div>
@@ -4359,7 +4344,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 placeholder={getGemValue(item).toFixed(2)}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4374,7 +4359,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-cyan-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '', amount: '' }])}>+ Add Line</button>
+                    <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '', amount: '' }])}>+ Add Line</button>
                   </div>
                 </div>
               </div>
@@ -4383,8 +4368,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="rounded-xl border border-rose-200 bg-white shadow-sm">
-                  <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">Labor Information</div>
+                <div className="overflow-hidden rounded-2xl border border-rose-200/60 bg-white shadow-sm ring-1 ring-rose-900/5 transition-all hover:shadow-md">
+                  <div className="border-b border-rose-200/60 bg-rose-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-rose-800 backdrop-blur-sm">Labor Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="min-w-full text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -4440,7 +4425,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 tabIndex={-1}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4452,13 +4437,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-rose-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
+                    <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
                   </div>
                 </div>
 
                 {FINDING_FEATURE_ENABLED ? (
-                  <div className="rounded-xl border border-indigo-200 bg-white shadow-sm">
-                    <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800">Finding Information</div>
+                  <div className="overflow-hidden rounded-2xl border border-indigo-200/60 bg-white shadow-sm ring-1 ring-indigo-900/5 transition-all hover:shadow-md">
+                    <div className="border-b border-indigo-200/60 bg-indigo-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-indigo-800 backdrop-blur-sm">Finding Information</div>
                     <div className="overflow-x-auto scrollbar-top">
                       <table className="min-w-full text-sm">
                         <thead className="bg-indigo-50/70 text-left text-[11px] font-semibold text-indigo-900">
@@ -4509,7 +4494,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.units} onChange={(event) => updateFindingRow(item.id, 'units', event.target.value)} placeholder="0" /></td>
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.totalWeight} onChange={(event) => updateFindingRow(item.id, 'totalWeight', event.target.value)} placeholder="0.000" /></td>
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.findingValue} onChange={(event) => updateFindingRow(item.id, 'findingValue', event.target.value)} placeholder="0.00" /></td>
-                              <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setFindingRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                              <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setFindingRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                             </tr>
                           ))}
                           <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4521,7 +4506,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </table>
                     </div>
                     <div className="flex justify-end border-t border-indigo-200 bg-white px-3 py-2">
-                      <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setFindingRows((prev) => [...prev, { id: makeId(), findingHead: masterOptions.findingHeads[0]?.value || '', pricePerUnit: '', units: '', totalWeight: '', findingValue: '' }])}>+ Add Line</button>
+                      <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setFindingRows((prev) => [...prev, { id: makeId(), findingHead: masterOptions.findingHeads[0]?.value || '', pricePerUnit: '', units: '', totalWeight: '', findingValue: '' }])}>+ Add Line</button>
                     </div>
                   </div>
                 ) : null}
@@ -5206,7 +5191,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Design Information</div>
+                <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Design Information</div>
                 <table className="min-w-full text-sm">
                   <tbody>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
@@ -5223,7 +5208,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
               <div className="space-y-4">
                 <div className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
+                  <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Gallery Media</div>
                   <div className="p-3">
                     {detailGalleryUrls.length ? (
                       <div className="space-y-3">
@@ -5254,7 +5239,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
                 <div className="rounded border border-gray-200">
-                  <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">
                     <span className="text-sm font-semibold text-gray-800">3D STL Model</span>
                     {detailStlUrl ? (
                       <button
@@ -5309,7 +5294,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{detailSummary.totalValue.toFixed(2)}</p></div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Metal Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5344,7 +5329,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Gemstone Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Gemstone Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5387,7 +5372,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Labor Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Labor Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5552,13 +5537,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.netWeight} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, netWeight: event.target.value } : row))} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.duration} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, duration: event.target.value } : row))} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.remarks} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, remarks: event.target.value } : row))} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setProcessRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setProcessRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setProcessRows((prev) => [...prev, { id: makeId(), stage: '', netWeight: '', duration: '', remarks: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setProcessRows((prev) => [...prev, { id: makeId(), stage: '', netWeight: '', duration: '', remarks: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
@@ -5623,13 +5608,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.title} onChange={(event) => updateCostRow(setPricingRows, item.id, 'title', event.target.value)} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.qty} onChange={(event) => updateCostRow(setPricingRows, item.id, 'qty', event.target.value)} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.rate} onChange={(event) => updateCostRow(setPricingRows, item.id, 'rate', event.target.value)} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setPricingRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setPricingRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setPricingRows((prev) => [...prev, { id: makeId(), title: '', qty: '', rate: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setPricingRows((prev) => [...prev, { id: makeId(), title: '', qty: '', rate: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
@@ -5662,13 +5647,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                         </select>
                       </td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.supplierStyleNo} onChange={(event) => setVendorRows((prev) => prev.map((row) => row.id === item.id ? { ...row, supplierStyleNo: event.target.value } : row))} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setVendorRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setVendorRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
