@@ -69,6 +69,26 @@ interface DesignRow {
   updatedByName: string;
 }
 
+type DesignListColumnKey =
+  | 'media'
+  | 'designNo'
+  | 'jewelryGroup'
+  | 'jewelrySize'
+  | 'metalInfo'
+  | 'collection'
+  | 'stoneInfo'
+  | 'price'
+  | 'tags'
+  | 'stage'
+  | 'status'
+  | 'updatedBy'
+  | 'modifiedAt';
+
+interface DesignListColumn {
+  key: DesignListColumnKey;
+  label: string;
+}
+
 interface ApiDesignRow {
   id: string;
   designNo?: string;
@@ -97,6 +117,12 @@ interface ApiDesignRow {
 interface GalleryItem {
   key: string;
   url: string;
+}
+
+interface ListMediaViewerState {
+  title: string;
+  items: GalleryItem[];
+  activeIndex: number;
 }
 
 interface StlItem {
@@ -189,6 +215,35 @@ interface VendorRow {
   stockType: string;
   supplierStyleNo: string;
 }
+
+const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
+  { key: 'media', label: 'Media' },
+  { key: 'designNo', label: 'Design No.' },
+  { key: 'jewelryGroup', label: 'Jewelry Group' },
+  { key: 'jewelrySize', label: 'Jewelry Size' },
+  { key: 'metalInfo', label: 'Metal Info' },
+  { key: 'collection', label: 'Collection' },
+  { key: 'stoneInfo', label: 'Stone Info' },
+  { key: 'price', label: 'Price' },
+  { key: 'tags', label: 'Tags' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'status', label: 'Status' },
+  { key: 'updatedBy', label: 'Updated By' },
+  { key: 'modifiedAt', label: 'Modified' },
+];
+
+const DEFAULT_DESIGN_LIST_COLUMNS: DesignListColumnKey[] = [
+  'media',
+  'designNo',
+  'jewelryGroup',
+  'jewelrySize',
+  'metalInfo',
+  'collection',
+  'stoneInfo',
+  'price',
+];
+
+const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v2';
 
 interface PacketOption {
   id: string;
@@ -693,6 +748,32 @@ export default function ProductsPage() {
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<DesignListColumnKey[]>(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_DESIGN_LIST_COLUMNS;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(DESIGN_LIST_COLUMNS_STORAGE_KEY);
+      if (!raw) {
+        return DEFAULT_DESIGN_LIST_COLUMNS;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return DEFAULT_DESIGN_LIST_COLUMNS;
+      }
+
+      const sanitized = parsed.filter((item): item is DesignListColumnKey =>
+        DESIGN_LIST_COLUMNS.some((column) => column.key === item),
+      );
+
+      return sanitized.length > 0 ? sanitized : DEFAULT_DESIGN_LIST_COLUMNS;
+    } catch {
+      return DEFAULT_DESIGN_LIST_COLUMNS;
+    }
+  });
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -791,7 +872,9 @@ export default function ProductsPage() {
   const [detailDesignLoading, setDetailDesignLoading] = useState(false);
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
   const [showStlViewerModal, setShowStlViewerModal] = useState(false);
+  const [listMediaViewer, setListMediaViewer] = useState<ListMediaViewerState | null>(null);
   const designImportInputRef = useRef<HTMLInputElement | null>(null);
+  const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -1771,6 +1854,29 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(
+      DESIGN_LIST_COLUMNS_STORAGE_KEY,
+      JSON.stringify(visibleColumns),
+    );
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    if (!showColumnPicker) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!columnPickerRef.current?.contains(event.target as Node)) {
+        setShowColumnPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnPicker]);
+
+  useEffect(() => {
     if (!packetOptions.length) return;
     setGemRows((prev) => {
       let changed = false;
@@ -1868,6 +1974,45 @@ export default function ProductsPage() {
       return true;
     });
   }, [filters, rows, search, showInactive]);
+
+  const isColumnVisible = (key: DesignListColumnKey) => visibleColumns.includes(key);
+
+  const toggleColumnVisibility = (key: DesignListColumnKey) => {
+    setVisibleColumns((prev) => {
+      if (prev.includes(key)) {
+        const next = prev.filter((item) => item !== key);
+        return next.length > 0 ? next : prev;
+      }
+      const next = [...prev, key];
+      return DESIGN_LIST_COLUMNS.filter((column) => next.includes(column.key)).map((column) => column.key);
+    });
+  };
+
+  const resetVisibleColumns = () => {
+    setVisibleColumns(DEFAULT_DESIGN_LIST_COLUMNS);
+  };
+
+  const showAllColumns = () => {
+    setVisibleColumns(DESIGN_LIST_COLUMNS.map((column) => column.key));
+  };
+
+  const openListMediaViewer = (row: DesignRow, startIndex = 0) => {
+    const items = (row.imageUrls || []).map((url, index) => ({
+      key: row.imageKeys?.[index] || `${row.id}-${index}`,
+      url,
+    }));
+
+    if (!items.length) {
+      return;
+    }
+
+    const safeIndex = Math.min(Math.max(startIndex, 0), items.length - 1);
+    setListMediaViewer({
+      title: row.designNo || 'DESIGN MEDIA',
+      items,
+      activeIndex: safeIndex,
+    });
+  };
 
   const pageSize = 15;
   const totalPages = useMemo(
@@ -3028,6 +3173,64 @@ const createDefaultVendorRow = (): VendorRow => ({
           <p className="text-sm text-gray-600">Design entries module for super admin review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative" ref={columnPickerRef}>
+            <button
+              type="button"
+              className={exportActionButtonClass}
+              onClick={() => setShowColumnPicker((prev) => !prev)}
+              title="Choose visible columns"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">COL</span>
+              <span>Columns</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {visibleColumns.length}
+              </span>
+            </button>
+            {showColumnPicker ? (
+              <div className="absolute left-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Visible Columns</p>
+                    <p className="text-xs text-slate-500">
+                      {visibleColumns.length} of {DESIGN_LIST_COLUMNS.length} shown in the list view
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-800"
+                      onClick={showAllColumns}
+                    >
+                      Show all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-primary-700 hover:text-primary-800"
+                      onClick={resetVisibleColumns}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {DESIGN_LIST_COLUMNS.map((column) => (
+                    <label
+                      key={column.key}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={isColumnVisible(column.key)}
+                        onChange={() => toggleColumnVisibility(column.key)}
+                      />
+                      <span>{column.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <Button type="button" size="sm" variant="secondary" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={() => setShowFilters((prev) => !prev)}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M4 6h16M7 12h10M10 18h4" />
@@ -3245,15 +3448,19 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <span>#</span>
                   </div>
                 </th>
-                <th className="app-table-head-cell">Media</th>
-                <th className="app-table-head-cell">Design No.</th>
-                <th className="app-table-head-cell">Jewelry Group</th>
-                <th className="app-table-head-cell">Jewelry Size</th>
-                <th className="app-table-head-cell">Metal Info</th>
-                <th className="app-table-head-cell">Collection</th>
-                <th className="app-table-head-cell">Stone Info</th>
-                <th className="app-table-head-cell">Price</th>
-                <th className="app-table-head-cell">Tags</th>
+                {isColumnVisible('media') ? <th className="app-table-head-cell">Media</th> : null}
+                {isColumnVisible('designNo') ? <th className="app-table-head-cell">Design No.</th> : null}
+                {isColumnVisible('jewelryGroup') ? <th className="app-table-head-cell">Jewelry Group</th> : null}
+                {isColumnVisible('jewelrySize') ? <th className="app-table-head-cell">Jewelry Size</th> : null}
+                {isColumnVisible('metalInfo') ? <th className="app-table-head-cell">Metal Info</th> : null}
+                {isColumnVisible('collection') ? <th className="app-table-head-cell">Collection</th> : null}
+                {isColumnVisible('stoneInfo') ? <th className="app-table-head-cell">Stone Info</th> : null}
+                {isColumnVisible('price') ? <th className="app-table-head-cell">Price</th> : null}
+                {isColumnVisible('tags') ? <th className="app-table-head-cell">Tags</th> : null}
+                {isColumnVisible('stage') ? <th className="app-table-head-cell">Stage</th> : null}
+                {isColumnVisible('status') ? <th className="app-table-head-cell">Status</th> : null}
+                {isColumnVisible('updatedBy') ? <th className="app-table-head-cell">Updated By</th> : null}
+                {isColumnVisible('modifiedAt') ? <th className="app-table-head-cell">Modified</th> : null}
                 <th className="app-table-head-cell">Action</th>
               </tr>
               </thead>
@@ -3272,45 +3479,61 @@ const createDefaultVendorRow = (): VendorRow => ({
                       {idx + 1}
                     </div>
                   </td>
+                  {isColumnVisible('media') ? (
                   <td className="app-table-cell">
                     {row.imageUrls?.[0] ? (
-                      <MediaPreview
-                        url={row.imageUrls[0]}
-                        alt={`${row.designNo} preview`}
-                        className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm"
-                      />
+                      <button
+                        type="button"
+                        className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-2"
+                        onClick={() => openListMediaViewer(row)}
+                        title="Open media viewer"
+                      >
+                        <MediaPreview
+                          url={row.imageUrls[0]}
+                          alt={`${row.designNo} preview`}
+                          className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm transition group-hover:border-slate-300 group-hover:shadow-md"
+                        />
+                      </button>
                     ) : (
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-semibold tracking-[0.12em] text-slate-400">N/A</div>
                     )}
                   </td>
-                  <td className="app-table-cell text-left text-sm font-semibold">
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        className="text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
-                        onClick={() => openEdit(row)}
-                        title="Edit design"
-                      >
-                        {row.designNo}
-                      </button>
-                      <span className="text-xs font-medium text-slate-500">{row.designName || '-'}</span>
-                    </div>
+                  ) : null}
+                  {isColumnVisible('designNo') ? (
+                  <td className="app-table-cell text-left text-sm font-semibold whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="whitespace-nowrap text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
+                      onClick={() => openEdit(row)}
+                      title={row.designName ? `${row.designNo} - ${row.designName}` : 'Edit design'}
+                    >
+                      {row.designNo}
+                    </button>
                   </td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.jewelrySize}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.goldColour || '-'}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.collection}</td>
+                  ) : null}
+                  {isColumnVisible('jewelryGroup') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.jewelryGroup}</td> : null}
+                  {isColumnVisible('jewelrySize') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.jewelrySize}</td> : null}
+                  {isColumnVisible('metalInfo') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.goldColour || '-'}</td> : null}
+                  {isColumnVisible('collection') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.collection}</td> : null}
+                  {isColumnVisible('stoneInfo') ? (
                   <td className="app-table-cell text-sm text-slate-700">
-                    <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
+                    <span className="inline-flex whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
                       {row.stoneInfo}
                     </span>
                   </td>
-                  <td className="app-table-cell text-sm font-semibold text-slate-800">{formatMoney(row.price)}</td>
+                  ) : null}
+                  {isColumnVisible('price') ? <td className="app-table-cell whitespace-nowrap text-sm font-semibold text-slate-800">{formatMoney(row.price)}</td> : null}
+                  {isColumnVisible('tags') ? (
                   <td className="app-table-cell">
-                    <div className="flex flex-wrap gap-1.5">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div>
+                    <div className="flex flex-nowrap gap-1.5 overflow-hidden">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div>
                   </td>
+                  ) : null}
+                  {isColumnVisible('stage') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.stage || '-'}</td> : null}
+                  {isColumnVisible('status') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.status || (row.isActive ? 'Active' : 'Inactive')}</td> : null}
+                  {isColumnVisible('updatedBy') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.updatedByName || '-'}</td> : null}
+                  {isColumnVisible('modifiedAt') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.modifiedAt || '-'}</td> : null}
                   <td className="app-table-cell">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-nowrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       {canCreateDesign ? (
@@ -3367,7 +3590,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         </div>
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
-          <p>Showing {showingFrom}–{showingTo} of {filteredRows.length} entries</p>
+          <p>Showing {showingFrom}-{showingTo} of {filteredRows.length} entries</p>
           <p className="text-xs text-blue-700">
             {canModifyExistingDesigns
               ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
@@ -5251,6 +5474,71 @@ const createDefaultVendorRow = (): VendorRow => ({
         </Modal>
       )}
 
+      {listMediaViewer ? (
+        <Modal
+          title={`MEDIA (${listMediaViewer.title})`}
+          onClose={() => setListMediaViewer(null)}
+          size="max-w-5xl"
+          zIndexClass="z-[80]"
+        >
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950/95 p-4">
+              <MediaPreview
+                url={listMediaViewer.items[listMediaViewer.activeIndex].url}
+                alt={`${listMediaViewer.title} media ${listMediaViewer.activeIndex + 1}`}
+                className="h-[26rem] w-full rounded-xl object-contain"
+                controls
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {getFileNameFromUrl(listMediaViewer.items[listMediaViewer.activeIndex].url)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Media {listMediaViewer.activeIndex + 1} of {listMediaViewer.items.length}
+                </p>
+              </div>
+              <a
+                href={listMediaViewer.items[listMediaViewer.activeIndex].url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#D2C4B4] bg-[#F3E3D0] px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-[#e9d8c4]"
+              >
+                Open File
+              </a>
+            </div>
+
+            {listMediaViewer.items.length > 1 ? (
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                {listMediaViewer.items.map((item, index) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`overflow-hidden rounded-xl border p-1 transition ${
+                      index === listMediaViewer.activeIndex
+                        ? 'border-[#81A6C6] bg-[#AACDDC]/20 shadow-sm'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                    onClick={() =>
+                      setListMediaViewer((prev) => (prev ? { ...prev, activeIndex: index } : prev))
+                    }
+                    title={`Open media ${index + 1}`}
+                  >
+                    <MediaPreview
+                      url={item.url}
+                      alt={`${listMediaViewer.title} thumbnail ${index + 1}`}
+                      className="h-16 w-full rounded-lg object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+
       {modal === 'process' && selected && (
         <Modal title={`PROCESS (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-5xl">
           <div className="space-y-3">
@@ -5387,4 +5675,5 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
 
