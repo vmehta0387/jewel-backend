@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Animated,
+  Easing,
   Image,
   Modal,
   ScrollView,
@@ -85,11 +85,11 @@ const DesignDetailScreen = () => {
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [design, setDesign] = useState<Design | null>(null);
+  const [loading, setLoading] = useState(true);
   const [displayPrice, setDisplayPrice] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [saved, setSaved] = useState(false);
-  const [imageAspectRatio, setImageAspectRatio] = useState(1.15);
   const [viewerVisible, setViewerVisible] = useState(false);
   const [brokenImageUris, setBrokenImageUris] = useState<Record<string, true>>({});
   const [viewerScale, setViewerScale] = useState(1);
@@ -104,16 +104,76 @@ const DesignDetailScreen = () => {
   const translateY = useRef(Animated.add(baseTranslateY, dragTranslateY)).current;
   const lastScale = useRef(1);
   const lastOffset = useRef({ x: 0, y: 0 });
+  const hasLoadedDesignRef = useRef(false);
   const pinchHandlerRef = useRef<PinchGestureHandler>(null);
   const panHandlerRef = useRef<PanGestureHandler>(null);
+  const skeletonPulse = useRef(new Animated.Value(0.58)).current;
+  const heroPanelHeight = useMemo(() => {
+    if (screenWidth >= 1024) {
+      return Math.min(screenHeight * 0.56, 620);
+    }
+
+    if (screenWidth >= 768) {
+      return Math.min(screenHeight * 0.5, 520);
+    }
+
+    if (screenWidth >= 600) {
+      return Math.min(screenHeight * 0.46, 460);
+    }
+
+    return Math.min(Math.max(screenWidth * 0.84, 320), 420);
+  }, [screenHeight, screenWidth]);
+
+  useEffect(() => {
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(skeletonPulse, {
+          toValue: 0.58,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    pulseLoop.start();
+
+    return () => {
+      pulseLoop.stop();
+    };
+  }, [skeletonPulse]);
+
+  useEffect(() => {
+    hasLoadedDesignRef.current = false;
+    setDesign(null);
+    setDisplayPrice(0);
+    setError(null);
+    setLoading(true);
+    setSelectedImageIndex(0);
+    setBrokenImageUris({});
+  }, [route.params.designId]);
 
   const loadDesign = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setLoading(false);
+      return;
+    }
 
+    const shouldShowSkeleton = !hasLoadedDesignRef.current;
+    if (shouldShowSkeleton) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
       const data = await fetchDesign(token, route.params.designId);
+      hasLoadedDesignRef.current = true;
       setDesign(data);
       setSelectedImageIndex(0);
       setBrokenImageUris({});
@@ -135,6 +195,10 @@ const DesignDetailScreen = () => {
       }
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
+    } finally {
+      if (shouldShowSkeleton) {
+        setLoading(false);
+      }
     }
   }, [token, route.params.designId, user?.role, user?.companyId, user?.branchId]);
 
@@ -301,41 +365,106 @@ const DesignDetailScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (!activeImage || brokenImageUris[activeImage]) {
-      setImageAspectRatio(1.15);
-      return;
-    }
-
-    let cancelled = false;
-
-    Image.getSize(
-      activeImage,
-      (width, height) => {
-        if (!cancelled && width > 0 && height > 0) {
-          setImageAspectRatio(width / height);
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setImageAspectRatio(1.15);
-        }
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeImage, brokenImageUris]);
-
-  useEffect(() => {
     resetViewerZoom();
   }, [resetViewerZoom, selectedImageIndex, viewerVisible]);
 
-  if (!design && !error) {
+  if (!design && loading) {
     return (
-      <Screen style={styles.stateScreen}>
-        <ActivityIndicator size="large" color="#8a6b55" />
-        <Text style={styles.stateText}>Loading design...</Text>
+      <Screen style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          <View style={styles.heroArea}>
+            <View style={styles.heroTopBar}>
+              <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()} activeOpacity={0.88}>
+                <Ionicons name="arrow-back" size={18} color="#2f2119" />
+              </TouchableOpacity>
+              <View style={styles.iconGroup}>
+                <Animated.View style={[styles.iconButton, styles.skeletonGhostButton, { opacity: skeletonPulse }]} />
+                <Animated.View style={[styles.iconButton, styles.skeletonGhostButton, { opacity: skeletonPulse }]} />
+              </View>
+            </View>
+
+            <View style={[styles.heroImageShell, { height: heroPanelHeight }, styles.skeletonHeroImage]}>
+              <Animated.View style={[styles.skeletonHeroInner, { opacity: skeletonPulse }]}>
+                <View style={[styles.skeletonLine, styles.skeletonHeroLineLarge]} />
+                <View style={[styles.skeletonLine, styles.skeletonHeroLineSmall]} />
+              </Animated.View>
+            </View>
+          </View>
+
+          <View style={[styles.thumbnailRow, styles.skeletonThumbnailRow]}>
+            {Array.from({ length: 4 }, (_, index) => (
+              <Animated.View
+                key={`thumb-skeleton-${index}`}
+                style={[styles.thumbnailFrame, styles.skeletonThumbFrame, { opacity: skeletonPulse }]}
+              />
+            ))}
+          </View>
+
+          <View style={[styles.detailCard, styles.detailCardWithThumbnails]}>
+            <View style={styles.titleBlock}>
+              <Animated.View style={[styles.skeletonLine, styles.skeletonDesignNameLine, { opacity: skeletonPulse }]} />
+              <Animated.View
+                style={[styles.skeletonLine, styles.skeletonDesignNameLineShort, { opacity: skeletonPulse }]}
+              />
+              <Animated.View style={[styles.skeletonLine, styles.skeletonPriceValueLine, { opacity: skeletonPulse }]} />
+              <Animated.View style={[styles.skeletonLine, styles.skeletonMetaValueLine, { opacity: skeletonPulse }]} />
+            </View>
+
+            <View style={styles.skeletonParagraph}>
+              <Animated.View style={[styles.skeletonLine, styles.skeletonDescriptionLine, { opacity: skeletonPulse }]} />
+              <Animated.View
+                style={[styles.skeletonLine, styles.skeletonDescriptionLineShort, { opacity: skeletonPulse }]}
+              />
+              <Animated.View
+                style={[styles.skeletonLine, styles.skeletonDescriptionLineMedium, { opacity: skeletonPulse }]}
+              />
+              <Animated.View
+                style={[styles.skeletonLine, styles.skeletonDescriptionLineTiny, { opacity: skeletonPulse }]}
+              />
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Animated.View style={[styles.skeletonLine, styles.skeletonSectionTitle, { opacity: skeletonPulse }]} />
+            </View>
+
+            <View style={styles.specCard}>
+              {Array.from({ length: 4 }, (_, index) => (
+                <View
+                  key={`spec-skeleton-${index}`}
+                  style={[styles.specRow, index < 3 ? styles.specRowBorder : null]}
+                >
+                  <Animated.View
+                    style={[
+                      styles.skeletonLine,
+                      styles.skeletonSpecLabel,
+                      index % 2 === 0 ? styles.skeletonSpecLabelWide : null,
+                      { opacity: skeletonPulse },
+                    ]}
+                  />
+                  <View style={styles.skeletonSpecValueWrap}>
+                    <Animated.View
+                      style={[
+                        styles.skeletonLine,
+                        styles.skeletonSpecValue,
+                        index % 2 === 0 ? styles.skeletonSpecValueWide : styles.skeletonSpecValueShort,
+                        { opacity: skeletonPulse },
+                      ]}
+                    />
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.actionRow}>
+              <Animated.View style={[styles.skeletonActionPrimary, { opacity: skeletonPulse }]}>
+                <View style={[styles.skeletonLine, styles.skeletonActionLabelPrimary]} />
+              </Animated.View>
+              <Animated.View style={[styles.skeletonActionSecondary, { opacity: skeletonPulse }]}>
+                <View style={[styles.skeletonLine, styles.skeletonActionLabelSecondary]} />
+              </Animated.View>
+            </View>
+          </View>
+        </ScrollView>
       </Screen>
     );
   }
@@ -379,7 +508,7 @@ const DesignDetailScreen = () => {
 
           <TouchableOpacity
             activeOpacity={0.94}
-            style={[styles.heroImageShell, { aspectRatio: imageAspectRatio }]}
+            style={[styles.heroImageShell, { height: heroPanelHeight }]}
             disabled={!canShowActiveImage}
             onPress={() => setViewerVisible(true)}
           >
@@ -391,7 +520,7 @@ const DesignDetailScreen = () => {
                 onError={() => markImageBroken(activeImage)}
               />
             ) : (
-              <View style={[styles.placeholderHero, styles.placeholderHeroLarge]}>
+              <View style={styles.placeholderHero}>
                 <View style={styles.placeholderBadge}>
                   <Ionicons name="diamond-outline" size={28} color="#bc9672" />
                 </View>
@@ -666,10 +795,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(235,223,209,0.55)',
   },
+  skeletonGhostButton: {
+    backgroundColor: 'rgba(255, 250, 244, 0.9)',
+    borderColor: '#eadfd2',
+  },
   heroImageShell: {
     width: '100%',
     borderRadius: 0,
-    backgroundColor: 'transparent',
+    backgroundColor: '#ffffff',
+  },
+  skeletonHeroImage: {
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skeletonHeroInner: {
+    width: '72%',
+    gap: 10,
+  },
+  skeletonHeroLineLarge: {
+    width: '58%',
+    height: 14,
+    alignSelf: 'center',
+  },
+  skeletonHeroLineSmall: {
+    width: '42%',
+    alignSelf: 'center',
   },
   heroImage: {
     width: '100%',
@@ -681,9 +832,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     paddingHorizontal: 24,
-  },
-  placeholderHeroLarge: {
-    minHeight: 320,
   },
   placeholderBadge: {
     width: 58,
@@ -711,6 +859,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     gap: 10,
   },
+  skeletonThumbnailRow: {
+    flexDirection: 'row',
+  },
   thumbnailScroller: {
     marginTop: 2,
   },
@@ -722,6 +873,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eadfd2',
     backgroundColor: '#f3e9dd',
+  },
+  skeletonThumbFrame: {
+    backgroundColor: '#ffffff',
   },
   thumbnailFrameActive: {
     borderColor: '#3c2b20',
@@ -756,6 +910,28 @@ const styles = StyleSheet.create({
   titleBlock: {
     marginBottom: 14,
   },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#eadfd2',
+  },
+  skeletonDesignNameLine: {
+    width: '48%',
+    height: 24,
+    marginBottom: 8,
+  },
+  skeletonDesignNameLineShort: {
+    width: '32%',
+    marginBottom: 12,
+  },
+  skeletonPriceValueLine: {
+    width: '26%',
+    height: 18,
+    marginBottom: 10,
+  },
+  skeletonMetaValueLine: {
+    width: '42%',
+  },
   designName: {
     fontSize: 33,
     lineHeight: 38,
@@ -780,8 +956,28 @@ const styles = StyleSheet.create({
     color: '#64564b',
     marginBottom: 18,
   },
+  skeletonParagraph: {
+    marginBottom: 18,
+    gap: 8,
+  },
+  skeletonDescriptionLine: {
+    width: '100%',
+  },
+  skeletonDescriptionLineShort: {
+    width: '82%',
+  },
+  skeletonDescriptionLineMedium: {
+    width: '90%',
+  },
+  skeletonDescriptionLineTiny: {
+    width: '68%',
+  },
   sectionHeader: {
     marginBottom: 10,
+  },
+  skeletonSectionTitle: {
+    width: 104,
+    height: 14,
   },
   sectionTitle: {
     fontSize: 14,
@@ -813,6 +1009,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#5f5348',
   },
+  skeletonSpecLabel: {
+    width: '38%',
+  },
+  skeletonSpecLabelWide: {
+    width: '46%',
+  },
+  skeletonSpecValueWrap: {
+    width: '34%',
+    alignItems: 'flex-end',
+  },
   specValueWrap: {
     maxWidth: '55%',
     flexDirection: 'row',
@@ -826,6 +1032,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#d6c2ae',
   },
+  skeletonSpecValue: {
+    width: '100%',
+  },
+  skeletonSpecValueShort: {
+    width: '74%',
+  },
+  skeletonSpecValueWide: {
+    width: '100%',
+  },
   specValue: {
     fontSize: 12,
     fontWeight: '600',
@@ -836,6 +1051,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 18,
+  },
+  skeletonActionPrimary: {
+    flex: 1.15,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#e6dbce',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skeletonActionSecondary: {
+    flex: 0.85,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#efe4d7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skeletonActionLabelPrimary: {
+    width: '42%',
+  },
+  skeletonActionLabelSecondary: {
+    width: '46%',
   },
   primaryAction: {
     flex: 1.15,
