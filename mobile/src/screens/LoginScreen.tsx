@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Keyboard,
   type NativeScrollEvent,
@@ -245,12 +244,6 @@ const LoginScreen = () => {
         </View>
         {keyboardVisible ? <View style={{ height: keyboardInset + spacing.sm }} /> : null}
       </ScrollView>
-
-      {loading ? (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : null}
     </Screen>
   );
 };
@@ -365,12 +358,6 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
     marginBottom: spacing.sm,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(246,234,217,0.4)',
   },
 });
 

@@ -23,7 +23,6 @@ import { useAuth } from '../context/AuthContext';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 type FilterKey = 'ALL' | 'UNREAD' | 'ORDERS' | 'UPDATES';
-type SkeletonNotificationItem = { id: string; skeleton: true };
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'ALL', label: 'All' },
@@ -147,9 +146,7 @@ const NotificationScreen = () => {
     const showSkeleton = !hasLoaded && itemsRef.current.length === 0;
 
     if (!token) {
-      setLoading(false);
       setRefreshing(false);
-      setHasLoaded(true);
       return;
     }
 
@@ -188,8 +185,12 @@ const NotificationScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
+      if (!token) {
+        return undefined;
+      }
       loadNotifications();
-    }, [loadNotifications]),
+      return undefined;
+    }, [loadNotifications, token]),
   );
 
   const isUnread = useCallback(
@@ -227,12 +228,10 @@ const NotificationScreen = () => {
     return Math.min(Math.max(visibleCount || 5, 4), 6);
   }, [filteredItems.length, items.length, refreshing]);
 
-  const skeletonItems = useMemo<SkeletonNotificationItem[]>(
-    () => Array.from({ length: skeletonCount }, (_, index) => ({ id: `skeleton-notice-${index}`, skeleton: true })),
-    [skeletonCount],
-  );
-
   const showSkeletonList = ((!hasLoaded || loading) && items.length === 0) || refreshing;
+  const showInlineError = !showSkeletonList && items.length > 0 && Boolean(error);
+  const showEmptyAll = !showSkeletonList && items.length === 0;
+  const showFilteredEmpty = !showSkeletonList && !error && items.length > 0 && filteredItems.length === 0;
 
   const markAsRead = useCallback((id: string) => {
     setReadIds((current) => {
@@ -305,13 +304,13 @@ const NotificationScreen = () => {
     );
   };
 
-  const renderSkeletonSection = () => (
+  const renderSkeletonSection = (sectionKey: string, rowCount: number, labelWidth: number) => (
     <View style={styles.sectionBlock}>
-      <Animated.View style={[styles.skeletonSectionLabel, { opacity: skeletonPulse }]} />
+      <Animated.View style={[styles.skeletonSectionLabel, { opacity: skeletonPulse, width: labelWidth }]} />
 
       <View style={styles.stackCard}>
-        {skeletonItems.map((item, index) => (
-          <Animated.View key={item.id} style={[styles.noticeRow, { opacity: skeletonPulse }]}>
+        {Array.from({ length: rowCount }, (_, index) => (
+          <Animated.View key={`${sectionKey}-${index}`} style={[styles.noticeRow, { opacity: skeletonPulse }]}>
             <View style={styles.skeletonIconWrap}>
               <View style={styles.skeletonIconInner} />
             </View>
@@ -333,12 +332,15 @@ const NotificationScreen = () => {
               </View>
             </View>
 
-            {index < skeletonItems.length - 1 ? <View style={styles.noticeDivider} /> : null}
+            {index < rowCount - 1 ? <View style={styles.noticeDivider} /> : null}
           </Animated.View>
         ))}
       </View>
     </View>
   );
+
+  const primarySkeletonCount = Math.max(2, Math.ceil(skeletonCount * 0.6));
+  const secondarySkeletonCount = Math.max(0, skeletonCount - primarySkeletonCount);
 
   return (
     <Screen style={styles.screen}>
@@ -359,7 +361,12 @@ const NotificationScreen = () => {
             <Ionicons name="arrow-back" size={18} color="#2f2219" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.markButton} activeOpacity={0.88} onPress={markAllAsRead}>
+          <TouchableOpacity
+            style={[styles.markButton, items.length === 0 ? styles.markButtonDisabled : null]}
+            activeOpacity={0.88}
+            onPress={markAllAsRead}
+            disabled={items.length === 0}
+          >
             <Text style={styles.markButtonText}>Mark all read</Text>
           </TouchableOpacity>
         </View>
@@ -388,26 +395,47 @@ const NotificationScreen = () => {
           })}
         </ScrollView>
 
-        {error ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Unable to load notifications</Text>
-            <Text style={styles.emptyText}>{error}</Text>
+        {showInlineError ? (
+          <View style={styles.inlineErrorCard}>
+            <Ionicons name="alert-circle-outline" size={17} color="#9b5d4d" />
+            <Text style={styles.inlineErrorText}>{error}</Text>
           </View>
         ) : null}
 
-        {showSkeletonList ? renderSkeletonSection() : null}
+        {showSkeletonList ? (
+          <>
+            {renderSkeletonSection('today-skeleton', primarySkeletonCount, 50)}
+            {secondarySkeletonCount > 0 ? renderSkeletonSection('earlier-skeleton', secondarySkeletonCount, 70) : null}
+          </>
+        ) : null}
 
-        {!showSkeletonList && !error && filteredItems.length === 0 ? (
+        {showEmptyAll ? (
           <View style={styles.emptyCard}>
             <View style={styles.emptyIcon}>
               <Ionicons name="notifications-off-outline" size={24} color="#8f755d" />
             </View>
-            <Text style={styles.emptyTitle}>You're all caught up</Text>
-            <Text style={styles.emptyText}>New order and branch alerts will appear here.</Text>
+            <Text style={styles.emptyEyebrow}>Notification center</Text>
+            <Text style={styles.emptyTitle}>No notifications received yet</Text>
+            <Text style={styles.emptyText}>
+              You haven&apos;t received any notifications yet. New order and branch updates will appear here.
+            </Text>
           </View>
         ) : null}
 
-        {!showSkeletonList && !error && filteredItems.length > 0 ? (
+        {showFilteredEmpty ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="funnel-outline" size={24} color="#8f755d" />
+            </View>
+            <Text style={styles.emptyEyebrow}>No matches</Text>
+            <Text style={styles.emptyTitle}>Nothing in this filter</Text>
+            <Text style={styles.emptyText}>
+              Try another filter to view your recent notifications.
+            </Text>
+          </View>
+        ) : null}
+
+        {!showSkeletonList && filteredItems.length > 0 ? (
           <>
             {renderSection('Today', todayItems)}
             {renderSection('Earlier', earlierItems)}
@@ -452,6 +480,9 @@ const styles = StyleSheet.create({
     borderColor: '#eadccd',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markButtonDisabled: {
+    opacity: 0.52,
   },
   markButtonText: {
     fontSize: 12,
@@ -649,6 +680,24 @@ const styles = StyleSheet.create({
     width: 42,
     height: 10,
   },
+  inlineErrorCard: {
+    marginTop: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#ecd3c8',
+    backgroundColor: 'rgba(255,246,243,0.92)',
+  },
+  inlineErrorText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#8f5d52',
+  },
   emptyCard: {
     marginTop: 18,
     borderRadius: 24,
@@ -658,6 +707,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,252,248,0.84)',
     borderWidth: 1,
     borderColor: '#eee1d4',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
+    elevation: 2,
   },
   emptyIcon: {
     width: 54,
@@ -667,6 +721,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
+  },
+  emptyEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    color: '#9d8068',
+    marginBottom: 8,
   },
   emptyTitle: {
     fontSize: 18,

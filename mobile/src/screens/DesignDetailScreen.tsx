@@ -457,7 +457,10 @@ const DesignDetailScreen = () => {
 
             <View style={styles.actionRow}>
               <Animated.View style={[styles.skeletonActionPrimary, { opacity: skeletonPulse }]}>
-                <View style={[styles.skeletonLine, styles.skeletonActionLabelPrimary]} />
+                <View style={styles.skeletonActionPrimaryContent}>
+                  <View style={[styles.skeletonLine, styles.skeletonActionIcon]} />
+                  <View style={[styles.skeletonLine, styles.skeletonActionLabelPrimary]} />
+                </View>
               </Animated.View>
               <Animated.View style={[styles.skeletonActionSecondary, { opacity: skeletonPulse }]}>
                 <View style={[styles.skeletonLine, styles.skeletonActionLabelSecondary]} />
@@ -601,7 +604,8 @@ const DesignDetailScreen = () => {
               activeOpacity={0.92}
               onPress={() => navigation.navigate('FinalizeDesign', { designId: design.id })}
             >
-              <Text style={styles.primaryActionText}>Add to Order</Text>
+              <Ionicons name="checkmark-circle-outline" size={18} color="#fffdf8" />
+              <Text style={styles.primaryActionText}>Finalize Design</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.secondaryAction} activeOpacity={0.92} onPress={handleShare}>
@@ -1060,6 +1064,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  skeletonActionPrimaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  skeletonActionIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
   skeletonActionSecondary: {
     flex: 0.85,
     height: 52,
@@ -1069,7 +1083,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   skeletonActionLabelPrimary: {
-    width: '42%',
+    width: '56%',
   },
   skeletonActionLabelSecondary: {
     width: '46%',
@@ -1079,8 +1093,11 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 18,
     backgroundColor: '#12171b',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
     shadowColor: '#111',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.14,
