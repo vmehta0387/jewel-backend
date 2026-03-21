@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import Card from '../../components/common/Card';
@@ -689,7 +690,7 @@ function Modal({
   onClose,
   children,
   size = 'max-w-6xl',
-  zIndexClass = 'z-50',
+  zIndexClass = 'z-[100]',
 }: {
   title: string;
   onClose: () => void;
@@ -697,10 +698,10 @@ function Modal({
   size?: string;
   zIndexClass?: string;
 }) {
-  return (
-    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/40 p-3 sm:p-5 backdrop-blur-sm transition-all duration-300`}>
-      <div className={`relative w-full ${size} max-h-[95vh] overflow-y-auto rounded-2xl border border-white/20 bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)]`}>
-        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/80 px-6 py-4 backdrop-blur-md">
+  return createPortal(
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm transition-all duration-300`}>
+      <div className={`relative flex w-full ${size} max-h-full flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl`}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
           <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
             type="button"
@@ -713,9 +714,12 @@ function Modal({
             </svg>
           </button>
         </div>
-        <div className="p-5 sm:p-6">{children}</div>
+        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-5 sm:p-6">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -3589,8 +3593,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       </Card>
 
       {showAddModal && (
-        <Modal title="ADD NEW DESIGN" size="max-w-[98vw]" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
-          <div className="space-y-6 rounded-2xl border border-slate-200/60 bg-slate-50/30 p-5 sm:p-6 shadow-[inset_0_2px_15px_rgba(0,0,0,0.02)] ring-1 ring-slate-900/5 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
+        <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
+          <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
               <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
