@@ -1,0 +1,65 @@
+-- Design diamond/vendor fields upgrade
+
+SET @sql = IF(
+  EXISTS(
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'designs' AND COLUMN_NAME = 'diamond_weight'
+  ),
+  'SELECT 1',
+  'ALTER TABLE designs ADD COLUMN diamond_weight VARCHAR(255) NULL AFTER diamond_type'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+  EXISTS(
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'designs' AND COLUMN_NAME = 'diamond_quality'
+  ),
+  'SELECT 1',
+  'ALTER TABLE designs ADD COLUMN diamond_quality VARCHAR(255) NULL AFTER diamond_weight'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql = IF(
+  EXISTS(
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'designs' AND COLUMN_NAME = 'other_weight'
+  ),
+  'SELECT 1',
+  'ALTER TABLE designs ADD COLUMN other_weight DECIMAL(12,3) NULL AFTER drawer_location'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+ALTER TABLE design_masters
+  MODIFY COLUMN master_type ENUM(
+    'JEWELRY_GROUP',
+    'COLLECTION',
+    'JEWELRY_SIZE',
+    'TAG',
+    'DESIGN_STATUS',
+    'STAGE',
+    'METAL_NAME',
+    'METAL_COLOR',
+    'METAL_PURITY',
+    'METAL_CARATAGE',
+    'GOLD_COLOUR',
+    'DIAMOND_TYPE',
+    'DIAMOND_SPREAD',
+    'DIAMOND_WEIGHT',
+    'DIAMOND_QUALITY',
+    'VENDOR_NAME',
+    'LABOR_HEAD',
+    'FINDING_HEAD',
+    'PACKET_STONE',
+    'PACKET_SHAPE',
+    'PACKET_SIZE',
+    'PACKET_CUT',
+    'PACKET_COLOR',
+    'PACKET_QUALITY'
+  ) NOT NULL;

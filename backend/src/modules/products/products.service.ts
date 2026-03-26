@@ -171,9 +171,12 @@ interface DesignImportRow {
   stage?: string;
   diamondSpread?: string;
   diamondType?: string;
+  diamondWeight?: string;
+  diamondQuality?: string;
   designStatus?: string;
   tags?: string;
   drawerLocation?: string;
+  otherWeight?: string | number;
   designDescription?: string;
   remarks?: string;
   isActive?: string;
@@ -364,11 +367,14 @@ export class ProductsService {
       stage: this.optionalText(dto.stage),
       diamondSpread: this.optionalText(dto.diamondSpread),
       diamondType: this.optionalText(dto.diamondType),
+      diamondWeight: this.optionalText(dto.diamondWeight),
+      diamondQuality: this.optionalText(dto.diamondQuality),
       designStatus: this.optionalText(dto.designStatus),
       goldColour: normalizedMetals[0]?.goldColour || null,
       stoneInfo: normalizedGemstones[0]?.stone || null,
       tags: this.normalizeTags(dto.tags),
       drawerLocation: this.optionalText(dto.drawerLocation),
+      otherWeight: dto.otherWeight ?? null,
       designDescription: this.optionalText(dto.designDescription),
       remarks: this.optionalText(dto.remarks),
       metalValue: summary.metalValue,
@@ -426,9 +432,12 @@ export class ProductsService {
         Stage: 'Admin',
         'Diamond Spread': 'Full',
         'Diamond Type': 'Lab Diamonds',
+        'Diamond Wt': '1.00 CT',
+        'Diamond Quality': 'VVS',
         'Design Status': 'Active',
         Tags: 'eternity,classic',
         'Drawer Location': '',
+        'Other Wt': '',
         'Design Description': 'Imported from Excel',
         Remarks: '',
         Status: 'ACTIVE',
@@ -570,9 +579,15 @@ export class ProductsService {
           Stage: design.stage || '',
           'Diamond Spread': design.diamondSpread || '',
           'Diamond Type': design.diamondType || '',
+          'Diamond Wt': design.diamondWeight || '',
+          'Diamond Quality': design.diamondQuality || '',
           'Design Status': design.designStatus || '',
           Tags: Array.isArray(design.tags) ? design.tags.join(',') : '',
           'Drawer Location': design.drawerLocation || '',
+          'Other Wt':
+            design.otherWeight !== null && design.otherWeight !== undefined
+              ? this.toNumber(design.otherWeight)
+              : '',
           'Design Description': design.designDescription || '',
           Remarks: design.remarks || '',
           Status: design.isActive ? 'ACTIVE' : 'INACTIVE',
@@ -737,9 +752,15 @@ export class ProductsService {
           stage: designRow.stage?.trim() || undefined,
           diamondSpread: designRow.diamondSpread?.trim() || undefined,
           diamondType: designRow.diamondType?.trim() || undefined,
+          diamondWeight: designRow.diamondWeight?.trim() || undefined,
+          diamondQuality: designRow.diamondQuality?.trim() || undefined,
           designStatus: designRow.designStatus?.trim() || undefined,
           tags: this.parseDesignImportTags(designRow.tags),
           drawerLocation: designRow.drawerLocation?.trim() || undefined,
+          otherWeight:
+            designRow.otherWeight !== undefined && String(designRow.otherWeight).trim().length > 0
+              ? this.optionalNonNegativeNumber(designRow.otherWeight, 'otherWeight') ?? undefined
+              : undefined,
           designDescription: designRow.designDescription?.trim() || undefined,
           remarks: designRow.remarks?.trim() || undefined,
           isActive: this.parseImportStatus(designRow.isActive),
@@ -881,6 +902,8 @@ export class ProductsService {
             .orWhere('design.stage LIKE :search', { search })
             .orWhere('design.diamondSpread LIKE :search', { search })
             .orWhere('design.diamondType LIKE :search', { search })
+            .orWhere('design.diamondWeight LIKE :search', { search })
+            .orWhere('design.diamondQuality LIKE :search', { search })
             .orWhere('design.designStatus LIKE :search', { search })
             .orWhere('design.goldColour LIKE :search', { search })
             .orWhere('design.stoneInfo LIKE :search', { search })
@@ -1128,11 +1151,18 @@ export class ProductsService {
     if (dto.diamondType !== undefined) {
       design.diamondType = this.optionalText(dto.diamondType);
     }
+    if (dto.diamondWeight !== undefined) {
+      design.diamondWeight = this.optionalText(dto.diamondWeight);
+    }
+    if (dto.diamondQuality !== undefined) {
+      design.diamondQuality = this.optionalText(dto.diamondQuality);
+    }
     if (dto.designStatus !== undefined) design.designStatus = this.optionalText(dto.designStatus);
     design.goldColour = normalizedMetals[0]?.goldColour || null;
     design.stoneInfo = normalizedGemstones[0]?.stone || null;
     if (dto.tags !== undefined) design.tags = this.normalizeTags(dto.tags);
     if (dto.drawerLocation !== undefined) design.drawerLocation = this.optionalText(dto.drawerLocation);
+    if (dto.otherWeight !== undefined) design.otherWeight = dto.otherWeight ?? null;
     if (dto.designDescription !== undefined) {
       design.designDescription = this.optionalText(dto.designDescription);
     }
@@ -1964,6 +1994,9 @@ export class ProductsService {
       goldColours: [] as Array<{ id: string; value: string; wastagePercent?: number }>,
       diamondTypes: [] as Array<{ id: string; value: string }>,
       diamondSpreads: [] as Array<{ id: string; value: string }>,
+      diamondWeights: [] as Array<{ id: string; value: string }>,
+      diamondQualities: [] as Array<{ id: string; value: string }>,
+      vendorNames: [] as Array<{ id: string; value: string }>,
       laborHeads: [] as Array<{ id: string; value: string }>,
       findingHeads: [] as Array<{ id: string; value: string }>,
       packetStones: [] as Array<{ id: string; value: string }>,
@@ -2057,6 +2090,12 @@ export class ProductsService {
         grouped.diamondTypes.push(option);
       } else if (entry.masterType === DesignMasterType.DIAMOND_SPREAD) {
         grouped.diamondSpreads.push(option);
+      } else if (entry.masterType === DesignMasterType.DIAMOND_WEIGHT) {
+        grouped.diamondWeights.push(option);
+      } else if (entry.masterType === DesignMasterType.DIAMOND_QUALITY) {
+        grouped.diamondQualities.push(option);
+      } else if (entry.masterType === DesignMasterType.VENDOR_NAME) {
+        grouped.vendorNames.push(option);
       } else if (entry.masterType === DesignMasterType.LABOR_HEAD) {
         grouped.laborHeads.push(option);
       } else if (entry.masterType === DesignMasterType.PACKET_STONE) {
@@ -3720,9 +3759,12 @@ export class ProductsService {
       stage: this.getImportCell(row, 'Stage', 'stage'),
       diamondSpread: this.getImportCell(row, 'Diamond Spread', 'diamondSpread'),
       diamondType: this.getImportCell(row, 'Diamond Type', 'diamondType'),
+      diamondWeight: this.getImportCell(row, 'Diamond Wt', 'diamondWeight', 'Diamond Weight', 'diamondWt'),
+      diamondQuality: this.getImportCell(row, 'Diamond Quality', 'diamondQuality'),
       designStatus: this.getImportCell(row, 'Design Status', 'designStatus'),
       tags: this.getImportCell(row, 'Tags', 'tags'),
       drawerLocation: this.getImportCell(row, 'Drawer Location', 'drawerLocation'),
+      otherWeight: this.getImportCell(row, 'Other Wt', 'otherWeight'),
       designDescription: this.getImportCell(row, 'Design Description', 'designDescription'),
       remarks: this.getImportCell(row, 'Remarks', 'remarks'),
       isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),

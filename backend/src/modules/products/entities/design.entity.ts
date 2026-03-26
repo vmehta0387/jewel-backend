@@ -62,6 +62,12 @@ export class Design {
   @Column({ name: 'diamond_type', nullable: true })
   diamondType: string | null;
 
+  @Column({ name: 'diamond_weight', nullable: true })
+  diamondWeight: string | null;
+
+  @Column({ name: 'diamond_quality', nullable: true })
+  diamondQuality: string | null;
+
   @Column({ name: 'design_status', nullable: true })
   designStatus: string | null;
 
@@ -76,6 +82,9 @@ export class Design {
 
   @Column({ name: 'drawer_location', nullable: true })
   drawerLocation: string | null;
+
+  @Column({ name: 'other_weight', type: 'decimal', precision: 12, scale: 3, nullable: true })
+  otherWeight: number | null;
 
   @Column({ name: 'design_description', type: 'text', nullable: true })
   designDescription: string | null;

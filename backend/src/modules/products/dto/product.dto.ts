@@ -315,6 +315,14 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  diamondWeight?: string;
+
+  @IsString()
+  @IsOptional()
+  diamondQuality?: string;
+
+  @IsString()
+  @IsOptional()
   designStatus?: string;
 
   @IsArray()
@@ -325,6 +333,12 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   drawerLocation?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  otherWeight?: number;
 
   @IsString()
   @IsOptional()
@@ -469,6 +483,14 @@ export class UpdateProductDto {
 
   @IsString()
   @IsOptional()
+  diamondWeight?: string;
+
+  @IsString()
+  @IsOptional()
+  diamondQuality?: string;
+
+  @IsString()
+  @IsOptional()
   designStatus?: string;
 
   @IsArray()
@@ -479,6 +501,12 @@ export class UpdateProductDto {
   @IsString()
   @IsOptional()
   drawerLocation?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  otherWeight?: number;
 
   @IsString()
   @IsOptional()
@@ -888,6 +916,9 @@ export enum DesignMasterType {
   GOLD_COLOUR = 'GOLD_COLOUR',
   DIAMOND_TYPE = 'DIAMOND_TYPE',
   DIAMOND_SPREAD = 'DIAMOND_SPREAD',
+  DIAMOND_WEIGHT = 'DIAMOND_WEIGHT',
+  DIAMOND_QUALITY = 'DIAMOND_QUALITY',
+  VENDOR_NAME = 'VENDOR_NAME',
   LABOR_HEAD = 'LABOR_HEAD',
   FINDING_HEAD = 'FINDING_HEAD',
   PACKET_STONE = 'PACKET_STONE',

@@ -21,6 +21,9 @@ type DesignMasterType =
   | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
+  | 'DIAMOND_WEIGHT'
+  | 'DIAMOND_QUALITY'
+  | 'VENDOR_NAME'
   | 'LABOR_HEAD'
   | 'FINDING_HEAD'
   | 'PACKET_STONE'
@@ -100,6 +103,8 @@ interface ApiDesignRow {
   jewelrySize?: string | null;
   diamondType?: string | null;
   diamondSpread?: string | null;
+  diamondWeight?: string | null;
+  diamondQuality?: string | null;
   goldColour?: string | null;
   collection?: string | null;
   stoneInfo?: string | null;
@@ -107,6 +112,7 @@ interface ApiDesignRow {
   tags?: unknown;
   stage?: string | null;
   designStatus?: string | null;
+  otherWeight?: number | string | null;
   remarks?: string | null;
   imageUrls?: unknown;
   imageKeys?: unknown;
@@ -142,6 +148,8 @@ interface DesignForm {
   stage: string;
   diamondType: string;
   diamondSpread: string;
+  diamondWeight: string;
+  diamondQuality: string;
   jewelrySize: string;
   otherWeight: string;
   tags: string;
@@ -542,6 +550,8 @@ const defaultForm: DesignForm = {
   stage: 'Sketch',
   diamondType: '',
   diamondSpread: '',
+  diamondWeight: '',
+  diamondQuality: '',
   jewelrySize: '',
   otherWeight: '',
   tags: '',
@@ -578,6 +588,9 @@ const emptyMasterOptions = {
   goldColours: [] as MasterOption[],
   diamondTypes: [] as MasterOption[],
   diamondSpreads: [] as MasterOption[],
+  diamondWeights: [] as MasterOption[],
+  diamondQualities: [] as MasterOption[],
+  vendorNames: [] as MasterOption[],
   laborHeads: [] as MasterOption[],
   findingHeads: [] as MasterOption[],
   packetStones: [] as MasterOption[],
@@ -598,6 +611,9 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   GOLD_COLOUR: 'Metal Caratage',
   DIAMOND_TYPE: 'Diamond Type',
   DIAMOND_SPREAD: 'Diamond Spread',
+  DIAMOND_WEIGHT: 'Diamond Wt',
+  DIAMOND_QUALITY: 'Diamond Quality',
+  VENDOR_NAME: 'Vendor Name',
   LABOR_HEAD: 'Labor Head',
   FINDING_HEAD: 'Finding Head',
   PACKET_STONE: 'Stone',
@@ -1424,6 +1440,9 @@ export default function ProductsPage() {
         goldColours: response.data?.goldColours || [],
         diamondTypes: response.data?.diamondTypes || [],
         diamondSpreads: response.data?.diamondSpreads || [],
+        diamondWeights: response.data?.diamondWeights || [],
+        diamondQualities: response.data?.diamondQualities || [],
+        vendorNames: response.data?.vendorNames || [],
         laborHeads: response.data?.laborHeads || [],
         findingHeads: response.data?.findingHeads || [],
         packetStones: response.data?.packetStones || [],
@@ -1608,6 +1627,10 @@ export default function ProductsPage() {
       setForm((prev) => ({ ...prev, diamondType: masterValue }));
     } else if (masterType === 'DIAMOND_SPREAD') {
       setForm((prev) => ({ ...prev, diamondSpread: masterValue }));
+    } else if (masterType === 'DIAMOND_WEIGHT') {
+      setForm((prev) => ({ ...prev, diamondWeight: masterValue }));
+    } else if (masterType === 'DIAMOND_QUALITY') {
+      setForm((prev) => ({ ...prev, diamondQuality: masterValue }));
     } else if (masterType === 'LABOR_HEAD') {
       setLaborRows((prev) =>
         prev.length === 0
@@ -1622,6 +1645,12 @@ export default function ProductsPage() {
       );
     } else if (masterType === 'DESIGN_STATUS') {
       setForm((prev) => ({ ...prev, designStatus: masterValue }));
+    } else if (masterType === 'VENDOR_NAME') {
+      setVendorRows((prev) => {
+        const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+        const [first, ...rest] = base;
+        return [{ ...first, supplier: masterValue }, ...rest];
+      });
     } else if (masterType === 'PACKET_STONE') {
       setPacketForm((prev) => ({ ...prev, stone: masterValue }));
     } else if (masterType === 'PACKET_SHAPE') {
@@ -2280,6 +2309,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       stage: masterOptions.stages[0]?.value || defaultForm.stage,
       diamondType: masterOptions.diamondTypes[0]?.value || defaultForm.diamondType,
       diamondSpread: masterOptions.diamondSpreads[0]?.value || defaultForm.diamondSpread,
+      diamondWeight: masterOptions.diamondWeights[0]?.value || defaultForm.diamondWeight,
+      diamondQuality: masterOptions.diamondQualities[0]?.value || defaultForm.diamondQuality,
       designStatus: masterOptions.designStatuses[0]?.value || defaultForm.designStatus,
     });
     syncDesignNoFromServer(initialJewelryGroup);
@@ -2381,8 +2412,10 @@ const createDefaultVendorRow = (): VendorRow => ({
         stage: detail.stage || row.stage || '',
         diamondType: detail.diamondType || '',
         diamondSpread: detail.diamondSpread || '',
+        diamondWeight: detail.diamondWeight || '',
+        diamondQuality: detail.diamondQuality || '',
         jewelrySize: detail.jewelrySize || row.jewelrySize || '',
-        otherWeight: '',
+        otherWeight: asInput(detail.otherWeight),
         tags: tags.join(', '),
         designStatus: detail.designStatus || row.status || '',
         drawerLocation: detail.drawerLocation || '',
@@ -2539,6 +2572,8 @@ const createDefaultVendorRow = (): VendorRow => ({
         stage: row.stage,
         diamondType: row.diamondType || '',
         diamondSpread: row.diamondSpread || '',
+        diamondWeight: '',
+        diamondQuality: '',
         jewelrySize: row.jewelrySize,
         otherWeight: '',
         tags: row.tags.join(', '),
@@ -2729,9 +2764,12 @@ const createDefaultVendorRow = (): VendorRow => ({
       stage: form.stage.trim() || undefined,
       diamondType: form.diamondType.trim() || undefined,
       diamondSpread: form.diamondSpread.trim() || undefined,
+      diamondWeight: form.diamondWeight.trim() || undefined,
+      diamondQuality: form.diamondQuality.trim() || undefined,
       jewelrySize: form.jewelrySize.trim() || undefined,
       designStatus: form.designStatus.trim() || undefined,
       drawerLocation: form.drawerLocation.trim() || undefined,
+      otherWeight: form.otherWeight.trim().length > 0 ? parseNum(form.otherWeight) : undefined,
       designDescription: form.designDescription.trim() || undefined,
       remarks: form.remarks.trim() || undefined,
       tags: selectedTags,
@@ -3651,29 +3689,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
                 <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">General Information</div>
-                <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
-                    <input
-                      className="w-full rounded border border-gray-300 bg-slate-50 px-2 py-2 text-sm text-slate-700"
-                      value={form.designNo}
-                      readOnly
-                      placeholder="Design No"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Version</label>
-                    <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={form.version}
-                      onChange={(event) =>
-                        setForm((prev) => ({ ...prev, version: event.target.value }))
-                      }
-                      placeholder="V1"
-                      disabled={Boolean(editingId)}
-                    />
-                  </div>
-                  <div>
+                <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-12">
+                  <div className="xl:col-span-6">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Name</label>
                     <input
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -3682,7 +3699,26 @@ const createDefaultVendorRow = (): VendorRow => ({
                       placeholder="Design Name"
                     />
                   </div>
-                  <div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
+                    <input
+                      className="w-full rounded border border-gray-300 bg-slate-50 px-2 py-2 text-sm text-slate-700"
+                      value={form.designNo}
+                      readOnly
+                      placeholder="Design No"
+                    />
+                  </div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Version</label>
+                    <input
+                      className="w-full rounded border border-gray-300 bg-slate-50 px-2 py-2 text-sm text-slate-700"
+                      value={normalizeVersionInput(form.version || 'V1')}
+                      readOnly
+                      placeholder="V1"
+                    />
+                  </div>
+
+                  <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
                     <div className="flex gap-2">
                       <select
@@ -3707,7 +3743,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </button>
                     </div>
                   </div>
-                  <div>
+                  <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Sub Category</label>
                     <div className="flex gap-2">
                       <select
@@ -3732,32 +3768,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Stage</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.stage}
-                        onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value }))}
-                      >
-                        <option value="">Select Stage</option>
-                        {masterOptions.stages.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'STAGE'}
-                        onClick={() => addMasterFromDesign('STAGE')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div>
+                  <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Size</label>
                     <div className="flex gap-2">
                       <select
@@ -3788,57 +3799,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </button>
                     </div>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Type</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.diamondType}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondType: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Type</option>
-                        {masterOptions.diamondTypes.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'DIAMOND_TYPE'}
-                        onClick={() => addMasterFromDesign('DIAMOND_TYPE')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.diamondSpread}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondSpread: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Spread</option>
-                        {masterOptions.diamondSpreads.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'DIAMOND_SPREAD'}
-                        onClick={() => addMasterFromDesign('DIAMOND_SPREAD')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div>
+                  <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Status</label>
                     <div className="flex gap-2">
                       <select
@@ -3863,15 +3824,153 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </button>
                     </div>
                   </div>
-                  <div>
+
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Type</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.diamondType}
+                        onChange={(event) => setForm((prev) => ({ ...prev, diamondType: event.target.value }))}
+                      >
+                        <option value="">Select Diamond Type</option>
+                        {masterOptions.diamondTypes.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'DIAMOND_TYPE'}
+                        onClick={() => addMasterFromDesign('DIAMOND_TYPE')}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.diamondSpread}
+                        onChange={(event) => setForm((prev) => ({ ...prev, diamondSpread: event.target.value }))}
+                      >
+                        <option value="">Select Diamond Spread</option>
+                        {masterOptions.diamondSpreads.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'DIAMOND_SPREAD'}
+                        onClick={() => addMasterFromDesign('DIAMOND_SPREAD')}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Wt</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.diamondWeight}
+                        onChange={(event) => setForm((prev) => ({ ...prev, diamondWeight: event.target.value }))}
+                      >
+                        <option value="">Select Diamond Wt</option>
+                        {masterOptions.diamondWeights.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'DIAMOND_WEIGHT'}
+                        onClick={() => addMasterFromDesign('DIAMOND_WEIGHT')}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Quality</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.diamondQuality}
+                        onChange={(event) => setForm((prev) => ({ ...prev, diamondQuality: event.target.value }))}
+                      >
+                        <option value="">Select Diamond Quality</option>
+                        {masterOptions.diamondQualities.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'DIAMOND_QUALITY'}
+                        onClick={() => addMasterFromDesign('DIAMOND_QUALITY')}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="xl:col-span-4">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Stage</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.stage}
+                        onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value }))}
+                      >
+                        <option value="">Select Stage</option>
+                        {masterOptions.stages.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'STAGE'}
+                        onClick={() => addMasterFromDesign('STAGE')}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Drawer Location</label>
-                    <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.drawerLocation} onChange={(event) => setForm((prev) => ({ ...prev, drawerLocation: event.target.value }))} placeholder="Drawer location" />
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.drawerLocation}
+                      onChange={(event) => setForm((prev) => ({ ...prev, drawerLocation: event.target.value }))}
+                      placeholder="Drawer Location"
+                    />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Other Weight</label>
-                    <input className="w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.otherWeight} onChange={(event) => setForm((prev) => ({ ...prev, otherWeight: event.target.value }))} placeholder="Other Weight" />
+                  <div className="xl:col-span-4">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Other Wt</label>
+                    <input
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.otherWeight}
+                      onChange={(event) => setForm((prev) => ({ ...prev, otherWeight: event.target.value }))}
+                      placeholder="Other Wt"
+                    />
                   </div>
-                  <div>
+
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
                     <select
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -3889,23 +3988,39 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <option value="Purchase">Purchase</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
-                    <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={vendorRows[0]?.supplier || ''}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setVendorRows((prev) => {
-                          const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
-                          const [first, ...rest] = base;
-                          return [{ ...first, supplier: value }, ...rest];
-                        });
-                      }}
-                      placeholder="Vendor name"
-                    />
+                  <div className="xl:col-span-4">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Vendor Name</label>
+                    <div className="flex gap-2">
+                      <select
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={vendorRows[0]?.supplier || ''}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setVendorRows((prev) => {
+                            const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
+                            const [first, ...rest] = base;
+                            return [{ ...first, supplier: value }, ...rest];
+                          });
+                        }}
+                      >
+                        <option value="">Select Vendor Name</option>
+                        {masterOptions.vendorNames.map((option) => (
+                          <option key={option.id} value={option.value}>
+                            {option.value}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className={inlineMasterAddButtonClass}
+                        disabled={creatingMasterType === 'VENDOR_NAME'}
+                        onClick={() => addMasterFromDesign('VENDOR_NAME')}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
-                  <div>
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Vendor SKU</label>
                     <input
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -3921,7 +4036,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                       placeholder="Vendor SKU"
                     />
                   </div>
-                  <div className="md:col-span-2 xl:col-span-2">
+
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Tags</label>
                     <div className="flex gap-2">
                       <select
@@ -3950,7 +4066,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         +
                       </button>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-2 flex min-h-10 flex-wrap gap-1 rounded border border-dashed border-slate-200 bg-slate-50/70 px-2 py-2">
                       {selectedTags.length === 0 ? (
                         <span className="text-xs text-gray-500">No tags selected</span>
                       ) : (
@@ -3968,17 +4084,26 @@ const createDefaultVendorRow = (): VendorRow => ({
                       )}
                     </div>
                   </div>
-                  <div className="xl:col-span-2">
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Description</label>
-                    <textarea className="h-20 w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.designDescription} onChange={(event) => setForm((prev) => ({ ...prev, designDescription: event.target.value }))} placeholder="Design Description" />
+                    <textarea
+                      className="h-24 w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.designDescription}
+                      onChange={(event) => setForm((prev) => ({ ...prev, designDescription: event.target.value }))}
+                      placeholder="Design Description"
+                    />
                   </div>
-                  <div className="xl:col-span-2">
+                  <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Remarks</label>
-                    <textarea className="h-20 w-full rounded border border-gray-300 px-2 py-2 text-sm" value={form.remarks} onChange={(event) => setForm((prev) => ({ ...prev, remarks: event.target.value }))} placeholder="Design Remarks" />
+                    <textarea
+                      className="h-24 w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.remarks}
+                      onChange={(event) => setForm((prev) => ({ ...prev, remarks: event.target.value }))}
+                      placeholder="Design Remarks"
+                    />
                   </div>
                 </div>
               </div>
-
               <div className="space-y-4">
                 <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
                 <div className="border-b border-violet-200/60 bg-violet-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-violet-800 backdrop-blur-sm">Media Gallery</div>
@@ -5247,10 +5372,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <tbody>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design Name</td><td className="px-3 py-2">{detailInfo.designName || '-'}</td><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Category</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td><td className="px-3 py-2 font-medium">Sub Category</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Category</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Sub Category</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Wt</td><td className="px-3 py-2">{detailInfo.diamondWeight || '-'}</td><td className="px-3 py-2 font-medium">Diamond Quality</td><td className="px-3 py-2">{detailInfo.diamondQuality || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Drawer Location</td><td className="px-3 py-2">{detailInfo.drawerLocation || '-'}</td><td className="px-3 py-2 font-medium">Other Wt</td><td className="px-3 py-2">{detailInfo.otherWeight ?? '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Remarks</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.createdAt)}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.updatedAt || detailInfo.modifiedAt)}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Last Updated By</td><td className="px-3 py-2" colSpan={3}>{detailInfo.updatedByName || '-'}</td></tr>

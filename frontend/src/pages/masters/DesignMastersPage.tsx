@@ -18,6 +18,9 @@ type DesignMasterType =
   | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
+  | 'DIAMOND_WEIGHT'
+  | 'DIAMOND_QUALITY'
+  | 'VENDOR_NAME'
   | 'LABOR_HEAD'
   | 'FINDING_HEAD'
   | 'PACKET_STONE'
@@ -112,7 +115,7 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     label: 'Sub Category',
     icon: 'CL',
     accentClass: 'bg-amber-50 text-amber-700 ring-amber-200',
-    hint: 'Sub categories linked to categories',
+    hint: 'Sub category master values for designs',
   },
   {
     value: 'JEWELRY_SIZE',
@@ -183,6 +186,27 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     icon: 'DP',
     accentClass: 'bg-rose-50 text-rose-700 ring-rose-200',
     hint: '1/2 Way, 3/4 Way, Full',
+  },
+  {
+    value: 'DIAMOND_WEIGHT',
+    label: 'Diamond Wt',
+    icon: 'DW',
+    accentClass: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+    hint: 'Preset diamond weight master values used in designs',
+  },
+  {
+    value: 'DIAMOND_QUALITY',
+    label: 'Diamond Quality',
+    icon: 'DQ',
+    accentClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    hint: 'Diamond quality master values like VVS, VS and SI',
+  },
+  {
+    value: 'VENDOR_NAME',
+    label: 'Vendor Name',
+    icon: 'VN',
+    accentClass: 'bg-slate-50 text-slate-700 ring-slate-200',
+    hint: 'Vendor master names available inside design forms',
   },
   {
     value: 'LABOR_HEAD',
@@ -257,7 +281,12 @@ function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
     );
   }
 
-  if (type === 'DIAMOND_TYPE' || type === 'DIAMOND_SPREAD') {
+  if (
+    type === 'DIAMOND_TYPE' ||
+    type === 'DIAMOND_SPREAD' ||
+    type === 'DIAMOND_WEIGHT' ||
+    type === 'DIAMOND_QUALITY'
+  ) {
     return (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M4 9 8 4h8l4 5-8 11L4 9Z" />
@@ -1260,6 +1289,8 @@ export default function DesignMastersPage() {
     const stoneTypes = new Set<MasterCategoryType>([
       'DIAMOND_TYPE',
       'DIAMOND_SPREAD',
+      'DIAMOND_WEIGHT',
+      'DIAMOND_QUALITY',
       'PACKET_STONE',
       'PACKET_SHAPE',
       'PACKET_SIZE',
@@ -2459,7 +2490,7 @@ export default function DesignMastersPage() {
                 </tbody>
               </table>
             ) : (
-              <table className="app-table app-table-compact min-w-full">
+              <table className="app-table app-table-compact min-w-[1100px] w-full">
                 <thead>
                   <tr>
                     <th className="app-table-head-cell">#</th>
@@ -2469,6 +2500,7 @@ export default function DesignMastersPage() {
                     ) : null}
                     <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Status</th>
                     <th className="app-table-head-cell">Created</th>
                     <th className="app-table-head-cell">Modified</th>
                     <th className="app-table-head-cell">Action</th>
@@ -2478,7 +2510,7 @@ export default function DesignMastersPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 9 : 8}
                         className="app-table-empty"
                       >
                         Loading records...
@@ -2487,7 +2519,7 @@ export default function DesignMastersPage() {
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 9 : 8}
                         className="app-table-empty"
                       >
                         No records found.
@@ -2503,6 +2535,17 @@ export default function DesignMastersPage() {
                         ) : null}
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || row.value}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell text-sm">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              row.isActive
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
                         <td className="app-table-cell text-sm">
