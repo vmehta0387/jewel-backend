@@ -236,7 +236,7 @@ export class ProductsService {
     'Value',
     'Alias Name',
     'Description',
-    'Jewelry Group',
+    'Category',
     'Finding No',
     'Metal Caratage',
     'Price In',
@@ -420,8 +420,8 @@ export class ProductsService {
         Version: 'V1',
         'Company Code': '',
         'Branch Code': '',
-        'Jewelry Group': 'Ring',
-        Collection: 'Eternity Bands',
+        Category: 'Ring',
+        'Sub Category': 'Eternity Bands',
         'Jewelry Size': 'US 6',
         Stage: 'Admin',
         'Diamond Spread': 'Full',
@@ -564,8 +564,8 @@ export class ProductsService {
           Version: design.version,
           'Company Code': design.company?.companyCode || '',
           'Branch Code': design.branch?.code || '',
-          'Jewelry Group': design.jewelryGroup || '',
-          Collection: design.collection || '',
+          Category: design.jewelryGroup || '',
+          'Sub Category': design.collection || '',
           'Jewelry Size': design.jewelrySize || '',
           Stage: design.stage || '',
           'Diamond Spread': design.diamondSpread || '',
@@ -752,7 +752,7 @@ export class ProductsService {
         };
 
         if (!payload.jewelryGroup) {
-          throw new BadRequestException('Jewelry Group is required');
+          throw new BadRequestException('Category is required');
         }
 
         const existing = await this.designRepo.findOne({
@@ -1927,7 +1927,7 @@ export class ProductsService {
 
     const grouped = {
       jewelryGroups: [] as Array<{ id: string; value: string }>,
-      collections: [] as Array<{ id: string; value: string }>,
+      collections: [] as Array<{ id: string; value: string; jewelryGroupId?: string; jewelryGroup?: string }>,
       jewelrySizes: [] as Array<{
         id: string;
         value: string;
@@ -1979,7 +1979,11 @@ export class ProductsService {
       if (entry.masterType === DesignMasterType.JEWELRY_GROUP) {
         grouped.jewelryGroups.push(option);
       } else if (entry.masterType === DesignMasterType.COLLECTION) {
-        grouped.collections.push(option);
+        grouped.collections.push({
+          ...option,
+          jewelryGroupId: entry.jewelryGroupId || undefined,
+          jewelryGroup: entry.jewelryGroup || undefined,
+        });
       } else if (entry.masterType === DesignMasterType.JEWELRY_SIZE) {
         grouped.jewelrySizes.push({
           ...option,
@@ -2244,7 +2248,7 @@ export class ProductsService {
       },
       undefined,
     );
-    const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+    const jewelrySizeFields = await this.normalizeCategoryScopedMasterFields(
       masterType,
       {
         jewelryGroupId: dto.jewelryGroupId,
@@ -2459,7 +2463,7 @@ export class ProductsService {
       },
       master,
     );
-    const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+    const jewelrySizeFields = await this.normalizeCategoryScopedMasterFields(
       master.masterType,
       {
         jewelryGroupId: dto.jewelryGroupId,
@@ -3710,8 +3714,8 @@ export class ProductsService {
       version: this.getImportCell(row, 'Version', 'version'),
       companyCode: this.getImportCell(row, 'Company Code', 'companyCode'),
       branchCode: this.getImportCell(row, 'Branch Code', 'branchCode'),
-      jewelryGroup: this.getImportCell(row, 'Jewelry Group', 'jewelryGroup'),
-      collection: this.getImportCell(row, 'Collection', 'collection'),
+      jewelryGroup: this.getImportCell(row, 'Category', 'category', 'Jewelry Group', 'jewelryGroup'),
+      collection: this.getImportCell(row, 'Sub Category', 'subCategory', 'Collection', 'collection'),
       jewelrySize: this.getImportCell(row, 'Jewelry Size', 'jewelrySize'),
       stage: this.getImportCell(row, 'Stage', 'stage'),
       diamondSpread: this.getImportCell(row, 'Diamond Spread', 'diamondSpread'),
@@ -3970,7 +3974,7 @@ export class ProductsService {
       value: this.getImportCell(row, 'Value', 'value'),
       aliasName: this.getImportCell(row, 'Alias Name', 'aliasName'),
       description: this.getImportCell(row, 'Description', 'description'),
-      jewelryGroup: this.getImportCell(row, 'Jewelry Group', 'jewelryGroup'),
+      jewelryGroup: this.getImportCell(row, 'Category', 'category', 'Jewelry Group', 'jewelryGroup'),
       findingNo: this.getImportCell(row, 'Finding No', 'findingNo'),
       metalCaratage: this.getImportCell(row, 'Metal Caratage', 'metalCaratage'),
       priceIn: this.getImportCell(row, 'Price In', 'priceIn'),
@@ -4035,17 +4039,17 @@ export class ProductsService {
       description: row.description?.trim() || undefined,
     };
 
-    if (type === DesignMasterType.JEWELRY_SIZE) {
+    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
       const jewelryGroup = row.jewelryGroup?.trim();
       if (!jewelryGroup) {
-        throw new BadRequestException('Jewelry Group is required');
+        throw new BadRequestException('Category is required');
       }
       const jewelryGroupOption = await this.findMasterByValueOrAlias(
         DesignMasterType.JEWELRY_GROUP,
         jewelryGroup,
       );
       if (!jewelryGroupOption) {
-        throw new BadRequestException(`Jewelry Group "${jewelryGroup}" not found`);
+        throw new BadRequestException(`Category "${jewelryGroup}" not found`);
       }
       payload.jewelryGroupId = jewelryGroupOption.id;
     }
@@ -4111,8 +4115,8 @@ export class ProductsService {
     payload: UpdateDesignMasterDto,
   ): Promise<DesignMaster | null> {
     let scopeKey = '';
-    if (type === DesignMasterType.JEWELRY_SIZE) {
-      const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+      const jewelrySizeFields = await this.normalizeCategoryScopedMasterFields(
         type,
         { jewelryGroupId: payload.jewelryGroupId },
         undefined,
@@ -4135,7 +4139,7 @@ export class ProductsService {
       Value: 'Sample Value',
       'Alias Name': 'SAMPLE',
       Description: 'Optional description',
-      'Jewelry Group': '',
+      Category: '',
       'Finding No': '',
       'Metal Caratage': '',
       'Price In': '',
@@ -4157,7 +4161,12 @@ export class ProductsService {
       case DesignMasterType.JEWELRY_SIZE:
         row.Value = 'US 6';
         row['Alias Name'] = 'US 6';
-        row['Jewelry Group'] = 'Ring';
+        row.Category = 'Ring';
+        break;
+      case DesignMasterType.COLLECTION:
+        row.Value = 'Eternity Bands';
+        row['Alias Name'] = 'ETB';
+        row.Category = 'Ring';
         break;
       case DesignMasterType.METAL_NAME:
         row.Value = 'Gold';
@@ -4216,15 +4225,15 @@ export class ProductsService {
       { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
     ];
 
-    if (type === DesignMasterType.JEWELRY_SIZE) {
+    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
       const jewelryGroups = await this.designMasterRepo.find({
         where: { masterType: DesignMasterType.JEWELRY_GROUP, isActive: true },
         order: { value: 'ASC' },
       });
       rows.push({
-        Field: 'Jewelry Group',
+        Field: 'Category',
         AllowedValues: jewelryGroups.map((item) => item.value).join(', '),
-        Notes: 'Required. Existing Jewelry Group value or alias',
+        Notes: 'Required. Existing Category value or alias',
       });
     }
 
@@ -4299,7 +4308,7 @@ export class ProductsService {
       Value: master.value,
       'Alias Name': master.aliasName || '',
       Description: master.description || '',
-      'Jewelry Group': master.jewelryGroup || '',
+      Category: master.jewelryGroup || '',
       'Finding No': master.findingNo || '',
       'Metal Caratage': master.metalCaratage || '',
       'Price In': master.priceIn || '',
@@ -4446,7 +4455,7 @@ export class ProductsService {
     throw new BadRequestException('priceIn is required');
   }
 
-  private emptyJewelrySizeMasterFields(): {
+  private emptyCategoryScopedMasterFields(): {
     scopeKey: string;
     jewelryGroupId: string | null;
     jewelryGroup: string | null;
@@ -4458,7 +4467,7 @@ export class ProductsService {
     };
   }
 
-  private async normalizeJewelrySizeMasterFields(
+  private async normalizeCategoryScopedMasterFields(
     masterType: DesignMasterType,
     input: {
       jewelryGroupId?: string | null;
@@ -4469,8 +4478,8 @@ export class ProductsService {
     jewelryGroupId: string | null;
     jewelryGroup: string | null;
   }> {
-    if (masterType !== DesignMasterType.JEWELRY_SIZE) {
-      return this.emptyJewelrySizeMasterFields();
+    if (masterType !== DesignMasterType.JEWELRY_SIZE && masterType !== DesignMasterType.COLLECTION) {
+      return this.emptyCategoryScopedMasterFields();
     }
 
     const jewelryGroupId = this.requiredText(
@@ -4486,7 +4495,7 @@ export class ProductsService {
       },
     });
     if (!jewelryGroupMaster) {
-      throw new BadRequestException('Selected jewelry group was not found');
+      throw new BadRequestException('Selected category was not found');
     }
 
     return {

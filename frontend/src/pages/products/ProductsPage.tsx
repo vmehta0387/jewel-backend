@@ -221,10 +221,10 @@ interface VendorRow {
 const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
   { key: 'media', label: 'Media' },
   { key: 'designNo', label: 'Design No.' },
-  { key: 'jewelryGroup', label: 'Jewelry Group' },
+  { key: 'jewelryGroup', label: 'Category' },
   { key: 'jewelrySize', label: 'Jewelry Size' },
   { key: 'metalInfo', label: 'Metal Info' },
-  { key: 'collection', label: 'Collection' },
+  { key: 'collection', label: 'Sub Category' },
   { key: 'stoneInfo', label: 'Stone Info' },
   { key: 'price', label: 'Price' },
   { key: 'tags', label: 'Tags' },
@@ -588,8 +588,8 @@ const emptyMasterOptions = {
 };
 
 const masterTypeLabelMap: Record<DesignMasterType, string> = {
-  JEWELRY_GROUP: 'Jewelry Group',
-  COLLECTION: 'Collection',
+  JEWELRY_GROUP: 'Category',
+  COLLECTION: 'Sub Category',
   JEWELRY_SIZE: 'Jewelry Size',
   TAG: 'Tag',
   DESIGN_STATUS: 'Design Status',
@@ -895,6 +895,42 @@ export default function ProductsPage() {
     () => normalizeStringArray(detailInfo?.imageUrls).map(resolvePublicAssetUrl),
     [detailInfo],
   );
+  const filteredSubCategoryOptions = useMemo(() => {
+    if (!form.jewelryGroup.trim()) {
+      return [];
+    }
+    const normalizedCategory = form.jewelryGroup.trim().toLowerCase();
+    return masterOptions.collections.filter(
+      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+    );
+  }, [form.jewelryGroup, masterOptions.collections]);
+  const filteredJewelrySizeOptions = useMemo(() => {
+    if (!form.jewelryGroup.trim()) {
+      return [];
+    }
+    const normalizedCategory = form.jewelryGroup.trim().toLowerCase();
+    return masterOptions.jewelrySizes.filter(
+      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+    );
+  }, [form.jewelryGroup, masterOptions.jewelrySizes]);
+  const filteredSubCategoryFilterOptions = useMemo(() => {
+    if (!filters.jewelryGroup.trim()) {
+      return masterOptions.collections;
+    }
+    const normalizedCategory = filters.jewelryGroup.trim().toLowerCase();
+    return masterOptions.collections.filter(
+      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+    );
+  }, [filters.jewelryGroup, masterOptions.collections]);
+  const filteredJewelrySizeFilterOptions = useMemo(() => {
+    if (!filters.jewelryGroup.trim()) {
+      return masterOptions.jewelrySizes;
+    }
+    const normalizedCategory = filters.jewelryGroup.trim().toLowerCase();
+    return masterOptions.jewelrySizes.filter(
+      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+    );
+  }, [filters.jewelryGroup, masterOptions.jewelrySizes]);
   const detailStlUrl = useMemo(
     () => (detailInfo?.stlFileUrl ? resolvePublicAssetUrl(detailInfo.stlFileUrl) : ''),
     [detailInfo],
@@ -984,15 +1020,6 @@ export default function ProductsPage() {
         : inlineMetalPurity,
     [inlineMetalPurity, inlineSelectedPurityOption],
   );
-  const filteredJewelrySizeOptions = useMemo(() => {
-    const selectedGroup = normalizeLookupKey(form.jewelryGroup);
-    if (!selectedGroup) {
-      return [];
-    }
-    return masterOptions.jewelrySizes.filter(
-      (option) => normalizeLookupKey(option.jewelryGroup) === selectedGroup,
-    );
-  }, [form.jewelryGroup, masterOptions.jewelrySizes]);
   useEffect(() => {
     if (inlineMasterType !== 'METAL_CARATAGE') return;
 
@@ -1206,12 +1233,20 @@ export default function ProductsPage() {
   };
 
   const handleJewelryGroupChange = (jewelryGroup: string) => {
+    const nextSubCategoryOptions = masterOptions.collections.filter(
+      (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
+    );
     const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
       (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
     );
     setForm((prev) => ({
       ...prev,
       jewelryGroup,
+      collection: nextSubCategoryOptions.some(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(prev.collection),
+      )
+        ? prev.collection
+        : '',
       jewelrySize: nextJewelrySizeOptions.some(
         (option) => normalizeLookupKey(option.value) === normalizeLookupKey(prev.jewelrySize),
       )
@@ -1696,7 +1731,7 @@ export default function ProductsPage() {
           }
         : null;
     const jewelrySizePayload =
-      inlineMasterType === 'JEWELRY_SIZE'
+      inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION'
         ? {
             jewelryGroupId: inlineJewelryGroupId,
           }
@@ -1742,8 +1777,8 @@ export default function ProductsPage() {
         return;
       }
     }
-    if (inlineMasterType === 'JEWELRY_SIZE' && !inlineJewelryGroupId.trim()) {
-      window.alert('Jewelry Group is required.');
+    if ((inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION') && !inlineJewelryGroupId.trim()) {
+      window.alert('Category is required.');
       return;
     }
 
@@ -1906,6 +1941,38 @@ export default function ProductsPage() {
       return changed ? next : prev;
     });
   }, [packetOptions, gemRows]);
+
+  useEffect(() => {
+    if (!form.collection.trim()) return;
+    const exists = filteredSubCategoryOptions.some((option) => option.value === form.collection);
+    if (!exists) {
+      setForm((prev) => ({ ...prev, collection: '' }));
+    }
+  }, [filteredSubCategoryOptions, form.collection]);
+
+  useEffect(() => {
+    if (!form.jewelrySize.trim()) return;
+    const exists = filteredJewelrySizeOptions.some((option) => option.value === form.jewelrySize);
+    if (!exists) {
+      setForm((prev) => ({ ...prev, jewelrySize: '' }));
+    }
+  }, [filteredJewelrySizeOptions, form.jewelrySize]);
+
+  useEffect(() => {
+    if (!filters.collection.trim()) return;
+    const exists = filteredSubCategoryFilterOptions.some((option) => option.value === filters.collection);
+    if (!exists) {
+      setFilters((prev) => ({ ...prev, collection: '' }));
+    }
+  }, [filteredSubCategoryFilterOptions, filters.collection]);
+
+  useEffect(() => {
+    if (!filters.jewelrySize.trim()) return;
+    const exists = filteredJewelrySizeFilterOptions.some((option) => option.value === filters.jewelrySize);
+    if (!exists) {
+      setFilters((prev) => ({ ...prev, jewelrySize: '' }));
+    }
+  }, [filteredJewelrySizeFilterOptions, filters.jewelrySize]);
 
   useEffect(() => {
     if (modal !== 'history' || !selectedId) return;
@@ -2574,7 +2641,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     if (savingDesign) return;
     if (!form.jewelryGroup.trim()) {
-      window.alert('Jewelry Group is required.');
+      window.alert('Category is required.');
       return;
     }
 
@@ -3116,12 +3183,12 @@ const createDefaultVendorRow = (): VendorRow => ({
               <th>#</th>
               <th>Design No</th>
               <th>Version</th>
-              <th>Jewelry Group</th>
+              <th>Category</th>
               <th>Jewelry Size</th>
               <th>Diamond Type</th>
               <th>Diamond Spread</th>
               <th>Metal Caratage</th>
-              <th>Collection</th>
+              <th>Sub Category</th>
               <th>Stone Info</th>
               <th>Price</th>
               <th>Tags</th>
@@ -3321,7 +3388,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             <p className="mb-3 text-sm font-semibold text-gray-800">Filters</p>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group</label>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Category</label>
                 <SearchableSelect
                   value={filters.jewelryGroup}
                   onChange={(val) => setFilters((prev) => ({ ...prev, jewelryGroup: val }))}
@@ -3333,13 +3400,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Collection</label>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Sub Category</label>
                 <SearchableSelect
                   value={filters.collection}
                   onChange={(val) => setFilters((prev) => ({ ...prev, collection: val }))}
                   options={[
                     { value: '', label: 'All' },
-                    ...masterOptions.collections.map(o => ({ value: o.value, label: o.value }))
+                    ...filteredSubCategoryFilterOptions.map(o => ({ value: o.value, label: o.value }))
                   ]}
                   placeholder="All"
                 />
@@ -3351,7 +3418,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   onChange={(val) => setFilters((prev) => ({ ...prev, jewelrySize: val }))}
                   options={[
                     { value: '', label: 'All' },
-                    ...masterOptions.jewelrySizes.map(o => ({ value: o.value, label: o.value }))
+                    ...filteredJewelrySizeFilterOptions.map(o => ({ value: o.value, label: o.value }))
                   ]}
                   placeholder="All"
                 />
@@ -3439,10 +3506,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </th>
                 {isColumnVisible('media') ? <th className="app-table-head-cell">Media</th> : null}
                 {isColumnVisible('designNo') ? <th className="app-table-head-cell">Design No.</th> : null}
-                {isColumnVisible('jewelryGroup') ? <th className="app-table-head-cell">Jewelry Group</th> : null}
+                {isColumnVisible('jewelryGroup') ? <th className="app-table-head-cell">Category</th> : null}
                 {isColumnVisible('jewelrySize') ? <th className="app-table-head-cell">Jewelry Size</th> : null}
                 {isColumnVisible('metalInfo') ? <th className="app-table-head-cell">Metal Info</th> : null}
-                {isColumnVisible('collection') ? <th className="app-table-head-cell">Collection</th> : null}
+                {isColumnVisible('collection') ? <th className="app-table-head-cell">Sub Category</th> : null}
                 {isColumnVisible('stoneInfo') ? <th className="app-table-head-cell">Stone Info</th> : null}
                 {isColumnVisible('price') ? <th className="app-table-head-cell">Price</th> : null}
                 {isColumnVisible('tags') ? <th className="app-table-head-cell">Tags</th> : null}
@@ -3636,14 +3703,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group *</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                         value={form.jewelryGroup}
                         onChange={(event) => handleJewelryGroupChange(event.target.value)}
                       >
-                        <option value="">Select Jewelry Group</option>
+                        <option value="">Select Category</option>
                         {masterOptions.jewelryGroups.map((option) => (
                           <option key={option.id} value={option.value}>
                             {option.value}
@@ -3661,15 +3728,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Collection</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Sub Category</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                         value={form.collection}
                         onChange={(event) => setForm((prev) => ({ ...prev, collection: event.target.value }))}
                       >
-                        <option value="">Select Collection</option>
-                        {masterOptions.collections.map((option) => (
+                        <option value="">Select Sub Category</option>
+                        {filteredSubCategoryOptions.map((option) => (
                           <option key={option.id} value={option.value}>
                             {option.value}
                           </option>
@@ -4622,7 +4689,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
-            {inlineMasterType === 'JEWELRY_SIZE' ? (
+            {inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
@@ -4635,14 +4702,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group*</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
                   <select
                     className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     value={inlineJewelryGroupId}
                     onChange={(event) => setInlineJewelryGroupId(event.target.value)}
                     required
                   >
-                    <option value="">Select Jewelry Group</option>
+                    <option value="">Select Category</option>
                     {masterOptions.jewelryGroups.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.aliasName || option.value}
@@ -4672,7 +4739,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
-            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' && inlineMasterType !== 'JEWELRY_SIZE' ? (
+            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' && inlineMasterType !== 'JEWELRY_SIZE' && inlineMasterType !== 'COLLECTION' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
@@ -5200,8 +5267,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <tbody>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design Name</td><td className="px-3 py-2">{detailInfo.designName || '-'}</td><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Group</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td><td className="px-3 py-2 font-medium">Collection</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Category</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td><td className="px-3 py-2 font-medium">Sub Category</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Remarks</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>

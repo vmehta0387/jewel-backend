@@ -102,17 +102,17 @@ interface MasterTypeConfig {
 const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
   {
     value: 'JEWELRY_GROUP',
-    label: 'Jewelry Group',
+    label: 'Category',
     icon: 'JG',
     accentClass: 'bg-blue-50 text-blue-700 ring-blue-200',
     hint: 'Ring, Bracelet, Pendant',
   },
   {
     value: 'COLLECTION',
-    label: 'Collection',
+    label: 'Sub Category',
     icon: 'CL',
     accentClass: 'bg-amber-50 text-amber-700 ring-amber-200',
-    hint: 'Core catalog collections',
+    hint: 'Sub categories linked to categories',
   },
   {
     value: 'JEWELRY_SIZE',
@@ -321,7 +321,7 @@ interface MasterModalProps {
   formValue: string;
   formAliasName: string;
   formDescription: string;
-  isJewelrySizeType: boolean;
+  isCategoryScopedType: boolean;
   isFindingType: boolean;
   isMetalNameType: boolean;
   isMetalColorType: boolean;
@@ -498,7 +498,7 @@ function MasterModal({
   formValue,
   formAliasName,
   formDescription,
-  isJewelrySizeType,
+  isCategoryScopedType,
   isFindingType,
   isMetalNameType,
   isMetalColorType,
@@ -616,7 +616,7 @@ function MasterModal({
             </div>
           ) : null}
 
-          {isJewelrySizeType ? (
+          {isCategoryScopedType ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
@@ -629,14 +629,14 @@ function MasterModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Group*</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
                 <select
                   className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                   value={jewelryGroupId}
                   onChange={(event) => onChangeJewelryGroupId(event.target.value)}
                   required
                 >
-                  <option value="">Select Jewelry Group</option>
+                  <option value="">Select Category</option>
                   {jewelryGroupOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.aliasName || option.value}
@@ -666,7 +666,7 @@ function MasterModal({
             </div>
           ) : null}
 
-          {!isFindingType && !isMetalCaratageType && !isJewelrySizeType ? (
+          {!isFindingType && !isMetalCaratageType && !isCategoryScopedType ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
@@ -955,7 +955,7 @@ function MasterModal({
                 </div>
               ) : null}
 
-              {!isJewelrySizeType ? (
+              {!isCategoryScopedType ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
                 <textarea
@@ -1716,7 +1716,7 @@ export default function DesignMastersPage() {
                 }
               : null;
     const jewelrySizePayload =
-      selectedType === 'JEWELRY_SIZE'
+      selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'
         ? {
             jewelryGroupId: formJewelryGroupId,
           }
@@ -1733,8 +1733,8 @@ export default function DesignMastersPage() {
         return;
       }
     }
-    if (selectedType === 'JEWELRY_SIZE' && !formJewelryGroupId.trim()) {
-      window.alert('Jewelry Group is required.');
+    if ((selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION') && !formJewelryGroupId.trim()) {
+      window.alert('Category is required.');
       return;
     }
 
@@ -2464,8 +2464,8 @@ export default function DesignMastersPage() {
                   <tr>
                     <th className="app-table-head-cell">#</th>
                     <th className="app-table-head-cell">{selectedConfig.label}</th>
-                    {selectedType === 'JEWELRY_SIZE' ? (
-                      <th className="app-table-head-cell">Jewelry Group</th>
+                    {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
+                      <th className="app-table-head-cell">Category</th>
                     ) : null}
                     <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Description</th>
@@ -2478,7 +2478,7 @@ export default function DesignMastersPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 8 : 7}
                         className="app-table-empty"
                       >
                         Loading records...
@@ -2487,7 +2487,7 @@ export default function DesignMastersPage() {
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 8 : 7}
                         className="app-table-empty"
                       >
                         No records found.
@@ -2498,7 +2498,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
-                        {selectedType === 'JEWELRY_SIZE' ? (
+                        {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
                           <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
                         ) : null}
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || row.value}</td>
@@ -2563,7 +2563,7 @@ export default function DesignMastersPage() {
           formValue={formValue}
           formAliasName={formAliasName}
           formDescription={formDescription}
-          isJewelrySizeType={selectedType === 'JEWELRY_SIZE'}
+          isCategoryScopedType={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'}
           isFindingType={selectedType === 'FINDING_HEAD'}
           isMetalNameType={selectedType === 'METAL_NAME'}
           isMetalColorType={selectedType === 'METAL_COLOR'}
