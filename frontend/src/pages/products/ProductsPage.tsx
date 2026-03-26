@@ -4755,7 +4755,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {showInlineMasterModal && inlineMasterType && (
-        <Modal title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`} onClose={closeInlineMasterModal} size="max-w-3xl" zIndexClass="z-[70]">
+        <Modal title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`} onClose={closeInlineMasterModal} size="max-w-3xl" zIndexClass="z-[130]">
           <form onSubmit={saveInlineMasterFromDesign} className="space-y-4">
             <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
@@ -5089,7 +5089,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {showPacketMasterModal && (
-        <Modal title="ADD PACKET" onClose={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }} size="max-w-6xl">
+        <Modal title="ADD PACKET" onClose={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }} size="max-w-6xl" zIndexClass="z-[130]">
           <div className="space-y-4">
             <p className="text-sm font-medium text-rose-700">* Required fields</p>
             <div className="rounded border border-slate-200 bg-slate-50 p-4">
