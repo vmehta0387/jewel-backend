@@ -4039,7 +4039,7 @@ export class ProductsService {
       description: row.description?.trim() || undefined,
     };
 
-    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+    if (type === DesignMasterType.JEWELRY_SIZE) {
       const jewelryGroup = row.jewelryGroup?.trim();
       if (!jewelryGroup) {
         throw new BadRequestException('Category is required');
@@ -4115,7 +4115,7 @@ export class ProductsService {
     payload: UpdateDesignMasterDto,
   ): Promise<DesignMaster | null> {
     let scopeKey = '';
-    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+    if (type === DesignMasterType.JEWELRY_SIZE) {
       const jewelrySizeFields = await this.normalizeCategoryScopedMasterFields(
         type,
         { jewelryGroupId: payload.jewelryGroupId },
@@ -4166,7 +4166,6 @@ export class ProductsService {
       case DesignMasterType.COLLECTION:
         row.Value = 'Eternity Bands';
         row['Alias Name'] = 'ETB';
-        row.Category = 'Ring';
         break;
       case DesignMasterType.METAL_NAME:
         row.Value = 'Gold';
@@ -4225,7 +4224,7 @@ export class ProductsService {
       { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
     ];
 
-    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+    if (type === DesignMasterType.JEWELRY_SIZE) {
       const jewelryGroups = await this.designMasterRepo.find({
         where: { masterType: DesignMasterType.JEWELRY_GROUP, isActive: true },
         order: { value: 'ASC' },
@@ -4478,7 +4477,7 @@ export class ProductsService {
     jewelryGroupId: string | null;
     jewelryGroup: string | null;
   }> {
-    if (masterType !== DesignMasterType.JEWELRY_SIZE && masterType !== DesignMasterType.COLLECTION) {
+    if (masterType !== DesignMasterType.JEWELRY_SIZE) {
       return this.emptyCategoryScopedMasterFields();
     }
 

@@ -896,13 +896,7 @@ export default function ProductsPage() {
     [detailInfo],
   );
   const filteredSubCategoryOptions = useMemo(() => {
-    if (!form.jewelryGroup.trim()) {
-      return [];
-    }
-    const normalizedCategory = form.jewelryGroup.trim().toLowerCase();
-    return masterOptions.collections.filter(
-      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
-    );
+    return masterOptions.collections;
   }, [form.jewelryGroup, masterOptions.collections]);
   const filteredJewelrySizeOptions = useMemo(() => {
     if (!form.jewelryGroup.trim()) {
@@ -914,13 +908,7 @@ export default function ProductsPage() {
     );
   }, [form.jewelryGroup, masterOptions.jewelrySizes]);
   const filteredSubCategoryFilterOptions = useMemo(() => {
-    if (!filters.jewelryGroup.trim()) {
-      return masterOptions.collections;
-    }
-    const normalizedCategory = filters.jewelryGroup.trim().toLowerCase();
-    return masterOptions.collections.filter(
-      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
-    );
+    return masterOptions.collections;
   }, [filters.jewelryGroup, masterOptions.collections]);
   const filteredJewelrySizeFilterOptions = useMemo(() => {
     if (!filters.jewelryGroup.trim()) {
@@ -1233,20 +1221,12 @@ export default function ProductsPage() {
   };
 
   const handleJewelryGroupChange = (jewelryGroup: string) => {
-    const nextSubCategoryOptions = masterOptions.collections.filter(
-      (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
-    );
     const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
       (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
     );
     setForm((prev) => ({
       ...prev,
       jewelryGroup,
-      collection: nextSubCategoryOptions.some(
-        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(prev.collection),
-      )
-        ? prev.collection
-        : '',
       jewelrySize: nextJewelrySizeOptions.some(
         (option) => normalizeLookupKey(option.value) === normalizeLookupKey(prev.jewelrySize),
       )
@@ -1731,7 +1711,7 @@ export default function ProductsPage() {
           }
         : null;
     const jewelrySizePayload =
-      inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION'
+      inlineMasterType === 'JEWELRY_SIZE'
         ? {
             jewelryGroupId: inlineJewelryGroupId,
           }
@@ -1777,7 +1757,7 @@ export default function ProductsPage() {
         return;
       }
     }
-    if ((inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION') && !inlineJewelryGroupId.trim()) {
+    if (inlineMasterType === 'JEWELRY_SIZE' && !inlineJewelryGroupId.trim()) {
       window.alert('Category is required.');
       return;
     }
@@ -4689,7 +4669,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
-            {inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' ? (
+            {inlineMasterType === 'JEWELRY_SIZE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
@@ -4739,7 +4719,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
-            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' && inlineMasterType !== 'JEWELRY_SIZE' && inlineMasterType !== 'COLLECTION' ? (
+            {inlineMasterType !== 'FINDING_HEAD' && inlineMasterType !== 'METAL_CARATAGE' && inlineMasterType !== 'JEWELRY_SIZE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>

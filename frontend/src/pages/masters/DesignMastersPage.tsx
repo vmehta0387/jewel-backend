@@ -1716,7 +1716,7 @@ export default function DesignMastersPage() {
                 }
               : null;
     const jewelrySizePayload =
-      selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'
+      selectedType === 'JEWELRY_SIZE'
         ? {
             jewelryGroupId: formJewelryGroupId,
           }
@@ -1733,7 +1733,7 @@ export default function DesignMastersPage() {
         return;
       }
     }
-    if ((selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION') && !formJewelryGroupId.trim()) {
+    if (selectedType === 'JEWELRY_SIZE' && !formJewelryGroupId.trim()) {
       window.alert('Category is required.');
       return;
     }
@@ -2464,7 +2464,7 @@ export default function DesignMastersPage() {
                   <tr>
                     <th className="app-table-head-cell">#</th>
                     <th className="app-table-head-cell">{selectedConfig.label}</th>
-                    {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
+                    {selectedType === 'JEWELRY_SIZE' ? (
                       <th className="app-table-head-cell">Category</th>
                     ) : null}
                     <th className="app-table-head-cell">Alias Name</th>
@@ -2478,7 +2478,7 @@ export default function DesignMastersPage() {
                   {loading ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
                         className="app-table-empty"
                       >
                         Loading records...
@@ -2487,7 +2487,7 @@ export default function DesignMastersPage() {
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 8 : 7}
+                        colSpan={selectedType === 'JEWELRY_SIZE' ? 8 : 7}
                         className="app-table-empty"
                       >
                         No records found.
@@ -2498,7 +2498,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
-                        {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
+                        {selectedType === 'JEWELRY_SIZE' ? (
                           <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
                         ) : null}
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || row.value}</td>
@@ -2563,7 +2563,7 @@ export default function DesignMastersPage() {
           formValue={formValue}
           formAliasName={formAliasName}
           formDescription={formDescription}
-          isCategoryScopedType={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'}
+          isCategoryScopedType={selectedType === 'JEWELRY_SIZE'}
           isFindingType={selectedType === 'FINDING_HEAD'}
           isMetalNameType={selectedType === 'METAL_NAME'}
           isMetalColorType={selectedType === 'METAL_COLOR'}
