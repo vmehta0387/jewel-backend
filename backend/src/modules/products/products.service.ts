@@ -5263,11 +5263,8 @@ export class ProductsService {
   }
 
   private buildDefaultDesignName(jewelryGroup: string | null | undefined, designNo: string): string {
-    const normalizedGroup = this.optionalText(jewelryGroup);
     const normalizedDesignNo = this.normalizeDesignNo(designNo);
-    if (normalizedGroup && normalizedDesignNo) {
-      return `${normalizedGroup} ${normalizedDesignNo}`;
-    }
+    const normalizedGroup = this.optionalText(jewelryGroup);
     return normalizedDesignNo || normalizedGroup || 'Design';
   }
 
