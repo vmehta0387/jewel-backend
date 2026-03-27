@@ -122,6 +122,9 @@ export class Design {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  @Column({ name: 'is_primary', default: false })
+  isPrimary: boolean;
+
   @Column({ name: 'created_by', nullable: true })
   createdBy: string | null;
 

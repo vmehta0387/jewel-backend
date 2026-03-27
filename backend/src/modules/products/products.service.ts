@@ -341,6 +341,9 @@ export class ProductsService {
       });
     }
 
+    const baseDesignNo = this.normalizeBaseDesignNo(designNo);
+    const isPrimary = await this.resolvePrimaryVersionFlag(baseDesignNo, version, scope);
+
     const globalRateMaps = await this.getGlobalRateMaps();
     const metalCaratageRates = await this.getMetalCaratageRateMap();
     const normalizedMetals = this.normalizeMetals(dto.metals || [], metalCaratageRates);
@@ -390,6 +393,7 @@ export class ProductsService {
       stlFileUrl: this.optionalText(dto.stlFileUrl),
       imageUrls: this.normalizeGalleryUrls(dto.imageUrls),
       isActive: dto.isActive ?? true,
+      isPrimary,
       createdBy: requester.id,
       updatedBy: requester.id,
     });
@@ -1220,6 +1224,45 @@ export class ProductsService {
     }
 
     await this.addHistory(id, 'UPDATED', 'Design updated successfully.', requester.id);
+    return this.findOne(id, requester);
+  }
+
+  async setPrimaryVersion(id: string, requester: AuthUser): Promise<any> {
+    this.assertDesignWriteAccess(requester);
+    const design = await this.getDesignForWrite(id, requester);
+
+    const baseDesignNo = this.normalizeBaseDesignNo(design.designNo);
+    const versionedDesignNo = `${baseDesignNo}-V%`;
+    const companyId = design.companyId;
+    const branchId = design.branchId;
+
+    const resetQuery = this.designRepo
+      .createQueryBuilder()
+      .update(Design)
+      .set({ isPrimary: false })
+      .where('(designNo = :baseDesignNo OR designNo LIKE :versionedDesignNo)', {
+        baseDesignNo,
+        versionedDesignNo,
+      });
+
+    if (companyId) {
+      resetQuery.andWhere('companyId = :companyId', { companyId });
+    } else {
+      resetQuery.andWhere('companyId IS NULL');
+    }
+
+    if (branchId) {
+      resetQuery.andWhere('branchId = :branchId', { branchId });
+    } else {
+      resetQuery.andWhere('branchId IS NULL');
+    }
+
+    await resetQuery.execute();
+    design.isPrimary = true;
+    design.updatedBy = requester.id;
+    await this.designRepo.save(design);
+
+    await this.addHistory(id, 'PRIMARY_UPDATED', 'Design version set as primary.', requester.id);
     return this.findOne(id, requester);
   }
 
@@ -2829,6 +2872,40 @@ export class ProductsService {
     if (existing && existing.id !== excludeId) {
       throw new BadRequestException('Design no and version already exist for this company');
     }
+  }
+
+  private async resolvePrimaryVersionFlag(
+    baseDesignNo: string,
+    version: string,
+    scope: ScopeResult,
+  ): Promise<boolean> {
+    if (version !== 'V1') {
+      return false;
+    }
+
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select('design.id')
+      .where(
+        '(design.designNo = :baseDesignNo OR design.designNo LIKE :versionedDesignNo)',
+        { baseDesignNo, versionedDesignNo: `${baseDesignNo}-V%` },
+      )
+      .andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+
+    if (scope.companyId) {
+      qb.andWhere('design.companyId = :companyId', { companyId: scope.companyId });
+    } else {
+      qb.andWhere('design.companyId IS NULL');
+    }
+
+    if (scope.branchId) {
+      qb.andWhere('design.branchId = :branchId', { branchId: scope.branchId });
+    } else {
+      qb.andWhere('design.branchId IS NULL');
+    }
+
+    const existingPrimaryCount = await qb.getCount();
+    return existingPrimaryCount === 0;
   }
 
   private buildDesignNoPrefix(jewelryGroup: string): string {

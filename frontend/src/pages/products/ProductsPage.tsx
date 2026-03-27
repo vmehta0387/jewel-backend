@@ -68,6 +68,7 @@ interface DesignRow {
   status: string;
   remarks: string;
   isActive: boolean;
+  isPrimary?: boolean;
   imageUrls?: string[];
   imageKeys?: string[];
   createdAt: string;
@@ -118,6 +119,7 @@ interface ApiDesignRow {
   imageUrls?: unknown;
   imageKeys?: unknown;
   isActive?: boolean;
+  isPrimary?: boolean;
   createdAt?: string | null;
   updatedAt?: string | null;
   updatedByName?: string | null;
@@ -438,6 +440,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     status: design.designStatus || '',
     remarks: design.remarks || '',
     isActive: design.isActive !== false,
+    isPrimary: design.isPrimary === true,
     imageUrls,
     imageKeys,
     createdAt: normalizeDateTimeValue(design.createdAt) || '',
@@ -534,28 +537,42 @@ const getVersionNumber = (version: string): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const resolvePrimaryVersionId = (versions: DesignRow[]): string => {
+  if (!versions.length) {
+    return '';
+  }
+  const explicitPrimary = versions.find((row) => row.isPrimary);
+  if (explicitPrimary) {
+    return explicitPrimary.id;
+  }
+  return (
+    [...versions].sort((a, b) => {
+      const versionDiff = getVersionNumber(a.version) - getVersionNumber(b.version);
+      if (versionDiff !== 0) return versionDiff;
+      const timeA = new Date(a.createdAt || a.modifiedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || b.modifiedAt || 0).getTime();
+      return timeA - timeB;
+    })[0]?.id || versions[0].id
+  );
+};
+
 const pickPrimaryDesignRow = (versions: DesignRow[]): DesignRow => {
   if (!versions.length) {
     return versions[0] as DesignRow;
   }
-  return [...versions].sort((a, b) => {
-    const versionDiff = getVersionNumber(b.version) - getVersionNumber(a.version);
-    if (versionDiff !== 0) return versionDiff;
-    const timeA = new Date(a.modifiedAt || a.createdAt || 0).getTime();
-    const timeB = new Date(b.modifiedAt || b.createdAt || 0).getTime();
-    return timeB - timeA;
-  })[0];
+  const primaryId = resolvePrimaryVersionId(versions);
+  return versions.find((row) => row.id === primaryId) || versions[0];
 };
 
 const designSeed: DesignRow[] = [
-  { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
-  { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
-  { id: '3', designNo: 'RING-0005', designName: 'Ring RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
-  { id: '4', designNo: 'RING-0004', designName: 'Ring RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
-  { id: '5', designNo: 'NP-0001', designName: 'Nose Pin NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
-  { id: '6', designNo: 'RING-0003', designName: 'Ring RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
-  { id: '7', designNo: 'RING-0002', designName: 'Ring RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
-  { id: '8', designNo: 'E-0001', designName: 'Earring E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
+  { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, isPrimary: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
+  { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, isPrimary: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
+  { id: '3', designNo: 'RING-0005', designName: 'Ring RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, isPrimary: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
+  { id: '4', designNo: 'RING-0004', designName: 'Ring RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, isPrimary: false, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
+  { id: '5', designNo: 'NP-0001', designName: 'Nose Pin NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, isPrimary: true, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
+  { id: '6', designNo: 'RING-0003', designName: 'Ring RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, isPrimary: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
+  { id: '7', designNo: 'RING-0002', designName: 'Ring RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, isPrimary: false, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
+  { id: '8', designNo: 'E-0001', designName: 'Earring E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, isPrimary: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
 ];
 
 const defaultForm: DesignForm = {
@@ -713,6 +730,10 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
         <path d="M8 9h4M8 13h6" />
         <path d="M14 3h6v14a2 2 0 0 1-2 2H8" />
       </svg>
+    ) : label === 'Set Primary' ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />
+      </svg>
     ) : (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="12" cy="12" r="9" />
@@ -826,7 +847,6 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
-  const [importingDesigns, setImportingDesigns] = useState(false);
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
@@ -862,7 +882,9 @@ export default function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showActionsDropdown, setShowActionsDropdown] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
+  const actionsDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DesignForm>(defaultForm);
@@ -2026,6 +2048,19 @@ export default function ProductsPage() {
   }, [showColumnPicker]);
 
   useEffect(() => {
+    if (!showActionsDropdown) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!actionsDropdownRef.current?.contains(event.target as Node)) {
+        setShowActionsDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showActionsDropdown]);
+
+  useEffect(() => {
     if (!packetOptions.length) return;
     setGemRows((prev) => {
       let changed = false;
@@ -3082,6 +3117,27 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
   };
 
+  const setPrimaryDesignVersion = async (row: DesignRow) => {
+    if (!canModifyExistingDesigns) {
+      window.alert('You have read-only access for designs.');
+      return;
+    }
+
+    if (row.isPrimary) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Set ${row.designNo} as the primary version?`);
+    if (!confirmed) return;
+
+    try {
+      await api.post(`/products/${row.id}/primary`);
+      await fetchDesignRows(row.id);
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to set primary version.');
+    }
+  };
+
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
     setMetalRows((prev) => {
       if (['netWt', 'wastagePercent', 'wastageWt', 'pricePerGm', 'value'].includes(key) && isPartialDecimal(value)) {
@@ -3250,7 +3306,6 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const formData = new FormData();
     formData.append('file', file);
-    setImportingDesigns(true);
     try {
       const response = await api.post('/products/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -3273,7 +3328,6 @@ const createDefaultVendorRow = (): VendorRow => ({
       const message = error?.response?.data?.message;
       window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import designs.');
     } finally {
-      setImportingDesigns(false);
     }
   };
 
@@ -3406,158 +3460,22 @@ const createDefaultVendorRow = (): VendorRow => ({
     }, 150);
   };
 
-  const exportActionButtonClass =
-    'inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)] transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50';
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 px-1">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Design List</h1>
-          <p className="text-sm text-gray-600">Design entries module for super admin review.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Design List</h1>
+          <p className="text-sm font-medium text-slate-500">Manage and review your jewelry design entries</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative" ref={columnPickerRef}>
-            <button
-              type="button"
-              className={exportActionButtonClass}
-              onClick={() => setShowColumnPicker((prev) => !prev)}
-              title="Choose visible columns"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">COL</span>
-              <span>Columns</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                {visibleColumns.length}
-              </span>
-            </button>
-            {showColumnPicker ? (
-              <div className="absolute left-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Visible Columns</p>
-                    <p className="text-xs text-slate-500">
-                      {visibleColumns.length} of {DESIGN_LIST_COLUMNS.length} shown in the list view
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-slate-600 hover:text-slate-800"
-                      onClick={showAllColumns}
-                    >
-                      Show all
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-semibold text-primary-700 hover:text-primary-800"
-                      onClick={resetVisibleColumns}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {DESIGN_LIST_COLUMNS.map((column) => (
-                    <label
-                      key={column.key}
-                      className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={isColumnVisible(column.key)}
-                        onChange={() => toggleColumnVisibility(column.key)}
-                      />
-                      <span>{column.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <Button type="button" size="sm" variant="secondary" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={() => setShowFilters((prev) => !prev)}>
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M4 6h16M7 12h10M10 18h4" />
-            </svg>
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]"
-            onClick={() => setShowInactive((prev) => !prev)}
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M3 12s3.5-7 9-7 9 7 9 7-3.5 7-9 7-9-7-9-7Z" />
-              <path d="M4 4l16 16" />
-            </svg>
-            {showInactive ? 'View Active' : 'View Inactive'}
-          </Button>
-          {canCreateDesign ? (
-            <Button type="button" size="sm" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={openAdd}>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              Add New
-            </Button>
-          ) : null}
-          <button
-            type="button"
-            className={exportActionButtonClass}
-            onClick={downloadDesignTemplate}
-            title="Download design import template"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">TPL</span>
-            <span>Template</span>
-          </button>
-          <button
-            type="button"
-            className={exportActionButtonClass}
-            onClick={() => designImportInputRef.current?.click()}
-            disabled={importingDesigns}
-            title="Import designs from Excel workbook"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-sky-100 text-[9px] font-bold text-sky-700">IMP</span>
-            <span>{importingDesigns ? 'Importing...' : 'Import Excel'}</span>
-          </button>
-          <button
-            type="button"
-            className={exportActionButtonClass}
-            onClick={exportPdf}
-            title="Export selected rows to PDF"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-red-100 text-[9px] font-bold text-red-700">PDF</span>
-            <span>PDF file</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              {selectedDesignIds.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={exportActionButtonClass}
-            onClick={exportExcel}
-            title="Export design list to Excel workbook"
-          >
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-emerald-100 text-[9px] font-bold text-emerald-700">XLS</span>
-            <span>Excel file</span>
-          </button>
-        </div>
-        <input
-          ref={designImportInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          className="hidden"
-          onChange={handleImportDesigns}
-        />
       </div>
 
       <Card>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex flex-1 items-center gap-3">
             <div className="relative flex-1 max-w-md">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </span>
@@ -3569,35 +3487,179 @@ const createDefaultVendorRow = (): VendorRow => ({
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
+            
             <button
               type="button"
               onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
+              className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
                 showFilters 
                 ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-500/10' 
                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              <svg className={`h-4 w-4 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <svg className={`h-4.5 w-4.5 transition-transform duration-300 ${showFilters ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-              <span>{showFilters ? 'Hide Filters' : 'Show Filters'}</span>
+              <span>Filters</span>
+            </button>
+
+            <div className="relative" ref={columnPickerRef}>
+              <button
+                type="button"
+                onClick={() => setShowColumnPicker(!showColumnPicker)}
+                className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
+                  showColumnPicker 
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-500/10' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                </svg>
+                <span>Columns</span>
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-600 group-hover:bg-slate-200">
+                  {visibleColumns.length}
+                </span>
+              </button>
+
+              {showColumnPicker && (
+                <div className="absolute left-0 z-50 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl ring-1 ring-slate-900/5 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">Table Columns</h4>
+                      <p className="text-[11px] font-medium text-slate-500">{visibleColumns.length} of {DESIGN_LIST_COLUMNS.length} visible</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button type="button" onClick={showAllColumns} className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800">Show all</button>
+                      <button type="button" onClick={resetVisibleColumns} className="text-[11px] font-bold text-slate-400 hover:text-slate-600">Reset</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                    {DESIGN_LIST_COLUMNS.map((column) => (
+                      <label 
+                        key={column.key} 
+                        className={`flex items-center gap-3 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                          isColumnVisible(column.key) ? 'bg-indigo-50/50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20"
+                          checked={isColumnVisible(column.key)}
+                          onChange={() => toggleColumnVisibility(column.key)}
+                        />
+                        {column.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowInactive(!showInactive)}
+              className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold whitespace-nowrap transition-all ${
+                showInactive
+                ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-500/10'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              <svg style={{ width: '1rem', height: '1rem', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.076m10.725 10.725L21 21m-2.571-2.571L12 12m0 0L8.429 8.429M3 3l3.293 3.293m0 0l4.242 4.242M9.88 9.88l1.694 1.694" />
+              </svg>
+              <span>{showInactive ? 'Hide Inactive' : 'Show Inactive'}</span>
             </button>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <div className="relative" ref={actionsDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowActionsDropdown(!showActionsDropdown)}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 active:scale-95"
+              >
+                <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                </svg>
+                <span>Actions</span>
+              </button>
+
+              {showActionsDropdown && (
+                <div className="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Import & Template</div>
+                  <button 
+                    onClick={() => { downloadDesignTemplate(); setShowActionsDropdown(false); }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors group-hover:bg-indigo-100 group-hover:text-indigo-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                    </div>
+                    Download Template
+                  </button>
+                  <button 
+                    onClick={() => { designImportInputRef.current?.click(); setShowActionsDropdown(false); }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-100 text-sky-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                      </svg>
+                    </div>
+                    Import Excel
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100" />
+                  <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Export Data</div>
+                  <button 
+                    onClick={() => { exportPdf(); setShowActionsDropdown(false); }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-rose-600"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-100 text-rose-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                      </svg>
+                    </div>
+                    Export PDF ({selectedDesignIds.length})
+                  </button>
+                  <button 
+                    onClick={() => { exportExcel(); setShowActionsDropdown(false); }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-emerald-600"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5V4.625c0-.621.504-1.125 1.125-1.125h15.75c.621 0 1.125.504 1.125 1.125v13.75c0 .621-.504 1.125-1.125 1.125m-17.25 0h17.25m-17.25 0h17.25M6.75 7.5h.008v.008H6.75V7.5zm0 4.5h.008v.008H6.75V12zm0 4.5h.008v.008H6.75V16.5zm3-9h.008v.008h-.008V7.5zm0 4.5h.008v.008h-.008V12zm0 4.5h.008v.008h-.008V16.5zm3-9h.008v.008h-.008V7.5zm0 4.5h.008v.008h-.008V12zm0 4.5h.008v.008h-.008V16.5zm3-9h.008v.008h-.008V7.5zm0 4.5h.008v.008h-.008V12zm0 4.5h.008v.008h-.008V16.5z" />
+                      </svg>
+                    </div>
+                    Export Excel
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 hover:bg-slate-800 active:translate-y-0 active:shadow-md"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
               onClick={openAdd}
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
               <span>Add New Design</span>
             </button>
           </div>
         </div>
+
+
+        <input
+          ref={designImportInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportDesigns}
+        />
 
         {showFilters && (
           <div className="mb-6 rounded-2xl border border-slate-200 bg-white/50 p-5 backdrop-blur-sm shadow-sm ring-1 ring-slate-900/5 transition-all animate-in fade-in slide-in-from-top-4 duration-300">
@@ -3722,7 +3784,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 {isColumnVisible('status') ? <th className="app-table-head-cell">Status</th> : null}
                 {isColumnVisible('updatedBy') ? <th className="app-table-head-cell">Updated By</th> : null}
                 {isColumnVisible('modifiedAt') ? <th className="app-table-head-cell">Modified</th> : null}
-                <th className="app-table-head-cell">Action</th>
+                <th className="app-table-head-cell text-right pr-4">Action</th>
               </tr>
               </thead>
               <tbody>
@@ -3732,6 +3794,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 const versionsExpanded = isVersionsExpanded(row.designNo);
                 const columnCount = 2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length;
                 const versionsLabel = versionsExpanded ? 'Hide Versions' : 'Versions';
+                const primaryVersionId = resolvePrimaryVersionId(versionRows);
                 return (
                 <Fragment key={row.id}>
                 <tr key={row.id} className="group border-b border-slate-100 transition-colors hover:bg-slate-50/50">
@@ -3833,7 +3896,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </td>
                   ) : null}
 
-                  <td className="py-4 px-3 text-right">
+                  <td className="py-4 pl-3 pr-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
@@ -3893,11 +3956,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <p className="text-xs text-slate-500">No additional versions for this design.</p>
                         ) : (
                           <div className="space-y-2">
-                            {versionRows.map((versionRow) => (
+                            {versionRows.map((versionRow) => {
+                              const isPrimaryVersion = versionRow.id === primaryVersionId;
+                              return (
                               <div key={versionRow.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
                                 <div className="flex flex-wrap items-center gap-3">
                                   <span className="font-semibold text-slate-900">{versionRow.designNo}</span>
                                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{versionRow.version || 'V1'}</span>
+                                  {isPrimaryVersion ? (
+                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                      Primary
+                                    </span>
+                                  ) : null}
                                   <span className="text-slate-600">{versionRow.stage || '-'}</span>
                                   <span className="text-slate-600">{versionRow.status || (versionRow.isActive ? 'Active' : 'Inactive')}</span>
                                   <span className="text-slate-500">Updated: {versionRow.modifiedAt || '-'}</span>
@@ -3905,11 +3975,17 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <div className="flex items-center gap-1">
                                   <Action label="View" onClick={() => { setSelectedId(versionRow.id); setModal('info'); }} />
                                   {canModifyExistingDesigns ? (
-                                    <Action label="Edit" onClick={() => openEdit(versionRow)} />
+                                    <>
+                                      <Action label="Edit" onClick={() => openEdit(versionRow)} />
+                                      {!isPrimaryVersion ? (
+                                        <Action label="Set Primary" onClick={() => setPrimaryDesignVersion(versionRow)} />
+                                      ) : null}
+                                    </>
                                   ) : null}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>

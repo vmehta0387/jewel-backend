@@ -278,6 +278,11 @@ export class ProductsController {
     return this.productsService.updateStatus(id, dto.isActive, req.user);
   }
 
+  @Post(':id/primary')
+  setPrimary(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.productsService.setPrimaryVersion(id, req.user);
+  }
+
   @Post(':id/relevant-designs')
   replaceRelevantDesigns(
     @Param('id') id: string,
