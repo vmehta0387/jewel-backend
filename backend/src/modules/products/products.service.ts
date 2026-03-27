@@ -326,12 +326,13 @@ export class ProductsService {
     const version = this.normalizeVersion(dto.version);
     const requestedDesignNo = dto.designNo?.trim();
 
+    const prefix = await this.resolveJewelryGroupPrefix(jewelryGroup);
+
     let designNo: string;
     if (requestedDesignNo) {
       designNo = this.applyVersionToDesignNo(requestedDesignNo, version);
       await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
     } else {
-      const prefix = this.buildDesignNoPrefix(jewelryGroup);
       designNo = await this.withDesignNoLock(scope.companyId, prefix, async () => {
         const generatedDesignNo = await this.generateNextDesignNo(prefix, scope.companyId);
         const versioned = this.applyVersionToDesignNo(generatedDesignNo, version);
@@ -819,15 +820,7 @@ export class ProductsService {
     }
 
     const scope = await this.resolveScope(query.companyId, query.branchId, requester);
-    let groupMaster = await this.designMasterRepo.findOne({
-      where: { masterType: DesignMasterType.JEWELRY_GROUP, value: jewelryGroup },
-    });
-    if (!groupMaster) {
-      groupMaster = await this.designMasterRepo.findOne({
-        where: { masterType: DesignMasterType.JEWELRY_GROUP, aliasName: jewelryGroup },
-      });
-    }
-    const prefix = this.buildDesignNoPrefix(groupMaster?.aliasName || jewelryGroup);
+    const prefix = await this.resolveJewelryGroupPrefix(jewelryGroup);
     const designNo = await this.generateNextDesignNo(prefix, scope.companyId);
 
     return {
@@ -2839,31 +2832,6 @@ export class ProductsService {
   }
 
   private buildDesignNoPrefix(jewelryGroup: string): string {
-    const normalizedGroup = jewelryGroup.trim().toLowerCase();
-    const mappedPrefix = (() => {
-      switch (normalizedGroup) {
-        case 'ring':
-          return 'RING';
-        case 'bracelet':
-          return 'BL';
-        case 'earring':
-          return 'E';
-        case 'pendant':
-          return 'P';
-        case 'necklace':
-          return 'N';
-        case 'nose pin':
-        case 'nosepin':
-          return 'NP';
-        default:
-          return null;
-      }
-    })();
-
-    if (mappedPrefix) {
-      return mappedPrefix;
-    }
-
     const token = jewelryGroup
       .toUpperCase()
       .replace(/[^A-Z0-9]+/g, ' ')
@@ -2871,6 +2839,29 @@ export class ProductsService {
       .split(/\s+/)[0];
 
     return (token || 'DSN').slice(0, 5);
+  }
+
+  private async resolveJewelryGroupPrefix(jewelryGroup: string): Promise<string> {
+    const normalizedGroup = jewelryGroup.trim();
+    if (!normalizedGroup) {
+      return 'DSN';
+    }
+
+    let groupMaster = await this.designMasterRepo.findOne({
+      where: { masterType: DesignMasterType.JEWELRY_GROUP, value: normalizedGroup },
+    });
+    if (!groupMaster) {
+      groupMaster = await this.designMasterRepo.findOne({
+        where: { masterType: DesignMasterType.JEWELRY_GROUP, aliasName: normalizedGroup },
+      });
+    }
+
+    const alias = (groupMaster?.aliasName || '').trim();
+    if (alias) {
+      return this.buildDesignNoPrefix(alias);
+    }
+
+    return this.buildDesignNoPrefix(normalizedGroup);
   }
 
   private async generateNextDesignNo(prefix: string, companyId: string | null): Promise<string> {

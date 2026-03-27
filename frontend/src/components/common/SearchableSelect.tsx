@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Option {
   value: string;
@@ -25,19 +26,53 @@ export default function SearchableSelect({
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const updateDropdownPosition = () => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setDropdownStyle({
+      top: rect.bottom + 6,
+      left: rect.left,
+      width: Math.max(rect.width, 192),
+    });
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updateDropdownPosition();
+    const handleReposition = () => updateDropdownPosition();
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [isOpen]);
 
   // Filter options based on search query
   const filteredOptions = useMemo(() => {
@@ -54,8 +89,10 @@ export default function SearchableSelect({
 
   const handleToggle = () => {
     if (disabled) return;
-    setIsOpen(!isOpen);
-    if (!isOpen) {
+    const nextOpen = !isOpen;
+    setIsOpen(nextOpen);
+    if (nextOpen) {
+      updateDropdownPosition();
       setSearch('');
       // focus input asynchronously after render
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -90,8 +127,13 @@ export default function SearchableSelect({
         </svg>
       </button>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-1 w-full min-w-[12rem] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-lg ring-1 ring-slate-900/5 backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-200">
+      {isOpen &&
+        createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[250] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-lg ring-1 ring-slate-900/5 backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-200"
+          style={{ top: dropdownStyle.top, left: dropdownStyle.left, width: dropdownStyle.width }}
+        >
           <div className="p-2">
             <div className="relative">
               <input
@@ -148,7 +190,8 @@ export default function SearchableSelect({
               ))
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
