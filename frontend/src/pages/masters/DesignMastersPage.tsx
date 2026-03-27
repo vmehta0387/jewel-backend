@@ -76,6 +76,7 @@ interface MasterRow {
 
 interface PacketRow {
   id: string;
+  barcode: string | null;
   packetName: string;
   stone: string | null;
   shape: string | null;
@@ -411,6 +412,7 @@ interface PacketModalProps {
 }
 
 interface PacketForm {
+  barcode: string;
   packetName: string;
   stone: string;
   shape: string;
@@ -440,6 +442,7 @@ interface MetalMasterOptions {
 }
 
 const defaultPacketForm: PacketForm = {
+  barcode: '',
   packetName: '',
   stone: '',
   shape: '',
@@ -1128,6 +1131,16 @@ function PacketModal({
                   </button>
                 </div>
               </div>
+              <div className="xl:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-slate-700">Barcode</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                  value={form.barcode}
+                  onChange={(event) => onChange('barcode', event.target.value.replace(/\D/g, ''))}
+                  placeholder="Auto generated if blank"
+                  inputMode="numeric"
+                />
+              </div>
             </div>
           </div>
 
@@ -1574,6 +1587,7 @@ export default function DesignMastersPage() {
     setEditingRow(null);
     setEditingPacket(row);
     setPacketForm({
+      barcode: row.barcode || '',
       packetName: row.packetName || '',
       stone: row.stone || '',
       shape: row.shape || '',
@@ -1601,6 +1615,7 @@ export default function DesignMastersPage() {
       if (
         !packetNameManuallyEdited &&
         key !== 'packetName' &&
+        key !== 'barcode' &&
         key !== 'priceIn' &&
         key !== 'weightIn' &&
         key !== 'sellingPrice' &&
@@ -1629,6 +1644,7 @@ export default function DesignMastersPage() {
 
     if (isPacketType) {
       const payload = {
+        barcode: packetForm.barcode.trim() || undefined,
         packetName: packetForm.packetName.trim(),
         stone: packetForm.stone.trim(),
         shape: packetForm.shape.trim(),
@@ -2166,6 +2182,7 @@ export default function DesignMastersPage() {
                 <thead>
                   <tr>
                     <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Barcode</th>
                     <th className="app-table-head-cell">Packet Name</th>
                     <th className="app-table-head-cell">Stone</th>
                     <th className="app-table-head-cell">Shape</th>
@@ -2183,13 +2200,13 @@ export default function DesignMastersPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={13} className="app-table-empty">
+                      <td colSpan={14} className="app-table-empty">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={13} className="app-table-empty">
+                      <td colSpan={14} className="app-table-empty">
                         No records found.
                       </td>
                     </tr>
@@ -2197,6 +2214,7 @@ export default function DesignMastersPage() {
                     pagedPacketRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.barcode || '-'}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.packetName}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.stone || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.shape || '-'}</td>

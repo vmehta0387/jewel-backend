@@ -715,6 +715,10 @@ export class FindProductsQueryDto {
 }
 
 export class FindPacketsQueryDto {
+  @IsString()
+  @IsOptional()
+  barcode?: string;
+
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
   @IsOptional()
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
@@ -766,6 +770,10 @@ export class FindPacketsQueryDto {
 }
 
 export class CreateStonePacketDto {
+  @IsString()
+  @IsOptional()
+  barcode?: string;
+
   @IsString()
   packetName: string;
 
@@ -831,6 +839,10 @@ export class CreateStonePacketDto {
 }
 
 export class UpdateStonePacketDto {
+  @IsString()
+  @IsOptional()
+  barcode?: string;
+
   @IsString()
   @IsOptional()
   packetName?: string;

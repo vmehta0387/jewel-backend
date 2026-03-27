@@ -23,6 +23,9 @@ export class StonePacket {
   @PrimaryColumn('varchar', { length: 36 })
   id: string;
 
+  @Column({ name: 'barcode', length: 32, unique: true, nullable: true })
+  barcode: string | null;
+
   @Column({ name: 'packet_name', unique: true })
   packetName: string;
 

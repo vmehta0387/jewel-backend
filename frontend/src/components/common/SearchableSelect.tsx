@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 interface Option {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 interface SearchableSelectProps {
@@ -131,12 +132,18 @@ export default function SearchableSelect({
                 <button
                   key={opt.value}
                   type="button"
+                  disabled={opt.disabled}
                   className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${
-                    opt.value === value ? 'bg-indigo-50 font-semibold text-indigo-700' : 'text-slate-700'
+                    opt.value === value
+                      ? 'bg-indigo-50 font-semibold text-indigo-700'
+                      : opt.disabled
+                        ? 'cursor-not-allowed text-slate-300 hover:bg-transparent'
+                        : 'text-slate-700'
                   }`}
                   onClick={() => handleSelect(opt.value)}
                 >
                   {opt.label}
+                  {opt.disabled ? ' (Used)' : ''}
                 </button>
               ))
             )}

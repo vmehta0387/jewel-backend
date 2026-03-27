@@ -257,6 +257,7 @@ const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v2';
 
 interface PacketOption {
   id: string;
+  barcode: string | null;
   packetName: string;
   stockType: string | null;
   stone: string | null;
@@ -275,6 +276,7 @@ interface PacketOption {
 }
 
 interface PacketForm {
+  barcode: string;
   packetName: string;
   stone: string;
   shape: string;
@@ -571,6 +573,7 @@ const defaultForm: DesignForm = {
 };
 
 const defaultPacketForm: PacketForm = {
+  barcode: '',
   packetName: '',
   stone: '',
   shape: '',
@@ -1581,6 +1584,18 @@ export default function ProductsPage() {
     });
   };
 
+  const buildPacketSearchOptions = (rowId: string) =>
+    packetOptions.map((packet) => {
+      const isCurrentPacket = gemRows.find((row) => row.id === rowId)?.packetId === packet.id;
+      const packetUsedByOtherRow = gemRows.some((row) => row.id !== rowId && row.packetId === packet.id);
+      const barcodeLabel = packet.barcode ? ` (${packet.barcode})` : '';
+      return {
+        value: packet.id,
+        label: `${packet.packetName}${barcodeLabel}`,
+        disabled: !isCurrentPacket && packetUsedByOtherRow,
+      };
+    });
+
   const syncTags = (tags: string[]) => {
     const deduped = Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean)));
     setForm((prev) => ({ ...prev, tags: deduped.join(', ') }));
@@ -1845,6 +1860,7 @@ export default function ProductsPage() {
       if (
         !packetNameManuallyEdited &&
         key !== 'packetName' &&
+        key !== 'barcode' &&
         key !== 'priceIn' &&
         key !== 'weightIn' &&
         key !== 'sellingPrice' &&
@@ -1870,6 +1886,7 @@ export default function ProductsPage() {
 
   const savePacketMaster = async () => {
     const payload = {
+      barcode: packetForm.barcode.trim() || undefined,
       packetName: packetForm.packetName.trim(),
       stone: packetForm.stone.trim(),
       shape: packetForm.shape.trim(),
@@ -4471,27 +4488,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <tr key={item.id}>
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-2">
-                                <select
-                                  className="w-36 rounded border border-gray-300 px-2 py-1"
+                                <SearchableSelect
+                                  className="w-52"
                                   value={item.packetId}
-                                  onChange={(event) => applyPacketToGemRow(item.id, event.target.value)}
-                                >
-                                  <option value="">Select Packet</option>
-                                  {packetOptions.map((packet) => {
-                                    const isCurrentPacket = item.packetId === packet.id;
-                                    const packetUsedByOtherRow = gemRows.some(
-                                      (row) => row.id !== item.id && row.packetId === packet.id,
-                                    );
-                                    const isDisabled = !isCurrentPacket && packetUsedByOtherRow;
-
-                                    return (
-                                      <option key={packet.id} value={packet.id} disabled={isDisabled}>
-                                        {packet.packetName}
-                                        {isDisabled ? ' (Used)' : ''}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
+                                  onChange={(value) => applyPacketToGemRow(item.id, value)}
+                                  options={buildPacketSearchOptions(item.id)}
+                                  placeholder="Select Packet"
+                                />
                                 <button
                                   type="button"
                                   className={inlineMasterAddButtonClass}
@@ -5271,6 +5274,16 @@ const createDefaultVendorRow = (): VendorRow => ({
                       R
                     </button>
                   </div>
+                </div>
+                <div className="xl:col-span-2">
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Barcode</label>
+                  <input
+                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    value={packetForm.barcode}
+                    onChange={(event) => updatePacketFormField('barcode', event.target.value.replace(/\D/g, ''))}
+                    placeholder="Auto generated if blank"
+                    inputMode="numeric"
+                  />
                 </div>
               </div>
             </div>

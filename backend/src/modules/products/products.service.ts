@@ -143,6 +143,7 @@ interface MasterImportRow {
 }
 
 interface PacketImportRow {
+  barcode?: string;
   packetName: string;
   stone?: string;
   shape?: string;
@@ -258,6 +259,7 @@ export class ProductsService {
   ] as const;
 
   private readonly packetImportHeaders = [
+    'Barcode',
     'Packet Name',
     'Stone',
     'Shape',
@@ -1560,6 +1562,10 @@ export class ProductsService {
       qb.andWhere('packet.stockType LIKE :stockType', { stockType: `%${query.stockType.trim()}%` });
     }
 
+    if (query.barcode?.trim()) {
+      qb.andWhere('packet.barcode LIKE :barcode', { barcode: `%${query.barcode.trim()}%` });
+    }
+
     if (query.stone?.trim()) {
       qb.andWhere('packet.stone LIKE :stone', { stone: `%${query.stone.trim()}%` });
     }
@@ -1590,6 +1596,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('packet.packetName LIKE :search', { search })
+            .orWhere('packet.barcode LIKE :search', { search })
             .orWhere('packet.stone LIKE :search', { search })
             .orWhere('packet.shape LIKE :search', { search })
             .orWhere('packet.size LIKE :search', { search })
@@ -1624,9 +1631,11 @@ export class ProductsService {
     const priceIn = this.normalizePacketPriceIn(dto.priceIn);
     const sellingPrice = this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice');
     const weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
+    const barcode = await this.resolveStonePacketBarcode(dto.barcode);
 
     if (existing) {
       if (!existing.isActive) {
+        existing.barcode = barcode;
         existing.stockType = this.optionalText(dto.stockType) || existing.stockType || 'COMPLETED';
         existing.stone = this.optionalText(dto.stone);
         existing.shape = this.optionalText(dto.shape);
@@ -1647,6 +1656,7 @@ export class ProductsService {
     }
 
     const packet = this.packetRepo.create({
+      barcode,
       packetName,
       stockType: this.optionalText(dto.stockType) || 'COMPLETED',
       stone: this.optionalText(dto.stone),
@@ -1683,6 +1693,10 @@ export class ProductsService {
         }
       }
       packet.packetName = nextPacketName;
+    }
+
+    if (dto.barcode !== undefined) {
+      packet.barcode = await this.resolveStonePacketBarcode(dto.barcode, packet.id);
     }
 
     const nextPieces = this.resolvePacketPieces(
@@ -1744,6 +1758,7 @@ export class ProductsService {
     const masters = await this.findMasters({});
     const templateRows = [
       {
+        Barcode: '100000000001',
         'Packet Name': 'LD-ROU-400-DF-VV',
         Stone: masters.packetStones?.[0]?.value || 'Lab Diamonds',
         Shape: masters.packetShapes?.[0]?.value || 'Round',
@@ -1764,6 +1779,7 @@ export class ProductsService {
       { Field: 'Price In', AllowedValues: Object.values(StonePacketPriceIn).join(', '), Notes: 'Optional, defaults to WT' },
       { Field: 'Weight Unit', AllowedValues: Object.values(StoneWeightUnit).join(', '), Notes: 'Optional, defaults to CTS' },
       { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
+      { Field: 'Barcode', AllowedValues: 'Digits only', Notes: 'Optional; leave blank to auto-generate a numeric barcode.' },
       { Field: 'Packet Name', AllowedValues: 'Unique packet name', Notes: 'Required; existing packet name updates that row' },
     ];
     const lookupRows = this.buildPacketTemplateLookupRows(masters);
@@ -1793,6 +1809,7 @@ export class ProductsService {
 
     const workbook = XLSX.utils.book_new();
     const rows = (result.data || []).map((packet: StonePacket) => ({
+      Barcode: packet.barcode || '',
       'Packet Name': packet.packetName,
       Stone: packet.stone || '',
       Shape: packet.shape || '',
@@ -1848,6 +1865,7 @@ export class ProductsService {
         const packetName = this.normalizePacketName(row.packetName);
         const existing = await this.packetRepo.findOne({ where: { packetName } });
         const payload: CreateStonePacketDto = {
+          barcode: await this.resolveStonePacketBarcode(row.barcode, existing?.id),
           packetName,
           stone: this.optionalText(row.stone) || undefined,
           shape: this.optionalText(row.shape) || undefined,
@@ -1871,6 +1889,7 @@ export class ProductsService {
         let saved: StonePacket;
         if (existing) {
           const updatePayload: UpdateStonePacketDto = {
+            barcode: payload.barcode,
             packetName: payload.packetName,
             stone: payload.stone,
             shape: payload.shape,
@@ -4037,6 +4056,7 @@ export class ProductsService {
 
   private normalizePacketImportRow(row: Record<string, unknown>): PacketImportRow {
     return {
+      barcode: this.getImportCell(row, 'Barcode', 'barcode'),
       packetName: this.getImportCell(row, 'Packet Name', 'packetName'),
       stone: this.getImportCell(row, 'Stone', 'stone'),
       shape: this.getImportCell(row, 'Shape', 'shape'),
@@ -5258,6 +5278,43 @@ export class ProductsService {
     const normalized = value?.trim() || '';
     if (!normalized) {
       throw new BadRequestException('packetName is required');
+    }
+    return normalized;
+  }
+
+  private normalizeStonePacketBarcode(value?: string | null): string | null {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return null;
+    }
+    if (!/^\d+$/.test(normalized)) {
+      throw new BadRequestException('Packet barcode must contain digits only');
+    }
+    return normalized;
+  }
+
+  private async generateStonePacketBarcode(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = `${Date.now()}${Math.floor(Math.random() * 1000)
+        .toString()
+        .padStart(3, '0')}`;
+      const existing = await this.packetRepo.findOne({ where: { barcode: candidate } });
+      if (!existing) {
+        return candidate;
+      }
+    }
+    throw new BadRequestException('Unable to generate a unique packet barcode');
+  }
+
+  private async resolveStonePacketBarcode(value?: string | null, excludePacketId?: string): Promise<string> {
+    const normalized = this.normalizeStonePacketBarcode(value);
+    if (!normalized) {
+      return this.generateStonePacketBarcode();
+    }
+
+    const existing = await this.packetRepo.findOne({ where: { barcode: normalized } });
+    if (existing && existing.id !== excludePacketId) {
+      throw new BadRequestException('Packet barcode already exists');
     }
     return normalized;
   }
