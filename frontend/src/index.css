@@ -67,6 +67,37 @@
     @apply inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-500 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40;
   }
 
+  /* Modern Status Badges */
+  .badge {
+    @apply inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-[0.7rem] font-bold uppercase tracking-wider shadow-sm ring-1;
+  }
+  .badge-primary {
+    @apply border-indigo-200/80 bg-indigo-50 text-indigo-700 ring-indigo-500/10;
+  }
+  .badge-success {
+    @apply border-emerald-200/80 bg-emerald-50 text-emerald-700 ring-emerald-500/10;
+  }
+  .badge-warning {
+    @apply border-amber-200/80 bg-amber-50 text-amber-700 ring-amber-500/10;
+  }
+  .badge-danger {
+    @apply border-rose-200/80 bg-rose-50 text-rose-700 ring-rose-500/10;
+  }
+  .badge-info {
+    @apply border-sky-200/80 bg-sky-50 text-sky-700 ring-sky-500/10;
+  }
+  .badge-slate {
+    @apply border-slate-200/80 bg-slate-50 text-slate-600 ring-slate-500/10;
+  }
+
+  /* User Avatar */
+  .avatar-ring {
+    @apply rounded-full ring-2 ring-white shadow-sm overflow-hidden flex items-center justify-center bg-slate-100;
+  }
+  .avatar-text {
+    @apply text-[10px] font-bold text-slate-600 uppercase;
+  }
+
   /* Micro animations */
   .hover-lift {
     @apply transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-glass-md;
