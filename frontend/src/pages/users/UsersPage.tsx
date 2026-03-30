@@ -5,6 +5,7 @@ import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
+import Avatar from '../../components/common/Avatar';
 import api from '../../services/api';
 import { UserRole } from '../../types/auth.types';
 import { TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
@@ -200,9 +201,16 @@ export default function UsersPage() {
         key: 'name',
         label: 'User',
         render: (_: unknown, row: UserRecord) => (
-          <div>
-            <p className="font-medium text-gray-900">{row.firstName} {row.lastName}</p>
-            <p className="text-xs text-gray-500">{row.email}</p>
+          <div className="flex items-center gap-3">
+            <Avatar
+              name={`${row.firstName} ${row.lastName}`}
+              src={row.photoUrl || undefined}
+              size="sm"
+            />
+            <div>
+              <p className="font-medium text-gray-900">{row.firstName} {row.lastName}</p>
+              <p className="text-xs text-gray-500">{row.email}</p>
+            </div>
           </div>
         ),
       },

@@ -9,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import { extname, join } from 'path';
+import { mkdir, writeFile } from 'fs/promises';
 import * as XLSX from 'xlsx';
 import { User } from './entities/user.entity';
 import { Company } from '../companies/entities/company.entity';
@@ -28,6 +30,7 @@ export interface UserResponse {
   companyId: string | null;
   branchId: string | null;
   phone: string | null;
+  photoUrl: string | null;
   isActive: boolean;
   taskPermissions: TaskPermission[];
   company: {
@@ -185,6 +188,7 @@ export class UsersService {
       companyId: scopedOrg.companyId,
       branchId: scopedOrg.branchId,
       phone: dto.phone?.trim() || null,
+      photoUrl: dto.photoUrl?.trim() || null,
       isActive: dto.isActive ?? true,
       taskPermissions: this.normalizePermissions(dto.taskPermissions, dto.role),
     });
@@ -217,6 +221,10 @@ export class UsersService {
 
     if (dto.phone !== undefined) {
       user.phone = dto.phone?.trim() || null;
+    }
+
+    if (dto.photoUrl !== undefined) {
+      user.photoUrl = dto.photoUrl?.trim() || null;
     }
 
     if (dto.isActive !== undefined) {
@@ -257,6 +265,38 @@ export class UsersService {
     user.isActive = isActive;
     await this.userRepo.save(user);
     return this.findOne(id);
+  }
+
+  async uploadPhoto(
+    file?: { buffer?: Buffer; originalname?: string; mimetype?: string },
+    request?: { protocol?: string; get?: (name: string) => string | undefined; headers?: Record<string, string | string[] | undefined> },
+  ): Promise<{ fileName: string; url: string }> {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    const mime = (file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException('Only image files are allowed');
+    }
+
+    const ext = this.resolveImageExtension(file.originalname || '', mime);
+    const fileName = `${Date.now()}-${randomUUID()}${ext}`;
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const relativeDir = `user-profiles/${year}/${month}`;
+
+    const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
+    const uploadDir = join(uploadsRoot, relativeDir);
+    await mkdir(uploadDir, { recursive: true });
+
+    await writeFile(join(uploadDir, fileName), file.buffer);
+    const relativePath = `/uploads/${relativeDir}/${fileName}`;
+    return {
+      fileName,
+      url: this.buildPublicAssetUrl(request, relativePath),
+    };
   }
 
   async generateImportTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
@@ -907,6 +947,7 @@ export class UsersService {
       companyId: user.companyId || null,
       branchId: user.branchId || null,
       phone: user.phone || null,
+      photoUrl: user.photoUrl || null,
       isActive: user.isActive,
       taskPermissions: user.taskPermissions || [],
       company: user.company
@@ -927,5 +968,44 @@ export class UsersService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  private resolveImageExtension(originalName: string, mimeType: string): string {
+    const byName = extname((originalName || '').trim().toLowerCase());
+    if (byName && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(byName)) {
+      return byName;
+    }
+
+    if (mimeType.includes('png')) return '.png';
+    if (mimeType.includes('webp')) return '.webp';
+    if (mimeType.includes('gif')) return '.gif';
+    return '.jpg';
+  }
+
+  private buildPublicAssetUrl(
+    request: { protocol?: string; get?: (name: string) => string | undefined; headers?: Record<string, string | string[] | undefined> } | undefined,
+    relativePath: string,
+  ): string {
+    let normalizedRelative = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
+
+    const envBase = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (envBase) {
+      const normalizedBase = envBase.endsWith('/api') ? envBase.slice(0, -4) : envBase;
+      return `${normalizedBase}${normalizedRelative}`;
+    }
+
+    if (!request) {
+      return normalizedRelative;
+    }
+
+    const forwardedProto = request.headers?.['x-forwarded-proto'];
+    const protocol = request.protocol || (typeof forwardedProto === 'string' ? forwardedProto.split(',')[0] : '') || 'http';
+    const host = request.get?.('host') || '';
+    if (!host) {
+      return normalizedRelative;
+    }
+
+    normalizedRelative = normalizedRelative.replace(/\/{2,}/g, '/');
+    return `${protocol}://${host}${normalizedRelative}`;
   }
 }

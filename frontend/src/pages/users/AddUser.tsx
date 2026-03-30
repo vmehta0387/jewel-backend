@@ -32,6 +32,7 @@ interface FormState {
   companyId: string;
   branchId: string;
   phone: string;
+  photoUrl: string;
   isActive: boolean;
   taskPermissions: TaskPermission[];
 }
@@ -58,6 +59,7 @@ export default function AddUser() {
         : 'COMPANY_ADMIN'
   ) as UserRole;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -70,6 +72,7 @@ export default function AddUser() {
     companyId: presetCompanyId,
     branchId: presetBranchId,
     phone: '',
+    photoUrl: '',
     isActive: true,
     taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
   });
@@ -180,6 +183,7 @@ export default function AddUser() {
         companyId: formData.companyId || null,
         branchId: formData.branchId || null,
         phone: formData.phone.trim() || null,
+        photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
         taskPermissions: formData.taskPermissions,
       });
@@ -190,6 +194,31 @@ export default function AddUser() {
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Failed to create user' });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handlePhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const formDataPayload = new FormData();
+    formDataPayload.append('file', file);
+    setUploadingPhoto(true);
+    try {
+      const response = await api.post('/users/upload-photo', formDataPayload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const photoUrl = String(response.data?.url || '');
+      setFormData((prev) => ({ ...prev, photoUrl }));
+    } catch (error: any) {
+      const message = error?.response?.data?.message;
+      setErrors((prev) => ({
+        ...prev,
+        photoUrl: Array.isArray(message) ? message.join(', ') : message || 'Failed to upload photo',
+      }));
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -249,6 +278,33 @@ export default function AddUser() {
               onChange={(event) => setFormData({ ...formData, phone: event.target.value })}
               placeholder="+1-555-0100"
             />
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo</label>
+              <div className="flex flex-wrap items-center gap-3">
+                {formData.photoUrl ? (
+                  <img
+                    src={formData.photoUrl}
+                    alt="User profile preview"
+                    className="h-16 w-16 rounded-full border border-slate-200 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-slate-300 text-xs font-semibold text-slate-500">
+                    No Photo
+                  </div>
+                )}
+                <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  {uploadingPhoto ? 'Uploading...' : formData.photoUrl ? 'Change Photo' : 'Upload Photo'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingPhoto}
+                    onChange={handlePhotoFileChange}
+                  />
+                </label>
+              </div>
+              {errors.photoUrl && <p className="mt-1 text-sm text-red-600">{errors.photoUrl}</p>}
+            </div>
             <div className="flex items-center gap-2 mt-7">
               <input
                 id="active-user"

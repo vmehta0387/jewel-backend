@@ -1,23 +1,48 @@
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clearAuthSession, getStoredUser } from '../../utils/auth';
+import api from '../../services/api';
+import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
+import Avatar from '../common/Avatar';
 
 interface HeaderProps {
   onOpenMobileSidebar?: () => void;
 }
 
-function getInitials(firstName: string, lastName: string): string {
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-}
-
 export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const navigate = useNavigate();
-  const user = getStoredUser();
+  const [user, setUser] = useState(getStoredUser());
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
-  const initials = user ? getInitials(user.firstName, user.lastName) : 'A';
 
   const handleLogout = () => {
     clearAuthSession();
     navigate('/login', { replace: true });
+  };
+
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !user) return;
+
+    const token = getToken();
+    if (!token) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploadingPhoto(true);
+    try {
+      const response = await api.post('/auth/me/photo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const nextUser = response.data;
+      setUser(nextUser);
+      saveAuthSession(token, nextUser);
+    } catch (error) {
+      console.error('Failed to upload profile photo', error);
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   return (
@@ -47,9 +72,27 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
               <span className="hidden text-[0.65rem] font-bold tracking-wider uppercase text-indigo-500 sm:block leading-tight mt-0.5">Admin Role</span>
             </div>
             
-            <div className="w-9 h-9 min-w-[36px] min-h-[36px] bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-soft ring-2 ring-white transition-transform hover:scale-105">
-              {initials}
-            </div>
+            <button
+              type="button"
+              title={uploadingPhoto ? 'Uploading...' : 'Upload profile photo'}
+              onClick={() => photoInputRef.current?.click()}
+              className="rounded-full"
+              disabled={uploadingPhoto}
+            >
+              <Avatar
+                name={displayName}
+                src={user?.photoUrl || undefined}
+                size="sm"
+                className="min-w-[36px] min-h-[36px] shadow-soft ring-2 ring-white transition-transform hover:scale-105"
+              />
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
           </div>
           
           <div className="h-6 w-px bg-slate-200 hidden sm:block relative top-0.5"></div>

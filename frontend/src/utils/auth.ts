@@ -27,6 +27,7 @@ export function getStoredUser(): AuthUser | null {
       role: parsed.role,
       companyId: parsed.companyId ?? null,
       branchId: parsed.branchId ?? null,
+      photoUrl: parsed.photoUrl ?? null,
       taskPermissions: parsed.taskPermissions ?? [],
     };
   } catch {

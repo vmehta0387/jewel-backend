@@ -7,6 +7,7 @@ import {
   Post,
   Put,
   Query,
+  Request,
   StreamableFile,
   UploadedFile,
   UseGuards,
@@ -57,6 +58,15 @@ export class UsersController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   importUsers(@UploadedFile() file: { buffer?: Buffer; originalname?: string }) {
     return this.usersService.importUsers(file);
+  }
+
+  @Post('upload-photo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  uploadPhoto(
+    @UploadedFile() file: { buffer?: Buffer; originalname?: string; mimetype?: string },
+    @Request() req: { protocol?: string; get?: (name: string) => string | undefined; headers?: Record<string, string | string[] | undefined> },
+  ) {
+    return this.usersService.uploadPhoto(file, req);
   }
 
   @Get(':id')

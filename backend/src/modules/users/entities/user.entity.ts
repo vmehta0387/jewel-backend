@@ -36,6 +36,9 @@ export class User {
   @Column({ nullable: true })
   phone: string;
 
+  @Column({ name: 'photo_url', nullable: true })
+  photoUrl: string | null;
+
   @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company;

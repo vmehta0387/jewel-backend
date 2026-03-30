@@ -8,6 +8,7 @@ export type AuthUser = {
   role: UserRole;
   companyId?: string | null;
   branchId?: string | null;
+  photoUrl?: string | null;
   taskPermissions?: string[];
 };
 
@@ -75,6 +76,7 @@ export type BranchEmployee = {
   email: string;
   firstName: string;
   lastName: string;
+  photoUrl?: string | null;
   role: UserRole;
   phone?: string | null;
   isActive: boolean;

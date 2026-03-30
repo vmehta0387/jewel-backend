@@ -9,6 +9,7 @@ export interface AuthUser {
   role: UserRole;
   companyId: string | null;
   branchId: string | null;
+  photoUrl: string | null;
   taskPermissions: TaskPermission[];
 }
 

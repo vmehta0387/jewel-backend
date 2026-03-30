@@ -1,5 +1,7 @@
 ﻿import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
+  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -11,9 +13,11 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchDesigns } from '../api/designs';
+import { uploadMyPhoto } from '../api/auth';
 
 const APP_VERSION = '1.0.0';
 
@@ -71,11 +75,12 @@ const statusLabel = (status: string): string => {
 };
 
 const BranchDashboardScreen = () => {
-  const { token, user, signOut } = useAuth();
+  const { token, user, signOut, refresh } = useAuth();
   const navigation = useNavigation<any>();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const profileBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [summary, setSummary] = useState<{
     ordersReceivedToday: number;
@@ -104,13 +109,10 @@ const BranchDashboardScreen = () => {
 
     // Week-over-week % change from trends (last 7 days vs prior 7 days)
     if (trendsRes.status === 'fulfilled') {
-      const points = trendsRes.value.points ?? [];
-      // points is last 7 days; use first 3 as "last week partial" vs last 4 as "this week partial"
-      // Better: compare sum of all 7 days vs salesThisWeek from summary
-      // We use the trends to get last week's total by summing the older half
-      const half = Math.floor(points.length / 2);
-      const lastWeekSales = points.slice(0, half).reduce((s: number, p: { sales: number }) => s + (p.sales ?? 0), 0);
-      const thisWeekSales = points.slice(half).reduce((s: number, p: { sales: number }) => s + (p.sales ?? 0), 0);
+      const salesPoints = trendsRes.value.sales ?? [];
+      const half = Math.floor(salesPoints.length / 2);
+      const lastWeekSales = salesPoints.slice(0, half).reduce((sum, value) => sum + Number(value || 0), 0);
+      const thisWeekSales = salesPoints.slice(half).reduce((sum, value) => sum + Number(value || 0), 0);
       if (lastWeekSales > 0) {
         setWeekChange(((thisWeekSales - lastWeekSales) / lastWeekSales) * 100);
       } else if (thisWeekSales > 0) {
@@ -183,6 +185,44 @@ const BranchDashboardScreen = () => {
     ? `${changePositive ? '↑' : '↓'} ${Math.abs(weekChange).toFixed(0)}% vs last week`
     : null;
 
+  const handleChangePhoto = useCallback(async () => {
+    if (!token) return;
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission needed', 'Please allow photo library access to upload a profile photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
+      const fileType = asset.mimeType || 'image/jpeg';
+
+      setUploadingPhoto(true);
+      await uploadMyPhoto(token, {
+        uri: asset.uri,
+        name: fileName,
+        type: fileType,
+      });
+      await refresh();
+      setProfileMenuVisible(false);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Could not upload profile photo.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }, [token, refresh]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -217,7 +257,11 @@ const BranchDashboardScreen = () => {
                 });
               }}
             >
-              <Ionicons name="person-circle-outline" size={24} color={TEXT_DARK} />
+              {user?.photoUrl ? (
+                <Image source={{ uri: user.photoUrl }} style={styles.headerAvatarImage} />
+              ) : (
+                <Ionicons name="person-circle-outline" size={24} color={TEXT_DARK} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -237,9 +281,13 @@ const BranchDashboardScreen = () => {
                   <View style={styles.menuBlock}>
                     <View style={styles.menuRow}>
                       <View style={styles.menuAvatar}>
-                        <Text style={styles.menuAvatarText}>
-                          {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')}
-                        </Text>
+                        {user?.photoUrl ? (
+                          <Image source={{ uri: user.photoUrl }} style={styles.menuAvatarImage} />
+                        ) : (
+                          <Text style={styles.menuAvatarText}>
+                            {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')}
+                          </Text>
+                        )}
                       </View>
                       <View style={styles.menuNameBlock}>
                         <Text style={styles.menuName}>
@@ -248,6 +296,22 @@ const BranchDashboardScreen = () => {
                         <Text style={styles.menuEmail}>{user?.email || ''}</Text>
                       </View>
                     </View>
+
+                    <View style={styles.menuInnerDivider} />
+
+                    <TouchableOpacity
+                      style={[styles.menuRow, uploadingPhoto ? styles.menuRowDisabled : null]}
+                      onPress={handleChangePhoto}
+                      disabled={uploadingPhoto}
+                    >
+                      <View style={[styles.menuIconBox, { backgroundColor: 'rgba(82,161,216,0.16)' }]}>
+                        <Ionicons name="image-outline" size={16} color="#2F5D80" />
+                      </View>
+                      <Text style={styles.menuRowText}>
+                        {uploadingPhoto ? 'Uploading...' : 'Update Photo'}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={14} color={TEXT_MUTED} style={styles.menuChevron} />
+                    </TouchableOpacity>
 
                     <View style={styles.menuInnerDivider} />
 
@@ -414,6 +478,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerAvatarImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
   modalOverlay: {
     flex: 1,
   },
@@ -446,6 +515,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     gap: 10,
   },
+  menuRowDisabled: {
+    opacity: 0.7,
+  },
   menuInnerDivider: {
     height: 1,
     backgroundColor: BORDER,
@@ -458,6 +530,12 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  menuAvatarImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
   },
   menuAvatarText: {
     fontSize: 13,

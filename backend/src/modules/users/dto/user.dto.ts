@@ -54,6 +54,10 @@ export class CreateUserDto {
   phone?: string;
 
   @IsOptional()
+  @IsString()
+  photoUrl?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsEnum(TaskPermission, { each: true })
   taskPermissions?: TaskPermission[];
@@ -96,6 +100,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string | null;
 
   @IsOptional()
   @IsArray()

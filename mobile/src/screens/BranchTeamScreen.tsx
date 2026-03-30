@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Screen from '../components/Screen';
@@ -107,11 +107,24 @@ const BranchTeamScreen = () => {
           <Card style={styles.employeeCard}>
             <View style={styles.employeeHeader}>
               <View style={styles.employeeIdentity}>
-                <Text style={styles.employeeName}>{item.firstName} {item.lastName}</Text>
-                <Text style={styles.employeeMeta}>{item.email}</Text>
-                {item.branch?.name ? (
-                  <Text style={styles.employeeMeta}>{item.branch.name}</Text>
-                ) : null}
+                <View style={styles.identityRow}>
+                  {item.photoUrl ? (
+                    <Image source={{ uri: item.photoUrl }} style={styles.employeeAvatar} />
+                  ) : (
+                    <View style={styles.employeeAvatarFallback}>
+                      <Text style={styles.employeeAvatarFallbackText}>
+                        {(item.firstName?.[0] || '') + (item.lastName?.[0] || '')}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.identityText}>
+                    <Text style={styles.employeeName}>{item.firstName} {item.lastName}</Text>
+                    <Text style={styles.employeeMeta}>{item.email}</Text>
+                    {item.branch?.name ? (
+                      <Text style={styles.employeeMeta}>{item.branch.name}</Text>
+                    ) : null}
+                  </View>
+                </View>
               </View>
               <View style={[styles.badge, item.isActive ? styles.badgeActive : styles.badgeInactive]}>
                 <Text style={[styles.badgeText, item.isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
@@ -182,6 +195,35 @@ const styles = StyleSheet.create({
   employeeIdentity: {
     flex: 1,
     paddingRight: spacing.sm,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  identityText: {
+    flex: 1,
+  },
+  employeeAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  employeeAvatarFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#EDE2D4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  employeeAvatarFallbackText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    textTransform: 'uppercase',
   },
   employeeName: {
     fontSize: 16,

@@ -21,6 +21,7 @@ export interface UserRecord {
   companyId: string | null;
   branchId: string | null;
   phone: string | null;
+  photoUrl?: string | null;
   isActive: boolean;
   taskPermissions: TaskPermission[];
   company: UserCompanySummary | null;
