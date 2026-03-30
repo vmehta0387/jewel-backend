@@ -61,15 +61,28 @@ export class AiService {
         );
 
     let candidates = results?.data || [];
-    if (candidates.length === 0) {
-      results = await this.productsService.findAll(
-        { search, page: 1, limit: baseLimit, status: 'ACTIVE' },
-        readUser,
-      );
-      candidates = results?.data || [];
+    console.log('[AI DEBUG] message:', search);
+    console.log('[AI DEBUG] inferredFilters:', JSON.stringify(inferredFilters));
+    console.log('[AI DEBUG] candidates before filter:', candidates.map((c: any) => c.jewelryGroup));
+
+    // Enforce jewelryGroup in-memory — guarantees only the requested group is returned
+    if (inferredFilters?.jewelryGroup) {
+      const targetGroup = inferredFilters.jewelryGroup.toLowerCase();
+      const filtered = candidates.filter((c: any) => {
+        const g = (c.jewelryGroup || '').toLowerCase();
+        return g === targetGroup || g === targetGroup + 's' || g + 's' === targetGroup;
+      });
+      console.log('[AI DEBUG] candidates after filter:', filtered.map((c: any) => c.jewelryGroup));
+      candidates = filtered;
     }
 
-    if (candidates.length === 0) {
+    // If a jewelryGroup filter was set but returned nothing, do NOT fall back to all designs
+    if (candidates.length === 0 && inferredFilters?.jewelryGroup) {
+      return { reply: `No ${inferredFilters.jewelryGroup} designs found.`, designs: [] };
+    }
+
+    // Only fall back to unfiltered fetch when there were NO structured filters at all
+    if (candidates.length === 0 && !inferredFilters) {
       results = await this.productsService.findAll(
         { page: 1, limit: baseLimit, status: 'ACTIVE' },
         readUser,
@@ -193,11 +206,12 @@ export class AiService {
       pendant: 'Pendant',
       earrings: 'Earrings',
       earring: 'Earrings',
+      anklet: 'Anklet',
       chain: 'Chain',
     };
 
     for (const key of Object.keys(groupMap)) {
-      if (text.includes(key)) {
+      if (new RegExp(`\\b${key}s?\\b`, 'i').test(text)) {
         filters.jewelryGroup = groupMap[key];
         break;
       }
