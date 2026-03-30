@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Pagination from '../../components/common/Pagination';
@@ -75,9 +76,15 @@ interface DesignDetail {
   id: string;
   designNo: string;
   version?: string;
+  designName?: string | null;
   jewelryGroup?: string | null;
   collection?: string | null;
   jewelrySize?: string | null;
+  designStatus?: string | null;
+  diamondType?: string | null;
+  diamondSpread?: string | null;
+  diamondWeight?: string | null;
+  diamondQuality?: string | null;
   metals?: DesignMetal[];
   gemstones?: DesignGemstone[];
   imageUrls?: string[];
@@ -202,23 +209,26 @@ function Modal({
   children: React.ReactNode;
   size?: string;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]">
-      <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/60 p-4 sm:items-center sm:p-6 backdrop-blur-sm transition-all duration-300">
+      <div className={`relative flex w-full ${size} max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]`}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
+          <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-lg font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="group flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/50 text-slate-500 transition-all hover:bg-slate-200 hover:text-slate-900"
             onClick={onClose}
             aria-label="Close"
           >
-            x
+            <svg className="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-5 sm:p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -327,13 +337,9 @@ export default function OrdersPage() {
     setBranches(response.data?.data || []);
   };
 
-  const loadOrderNumber = async (companyId?: string, branchId?: string) => {
+  const loadOrderNumber = async () => {
     try {
-      if (!companyId || !branchId) {
-        setOrderNumber('');
-        return;
-      }
-      const response = await api.get('/orders/next-order-no', { params: { companyId, branchId } });
+      const response = await api.get('/orders/next-order-no');
       setOrderNumber(response.data?.orderNumber || '');
     } catch {
       setOrderNumber('');
@@ -353,7 +359,7 @@ export default function OrdersPage() {
     if (!showAddModal) return;
     loadDesigns();
     if (!editingOrderId) {
-      loadOrderNumber(form.companyId, form.branchId);
+      loadOrderNumber();
     }
     loadPackets();
   }, [showAddModal, editingOrderId]);
@@ -375,12 +381,8 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!showAddModal) return;
     if (editingOrderId) return;
-    if (!form.companyId || !form.branchId) {
-      setOrderNumber('');
-      return;
-    }
-    loadOrderNumber(form.companyId, form.branchId);
-  }, [form.companyId, form.branchId, showAddModal, editingOrderId]);
+    loadOrderNumber();
+  }, [showAddModal, editingOrderId]);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -909,245 +911,296 @@ export default function OrdersPage() {
           }}
           size="max-w-6xl"
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <span className="text-xs text-rose-700">* Required fields</span>
-            <span className="text-sm font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <label className="text-sm font-medium text-slate-700">Design No*</label>
-              <select
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={form.designId}
-                disabled={isEditing}
-                onChange={(event) => {
-                  setPriceManuallyEdited(false);
-                  setForm((prev) => ({ ...prev, designId: event.target.value }));
-                }}
-              >
-                <option value="">Select Design</option>
-                {designOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.designNo}{option.version ? ` (${option.version})` : ''}
-                  </option>
-                ))}
-              </select>
+          <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <span className="font-semibold text-red-600">*Required fields</span>
+              <span className="font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
             </div>
 
-            <div>
-              <label className="text-sm font-medium text-slate-700">Company*</label>
-              <select
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={form.companyId}
-                disabled={isEditing}
-                onChange={(event) => {
-                  setPriceManuallyEdited(false);
-                  setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '' }));
-                }}
-              >
-                <option value="">Select Company</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.companyName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Branch*</label>
-              <select
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={form.branchId}
-                disabled={isEditing || !form.companyId}
-                onChange={(event) => {
-                  setPriceManuallyEdited(false);
-                  setForm((prev) => ({ ...prev, branchId: event.target.value }));
-                }}
-              >
-                <option value="">Select Branch</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Status*</label>
-              <select
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={form.status}
-                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
-              >
-                {orderStatusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-slate-700">Jewelry Group</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {designDetail?.jewelryGroup || '-'}
+            <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md">
+              <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">
+                General Information
               </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Collection</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {designDetail?.collection || '-'}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_2fr_1fr]">
-            <div>
-              <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {designDetail?.jewelrySize || '-'}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Metal</label>
-              <div className="mt-1 flex min-h-[42px] flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {metalsDisplay.length ? metalsDisplay.map((value) => (
-                  <span key={value} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                    {value}
-                  </span>
-                )) : <span className="text-slate-500">-</span>}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-700">Delivery Date</label>
-              <input
-                type="date"
-                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={form.deliveryDate}
-                onChange={(event) => setForm((prev) => ({ ...prev, deliveryDate: event.target.value }))}
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-xl border border-slate-200">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Stone Information</div>
-            <div className="app-table-shell">
-              <div className="app-table-scroll scrollbar-top">
-                <table className="app-table app-table-compact w-full">
-                  <thead>
-                    <tr>
-                      <th className="app-table-head-cell">Packet</th>
-                      <th className="app-table-head-cell">Stone</th>
-                      <th className="app-table-head-cell">Shape</th>
-                      <th className="app-table-head-cell">Size</th>
-                      <th className="app-table-head-cell">Color</th>
-                      <th className="app-table-head-cell">Quality</th>
-                      <th className="app-table-head-cell">Wt/Pcs</th>
-                      <th className="app-table-head-cell">Pcs</th>
-                      <th className="app-table-head-cell">Wt (Cts)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {designDetail?.gemstones?.length ? (
-                      designDetail.gemstones.map((gem, index) => (
-                        <tr key={gem.id || index} className="app-table-row">
-                          <td className="app-table-cell text-sm text-slate-700">{resolvePacketName(gem.packetId)}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.stone || '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.shape || '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.size || '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.color || '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.quality || '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtPerPcs)}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{gem.pcs ?? '-'}</td>
-                          <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtInCts)}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={9} className="app-table-empty">No stone information</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-            <div>
-              <div className="text-sm font-semibold text-slate-800 mb-2">Images & Videos</div>
-              {mediaUrls.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {mediaUrls.map((url, index) => (
-                    <MediaPreview key={`${url}-${index}`} url={url} alt={`${selectedDesignLabel}-${index}`} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-36 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
-                  No media available for this design.
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium text-slate-700">Price</label>
-                  <div className="mt-1 flex">
-                    <input
-                      type="number"
-                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.price}
+              <div className="space-y-4 p-4">
+                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Design No*</label>
+                    <select
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.designId}
+                      disabled={isEditing}
                       onChange={(event) => {
-                        setPriceManuallyEdited(true);
-                        setForm((prev) => ({ ...prev, price: event.target.value }));
+                        setPriceManuallyEdited(false);
+                        setForm((prev) => ({ ...prev, designId: event.target.value }));
                       }}
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                    >
+                      <option value="">Select Design</option>
+                      {designOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.designNo}{option.version ? ` (${option.version})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Company*</label>
+                    <select
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.companyId}
+                      disabled={isEditing}
+                      onChange={(event) => {
+                        setPriceManuallyEdited(false);
+                        setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '' }));
+                      }}
+                    >
+                      <option value="">Select Company</option>
+                      {companies.map((company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.companyName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Branch*</label>
+                    <select
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.branchId}
+                      disabled={isEditing || !form.companyId}
+                      onChange={(event) => {
+                        setPriceManuallyEdited(false);
+                        setForm((prev) => ({ ...prev, branchId: event.target.value }));
+                      }}
+                    >
+                      <option value="">Select Branch</option>
+                      {branches.map((branch) => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Status*</label>
+                    <select
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.status}
+                      onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                    >
+                      {orderStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-slate-700">No. of Pcs</label>
-                  <input
-                    type="number"
-                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={form.quantity}
-                    onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))}
-                  />
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Category</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.jewelryGroup || '-'}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Sub Category</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.collection || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.jewelrySize || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Design Status</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.designStatus || '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Diamond Type</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.diamondType || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.diamondSpread || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.diamondWeight || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {designDetail?.diamondQuality || '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Metal</label>
+                    <div className="mt-1 flex min-h-[42px] flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {metalsDisplay.length ? metalsDisplay.map((value) => (
+                        <span key={value} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                          {value}
+                        </span>
+                      )) : <span className="text-slate-500">-</span>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Delivery Date</label>
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.deliveryDate}
+                      onChange={(event) => setForm((prev) => ({ ...prev, deliveryDate: event.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-cyan-200/70 bg-white shadow-sm ring-1 ring-cyan-900/5">
+              <div className="border-b border-cyan-200/60 bg-cyan-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan-800">
+                Stone Information
+              </div>
+              <div className="app-table-shell">
+                <div className="app-table-scroll scrollbar-top">
+                  <table className="app-table app-table-compact w-full">
+                    <thead>
+                      <tr>
+                        <th className="app-table-head-cell">Packet</th>
+                        <th className="app-table-head-cell">Stone</th>
+                        <th className="app-table-head-cell">Shape</th>
+                        <th className="app-table-head-cell">Size</th>
+                        <th className="app-table-head-cell">Color</th>
+                        <th className="app-table-head-cell">Quality</th>
+                        <th className="app-table-head-cell">Wt/Pcs</th>
+                        <th className="app-table-head-cell">Pcs</th>
+                        <th className="app-table-head-cell">Wt (Cts)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {designDetail?.gemstones?.length ? (
+                        designDetail.gemstones.map((gem, index) => (
+                          <tr key={gem.id || index} className="app-table-row">
+                            <td className="app-table-cell text-sm text-slate-700">{resolvePacketName(gem.packetId)}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.stone || '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.shape || '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.size || '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.color || '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.quality || '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtPerPcs)}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{gem.pcs ?? '-'}</td>
+                            <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtInCts)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={9} className="app-table-empty">No stone information</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
+                <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
+                  Images & Videos
+                </div>
+                <div className="p-4">
+                  {mediaUrls.length ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {mediaUrls.map((url, index) => (
+                        <MediaPreview key={`${url}-${index}`} url={url} alt={`${selectedDesignLabel}-${index}`} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-36 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
+                      No media available for this design.
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium text-slate-700">Short Description</label>
-                  <textarea
-                    className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={form.shortDescription}
-                    onChange={(event) => setForm((prev) => ({ ...prev, shortDescription: event.target.value }))}
-                  />
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
+                <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
+                  Order Pricing & Notes
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-slate-700">Notes</label>
-                  <textarea
-                    className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={form.notes}
-                    onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                  />
+                <div className="space-y-4 p-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Price</label>
+                      <div className="mt-1 flex">
+                        <input
+                          type="number"
+                          className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          value={form.price}
+                          onChange={(event) => {
+                            setPriceManuallyEdited(true);
+                            setForm((prev) => ({ ...prev, price: event.target.value }));
+                          }}
+                        />
+                        <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">No. of Pcs</label>
+                      <input
+                        type="number"
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.quantity}
+                        onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Short Description</label>
+                      <textarea
+                        className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.shortDescription}
+                        onChange={(event) => setForm((prev) => ({ ...prev, shortDescription: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Notes</label>
+                      <textarea
+                        className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.notes}
+                        onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
+          <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-4">
             <Button
               variant="secondary"
               type="button"
@@ -1190,13 +1243,13 @@ export default function OrdersPage() {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Jewelry Group</label>
+              <label className="text-sm font-medium text-slate-700">Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.jewelryGroup || '-'}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Collection</label>
+              <label className="text-sm font-medium text-slate-700">Sub Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.collection || '-'}
               </div>
@@ -1205,6 +1258,36 @@ export default function OrdersPage() {
               <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.jewelrySize || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Design Status</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewDesign?.designStatus || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Diamond Type</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewDesign?.diamondType || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewDesign?.diamondSpread || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewDesign?.diamondWeight || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewDesign?.diamondQuality || '-'}
               </div>
             </div>
             <div>

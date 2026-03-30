@@ -2119,7 +2119,7 @@ export default function DesignMastersPage() {
       </Card>
 
       <Card>
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{selectedConfig.label} List</h2>
             <p className="text-xs text-slate-500">
@@ -2127,27 +2127,46 @@ export default function DesignMastersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" variant="secondary" onClick={handleDownloadTemplate}>
-              Template
-            </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={handleExport}>
-              Export Excel
-            </Button>
-            <Button
+            <button
               type="button"
-              size="sm"
-              variant="secondary"
+              onClick={handleDownloadTemplate}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+            >
+              Template
+            </button>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+            >
+              Export Excel
+            </button>
+            <button
+              type="button"
               disabled={importing}
               onClick={() => importInputRef.current?.click()}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {importing ? 'Importing...' : 'Import Excel'}
-            </Button>
-            <Button type="button" size="sm" variant={viewInactive ? 'secondary' : 'danger'} onClick={() => setViewInactive((prev) => !prev)}>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewInactive((prev) => !prev)}
+              className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
+                viewInactive
+                  ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-500/10'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
               {viewInactive ? 'View Active' : 'View Inactive'}
-            </Button>
-            <Button type="button" size="sm" onClick={openCreate}>
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
+            >
               + {selectedConfig.label}
-            </Button>
+            </button>
           </div>
         </div>
         <input
@@ -2158,20 +2177,34 @@ export default function DesignMastersPage() {
           onChange={handleImportChange}
         />
 
-        <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-2 md:flex-row">
-          <input
-            className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder={isPacketType ? 'Search packet name, stone, shape, size, color, quality' : `Search ${selectedConfig.label} name, alias, or description`}
-          />
+        <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-4 py-2.5 text-sm text-slate-900 shadow-sm transition-all focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder={isPacketType ? 'Search packet name, stone, shape, size, color, quality' : `Search ${selectedConfig.label} name, alias, or description`}
+            />
+          </div>
           <div className="flex gap-2">
-            <Button type="submit" size="sm">
+            <button
+              type="submit"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
+            >
               Search
-            </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={clearSearch}>
+            </button>
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+            >
               Clear
-            </Button>
+            </button>
           </div>
         </form>
 

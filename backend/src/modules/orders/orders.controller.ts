@@ -26,8 +26,8 @@ export class OrdersController {
   }
 
   @Get('next-order-no')
-  getNextOrderNumber(@Query('companyId') companyId?: string, @Query('branchId') branchId?: string) {
-    return this.ordersService.getNextOrderNumber(companyId, branchId);
+  getNextOrderNumber() {
+    return this.ordersService.getNextOrderNumber();
   }
 
   @Get('price-preview')

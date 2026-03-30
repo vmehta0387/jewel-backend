@@ -3784,7 +3784,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 {isColumnVisible('status') ? <th className="app-table-head-cell">Status</th> : null}
                 {isColumnVisible('updatedBy') ? <th className="app-table-head-cell">Updated By</th> : null}
                 {isColumnVisible('modifiedAt') ? <th className="app-table-head-cell">Modified</th> : null}
-                <th className="app-table-head-cell text-right pr-4">Action</th>
+                <th className="app-table-head-cell">Action</th>
               </tr>
               </thead>
               <tbody>
@@ -3896,8 +3896,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </td>
                   ) : null}
 
-                  <td className="py-4 pl-3 pr-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
+                  <td className="py-4 px-3 text-left">
+                    <div className="flex items-center justify-start gap-1.5">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       <Action label={versionsLabel} onClick={() => toggleVersionsForDesign(row.designNo)} />

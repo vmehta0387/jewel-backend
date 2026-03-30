@@ -17,21 +17,25 @@ EXECUTE design_primary_stmt;
 DEALLOCATE PREPARE design_primary_stmt;
 
 UPDATE designs d
+LEFT JOIN (
+  SELECT
+    p.id,
+    (CASE
+       WHEN p.design_no REGEXP '-V[0-9]+$' THEN SUBSTRING_INDEX(p.design_no, '-V', 1)
+       ELSE p.design_no
+     END) AS base_no,
+    p.company_id,
+    p.branch_id
+  FROM designs p
+  WHERE p.is_primary = 1
+) prim
+  ON prim.base_no = (CASE
+                       WHEN d.design_no REGEXP '-V[0-9]+$' THEN SUBSTRING_INDEX(d.design_no, '-V', 1)
+                       ELSE d.design_no
+                     END)
+  AND prim.company_id <=> d.company_id
+  AND prim.branch_id <=> d.branch_id
 SET d.is_primary = 1
 WHERE d.is_primary = 0
   AND d.version = 'V1'
-  AND NOT EXISTS (
-    SELECT 1
-    FROM designs p
-    WHERE p.is_primary = 1
-      AND (CASE
-             WHEN p.design_no REGEXP '-V[0-9]+$' THEN SUBSTRING_INDEX(p.design_no, '-V', 1)
-             ELSE p.design_no
-           END) =
-          (CASE
-             WHEN d.design_no REGEXP '-V[0-9]+$' THEN SUBSTRING_INDEX(d.design_no, '-V', 1)
-             ELSE d.design_no
-           END)
-      AND p.company_id <=> d.company_id
-      AND p.branch_id <=> d.branch_id
-  );
+  AND prim.id IS NULL;

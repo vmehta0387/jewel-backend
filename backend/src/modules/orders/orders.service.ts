@@ -19,64 +19,16 @@ export class OrdersService {
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
   ) {}
 
-  async getNextOrderNumber(companyId?: string, branchId?: string): Promise<{ orderNumber: string }> {
-    const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const prefix = `JB${yy}${mm}`;
-
-    const normalizedCompanyId = companyId?.trim();
-    const normalizedBranchId = branchId?.trim();
-    let companyCode = '';
-    let branchCode = '';
-
-    if (normalizedCompanyId) {
-      const company = await this.companyRepo.findOne({ where: { id: normalizedCompanyId } });
-      if (!company) {
-        throw new BadRequestException('Selected company not found');
-      }
-      companyCode = (company.companyCode || '').trim().toUpperCase();
-    }
-
-    if (normalizedBranchId) {
-      const branch = await this.branchRepo.findOne({ where: { id: normalizedBranchId } });
-      if (!branch) {
-        throw new BadRequestException('Selected branch not found');
-      }
-      branchCode = (branch.code || '').trim().toUpperCase();
-      if (normalizedCompanyId && branch.companyId !== normalizedCompanyId) {
-        throw new BadRequestException('Selected branch does not belong to the company');
-      }
-    }
-
-    if (!companyCode || !branchCode) {
-      throw new BadRequestException('Company code and branch code are required for order number');
-    }
-
-    const suffix = companyCode && branchCode ? `-${companyCode}-${branchCode}` : '';
-    const likePattern = `${prefix}%${suffix}`;
-    const last = await this.orderRepo
+  async getNextOrderNumber(): Promise<{ orderNumber: string }> {
+    const raw = await this.orderRepo
       .createQueryBuilder('order')
-      .where('order.orderNumber LIKE :pattern', { pattern: likePattern })
-      .orderBy('order.orderNumber', 'DESC')
-      .getOne();
+      .select('MAX(CAST(SUBSTRING(order.orderNumber, 4) AS UNSIGNED))', 'maxSeq')
+      .where("order.orderNumber REGEXP '^OR-[0-9]+$'")
+      .getRawOne<{ maxSeq: string | null }>();
 
-    const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    let seq = 1;
-    if (last?.orderNumber) {
-      const normalized = last.orderNumber.trim().toUpperCase();
-      const match = new RegExp(`^${escapeRegex(prefix)}(\\d+)${escapeRegex(suffix)}$`).exec(normalized);
-      if (match) {
-        const parsed = Number.parseInt(match[1], 10);
-        if (Number.isFinite(parsed)) {
-          seq = parsed + 1;
-        }
-      }
-    }
-
-    const baseNumber = `${prefix}${String(seq).padStart(3, '0')}`;
-    return { orderNumber: suffix ? `${baseNumber}${suffix}` : baseNumber };
+    const currentMax = Number.parseInt(raw?.maxSeq || '0', 10);
+    const next = Number.isFinite(currentMax) ? currentMax + 1 : 1;
+    return { orderNumber: `OR-${String(next).padStart(4, '0')}` };
   }
 
   async findAll(query: FindOrdersQueryDto, requester: AuthUser) {
@@ -204,10 +156,7 @@ export class OrdersService {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const { orderNumber } = await this.getNextOrderNumber(
-        scope.companyId ?? undefined,
-        scope.branchId ?? undefined,
-      );
+      const { orderNumber } = await this.getNextOrderNumber();
       const order = this.orderRepo.create({
         orderNumber,
         companyId: scope.companyId ?? null,
