@@ -60,6 +60,7 @@ export default function AddUser() {
   ) as UserRole;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -209,8 +210,11 @@ export default function AddUser() {
       const response = await api.post('/users/upload-photo', formDataPayload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const photoUrl = String(response.data?.url || '');
-      setFormData((prev) => ({ ...prev, photoUrl }));
+      const photoStoragePath = String(response.data?.url || '');
+      const previewUrl = String(response.data?.previewUrl || response.data?.url || '');
+      setFormData((prev) => ({ ...prev, photoUrl: photoStoragePath }));
+      setPhotoPreviewUrl(previewUrl);
+      setErrors((prev) => ({ ...prev, photoUrl: '' }));
     } catch (error: any) {
       const message = error?.response?.data?.message;
       setErrors((prev) => ({
@@ -283,7 +287,7 @@ export default function AddUser() {
               <div className="flex flex-wrap items-center gap-3">
                 {formData.photoUrl ? (
                   <img
-                    src={formData.photoUrl}
+                    src={photoPreviewUrl || formData.photoUrl}
                     alt="User profile preview"
                     className="h-16 w-16 rounded-full border border-slate-200 object-cover"
                   />

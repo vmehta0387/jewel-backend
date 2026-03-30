@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
@@ -12,6 +14,8 @@ import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 
 @Injectable()
 export class AuthService {
+  private s3Client: S3Client | null = null;
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -31,7 +35,7 @@ export class AuthService {
 
     return {
       accessToken: await this.jwtService.signAsync(payload),
-      user: this.toAuthUser(user),
+      user: await this.toAuthUser(user),
     };
   }
 
@@ -70,13 +74,30 @@ export class AuthService {
     const now = new Date();
     const year = String(now.getFullYear());
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const relativeDir = `user-profiles/${year}/${month}`;
-    const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
-    const uploadDir = join(uploadsRoot, relativeDir);
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(join(uploadDir, fileName), file.buffer);
+    const day = String(now.getDate()).padStart(2, '0');
+    const relativeDir = `user-profiles/${year}/${month}/${day}`;
 
-    user.photoUrl = this.buildPublicAssetUrl(request, `/uploads/${relativeDir}/${fileName}`);
+    const s3Config = this.getS3Client();
+    if (s3Config) {
+      const { client, bucket } = s3Config;
+      const key = `${relativeDir}/${fileName}`;
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: mime || 'image/jpeg',
+        }),
+      );
+      user.photoUrl = `s3://${bucket}/${key}`;
+    } else {
+      const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
+      const uploadDir = join(uploadsRoot, relativeDir);
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(join(uploadDir, fileName), file.buffer);
+      user.photoUrl = this.buildPublicAssetUrl(request, `/uploads/${relativeDir}/${fileName}`);
+    }
+
     await this.userRepo.save(user);
     return this.toAuthUser(user);
   }
@@ -106,7 +127,7 @@ export class AuthService {
     return user;
   }
 
-  private toAuthUser(user: User): AuthUser {
+  private async toAuthUser(user: User): Promise<AuthUser> {
     return {
       id: user.id,
       email: user.email,
@@ -115,7 +136,7 @@ export class AuthService {
       role: user.role,
       companyId: this.resolveCompanyId(user),
       branchId: user.branchId || null,
-      photoUrl: user.photoUrl || null,
+      photoUrl: await this.resolvePhotoUrl(user.photoUrl || null),
       taskPermissions: user.taskPermissions || [],
     };
   }
@@ -155,5 +176,118 @@ export class AuthService {
       return normalizedRelative;
     }
     return `${protocol}://${host}${normalizedRelative}`;
+  }
+
+  private optionalText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+
+  private getS3Config(): {
+    bucket: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  } | null {
+    const bucket = this.optionalText(process.env.AWS_S3_BUCKET);
+    const region = this.optionalText(process.env.AWS_REGION);
+    const accessKeyId = this.optionalText(process.env.AWS_ACCESS_KEY_ID) || this.optionalText(process.env.AWS_ACCESS_KEY);
+    const secretAccessKey =
+      this.optionalText(process.env.AWS_SECRET_ACCESS_KEY) || this.optionalText(process.env.AWS_SECRET_KEY);
+
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      return null;
+    }
+
+    return { bucket, region, accessKeyId, secretAccessKey };
+  }
+
+  private getS3Client(): { client: S3Client; bucket: string } | null {
+    const config = this.getS3Config();
+    if (!config) {
+      return null;
+    }
+
+    if (!this.s3Client) {
+      const endpoint = this.optionalText(process.env.AWS_S3_ENDPOINT);
+      this.s3Client = new S3Client({
+        region: config.region,
+        endpoint: endpoint || undefined,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
+    }
+
+    return { client: this.s3Client, bucket: config.bucket };
+  }
+
+  private getSignedUrlExpiresIn(): number {
+    const raw = this.optionalText(process.env.AWS_S3_SIGNED_URL_EXPIRES);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+    return 3600;
+  }
+
+  private parseS3KeyFromUrl(value: string, bucket: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('s3://')) {
+      const withoutScheme = trimmed.slice(5);
+      const [bucketName, ...rest] = withoutScheme.split('/');
+      if (!bucketName || rest.length === 0) return null;
+      if (bucketName !== bucket) return null;
+      return rest.join('/');
+    }
+
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(trimmed);
+    } catch {
+      return null;
+    }
+
+    const host = parsedUrl.hostname;
+    const path = parsedUrl.pathname.replace(/^\/+/, '');
+
+    if (host.startsWith(`${bucket}.s3`)) {
+      return path || null;
+    }
+
+    if (host.startsWith('s3') && path.startsWith(`${bucket}/`)) {
+      return path.slice(bucket.length + 1) || null;
+    }
+
+    return null;
+  }
+
+  private async resolvePhotoUrl(value: string | null): Promise<string | null> {
+    if (!value) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return trimmed;
+    }
+
+    const { client, bucket } = s3Config;
+    const key = this.parseS3KeyFromUrl(trimmed, bucket);
+    if (!key) {
+      return trimmed;
+    }
+
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    return getSignedUrl(client, command, { expiresIn: this.getSignedUrlExpiresIn() });
   }
 }

@@ -22,6 +22,7 @@ export interface UserRecord {
   branchId: string | null;
   phone: string | null;
   photoUrl?: string | null;
+  photoStoragePath?: string | null;
   isActive: boolean;
   taskPermissions: TaskPermission[];
   company: UserCompanySummary | null;

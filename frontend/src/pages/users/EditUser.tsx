@@ -52,6 +52,7 @@ export default function EditUser() {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -102,13 +103,14 @@ export default function EditUser() {
         companyId: user.companyId || '',
         branchId: user.branchId || '',
         phone: user.phone || '',
-        photoUrl: user.photoUrl || '',
+        photoUrl: user.photoStoragePath || user.photoUrl || '',
         isActive: user.isActive,
         taskPermissions:
           user.taskPermissions && user.taskPermissions.length > 0
             ? user.taskPermissions
             : DEFAULT_TASK_PERMISSIONS_BY_ROLE[user.role],
       });
+      setPhotoPreviewUrl(user.photoUrl || user.photoStoragePath || '');
 
       if (user.companyId && roleNeedsBranch(user.role)) {
         await fetchBranches(user.companyId);
@@ -232,8 +234,10 @@ export default function EditUser() {
       const response = await api.post('/users/upload-photo', formDataPayload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const photoUrl = String(response.data?.url || '');
-      setFormData((prev) => ({ ...prev, photoUrl }));
+      const photoStoragePath = String(response.data?.url || '');
+      const previewUrl = String(response.data?.previewUrl || response.data?.url || '');
+      setFormData((prev) => ({ ...prev, photoUrl: photoStoragePath }));
+      setPhotoPreviewUrl(previewUrl);
       setErrors((prev) => ({ ...prev, photoUrl: '' }));
     } catch (error: any) {
       const message = error?.response?.data?.message;
@@ -310,7 +314,7 @@ export default function EditUser() {
               <div className="flex flex-wrap items-center gap-3">
                 {formData.photoUrl ? (
                   <img
-                    src={formData.photoUrl}
+                    src={photoPreviewUrl || formData.photoUrl}
                     alt="User profile preview"
                     className="h-16 w-16 rounded-full border border-slate-200 object-cover"
                   />

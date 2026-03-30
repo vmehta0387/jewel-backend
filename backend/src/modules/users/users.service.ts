@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
@@ -31,6 +33,7 @@ export interface UserResponse {
   branchId: string | null;
   phone: string | null;
   photoUrl: string | null;
+  photoStoragePath: string | null;
   isActive: boolean;
   taskPermissions: TaskPermission[];
   company: {
@@ -67,6 +70,8 @@ interface UserImportRow {
 
 @Injectable()
 export class UsersService {
+  private s3Client: S3Client | null = null;
+
   constructor(
     @InjectRepository(User)
     private userRepo: Repository<User>,
@@ -154,7 +159,9 @@ export class UsersService {
 
     const users = await usersQuery.getMany();
     const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
-    return users.map((user) => this.toResponse(user, managedCompaniesMap.get(user.id) || []));
+    return Promise.all(
+      users.map((user) => this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || [])),
+    );
   }
 
   async findOne(id: string): Promise<UserResponse> {
@@ -168,7 +175,7 @@ export class UsersService {
     }
 
     const managedCompaniesMap = await this.getManagedCompaniesMap([user.id]);
-    return this.toResponse(user, managedCompaniesMap.get(user.id) || []);
+    return this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || []);
   }
 
   async create(dto: CreateUserDto): Promise<UserResponse> {
@@ -188,7 +195,7 @@ export class UsersService {
       companyId: scopedOrg.companyId,
       branchId: scopedOrg.branchId,
       phone: dto.phone?.trim() || null,
-      photoUrl: dto.photoUrl?.trim() || null,
+      photoUrl: this.normalizePhotoStoragePath(dto.photoUrl?.trim() || null),
       isActive: dto.isActive ?? true,
       taskPermissions: this.normalizePermissions(dto.taskPermissions, dto.role),
     });
@@ -224,7 +231,7 @@ export class UsersService {
     }
 
     if (dto.photoUrl !== undefined) {
-      user.photoUrl = dto.photoUrl?.trim() || null;
+      user.photoUrl = this.normalizePhotoStoragePath(dto.photoUrl?.trim() || null);
     }
 
     if (dto.isActive !== undefined) {
@@ -270,7 +277,7 @@ export class UsersService {
   async uploadPhoto(
     file?: { buffer?: Buffer; originalname?: string; mimetype?: string },
     request?: { protocol?: string; get?: (name: string) => string | undefined; headers?: Record<string, string | string[] | undefined> },
-  ): Promise<{ fileName: string; url: string }> {
+  ): Promise<{ fileName: string; url: string; previewUrl: string }> {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Image file is required');
     }
@@ -285,7 +292,30 @@ export class UsersService {
     const now = new Date();
     const year = String(now.getFullYear());
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const relativeDir = `user-profiles/${year}/${month}`;
+    const day = String(now.getDate()).padStart(2, '0');
+    const relativeDir = `user-profiles/${year}/${month}/${day}`;
+
+    const s3Config = this.getS3Client();
+    if (s3Config) {
+      const { client, bucket } = s3Config;
+      const key = `${relativeDir}/${fileName}`;
+
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: mime || 'image/jpeg',
+        }),
+      );
+
+      const storagePath = `s3://${bucket}/${key}`;
+      return {
+        fileName,
+        url: storagePath,
+        previewUrl: await this.createSignedUrl(client, bucket, key),
+      };
+    }
 
     const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
     const uploadDir = join(uploadsRoot, relativeDir);
@@ -293,9 +323,11 @@ export class UsersService {
 
     await writeFile(join(uploadDir, fileName), file.buffer);
     const relativePath = `/uploads/${relativeDir}/${fileName}`;
+    const publicUrl = this.buildPublicAssetUrl(request, relativePath);
     return {
       fileName,
-      url: this.buildPublicAssetUrl(request, relativePath),
+      url: publicUrl,
+      previewUrl: publicUrl,
     };
   }
 
@@ -479,7 +511,9 @@ export class UsersService {
     });
 
     const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
-    return users.map((user) => this.toResponse(user, managedCompaniesMap.get(user.id) || []));
+    return Promise.all(
+      users.map((user) => this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || [])),
+    );
   }
 
   async createBranchEmployee(dto: CreateBranchEmployeeDto, requester: AuthUser): Promise<UserResponse> {
@@ -948,6 +982,7 @@ export class UsersService {
       branchId: user.branchId || null,
       phone: user.phone || null,
       photoUrl: user.photoUrl || null,
+      photoStoragePath: user.photoUrl || null,
       isActive: user.isActive,
       taskPermissions: user.taskPermissions || [],
       company: user.company
@@ -967,6 +1002,17 @@ export class UsersService {
         : null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  }
+
+  private async mapToUserResponse(
+    user: User,
+    managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+  ): Promise<UserResponse> {
+    const response = this.toResponse(user, managedCompanies);
+    return {
+      ...response,
+      photoUrl: await this.resolveUserPhotoUrl(response.photoStoragePath),
     };
   }
 
@@ -1007,5 +1053,136 @@ export class UsersService {
 
     normalizedRelative = normalizedRelative.replace(/\/{2,}/g, '/');
     return `${protocol}://${host}${normalizedRelative}`;
+  }
+
+  private optionalText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+
+  private getS3Config(): {
+    bucket: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  } | null {
+    const bucket = this.optionalText(process.env.AWS_S3_BUCKET);
+    const region = this.optionalText(process.env.AWS_REGION);
+    const accessKeyId = this.optionalText(process.env.AWS_ACCESS_KEY_ID) || this.optionalText(process.env.AWS_ACCESS_KEY);
+    const secretAccessKey =
+      this.optionalText(process.env.AWS_SECRET_ACCESS_KEY) || this.optionalText(process.env.AWS_SECRET_KEY);
+
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      return null;
+    }
+
+    return { bucket, region, accessKeyId, secretAccessKey };
+  }
+
+  private getS3Client(): { client: S3Client; bucket: string } | null {
+    const config = this.getS3Config();
+    if (!config) {
+      return null;
+    }
+
+    if (!this.s3Client) {
+      const endpoint = this.optionalText(process.env.AWS_S3_ENDPOINT);
+      this.s3Client = new S3Client({
+        region: config.region,
+        endpoint: endpoint || undefined,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
+    }
+
+    return { client: this.s3Client, bucket: config.bucket };
+  }
+
+  private getSignedUrlExpiresIn(): number {
+    const raw = this.optionalText(process.env.AWS_S3_SIGNED_URL_EXPIRES);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+    return 3600;
+  }
+
+  private parseS3KeyFromUrl(value: string, bucket: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('s3://')) {
+      const withoutScheme = trimmed.slice(5);
+      const [bucketName, ...rest] = withoutScheme.split('/');
+      if (!bucketName || rest.length === 0) return null;
+      if (bucketName !== bucket) return null;
+      return rest.join('/');
+    }
+
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(trimmed);
+    } catch {
+      return null;
+    }
+
+    const host = parsedUrl.hostname;
+    const path = parsedUrl.pathname.replace(/^\/+/, '');
+
+    if (host.startsWith(`${bucket}.s3`)) {
+      return path || null;
+    }
+
+    if (host.startsWith('s3') && path.startsWith(`${bucket}/`)) {
+      return path.slice(bucket.length + 1) || null;
+    }
+
+    return null;
+  }
+
+  private async createSignedUrl(client: S3Client, bucket: string, key: string): Promise<string> {
+    const expiresIn = this.getSignedUrlExpiresIn();
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    return getSignedUrl(client, command, { expiresIn });
+  }
+
+  private async resolveUserPhotoUrl(value: string | null | undefined): Promise<string | null> {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return trimmed;
+    }
+
+    const { client, bucket } = s3Config;
+    const key = this.parseS3KeyFromUrl(trimmed, bucket);
+    if (!key) {
+      return trimmed;
+    }
+
+    return this.createSignedUrl(client, bucket, key);
+  }
+
+  private normalizePhotoStoragePath(value: string | null | undefined): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) {
+      return trimmed;
+    }
+
+    const key = this.parseS3KeyFromUrl(trimmed, s3Config.bucket);
+    if (!key) {
+      return trimmed;
+    }
+
+    return `s3://${s3Config.bucket}/${key}`;
   }
 }
