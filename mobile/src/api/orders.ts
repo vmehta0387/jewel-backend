@@ -67,6 +67,6 @@ export const createOrder = (token: string, payload: CreateOrderPayload) =>
 
 export const updateOrder = (token: string, id: string, payload: Partial<CreateOrderPayload>) =>
   apiRequest<Order>(`/orders/${id}`, {
-    method: 'PATCH',
+    method: 'PUT',
     body: JSON.stringify(payload),
   }, token);

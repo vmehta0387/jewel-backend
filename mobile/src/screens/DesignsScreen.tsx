@@ -102,7 +102,7 @@ const keepPrimaryDesignsOnly = (rows: Design[]) => {
 const DesignsScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
-  const numColumns = 2;
+  const numColumns = 1;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -331,7 +331,7 @@ const DesignsScreen = () => {
         keyExtractor={(item) => item.id}
         numColumns={numColumns}
         renderItem={renderDesignCard}
-        columnWrapperStyle={styles.gridRow}
+        columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         initialNumToRender={6}
@@ -451,7 +451,8 @@ const styles = StyleSheet.create({
     marginBottom: Platform.OS === 'android' ? 10 : 14,
   },
   cardTouchable: {
-    width: '48.3%',
+    width: '100%',
+    marginBottom: Platform.OS === 'android' ? 10 : 14,
   },
   designCard: {
     backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)',
@@ -493,7 +494,7 @@ const styles = StyleSheet.create({
     color: '#8a4a4a',
   },
   imageShell: {
-    height: Platform.OS === 'android' ? 98 : 128,
+    height: Platform.OS === 'android' ? 146 : 186,
     borderRadius: 18,
     backgroundColor: '#f6efe7',
     overflow: 'hidden',

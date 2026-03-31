@@ -124,7 +124,19 @@ export class OrdersService {
     }
 
     this.assertReadScope(order, requester);
-    return order;
+    const primaryImage = Array.isArray(order.design?.imageUrls)
+      ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
+      : null;
+    const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
+
+    return {
+      ...order,
+      companyName: order.company?.companyName ?? null,
+      branchName: order.branch?.name ?? null,
+      designNo: order.design?.designNo ?? null,
+      designVersion: order.design?.version ?? null,
+      designImageUrl,
+    };
   }
 
   async create(dto: CreateOrderDto, requester: AuthUser) {
@@ -178,7 +190,7 @@ export class OrdersService {
         branchId: scope.branchId ?? null,
         designId: dto.designId ?? null,
         salesRepId: requester.id,
-        deliveryDate: dto.deliveryDate?.trim() || null,
+        deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate),
         quantity: dto.quantity ?? 1,
         price: pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
@@ -255,7 +267,7 @@ export class OrdersService {
       order.branchId = scope.branchId ?? null;
     }
     if (dto.deliveryDate !== undefined) {
-      order.deliveryDate = dto.deliveryDate?.trim() || null;
+      order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate);
     }
     if (dto.quantity !== undefined) {
       order.quantity = dto.quantity;
@@ -599,6 +611,52 @@ export class OrdersService {
   private toNumber(value: unknown): number {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private normalizeFutureDeliveryDate(value?: string | null): string | null {
+    const trimmed = value?.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const dmyMatch = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+
+    let year = 0;
+    let month = 0;
+    let day = 0;
+
+    if (isoMatch) {
+      year = Number.parseInt(isoMatch[1], 10);
+      month = Number.parseInt(isoMatch[2], 10);
+      day = Number.parseInt(isoMatch[3], 10);
+    } else if (dmyMatch) {
+      day = Number.parseInt(dmyMatch[1], 10);
+      month = Number.parseInt(dmyMatch[2], 10);
+      year = Number.parseInt(dmyMatch[3], 10);
+    } else {
+      throw new BadRequestException('Delivery date must be in YYYY-MM-DD format');
+    }
+
+    const parsed = new Date(year, month - 1, day);
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      throw new BadRequestException('Invalid delivery date');
+    }
+
+    parsed.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (parsed.getTime() < today.getTime()) {
+      throw new BadRequestException('Expected delivery date cannot be in the past');
+    }
+
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
   private roundMoney(value: number): number {

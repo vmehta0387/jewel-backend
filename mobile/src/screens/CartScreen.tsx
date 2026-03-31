@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
+import CompactDatePickerModal from '../components/CompactDatePickerModal';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { createOrder } from '../api/orders';
@@ -30,6 +30,13 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 
+const toYyyyMmDd = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const CartScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const insets = useSafeAreaInsets();
@@ -38,6 +45,8 @@ const CartScreen = () => {
 
   const [shortDescription, setShortDescription] = useState('');
   const [notes, setNotes] = useState('');
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +67,7 @@ const CartScreen = () => {
 
     const normalizedShortDescription = shortDescription.trim();
     const normalizedNotes = notes.trim();
+    const normalizedExpectedDeliveryDate = expectedDeliveryDate ? toYyyyMmDd(expectedDeliveryDate) : '';
 
     setPlacingOrder(true);
     setError(null);
@@ -69,6 +79,7 @@ const CartScreen = () => {
           designId: item.designId,
           quantity: item.quantity,
           price: Number(item.unitPrice || 0),
+          deliveryDate: normalizedExpectedDeliveryDate || undefined,
           shortDescription: normalizedShortDescription || undefined,
           notes: normalizedNotes || undefined,
           status: user.role === 'BRANCH_MANAGER' ? 'APPROVED' : 'PENDING_APPROVAL',
@@ -159,6 +170,19 @@ const CartScreen = () => {
           <View style={styles.checkoutCard}>
             <Text style={styles.checkoutTitle}>Checkout</Text>
             <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>Expected Delivery Date</Text>
+              <TouchableOpacity
+                style={styles.datePickerTrigger}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.9}
+              >
+                <Text style={[styles.datePickerText, !expectedDeliveryDate ? styles.datePickerPlaceholder : null]}>
+                  {expectedDeliveryDate ? toYyyyMmDd(expectedDeliveryDate) : 'Select expected delivery date'}
+                </Text>
+                <Ionicons name="calendar-outline" size={18} color="#7e6c5f" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>Short Description</Text>
               <TextInput
                 style={styles.deliveryInput}
@@ -192,6 +216,13 @@ const CartScreen = () => {
           </View>
         ) : null}
       </ScrollView>
+      <CompactDatePickerModal
+        visible={showDatePicker}
+        value={expectedDeliveryDate}
+        minimumDate={new Date()}
+        onClose={() => setShowDatePicker(false)}
+        onConfirm={setExpectedDeliveryDate}
+      />
     </Screen>
   );
 };
@@ -361,17 +392,35 @@ const styles = StyleSheet.create({
     color: '#2C1E16',
     backgroundColor: 'rgba(255,255,255,0.45)',
   },
+  datePickerTrigger: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  datePickerText: {
+    color: '#2C1E16',
+    fontSize: 14,
+  },
+  datePickerPlaceholder: {
+    color: '#a08f80',
+  },
   notesInput: {
-    minHeight: Platform.OS === 'ios' ? 96 : 90,
+    minHeight: 90,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+    paddingBottom: 8,
     color: '#2C1E16',
     backgroundColor: 'rgba(255,255,255,0.45)',
-    marginBottom: Platform.OS === 'ios' ? 12 : 10,
+    marginBottom: 10,
   },
   totalRow: {
     flexDirection: 'row',

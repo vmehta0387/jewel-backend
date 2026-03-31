@@ -62,14 +62,18 @@ export type Order = {
   orderNumber: string;
   designId?: string | null;
   designNo?: string | null;
+  designVersion?: string | null;
   designImageUrl?: string | null;
   status: string;
   price: number;
   quantity: number;
   deliveryDate?: string | null;
+  shortDescription?: string | null;
+  notes?: string | null;
   companyName?: string | null;
   branchName?: string | null;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 export type OrdersResponse = {
