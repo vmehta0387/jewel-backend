@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
@@ -1213,6 +1213,7 @@ export default function DesignMastersPage() {
   const [masterRows, setMasterRows] = useState<MasterRow[]>([]);
   const [packetRows, setPacketRows] = useState<PacketRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingRow, setEditingRow] = useState<MasterRow | null>(null);
   const [editingPacket, setEditingPacket] = useState<PacketRow | null>(null);
@@ -1240,6 +1241,7 @@ export default function DesignMastersPage() {
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
   const [metalMasterOptions, setMetalMasterOptions] = useState<MetalMasterOptions>(emptyMetalMasterOptions);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const isPacketType = selectedType === 'STONE_PACKET';
 
@@ -1830,6 +1832,119 @@ export default function DesignMastersPage() {
     setSearchTerm('');
   };
 
+  const getCurrentParams = (): Record<string, string> => {
+    if (isPacketType) {
+      return {
+        status: viewInactive ? 'INACTIVE' : 'ACTIVE',
+        ...(searchTerm ? { search: searchTerm } : {}),
+      };
+    }
+
+    return {
+      type: selectedType,
+      status: viewInactive ? 'INACTIVE' : 'ACTIVE',
+      ...(searchTerm ? { search: searchTerm } : {}),
+    };
+  };
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get(
+        isPacketType ? '/products/packets/export/template' : '/products/masters/export/template',
+        {
+          params: isPacketType ? undefined : { type: selectedType },
+          responseType: 'blob',
+        },
+      );
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        isPacketType ? 'stone-packets-import-template.xlsx' : `${selectedType.toLowerCase()}-import-template.xlsx`,
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to download import template.');
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      const response = await api.get(
+        isPacketType ? '/products/packets/export' : '/products/masters/export',
+        {
+          params: getCurrentParams(),
+          responseType: 'blob',
+        },
+      );
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        isPacketType ? 'stone-packets-export.xlsx' : `${selectedType.toLowerCase()}-export.xlsx`,
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to export records.');
+    }
+  };
+
+  const handleImportChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setImporting(true);
+    try {
+      const response = await api.post(
+        isPacketType ? '/products/packets/import' : '/products/masters/import',
+        formData,
+        {
+          params: isPacketType ? undefined : { type: selectedType },
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      );
+      const summary = response.data as {
+        totalRows: number;
+        created: number;
+        updated: number;
+        failed: number;
+        errors: string[];
+      };
+      const errorPreview =
+        summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
+      window.alert(
+        `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
+      );
+      fetchRows();
+      if (isPacketType) {
+        fetchPacketMasterOptions();
+      } else {
+        fetchMetalMasterOptions();
+      }
+    } catch (error: any) {
+      console.error(error);
+      const message = error?.response?.data?.message;
+      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import records.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const pageSize = 15;
   const rowsCount = isPacketType ? packetRows.length : masterRows.length;
   const totalPages = Math.max(1, Math.ceil(rowsCount / pageSize));
@@ -1965,6 +2080,21 @@ export default function DesignMastersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={handleDownloadTemplate}>
+              Template
+            </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={handleExport}>
+              Export Excel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+            >
+              {importing ? 'Importing...' : 'Import Excel'}
+            </Button>
             <Button type="button" size="sm" variant={viewInactive ? 'secondary' : 'danger'} onClick={() => setViewInactive((prev) => !prev)}>
               {viewInactive ? 'View Active' : 'View Inactive'}
             </Button>
@@ -1973,6 +2103,13 @@ export default function DesignMastersPage() {
             </Button>
           </div>
         </div>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportChange}
+        />
 
         <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-col gap-2 md:flex-row">
           <input

@@ -57,11 +57,11 @@ const navigation: NavigationItem[] = [
 
 function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean }) {
   const iconBase = {
-    className: 'h-4 w-4',
+    className: 'h-[18px] w-[18px]',
     fill: 'none',
     viewBox: '0 0 24 24',
     stroke: 'currentColor',
-    strokeWidth: 1.8,
+    strokeWidth: 2,
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
     'aria-hidden': true,
@@ -71,68 +71,67 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
   if (name === 'dashboard') {
     iconBody = (
       <>
-        <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-        <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
-        <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
-        <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
       </>
     );
   } else if (name === 'companies') {
     iconBody = (
       <>
-        <path d="M4.5 20.25h15" />
-        <path d="M6 20.25V5.25a.75.75 0 0 1 .75-.75h10.5a.75.75 0 0 1 .75.75v15" />
-        <path d="M9 8.25h2.25M9 11.25h2.25M9 14.25h2.25M13.5 8.25h2.25M13.5 11.25h2.25M13.5 14.25h2.25" />
-        <path d="M10.5 20.25v-3h3v3" />
+        <path d="M4 20h16" />
+        <path d="M6 20V5a1 1 0 011-1h10a1 1 0 011 1v15" />
+        <path d="M9 8h2M9 12h2M9 16h2M13 8h2M13 12h2M13 16h2" />
       </>
     );
   } else if (name === 'branches') {
     iconBody = (
       <>
-        <circle cx="6.75" cy="6.75" r="2.25" />
-        <circle cx="17.25" cy="6.75" r="2.25" />
-        <circle cx="17.25" cy="17.25" r="2.25" />
-        <path d="M9 6.75h6M6.75 9v6.75a1.5 1.5 0 0 0 1.5 1.5H15" />
+        <circle cx="7" cy="7" r="2" />
+        <circle cx="17" cy="7" r="2" />
+        <circle cx="17" cy="17" r="2" />
+        <path d="M9 7h6M7 9v6a2 2 0 002 2h6" />
       </>
     );
   } else if (name === 'users') {
     iconBody = (
       <>
-        <circle cx="12" cy="8.25" r="3" />
-        <path d="M5.25 19.5a6.75 6.75 0 0 1 13.5 0" />
+        <circle cx="12" cy="8" r="4" />
+        <path d="M5 20a7 7 0 0114 0" />
       </>
     );
   } else if (name === 'designs') {
     iconBody = (
       <>
-        <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
-        <path d="M12 9v6M8.75 12h6.5" />
+        <path d="M12 3l7.5 4v9.5L12 21l-7.5-4.5V7L12 3z" />
+        <path d="M12 8.5v6.5M8.5 12h6.5" />
       </>
     );
   } else if (name === 'masters') {
     iconBody = (
       <>
-        <path d="M4.5 6.75h15M4.5 12h15M4.5 17.25h15" />
-        <circle cx="8.25" cy="6.75" r="1.5" />
-        <circle cx="15.75" cy="12" r="1.5" />
-        <circle cx="10.5" cy="17.25" r="1.5" />
+        <line x1="4" y1="9" x2="20" y2="9" />
+        <line x1="4" y1="15" x2="20" y2="15" />
+        <circle cx="10" cy="9" r="2" />
+        <circle cx="16" cy="15" r="2" />
       </>
     );
   } else if (name === 'orders') {
     iconBody = (
       <>
-        <rect x="6" y="4.5" width="12" height="15" rx="1.75" />
-        <path d="M9 8.25h6M9 12h6M9 15.75h4.5" />
+        <rect x="6" y="4" width="12" height="16" rx="2" />
+        <path d="M9 8h6M9 12h6M9 16h4" />
       </>
     );
   }
 
   return (
     <span
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 ${
         isActive
-          ? 'border-white/40 bg-white/20 text-white'
-          : 'border-white/20 bg-white/10 text-white/80 group-hover:border-white/35 group-hover:bg-white/15 group-hover:text-white'
+          ? 'bg-indigo-500 text-white shadow-soft ring-1 ring-white/10'
+          : 'bg-transparent text-slate-400 group-hover:bg-slate-800/60 group-hover:text-white'
       }`}
     >
       <svg {...iconBase}>{iconBody}</svg>
@@ -163,90 +162,88 @@ export default function Sidebar({
 
   return (
     <div
-      className={`fixed left-0 top-0 z-30 h-screen w-72 border-r border-blue-700/40 bg-gradient-to-b from-blue-700 via-blue-600 to-cyan-700 text-white transition-all duration-300 lg:w-auto ${
+      className={`fixed left-0 top-0 z-50 h-screen border-r border-slate-800/50 bg-slate-950 text-slate-300 transition-all duration-300 ease-in-out lg:w-auto ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } ${
         collapsed ? 'lg:w-20' : 'lg:w-64'
-      } lg:translate-x-0`}
+      } lg:translate-x-0 shadow-2xl flex flex-col`}
     >
       <div
-        className={`relative flex items-center border-b border-white/20 ${
-          collapsed ? 'justify-center px-2 py-4 lg:px-2' : 'justify-between px-4 py-4'
+        className={`relative flex items-center shrink-0 border-b border-white/5 ${
+          collapsed ? 'justify-center py-5 h-16' : 'justify-between px-6 py-5 h-16'
         }`}
       >
-        <h1 className={`font-bold text-white ${collapsed ? 'text-base lg:text-base' : 'text-xl'}`}>
-          <span className={collapsed ? 'lg:hidden' : ''}>Jewelry Platform</span>
-          {collapsed ? <span className="hidden lg:inline">JP</span> : null}
-        </h1>
+        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+          <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-400 flex items-center justify-center shadow-soft shrink-0">
+             <span className="text-white font-bold text-sm">JP</span>
+          </div>
+          <h1 className={`font-bold text-white tracking-wide transition-opacity duration-200 ${collapsed ? 'hidden lg:hidden' : 'text-[1.05rem]'}`}>
+            Jewelry Platform
+          </h1>
+        </div>
         <button
           type="button"
           onClick={onCloseMobile}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 lg:hidden"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 lg:hidden"
           aria-label="Close navigation"
-          title="Close navigation"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
-      <nav className={`space-y-1 ${collapsed ? 'p-4 lg:p-2' : 'p-4'}`}>
-        {visibleNavigation.map((item) => {
-          const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={() => onCloseMobile?.()}
-              className={`group flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
-                collapsed ? 'lg:justify-center lg:gap-0 lg:px-2' : ''
-              } ${
-                isActive
-                  ? 'bg-white/20 text-white font-semibold shadow-sm'
-                  : 'text-white/85 hover:bg-white/10 hover:text-white'
-              }`}
-              title={collapsed ? item.name : undefined}
-            >
-              <MenuIcon name={item.icon} isActive={isActive} />
-              <span className={collapsed ? 'lg:hidden' : ''}>{item.name}</span>
-            </Link>
-          );
-        })}
-      </nav>
-      <div className={`${collapsed ? 'px-4 pb-4 lg:px-2' : 'px-4 pb-5'}`}>
-        <div className="border-t border-white/15 pt-3">
-          <button
-            type="button"
-            onClick={onToggle}
-            className={`flex w-full items-center gap-3 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white/90 transition hover:bg-white/20 ${
-              collapsed ? 'justify-center' : ''
-            }`}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            <span
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-white/10 ${
-                collapsed ? '' : 'shadow-inner'
-              }`}
-            >
-              <svg
-                className={`h-4 w-4 transition-transform ${collapsed ? 'rotate-180' : ''}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+      
+      <div className="flex-1 overflow-y-auto py-5">
+        <nav className={`space-y-1.5 ${collapsed ? 'px-3' : 'px-4'}`}>
+          {visibleNavigation.map((item) => {
+            const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => onCloseMobile?.()}
+                className={`group flex items-center gap-3.5 rounded-xl transition-all duration-200 ${
+                  collapsed ? 'justify-center p-2.5' : 'px-3.5 py-2.5'
+                } ${
+                  isActive
+                    ? 'bg-indigo-500/10 text-white font-semibold'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+                title={collapsed ? item.name : undefined}
               >
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            </span>
-            <span className={collapsed ? 'hidden lg:hidden' : ''}>
-              {collapsed ? 'Expand' : 'Collapse'}
-            </span>
-          </button>
-        </div>
+                <MenuIcon name={item.icon} isActive={isActive} />
+                <span className={`tracking-wide whitespace-nowrap ${collapsed ? 'hidden lg:hidden' : 'text-[0.9rem]'}`}>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className={`shrink-0 border-t border-white/5 p-4 ${collapsed ? 'flex justify-center' : ''}`}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400 transition-all hover:bg-white/10 hover:text-white ${
+            collapsed ? 'w-full justify-center' : 'w-full'
+          }`}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <svg
+            className={`h-[18px] w-[18px] transition-transform duration-300 shrink-0 ${collapsed ? 'rotate-180' : ''}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          <span className={`whitespace-nowrap ${collapsed ? 'hidden lg:hidden' : ''}`}>
+            Collapse
+          </span>
+        </button>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
+import * as XLSX from 'xlsx';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, In, Repository } from 'typeorm';
 import {
@@ -119,9 +120,156 @@ interface GlobalRateMaps {
   diamondRatesByTypeAndSize: Map<string, number>;
 }
 
+interface MasterImportRow {
+  value: string;
+  aliasName?: string;
+  description?: string;
+  jewelryGroup?: string;
+  findingNo?: string;
+  metalCaratage?: string;
+  priceIn?: string;
+  pricePerUnit?: string | number;
+  dimensions?: string;
+  weightPerUnit?: string | number;
+  metalName?: string;
+  metalColor?: string;
+  metalPurity?: string;
+  purityPercentage?: string | number;
+  marketPricePerOunce?: string | number;
+  marketPricePerGm?: string | number;
+  livePricePerGm?: string | number;
+  defaultWastagePercent?: string | number;
+  isActive?: string;
+}
+
+interface PacketImportRow {
+  packetName: string;
+  stone?: string;
+  shape?: string;
+  size?: string;
+  cut?: string;
+  color?: string;
+  quality?: string;
+  priceIn?: string;
+  sellingPrice?: string | number;
+  weightPerPc?: string | number;
+  pieces?: string | number;
+  weight?: string | number;
+  weightUnit?: string;
+  isActive?: string;
+}
+
+interface DesignImportRow {
+  designNo: string;
+  designName?: string;
+  version?: string;
+  companyCode?: string;
+  branchCode?: string;
+  jewelryGroup?: string;
+  collection?: string;
+  jewelrySize?: string;
+  stage?: string;
+  diamondSpread?: string;
+  diamondType?: string;
+  designStatus?: string;
+  tags?: string;
+  drawerLocation?: string;
+  designDescription?: string;
+  remarks?: string;
+  isActive?: string;
+}
+
+interface DesignMetalImportRow {
+  designNo: string;
+  version?: string;
+  metalCaratage?: string;
+  goldColour?: string;
+  netWt?: string | number;
+  wastagePercent?: string | number;
+  wastageWt?: string | number;
+  totalWt?: string | number;
+  pricePerGm?: string | number;
+  value?: string | number;
+}
+
+interface DesignGemstoneImportRow {
+  designNo: string;
+  version?: string;
+  packetName?: string;
+  stone?: string;
+  shape?: string;
+  size?: string;
+  cut?: string;
+  color?: string;
+  quality?: string;
+  stoneType?: string;
+  wtPerPcs?: string | number;
+  pcs?: string | number;
+  wtInCts?: string | number;
+  pricePerCt?: string | number;
+  amount?: string | number;
+}
+
+interface DesignLaborImportRow {
+  designNo: string;
+  version?: string;
+  laborHead?: string;
+  laborPerUnit?: string | number;
+  unitQty?: string | number;
+  laborValue?: string | number;
+}
+
+interface DesignFindingImportRow {
+  designNo: string;
+  version?: string;
+  findingHead?: string;
+  pricePerUnit?: string | number;
+  units?: string | number;
+  totalWeight?: string | number;
+  findingValue?: string | number;
+}
+
 @Injectable()
 export class ProductsService {
   private s3Client: S3Client | null = null;
+  private readonly masterImportHeaders = [
+    'Value',
+    'Alias Name',
+    'Description',
+    'Jewelry Group',
+    'Finding No',
+    'Metal Caratage',
+    'Price In',
+    'Price Per Unit',
+    'Dimensions',
+    'Weight Per Unit',
+    'Metal Name',
+    'Metal Color',
+    'Metal Purity',
+    'Purity Percentage',
+    'Market Price Per Ounce',
+    'Market Price Per Gm',
+    'Live Price Per Gm',
+    'Default Wastage Percent',
+    'Status',
+  ] as const;
+
+  private readonly packetImportHeaders = [
+    'Packet Name',
+    'Stone',
+    'Shape',
+    'Cut',
+    'Size',
+    'Color',
+    'Quality',
+    'Price In',
+    'Selling Price',
+    'Weight Per Pc',
+    'Pieces',
+    'Weight',
+    'Weight Unit',
+    'Status',
+  ] as const;
 
   constructor(
     @InjectDataSource()
@@ -261,6 +409,380 @@ export class ProductsService {
 
     await this.addHistory(saved.id, 'CREATED', 'Design added successfully.', requester.id);
     return this.findOne(saved.id, requester);
+  }
+
+  async exportDesignTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
+    const workbook = XLSX.utils.book_new();
+    const designRows = [
+      {
+        'Design No': 'RING-0001',
+        'Design Name': 'Classic Eternity Ring',
+        Version: 'V1',
+        'Company Code': '',
+        'Branch Code': '',
+        'Jewelry Group': 'Ring',
+        Collection: 'Eternity Bands',
+        'Jewelry Size': 'US 6',
+        Stage: 'Admin',
+        'Diamond Spread': 'Full',
+        'Diamond Type': 'Lab Diamonds',
+        'Design Status': 'Active',
+        Tags: 'eternity,classic',
+        'Drawer Location': '',
+        'Design Description': 'Imported from Excel',
+        Remarks: '',
+        Status: 'ACTIVE',
+      },
+    ];
+    const metalRows = [
+      {
+        'Design No': 'RING-0001',
+        Version: 'V1',
+        'Sort Order': 1,
+        'Metal Caratage': '18-Rose-Gold',
+        'Gold Colour': 'Rose',
+        'Net Wt': 5,
+        'Wastage %': 10,
+        'Wastage Wt': 0.5,
+        'Total Wt': 5.5,
+        '@ Per Gm': 125.39,
+        Value: 689.65,
+      },
+    ];
+    const gemstoneRows = [
+      {
+        'Design No': 'RING-0001',
+        Version: 'V1',
+        'Sort Order': 1,
+        Packet: 'LD-ROU-400-DF-VV',
+        Stone: 'Lab Diamonds',
+        Shape: 'Round',
+        Size: '4.00MM',
+        Cut: '',
+        Color: 'D-F',
+        Quality: 'VS-VVS',
+        'Stone Type': '',
+        'Wt/Pcs': 0.24,
+        Pcs: 10,
+        'Wt (Cts)': 2.4,
+        '@ (P/Ct)': 500,
+        Amount: 1200,
+      },
+    ];
+    const laborRows = [
+      {
+        'Design No': 'RING-0001',
+        Version: 'V1',
+        'Sort Order': 1,
+        'Labor Head': 'Setting',
+        'Labor/Unit': 100,
+        'Unit Qty': 1,
+        'Labor Value': 100,
+      },
+    ];
+    const findingRows = [
+      {
+        'Design No': 'RING-0001',
+        Version: 'V1',
+        'Sort Order': 1,
+        'Finding Head': 'Hook',
+        'Price/Unit': 10,
+        Units: 1,
+        'Total Weight': 0.2,
+        'Finding Value': 10,
+      },
+    ];
+    const referenceRows = [
+      { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional. Defaults to ACTIVE.' },
+      { Field: 'Version', AllowedValues: 'V1, V2, V3...', Notes: 'Required. Import is matched by Design No + Version.' },
+      { Field: 'Company Code', AllowedValues: 'Existing company code', Notes: 'Optional. Leave blank for global designs.' },
+      { Field: 'Branch Code', AllowedValues: 'Existing branch code', Notes: 'Optional. Must match company when provided.' },
+      { Field: 'Packet', AllowedValues: 'Existing stone packet name', Notes: 'Optional, but recommended for gemstone rows.' },
+      { Field: 'Unsupported in phase 1', AllowedValues: 'Images, STL, vendors, process stages, pricing tiers', Notes: 'These are not imported from Excel yet.' },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(designRows), 'Designs');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(metalRows), 'Metals');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(gemstoneRows), 'Gemstones');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(laborRows), 'Labors');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(findingRows), 'Findings');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(referenceRows), 'Reference');
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: 'designs-import-template.xlsx',
+    };
+  }
+
+  async exportDesigns(
+    query: FindProductsQueryDto,
+    requester: AuthUser,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const result = await this.findAll({ ...query, page: 1, limit: 5000 }, requester);
+    const ids = (result.data || []).map((item: { id: string }) => item.id);
+    return this.exportDesignsByIds(ids, requester);
+  }
+
+  async exportDesignsByIds(
+    ids: string[],
+    requester: AuthUser,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const workbook = XLSX.utils.book_new();
+    if (!ids.length) {
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([]), 'Designs');
+      return {
+        buffer: this.workbookToBuffer(workbook),
+        fileName: `designs-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      };
+    }
+
+    const designs = await this.designRepo.find({
+      where: { id: In(ids) },
+      relations: ['company', 'branch', 'metals', 'gemstones', 'labors', 'findings'],
+      order: { createdAt: 'DESC' },
+    });
+    designs.forEach((design) => this.assertReadScope(design, requester));
+
+    const packetIds = Array.from(
+      new Set(
+        designs.flatMap((design) =>
+          (design.gemstones || [])
+            .map((row) => row.packetId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    );
+    const packets = packetIds.length ? await this.packetRepo.find({ where: { id: In(packetIds) } }) : [];
+    const packetNameMap = new Map(packets.map((packet) => [packet.id, packet.packetName]));
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        designs.map((design) => ({
+          'Design No': design.designNo,
+          'Design Name': design.designName || '',
+          Version: design.version,
+          'Company Code': design.company?.companyCode || '',
+          'Branch Code': design.branch?.code || '',
+          'Jewelry Group': design.jewelryGroup || '',
+          Collection: design.collection || '',
+          'Jewelry Size': design.jewelrySize || '',
+          Stage: design.stage || '',
+          'Diamond Spread': design.diamondSpread || '',
+          'Diamond Type': design.diamondType || '',
+          'Design Status': design.designStatus || '',
+          Tags: Array.isArray(design.tags) ? design.tags.join(',') : '',
+          'Drawer Location': design.drawerLocation || '',
+          'Design Description': design.designDescription || '',
+          Remarks: design.remarks || '',
+          Status: design.isActive ? 'ACTIVE' : 'INACTIVE',
+        })),
+      ),
+      'Designs',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        designs.flatMap((design) =>
+          this.sortByOrder(design.metals || []).map((row, index) => ({
+            'Design No': design.designNo,
+            Version: design.version,
+            'Sort Order': index + 1,
+            'Metal Caratage': row.goldColour || '',
+            'Gold Colour': row.goldColour || '',
+            'Net Wt': this.toNumber(row.netWt),
+            'Wastage %': this.toNumber(row.wastagePercent),
+            'Wastage Wt': this.toNumber(row.wastageWt),
+            'Total Wt': this.toNumber(row.totalWt),
+            '@ Per Gm': this.toNumber(row.pricePerGm),
+            Value: this.toNumber(row.value),
+          })),
+        ),
+      ),
+      'Metals',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        designs.flatMap((design) =>
+          this.sortByOrder(design.gemstones || []).map((row, index) => ({
+            'Design No': design.designNo,
+            Version: design.version,
+            'Sort Order': index + 1,
+            Packet: row.packetId ? packetNameMap.get(row.packetId) || '' : '',
+            Stone: row.stone || '',
+            Shape: row.shape || '',
+            Size: row.size || '',
+            Cut: row.cut || '',
+            Color: row.color || '',
+            Quality: row.quality || '',
+            'Stone Type': row.stoneType || '',
+            'Wt/Pcs': this.toNumber(row.wtPerPcs),
+            Pcs: row.pcs,
+            'Wt (Cts)': this.toNumber(row.wtInCts),
+            '@ (P/Ct)': this.toNumber(row.pricePerCt),
+            Amount: this.toNumber(row.amount),
+          })),
+        ),
+      ),
+      'Gemstones',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        designs.flatMap((design) =>
+          this.sortByOrder(design.labors || []).map((row, index) => ({
+            'Design No': design.designNo,
+            Version: design.version,
+            'Sort Order': index + 1,
+            'Labor Head': row.laborHead || '',
+            'Labor/Unit': this.toNumber(row.laborPerUnit),
+            'Unit Qty': this.toNumber(row.unitQty),
+            'Labor Value': this.toNumber(row.laborValue),
+          })),
+        ),
+      ),
+      'Labors',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(
+        designs.flatMap((design) =>
+          this.sortByOrder(design.findings || []).map((row, index) => ({
+            'Design No': design.designNo,
+            Version: design.version,
+            'Sort Order': index + 1,
+            'Finding Head': row.findingHead || '',
+            'Price/Unit': this.toNumber(row.pricePerUnit),
+            Units: this.toNumber(row.units),
+            'Total Weight': this.toNumber(row.totalWeight),
+            'Finding Value': this.toNumber(row.findingValue),
+          })),
+        ),
+      ),
+      'Findings',
+    );
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `designs-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async importDesigns(
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    requester: AuthUser,
+  ): Promise<{
+    totalRows: number;
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> {
+    this.assertDesignWriteAccess(requester);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const designSheet = workbook.Sheets.Designs || workbook.Sheets[workbook.SheetNames[0]];
+    if (!designSheet) {
+      throw new BadRequestException('Designs sheet is required');
+    }
+
+    const designRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(designSheet, {
+      defval: '',
+      raw: false,
+    });
+    if (designRows.length === 0) {
+      throw new BadRequestException('The Designs sheet does not contain any rows');
+    }
+
+    const metalRows = this.readSheetRows(workbook, 'Metals');
+    const gemstoneRows = this.readSheetRows(workbook, 'Gemstones');
+    const laborRows = this.readSheetRows(workbook, 'Labors');
+    const findingRows = this.readSheetRows(workbook, 'Findings');
+
+    const companyMap = await this.getProductCompanyCodeMap();
+    const branchMap = await this.getProductBranchCodeMap();
+    const packetMap = await this.getPacketNameMap();
+
+    const metalMap = this.groupRowsByDesignKey(metalRows, (row) => this.getDesignImportKey(row));
+    const gemstoneMap = this.groupRowsByDesignKey(gemstoneRows, (row) => this.getDesignImportKey(row));
+    const laborMap = this.groupRowsByDesignKey(laborRows, (row) => this.getDesignImportKey(row));
+    const findingMap = this.groupRowsByDesignKey(findingRows, (row) => this.getDesignImportKey(row));
+
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let index = 0; index < designRows.length; index += 1) {
+      const line = index + 2;
+      try {
+        const designRow = this.normalizeDesignImportRow(designRows[index]);
+        const version = this.normalizeVersion(designRow.version || 'V1');
+        const scoped = await this.resolveImportDesignScope(designRow, companyMap, branchMap);
+        const finalDesignNo = this.applyVersionToDesignNo(designRow.designNo, version);
+        const designKey = this.createImportDesignKey(finalDesignNo, version);
+
+        const payload: CreateProductDto = {
+          designNo: finalDesignNo,
+          designName: designRow.designName?.trim() || undefined,
+          version,
+          companyId: scoped.companyId || undefined,
+          branchId: scoped.branchId || undefined,
+          jewelryGroup: designRow.jewelryGroup?.trim() || '',
+          collection: designRow.collection?.trim() || undefined,
+          jewelrySize: designRow.jewelrySize?.trim() || undefined,
+          stage: designRow.stage?.trim() || undefined,
+          diamondSpread: designRow.diamondSpread?.trim() || undefined,
+          diamondType: designRow.diamondType?.trim() || undefined,
+          designStatus: designRow.designStatus?.trim() || undefined,
+          tags: this.parseDesignImportTags(designRow.tags),
+          drawerLocation: designRow.drawerLocation?.trim() || undefined,
+          designDescription: designRow.designDescription?.trim() || undefined,
+          remarks: designRow.remarks?.trim() || undefined,
+          isActive: this.parseImportStatus(designRow.isActive),
+          metals: (metalMap.get(designKey) || []).map((row) => this.toImportedMetalDto(this.normalizeDesignMetalImportRow(row))),
+          gemstones: (gemstoneMap.get(designKey) || []).map((row) =>
+            this.toImportedGemstoneDto(this.normalizeDesignGemstoneImportRow(row), packetMap),
+          ),
+          labors: (laborMap.get(designKey) || []).map((row) => this.toImportedLaborDto(this.normalizeDesignLaborImportRow(row))),
+          findings: (findingMap.get(designKey) || []).map((row) => this.toImportedFindingDto(this.normalizeDesignFindingImportRow(row))),
+        };
+
+        if (!payload.jewelryGroup) {
+          throw new BadRequestException('Jewelry Group is required');
+        }
+
+        const existing = await this.designRepo.findOne({
+          where: {
+            designNo: finalDesignNo,
+            ...(scoped.companyId ? { companyId: scoped.companyId } : { companyId: null }),
+          },
+        });
+
+        if (existing) {
+          const updatePayload: UpdateProductDto = { ...payload };
+          await this.update(existing.id, updatePayload, requester);
+          updated += 1;
+        } else {
+          await this.create(payload, requester);
+          created += 1;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Row ${line}: ${message}`);
+      }
+    }
+
+    return {
+      totalRows: designRows.length,
+      created,
+      updated,
+      failed: errors.length,
+      errors,
+    };
   }
 
   async getNextDesignNo(
@@ -1187,6 +1709,178 @@ export class ProductsService {
     return this.packetRepo.save(packet);
   }
 
+  async exportPacketTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
+    const workbook = XLSX.utils.book_new();
+    const masters = await this.findMasters({});
+    const templateRows = [
+      {
+        'Packet Name': 'LD-ROU-400-DF-VV',
+        Stone: masters.packetStones?.[0]?.value || 'Lab Diamonds',
+        Shape: masters.packetShapes?.[0]?.value || 'Round',
+        Cut: masters.packetCuts?.[0]?.value || '',
+        Size: masters.packetSizes?.[0]?.value || '4.00MM',
+        Color: masters.packetColors?.[0]?.value || 'D-F',
+        Quality: masters.packetQualities?.[0]?.value || 'VS-VVS',
+        'Price In': 'WT',
+        'Selling Price': 500,
+        'Weight Per Pc': 0.24,
+        Pieces: 1,
+        Weight: 0.24,
+        'Weight Unit': 'CTS',
+        Status: 'ACTIVE',
+      },
+    ];
+    const referenceRows = [
+      { Field: 'Price In', AllowedValues: Object.values(StonePacketPriceIn).join(', '), Notes: 'Optional, defaults to WT' },
+      { Field: 'Weight Unit', AllowedValues: Object.values(StoneWeightUnit).join(', '), Notes: 'Optional, defaults to CTS' },
+      { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
+      { Field: 'Packet Name', AllowedValues: 'Unique packet name', Notes: 'Required; existing packet name updates that row' },
+    ];
+    const lookupRows = this.buildPacketTemplateLookupRows(masters);
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(templateRows, { header: [...this.packetImportHeaders] }),
+      'Packets',
+    );
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(referenceRows), 'Reference');
+    if (lookupRows.length > 0) {
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(lookupRows), 'Lookups');
+    }
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: 'stone-packets-import-template.xlsx',
+    };
+  }
+
+  async exportPackets(query: FindPacketsQueryDto = {}): Promise<{ buffer: Buffer; fileName: string }> {
+    const result = await this.findPackets({
+      ...query,
+      limit: 5000,
+      page: 1,
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const rows = (result.data || []).map((packet: StonePacket) => ({
+      'Packet Name': packet.packetName,
+      Stone: packet.stone || '',
+      Shape: packet.shape || '',
+      Cut: packet.cut || '',
+      Size: packet.size || '',
+      Color: packet.color || '',
+      Quality: packet.quality || '',
+      'Price In': packet.priceIn,
+      'Selling Price':
+        packet.sellingPrice !== null && packet.sellingPrice !== undefined
+          ? this.toNumber(packet.sellingPrice)
+          : '',
+      'Weight Per Pc':
+        packet.weightPerPc !== null && packet.weightPerPc !== undefined
+          ? this.toNumber(packet.weightPerPc)
+          : '',
+      Pieces: packet.pieces,
+      Weight: this.toNumber(packet.weight),
+      'Weight Unit': packet.weightUnit,
+      Status: packet.isActive ? 'ACTIVE' : 'INACTIVE',
+      'Created At': packet.createdAt,
+      'Updated At': packet.updatedAt,
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Packets');
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `stone-packets-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async importPackets(
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    requester: AuthUser,
+  ): Promise<{
+    totalRows: number;
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> {
+    this.assertDesignWriteAccess(requester);
+    const rows = this.readExcelRows(file);
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const line = index + 2;
+
+      try {
+        const row = this.normalizePacketImportRow(rows[index]);
+        const packetName = this.normalizePacketName(row.packetName);
+        const existing = await this.packetRepo.findOne({ where: { packetName } });
+        const payload: CreateStonePacketDto = {
+          packetName,
+          stone: this.optionalText(row.stone) || undefined,
+          shape: this.optionalText(row.shape) || undefined,
+          cut: this.optionalText(row.cut) || undefined,
+          size: this.optionalText(row.size) || undefined,
+          color: this.optionalText(row.color) || undefined,
+          quality: this.optionalText(row.quality) || undefined,
+          priceIn: this.normalizePacketPriceIn(row.priceIn),
+          sellingPrice: this.optionalNonNegativeNumber(row.sellingPrice, 'sellingPrice') ?? 0,
+          weightPerPc: this.resolvePacketWeightPerPc({
+            weightPerPc: row.weightPerPc,
+            weight: row.weight,
+            pieces: this.resolvePacketPieces(row.pieces, 1),
+          }),
+          pieces: this.resolvePacketPieces(row.pieces, 1),
+          weight: this.optionalNonNegativeNumber(row.weight, 'weight') ?? undefined,
+          weightUnit: this.normalizePacketWeightUnit(row.weightUnit),
+          stockType: undefined,
+        };
+
+        let saved: StonePacket;
+        if (existing) {
+          const updatePayload: UpdateStonePacketDto = {
+            packetName: payload.packetName,
+            stone: payload.stone,
+            shape: payload.shape,
+            cut: payload.cut,
+            size: payload.size,
+            color: payload.color,
+            quality: payload.quality,
+            priceIn: payload.priceIn,
+            sellingPrice: payload.sellingPrice,
+            weightPerPc: payload.weightPerPc,
+            pieces: payload.pieces,
+            weight: payload.weight,
+            weightUnit: payload.weightUnit,
+          };
+          saved = await this.updatePacket(existing.id, updatePayload, requester);
+          updated += 1;
+        } else {
+          saved = await this.createPacket(payload, requester);
+          created += 1;
+        }
+
+        const isActive = this.parseImportStatus(row.isActive);
+        if (saved.isActive !== isActive) {
+          await this.updatePacketStatus(saved.id, isActive, requester);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Row ${line}: ${message}`);
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      created,
+      updated,
+      failed: errors.length,
+      errors,
+    };
+  }
+
   async findMasters(query: FindDesignMastersQueryDto): Promise<any> {
     if (query.type) {
       if ((query.type as unknown as DesignMasterType) === DesignMasterType.FINDING_HEAD) {
@@ -1377,6 +2071,123 @@ export class ProductsService {
     }
 
     return grouped;
+  }
+
+  async exportMasterTemplate(
+    query: FindDesignMastersQueryDto,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const type = this.requireMasterType(query);
+    const workbook = XLSX.utils.book_new();
+    const templateRows = [this.buildMasterTemplateRow(type)];
+    const referenceRows = await this.buildMasterTemplateReferenceRows(type);
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(templateRows, { header: [...this.masterImportHeaders] }),
+      'Masters',
+    );
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(referenceRows), 'Reference');
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `${type.toLowerCase()}-import-template.xlsx`,
+    };
+  }
+
+  async exportMasters(
+    query: FindDesignMastersQueryDto,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const type = this.requireMasterType(query);
+    const result = await this.findMasters({
+      ...query,
+      status: query.status || 'ALL',
+    });
+    const rows = (result.data || []).map((master: DesignMaster) => this.toMasterExportRow(master, type));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Masters');
+
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `${type.toLowerCase()}-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  async importMasters(
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    query: FindDesignMastersQueryDto,
+    requester: AuthUser,
+  ): Promise<{
+    totalRows: number;
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> {
+    this.assertDesignWriteAccess(requester);
+    const type = this.requireMasterType(query);
+    const rows = this.readExcelRows(file);
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const line = index + 2;
+      try {
+        const payload = await this.buildMasterImportPayload(
+          type,
+          this.normalizeMasterImportRow(rows[index]),
+          line,
+        );
+        const existing = await this.findExistingMasterForImport(type, payload);
+        let saved: DesignMaster;
+        if (existing) {
+          saved = await this.updateMaster(existing.id, payload, requester);
+          updated += 1;
+        } else {
+          saved = await this.createMaster(
+            {
+              masterType: type,
+              value: payload.value || '',
+              aliasName: payload.aliasName,
+              jewelryGroupId: payload.jewelryGroupId,
+              description: payload.description,
+              findingNo: payload.findingNo,
+              metalCaratage: payload.metalCaratage,
+              priceIn: payload.priceIn,
+              pricePerUnit: payload.pricePerUnit,
+              dimensions: payload.dimensions,
+              weightPerUnit: payload.weightPerUnit,
+              metalName: payload.metalName,
+              metalColor: payload.metalColor,
+              metalPurity: payload.metalPurity,
+              purityPercentage: payload.purityPercentage,
+              marketPricePerOunce: payload.marketPricePerOunce,
+              marketPricePerGm: payload.marketPricePerGm,
+              livePricePerGm: payload.livePricePerGm,
+              defaultWastagePercent: payload.defaultWastagePercent,
+            },
+            requester,
+          );
+          created += 1;
+        }
+
+        const isActive = this.parseImportStatus(this.normalizeMasterImportRow(rows[index]).isActive);
+        if (saved.isActive !== isActive) {
+          await this.updateMasterStatus(saved.id, isActive, requester);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Row ${line}: ${message}`);
+      }
+    }
+
+    return {
+      totalRows: rows.length,
+      created,
+      updated,
+      failed: errors.length,
+      errors,
+    };
   }
 
   async findActiveGlobalBasePrices(): Promise<any> {
@@ -2848,6 +3659,709 @@ export class ProductsService {
           .filter((tag) => tag.length > 0),
       ),
     );
+  }
+
+  private workbookToBuffer(workbook: XLSX.WorkBook): Buffer {
+    const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+
+  private readExcelRows(
+    file?: { buffer?: Buffer; originalname?: string },
+  ): Record<string, unknown>[] {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Excel file is required');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException('The uploaded workbook is empty');
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    if (rows.length === 0) {
+      throw new BadRequestException('The uploaded sheet does not contain any rows');
+    }
+
+    return rows;
+  }
+
+  private readSheetRows(workbook: XLSX.WorkBook, sheetName: string): Record<string, unknown>[] {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return [];
+    }
+    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+  }
+
+  private normalizeDesignImportRow(row: Record<string, unknown>): DesignImportRow {
+    return {
+      designNo: this.getImportCell(row, 'Design No', 'designNo'),
+      designName: this.getImportCell(row, 'Design Name', 'designName'),
+      version: this.getImportCell(row, 'Version', 'version'),
+      companyCode: this.getImportCell(row, 'Company Code', 'companyCode'),
+      branchCode: this.getImportCell(row, 'Branch Code', 'branchCode'),
+      jewelryGroup: this.getImportCell(row, 'Jewelry Group', 'jewelryGroup'),
+      collection: this.getImportCell(row, 'Collection', 'collection'),
+      jewelrySize: this.getImportCell(row, 'Jewelry Size', 'jewelrySize'),
+      stage: this.getImportCell(row, 'Stage', 'stage'),
+      diamondSpread: this.getImportCell(row, 'Diamond Spread', 'diamondSpread'),
+      diamondType: this.getImportCell(row, 'Diamond Type', 'diamondType'),
+      designStatus: this.getImportCell(row, 'Design Status', 'designStatus'),
+      tags: this.getImportCell(row, 'Tags', 'tags'),
+      drawerLocation: this.getImportCell(row, 'Drawer Location', 'drawerLocation'),
+      designDescription: this.getImportCell(row, 'Design Description', 'designDescription'),
+      remarks: this.getImportCell(row, 'Remarks', 'remarks'),
+      isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),
+    };
+  }
+
+  private normalizeDesignMetalImportRow(row: Record<string, unknown>): DesignMetalImportRow {
+    return {
+      designNo: this.getImportCell(row, 'Design No', 'designNo'),
+      version: this.getImportCell(row, 'Version', 'version'),
+      metalCaratage: this.getImportCell(row, 'Metal Caratage', 'metalCaratage'),
+      goldColour: this.getImportCell(row, 'Gold Colour', 'goldColour'),
+      netWt: this.getImportCell(row, 'Net Wt', 'netWt'),
+      wastagePercent: this.getImportCell(row, 'Wastage %', 'wastagePercent'),
+      wastageWt: this.getImportCell(row, 'Wastage Wt', 'wastageWt'),
+      totalWt: this.getImportCell(row, 'Total Wt', 'totalWt'),
+      pricePerGm: this.getImportCell(row, '@ Per Gm', 'pricePerGm'),
+      value: this.getImportCell(row, 'Value', 'value'),
+    };
+  }
+
+  private normalizeDesignGemstoneImportRow(row: Record<string, unknown>): DesignGemstoneImportRow {
+    return {
+      designNo: this.getImportCell(row, 'Design No', 'designNo'),
+      version: this.getImportCell(row, 'Version', 'version'),
+      packetName: this.getImportCell(row, 'Packet', 'packetName'),
+      stone: this.getImportCell(row, 'Stone', 'stone'),
+      shape: this.getImportCell(row, 'Shape', 'shape'),
+      size: this.getImportCell(row, 'Size', 'size'),
+      cut: this.getImportCell(row, 'Cut', 'cut'),
+      color: this.getImportCell(row, 'Color', 'color'),
+      quality: this.getImportCell(row, 'Quality', 'quality'),
+      stoneType: this.getImportCell(row, 'Stone Type', 'stoneType'),
+      wtPerPcs: this.getImportCell(row, 'Wt/Pcs', 'wtPerPcs'),
+      pcs: this.getImportCell(row, 'Pcs', 'pcs'),
+      wtInCts: this.getImportCell(row, 'Wt (Cts)', 'wtInCts'),
+      pricePerCt: this.getImportCell(row, '@ (P/Ct)', 'pricePerCt'),
+      amount: this.getImportCell(row, 'Amount', 'amount'),
+    };
+  }
+
+  private normalizeDesignLaborImportRow(row: Record<string, unknown>): DesignLaborImportRow {
+    return {
+      designNo: this.getImportCell(row, 'Design No', 'designNo'),
+      version: this.getImportCell(row, 'Version', 'version'),
+      laborHead: this.getImportCell(row, 'Labor Head', 'laborHead'),
+      laborPerUnit: this.getImportCell(row, 'Labor/Unit', 'laborPerUnit'),
+      unitQty: this.getImportCell(row, 'Unit Qty', 'unitQty'),
+      laborValue: this.getImportCell(row, 'Labor Value', 'laborValue'),
+    };
+  }
+
+  private normalizeDesignFindingImportRow(row: Record<string, unknown>): DesignFindingImportRow {
+    return {
+      designNo: this.getImportCell(row, 'Design No', 'designNo'),
+      version: this.getImportCell(row, 'Version', 'version'),
+      findingHead: this.getImportCell(row, 'Finding Head', 'findingHead'),
+      pricePerUnit: this.getImportCell(row, 'Price/Unit', 'pricePerUnit'),
+      units: this.getImportCell(row, 'Units', 'units'),
+      totalWeight: this.getImportCell(row, 'Total Weight', 'totalWeight'),
+      findingValue: this.getImportCell(row, 'Finding Value', 'findingValue'),
+    };
+  }
+
+  private createImportDesignKey(designNo: string, version?: string): string {
+    const normalizedVersion = this.normalizeVersion(version || 'V1');
+    const normalizedDesignNo = this.applyVersionToDesignNo(designNo, normalizedVersion);
+    return `${normalizedDesignNo}__${normalizedVersion}`;
+  }
+
+  private getDesignImportKey(row: Record<string, unknown>): string {
+    const designNo = this.getImportCell(row, 'Design No', 'designNo');
+    const version = this.getImportCell(row, 'Version', 'version') || 'V1';
+    return this.createImportDesignKey(designNo, version);
+  }
+
+  private groupRowsByDesignKey(
+    rows: Record<string, unknown>[],
+    keyResolver: (row: Record<string, unknown>) => string,
+  ): Map<string, Record<string, unknown>[]> {
+    const grouped = new Map<string, Record<string, unknown>[]>();
+    rows.forEach((row) => {
+      const key = keyResolver(row);
+      if (!key.trim()) {
+        return;
+      }
+      const bucket = grouped.get(key) || [];
+      bucket.push(row);
+      grouped.set(key, bucket);
+    });
+    return grouped;
+  }
+
+  private parseDesignImportTags(value?: string): string[] | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return undefined;
+    }
+    return normalized
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  private async getProductCompanyCodeMap(): Promise<Map<string, Company>> {
+    const companies = await this.companyRepo.find();
+    return new Map(companies.map((company) => [company.companyCode.trim().toUpperCase(), company]));
+  }
+
+  private async getProductBranchCodeMap(): Promise<Map<string, Branch[]>> {
+    const branches = await this.branchRepo.find();
+    const map = new Map<string, Branch[]>();
+    branches.forEach((branch) => {
+      const key = branch.code.trim().toUpperCase();
+      const bucket = map.get(key) || [];
+      bucket.push(branch);
+      map.set(key, bucket);
+    });
+    return map;
+  }
+
+  private async getPacketNameMap(): Promise<Map<string, StonePacket>> {
+    const packets = await this.packetRepo.find();
+    return new Map(packets.map((packet) => [packet.packetName.trim().toUpperCase(), packet]));
+  }
+
+  private async resolveImportDesignScope(
+    row: DesignImportRow,
+    companyMap: Map<string, Company>,
+    branchMap: Map<string, Branch[]>,
+  ): Promise<{ companyId: string | null; branchId: string | null }> {
+    const companyCode = String(row.companyCode || '').trim().toUpperCase();
+    const branchCode = String(row.branchCode || '').trim().toUpperCase();
+
+    let companyId: string | null = null;
+    let branchId: string | null = null;
+
+    if (companyCode) {
+      const company = companyMap.get(companyCode);
+      if (!company) {
+        throw new BadRequestException(`Company Code "${companyCode}" not found`);
+      }
+      companyId = company.id;
+    }
+
+    if (branchCode) {
+      const matches = branchMap.get(branchCode) || [];
+      if (matches.length === 0) {
+        throw new BadRequestException(`Branch Code "${branchCode}" not found`);
+      }
+      const branch =
+        companyId !== null
+          ? matches.find((item) => item.companyId === companyId)
+          : matches.length === 1
+            ? matches[0]
+            : null;
+      if (!branch) {
+        throw new BadRequestException(
+          companyId
+            ? `Branch Code "${branchCode}" does not belong to Company Code "${companyCode}"`
+            : `Branch Code "${branchCode}" matches multiple companies. Provide Company Code as well.`,
+        );
+      }
+      branchId = branch.id;
+      companyId = branch.companyId;
+    }
+
+    return { companyId, branchId };
+  }
+
+  private toImportedMetalDto(row: DesignMetalImportRow): DesignMetalDto {
+    return {
+      metalCaratage: row.metalCaratage?.trim() || undefined,
+      goldColour: row.goldColour?.trim() || undefined,
+      netWt: this.optionalNonNegativeNumber(row.netWt, 'netWt') ?? undefined,
+      wastagePercent: this.optionalNonNegativeNumber(row.wastagePercent, 'wastagePercent') ?? undefined,
+      wastageWt: this.optionalNonNegativeNumber(row.wastageWt, 'wastageWt') ?? undefined,
+      totalWt: this.optionalNonNegativeNumber(row.totalWt, 'totalWt') ?? undefined,
+      pricePerGm: this.optionalNonNegativeNumber(row.pricePerGm, 'pricePerGm') ?? undefined,
+      value: this.optionalNonNegativeNumber(row.value, 'value') ?? undefined,
+    };
+  }
+
+  private toImportedGemstoneDto(
+    row: DesignGemstoneImportRow,
+    packetMap: Map<string, StonePacket>,
+  ): DesignGemstoneDto {
+    const packetName = row.packetName?.trim();
+    const packet = packetName ? packetMap.get(packetName.toUpperCase()) : undefined;
+    if (packetName && !packet) {
+      throw new BadRequestException(`Packet "${packetName}" not found`);
+    }
+    return {
+      packetId: packet?.id,
+      stone: row.stone?.trim() || undefined,
+      shape: row.shape?.trim() || undefined,
+      size: row.size?.trim() || undefined,
+      cut: row.cut?.trim() || undefined,
+      color: row.color?.trim() || undefined,
+      quality: row.quality?.trim() || undefined,
+      stoneType: row.stoneType?.trim() || undefined,
+      wtPerPcs: this.optionalNonNegativeNumber(row.wtPerPcs, 'wtPerPcs') ?? undefined,
+      pcs: this.optionalNonNegativeNumber(row.pcs, 'pcs') ?? undefined,
+      wtInCts: this.optionalNonNegativeNumber(row.wtInCts, 'wtInCts') ?? undefined,
+      pricePerCt: this.optionalNonNegativeNumber(row.pricePerCt, 'pricePerCt') ?? undefined,
+      amount: this.optionalNonNegativeNumber(row.amount, 'amount') ?? undefined,
+    };
+  }
+
+  private toImportedLaborDto(row: DesignLaborImportRow): DesignLaborDto {
+    return {
+      laborHead: row.laborHead?.trim() || undefined,
+      laborPerUnit: this.optionalNonNegativeNumber(row.laborPerUnit, 'laborPerUnit') ?? undefined,
+      unitQty: this.optionalNonNegativeNumber(row.unitQty, 'unitQty') ?? undefined,
+      laborValue: this.optionalNonNegativeNumber(row.laborValue, 'laborValue') ?? undefined,
+    };
+  }
+
+  private toImportedFindingDto(row: DesignFindingImportRow): DesignFindingDto {
+    return {
+      findingHead: row.findingHead?.trim() || undefined,
+      pricePerUnit: this.optionalNonNegativeNumber(row.pricePerUnit, 'pricePerUnit') ?? undefined,
+      units: this.optionalNonNegativeNumber(row.units, 'units') ?? undefined,
+      totalWeight: this.optionalNonNegativeNumber(row.totalWeight, 'totalWeight') ?? undefined,
+      findingValue: this.optionalNonNegativeNumber(row.findingValue, 'findingValue') ?? undefined,
+    };
+  }
+
+  private requireMasterType(query: FindDesignMastersQueryDto): DesignMasterType {
+    if (!query.type) {
+      throw new BadRequestException('Master type is required for Excel import/export');
+    }
+
+    return query.type as unknown as DesignMasterType;
+  }
+
+  private getImportCell(row: Record<string, unknown>, ...keys: string[]): string {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null) {
+        return String(row[key]).trim();
+      }
+    }
+
+    return '';
+  }
+
+  private normalizeMasterImportRow(row: Record<string, unknown>): MasterImportRow {
+    return {
+      value: this.getImportCell(row, 'Value', 'value'),
+      aliasName: this.getImportCell(row, 'Alias Name', 'aliasName'),
+      description: this.getImportCell(row, 'Description', 'description'),
+      jewelryGroup: this.getImportCell(row, 'Jewelry Group', 'jewelryGroup'),
+      findingNo: this.getImportCell(row, 'Finding No', 'findingNo'),
+      metalCaratage: this.getImportCell(row, 'Metal Caratage', 'metalCaratage'),
+      priceIn: this.getImportCell(row, 'Price In', 'priceIn'),
+      pricePerUnit: this.getImportCell(row, 'Price Per Unit', 'pricePerUnit'),
+      dimensions: this.getImportCell(row, 'Dimensions', 'dimensions'),
+      weightPerUnit: this.getImportCell(row, 'Weight Per Unit', 'weightPerUnit'),
+      metalName: this.getImportCell(row, 'Metal Name', 'metalName'),
+      metalColor: this.getImportCell(row, 'Metal Color', 'metalColor'),
+      metalPurity: this.getImportCell(row, 'Metal Purity', 'metalPurity'),
+      purityPercentage: this.getImportCell(row, 'Purity Percentage', 'purityPercentage'),
+      marketPricePerOunce: this.getImportCell(row, 'Market Price Per Ounce', 'marketPricePerOunce'),
+      marketPricePerGm: this.getImportCell(row, 'Market Price Per Gm', 'marketPricePerGm'),
+      livePricePerGm: this.getImportCell(row, 'Live Price Per Gm', 'livePricePerGm'),
+      defaultWastagePercent: this.getImportCell(row, 'Default Wastage Percent', 'defaultWastagePercent'),
+      isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),
+    };
+  }
+
+  private normalizePacketImportRow(row: Record<string, unknown>): PacketImportRow {
+    return {
+      packetName: this.getImportCell(row, 'Packet Name', 'packetName'),
+      stone: this.getImportCell(row, 'Stone', 'stone'),
+      shape: this.getImportCell(row, 'Shape', 'shape'),
+      cut: this.getImportCell(row, 'Cut', 'cut'),
+      size: this.getImportCell(row, 'Size', 'size'),
+      color: this.getImportCell(row, 'Color', 'color'),
+      quality: this.getImportCell(row, 'Quality', 'quality'),
+      priceIn: this.getImportCell(row, 'Price In', 'priceIn'),
+      sellingPrice: this.getImportCell(row, 'Selling Price', 'sellingPrice'),
+      weightPerPc: this.getImportCell(row, 'Weight Per Pc', 'weightPerPc'),
+      pieces: this.getImportCell(row, 'Pieces', 'pieces'),
+      weight: this.getImportCell(row, 'Weight', 'weight'),
+      weightUnit: this.getImportCell(row, 'Weight Unit', 'weightUnit'),
+      isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),
+    };
+  }
+
+  private parseImportStatus(value?: string): boolean {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized || normalized === 'ACTIVE' || normalized === 'TRUE' || normalized === 'YES') {
+      return true;
+    }
+    if (normalized === 'INACTIVE' || normalized === 'FALSE' || normalized === 'NO') {
+      return false;
+    }
+    throw new BadRequestException(`Invalid status "${value}"`);
+  }
+
+  private async buildMasterImportPayload(
+    type: DesignMasterType,
+    row: MasterImportRow,
+    _line: number,
+  ): Promise<UpdateDesignMasterDto> {
+    const value = row.value?.trim();
+    if (!value) {
+      throw new BadRequestException('Value is required');
+    }
+
+    const payload: UpdateDesignMasterDto = {
+      value,
+      aliasName: row.aliasName?.trim() || value,
+      description: row.description?.trim() || undefined,
+    };
+
+    if (type === DesignMasterType.JEWELRY_SIZE) {
+      const jewelryGroup = row.jewelryGroup?.trim();
+      if (!jewelryGroup) {
+        throw new BadRequestException('Jewelry Group is required');
+      }
+      const jewelryGroupOption = await this.findMasterByValueOrAlias(
+        DesignMasterType.JEWELRY_GROUP,
+        jewelryGroup,
+      );
+      if (!jewelryGroupOption) {
+        throw new BadRequestException(`Jewelry Group "${jewelryGroup}" not found`);
+      }
+      payload.jewelryGroupId = jewelryGroupOption.id;
+    }
+
+    if (type === DesignMasterType.METAL_NAME) {
+      payload.marketPricePerOunce =
+        this.optionalNonNegativeNumber(row.marketPricePerOunce, 'marketPricePerOunce') ?? undefined;
+      payload.marketPricePerGm =
+        this.optionalNonNegativeNumber(row.marketPricePerGm, 'marketPricePerGm') ?? undefined;
+      payload.livePricePerGm =
+        this.optionalNonNegativeNumber(row.livePricePerGm, 'livePricePerGm') ?? undefined;
+    } else if (type === DesignMasterType.METAL_COLOR) {
+      payload.metalName = row.metalName?.trim() || undefined;
+      if (!payload.metalName) {
+        throw new BadRequestException('Metal Name is required');
+      }
+    } else if (type === DesignMasterType.METAL_PURITY) {
+      payload.metalName = row.metalName?.trim() || undefined;
+      if (!payload.metalName) {
+        throw new BadRequestException('Metal Name is required');
+      }
+      payload.purityPercentage =
+        this.optionalNonNegativeNumber(row.purityPercentage, 'purityPercentage') ?? undefined;
+      if (payload.purityPercentage === undefined) {
+        throw new BadRequestException('Purity Percentage is required');
+      }
+    } else if (type === DesignMasterType.METAL_CARATAGE) {
+      payload.metalName = row.metalName?.trim() || undefined;
+      payload.metalColor = row.metalColor?.trim() || undefined;
+      payload.metalPurity = row.metalPurity?.trim() || undefined;
+      if (!payload.metalName || !payload.metalColor || !payload.metalPurity) {
+        throw new BadRequestException('Metal Name, Metal Color and Metal Purity are required');
+      }
+      payload.purityPercentage =
+        this.optionalNonNegativeNumber(row.purityPercentage, 'purityPercentage') ?? undefined;
+      payload.livePricePerGm =
+        this.optionalNonNegativeNumber(row.livePricePerGm, 'livePricePerGm') ?? undefined;
+      payload.defaultWastagePercent =
+        this.optionalNonNegativeNumber(row.defaultWastagePercent, 'defaultWastagePercent') ??
+        undefined;
+      if (!row.aliasName?.trim()) {
+        payload.aliasName = value;
+      }
+    } else if (type === DesignMasterType.GOLD_COLOUR) {
+      payload.pricePerUnit =
+        this.optionalNonNegativeNumber(row.pricePerUnit, 'pricePerUnit') ?? undefined;
+    } else if (type === DesignMasterType.FINDING_HEAD) {
+      payload.findingNo = row.findingNo?.trim() || undefined;
+      payload.metalCaratage = row.metalCaratage?.trim() || undefined;
+      payload.priceIn = (row.priceIn?.trim().toUpperCase() as FindingPriceIn) || undefined;
+      payload.pricePerUnit =
+        this.optionalNonNegativeNumber(row.pricePerUnit, 'pricePerUnit') ?? undefined;
+      payload.dimensions = row.dimensions?.trim() || undefined;
+      payload.weightPerUnit =
+        this.optionalNonNegativeNumber(row.weightPerUnit, 'weightPerUnit') ?? undefined;
+    }
+
+    return payload;
+  }
+
+  private async findExistingMasterForImport(
+    type: DesignMasterType,
+    payload: UpdateDesignMasterDto,
+  ): Promise<DesignMaster | null> {
+    let scopeKey = '';
+    if (type === DesignMasterType.JEWELRY_SIZE) {
+      const jewelrySizeFields = await this.normalizeJewelrySizeMasterFields(
+        type,
+        { jewelryGroupId: payload.jewelryGroupId },
+        undefined,
+      );
+      scopeKey = jewelrySizeFields.scopeKey;
+    }
+
+    return this.designMasterRepo
+      .createQueryBuilder('master')
+      .where('master.masterType = :masterType', { masterType: type })
+      .andWhere('master.scopeKey = :scopeKey', { scopeKey })
+      .andWhere('master.normalizedValue = :normalizedValue', {
+        normalizedValue: this.normalizeMasterValue(payload.value).toLowerCase(),
+      })
+      .getOne();
+  }
+
+  private buildMasterTemplateRow(type: DesignMasterType): Record<string, unknown> {
+    const row: Record<string, unknown> = {
+      Value: 'Sample Value',
+      'Alias Name': 'SAMPLE',
+      Description: 'Optional description',
+      'Jewelry Group': '',
+      'Finding No': '',
+      'Metal Caratage': '',
+      'Price In': '',
+      'Price Per Unit': '',
+      Dimensions: '',
+      'Weight Per Unit': '',
+      'Metal Name': '',
+      'Metal Color': '',
+      'Metal Purity': '',
+      'Purity Percentage': '',
+      'Market Price Per Ounce': '',
+      'Market Price Per Gm': '',
+      'Live Price Per Gm': '',
+      'Default Wastage Percent': '',
+      Status: 'ACTIVE',
+    };
+
+    switch (type) {
+      case DesignMasterType.JEWELRY_SIZE:
+        row.Value = 'US 6';
+        row['Alias Name'] = 'US 6';
+        row['Jewelry Group'] = 'Ring';
+        break;
+      case DesignMasterType.METAL_NAME:
+        row.Value = 'Gold';
+        row['Alias Name'] = 'G';
+        row['Market Price Per Ounce'] = 5200;
+        row['Market Price Per Gm'] = 167.18;
+        row['Live Price Per Gm'] = 170;
+        break;
+      case DesignMasterType.METAL_COLOR:
+        row.Value = 'Rose';
+        row['Alias Name'] = 'RG';
+        row['Metal Name'] = 'Gold';
+        break;
+      case DesignMasterType.METAL_PURITY:
+        row.Value = '18';
+        row['Alias Name'] = '18';
+        row['Metal Name'] = 'Gold';
+        row['Purity Percentage'] = 75;
+        break;
+      case DesignMasterType.METAL_CARATAGE:
+        row.Value = '18-Rose-Gold';
+        row['Alias Name'] = '18-Rose-Gold';
+        row['Metal Name'] = 'Gold';
+        row['Metal Color'] = 'Rose';
+        row['Metal Purity'] = '18';
+        row['Purity Percentage'] = 75;
+        row['Live Price Per Gm'] = 125.39;
+        row['Default Wastage Percent'] = 10;
+        break;
+      case DesignMasterType.GOLD_COLOUR:
+        row.Value = 'Rose';
+        row['Alias Name'] = 'Rose';
+        row['Price Per Unit'] = 10;
+        break;
+      case DesignMasterType.FINDING_HEAD:
+        row.Value = 'Hook';
+        row['Alias Name'] = 'HK';
+        row['Finding No'] = 'F-001';
+        row['Metal Caratage'] = '18-Rose-Gold';
+        row['Price In'] = 'PIECES';
+        row['Price Per Unit'] = 10;
+        row['Dimensions'] = '10x2';
+        row['Weight Per Unit'] = 0.2;
+        break;
+      default:
+        break;
+    }
+
+    return row;
+  }
+
+  private async buildMasterTemplateReferenceRows(
+    type: DesignMasterType,
+  ): Promise<Array<Record<string, string>>> {
+    const rows: Array<Record<string, string>> = [
+      { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional, defaults to ACTIVE' },
+    ];
+
+    if (type === DesignMasterType.JEWELRY_SIZE) {
+      const jewelryGroups = await this.designMasterRepo.find({
+        where: { masterType: DesignMasterType.JEWELRY_GROUP, isActive: true },
+        order: { value: 'ASC' },
+      });
+      rows.push({
+        Field: 'Jewelry Group',
+        AllowedValues: jewelryGroups.map((item) => item.value).join(', '),
+        Notes: 'Required. Existing Jewelry Group value or alias',
+      });
+    }
+
+    if (
+      type === DesignMasterType.METAL_COLOR ||
+      type === DesignMasterType.METAL_PURITY ||
+      type === DesignMasterType.METAL_CARATAGE
+    ) {
+      const metalNames = await this.designMasterRepo.find({
+        where: { masterType: DesignMasterType.METAL_NAME, isActive: true },
+        order: { value: 'ASC' },
+      });
+      rows.push({
+        Field: 'Metal Name',
+        AllowedValues: metalNames.map((item) => item.value).join(', '),
+        Notes: 'Required for this master type',
+      });
+    }
+
+    if (type === DesignMasterType.METAL_CARATAGE) {
+      const metalColors = await this.designMasterRepo.find({
+        where: { masterType: DesignMasterType.METAL_COLOR, isActive: true },
+        order: { value: 'ASC' },
+      });
+      const metalPurities = await this.designMasterRepo.find({
+        where: { masterType: DesignMasterType.METAL_PURITY, isActive: true },
+        order: { value: 'ASC' },
+      });
+      rows.push(
+        {
+          Field: 'Metal Color',
+          AllowedValues: metalColors.map((item) => item.value).join(', '),
+          Notes: 'Required for Metal Caratage',
+        },
+        {
+          Field: 'Metal Purity',
+          AllowedValues: metalPurities.map((item) => item.value).join(', '),
+          Notes: 'Required for Metal Caratage',
+        },
+      );
+    }
+
+    if (type === DesignMasterType.FINDING_HEAD) {
+      rows.push({
+        Field: 'Price In',
+        AllowedValues: Object.values(FindingPriceIn).join(', '),
+        Notes: 'Required for Finding Head',
+      });
+    }
+
+    return rows;
+  }
+
+  private buildPacketTemplateLookupRows(masters: any): Array<Record<string, string>> {
+    const rows: Array<Record<string, string>> = [];
+    const addRows = (field: string, values: Array<{ value: string }>) => {
+      values.forEach((item) => rows.push({ Field: field, Value: item.value }));
+    };
+
+    addRows('Stone', masters.packetStones || []);
+    addRows('Shape', masters.packetShapes || []);
+    addRows('Size', masters.packetSizes || []);
+    addRows('Cut', masters.packetCuts || []);
+    addRows('Color', masters.packetColors || []);
+    addRows('Quality', masters.packetQualities || []);
+
+    return rows;
+  }
+
+  private toMasterExportRow(master: DesignMaster, _type: DesignMasterType): Record<string, unknown> {
+    return {
+      Value: master.value,
+      'Alias Name': master.aliasName || '',
+      Description: master.description || '',
+      'Jewelry Group': master.jewelryGroup || '',
+      'Finding No': master.findingNo || '',
+      'Metal Caratage': master.metalCaratage || '',
+      'Price In': master.priceIn || '',
+      'Price Per Unit':
+        master.pricePerUnit !== null && master.pricePerUnit !== undefined
+          ? this.toNumber(master.pricePerUnit)
+          : '',
+      Dimensions: master.dimensions || '',
+      'Weight Per Unit':
+        master.weightPerUnit !== null && master.weightPerUnit !== undefined
+          ? this.toNumber(master.weightPerUnit)
+          : '',
+      'Metal Name': master.metalName || '',
+      'Metal Color': master.metalColor || '',
+      'Metal Purity': master.metalPurity || '',
+      'Purity Percentage':
+        master.purityPercentage !== null && master.purityPercentage !== undefined
+          ? this.toNumber(master.purityPercentage)
+          : '',
+      'Market Price Per Ounce':
+        master.marketPricePerOunce !== null && master.marketPricePerOunce !== undefined
+          ? this.toNumber(master.marketPricePerOunce)
+          : '',
+      'Market Price Per Gm':
+        master.marketPricePerGm !== null && master.marketPricePerGm !== undefined
+          ? this.toNumber(master.marketPricePerGm)
+          : '',
+      'Live Price Per Gm':
+        master.livePricePerGm !== null && master.livePricePerGm !== undefined
+          ? this.toNumber(master.livePricePerGm)
+          : '',
+      'Default Wastage Percent':
+        master.defaultWastagePercent !== null && master.defaultWastagePercent !== undefined
+          ? this.toNumber(master.defaultWastagePercent)
+          : '',
+      Status: master.isActive ? 'ACTIVE' : 'INACTIVE',
+      'Created At': master.createdAt,
+      'Updated At': master.updatedAt,
+    };
+  }
+
+  private async findMasterByValueOrAlias(
+    type: DesignMasterType,
+    valueOrAlias: string,
+  ): Promise<DesignMaster | null> {
+    const normalized = valueOrAlias.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    return this.designMasterRepo
+      .createQueryBuilder('master')
+      .where('master.masterType = :masterType', { masterType: type })
+      .andWhere('master.isActive = :isActive', { isActive: true })
+      .andWhere(
+        new Brackets((where) => {
+          where
+            .where('master.normalizedValue = :normalized', { normalized })
+            .orWhere('master.normalizedAlias = :normalized', { normalized });
+        }),
+      )
+      .getOne();
   }
 
   private normalizeMasterValue(value?: string): string {

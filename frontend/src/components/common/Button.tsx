@@ -11,12 +11,12 @@ export default function Button({
   ...props 
 }: ButtonProps) {
   const baseStyles =
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap font-bold rounded-xl transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed hover-lift';
   
   const variants = {
-    primary: 'bg-[#81A6C6] text-white hover:bg-[#6f93b0] focus-visible:ring-[#AACDDC]',
-    secondary: 'border border-[#D2C4B4] bg-[#F3E3D0] text-slate-800 hover:bg-[#e9d8c4] focus-visible:ring-[#AACDDC]',
-    danger: 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-300'
+    primary: 'bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white hover:shadow-lg hover:shadow-indigo-500/30 focus-visible:ring-indigo-500/50 shadow-sm border border-indigo-400/20',
+    secondary: 'bg-white/80 backdrop-blur-md border border-slate-200 text-slate-700 hover:bg-white hover:text-slate-900 hover:shadow-md focus-visible:ring-slate-300 shadow-sm',
+    danger: 'bg-gradient-to-tr from-rose-500 to-rose-600 text-white hover:shadow-lg hover:shadow-rose-500/30 focus-visible:ring-rose-500/50 shadow-sm border border-rose-400/20'
   };
   
   const sizes = {

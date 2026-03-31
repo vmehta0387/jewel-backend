@@ -352,7 +352,7 @@ export class UsersService {
     }
 
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<UserImportRow>(sheet, {
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       defval: '',
       raw: false,
     });
@@ -368,7 +368,7 @@ export class UsersService {
     let updated = 0;
 
     for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
+      const row = this.normalizeUserImportRow(rows[index]);
       const line = index + 2;
 
       try {
@@ -582,6 +582,30 @@ export class UsersService {
   private workbookToBuffer(workbook: XLSX.WorkBook): Buffer {
     const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+
+  private getImportCell(row: Record<string, unknown>, ...keys: string[]): string {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null) {
+        return String(row[key]).trim();
+      }
+    }
+    return '';
+  }
+
+  private normalizeUserImportRow(row: Record<string, unknown>): UserImportRow {
+    return {
+      email: this.getImportCell(row, 'Email', 'email'),
+      firstName: this.getImportCell(row, 'First Name', 'firstName'),
+      lastName: this.getImportCell(row, 'Last Name', 'lastName'),
+      role: this.getImportCell(row, 'Role', 'role'),
+      companyCode: this.getImportCell(row, 'Company Code', 'companyCode'),
+      branchCode: this.getImportCell(row, 'Branch Code', 'branchCode'),
+      phone: this.getImportCell(row, 'Phone', 'phone'),
+      password: this.getImportCell(row, 'Password', 'password'),
+      status: this.getImportCell(row, 'Status', 'status'),
+      taskPermissions: this.getImportCell(row, 'Task Permissions', 'taskPermissions'),
+    };
   }
 
   private async getCompanyCodeMap(): Promise<Map<string, Company>> {

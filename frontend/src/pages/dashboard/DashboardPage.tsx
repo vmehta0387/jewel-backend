@@ -226,7 +226,13 @@ function OrderSummaryIcon({
 function MiniBarChart({ values }: { values: number[] }) {
   const max = Math.max(1, ...values);
   return (
-    <svg viewBox="0 0 120 48" className="h-12 w-full">
+    <svg viewBox="0 0 120 48" className="h-14 w-full">
+      <defs>
+        <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#818cf8" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.95" />
+        </linearGradient>
+      </defs>
       {values.map((value, index) => {
         const height = Math.max(4, (value / max) * 40);
         const x = index * 16 + 4;
@@ -238,8 +244,9 @@ function MiniBarChart({ values }: { values: number[] }) {
             y={y}
             width={10}
             height={height}
-            rx={4}
-            fill="rgba(129, 166, 198, 0.8)"
+            rx={3}
+            fill="url(#barGradient)"
+            className="transition-all duration-500 ease-out hover:opacity-80 cursor-pointer"
           />
         );
       })}
@@ -256,18 +263,19 @@ function MiniLineChart({ values }: { values: number[] }) {
   });
 
   return (
-    <svg viewBox="0 0 120 48" className="h-12 w-full">
+    <svg viewBox="0 0 120 48" className="h-14 w-full">
       <polyline
         points={points.join(' ')}
         fill="none"
-        stroke="rgba(129, 166, 198, 0.9)"
-        strokeWidth="2.5"
+        stroke="#6366f1"
+        strokeWidth="3.5"
         strokeLinecap="round"
         strokeLinejoin="round"
+        className="drop-shadow-sm"
       />
       {points.map((point, index) => {
         const [x, y] = point.split(',');
-        return <circle key={`${point}-${index}`} cx={x} cy={y} r={2.6} fill="rgba(129, 166, 198, 0.95)" />;
+        return <circle key={`${point}-${index}`} cx={x} cy={y} r={3} fill="#4f46e5" className="hover:r-4 transition-all duration-300 cursor-pointer shadow-soft outline outline-2 outline-white" />;
       })}
     </svg>
   );
@@ -686,331 +694,313 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="dashboard-shell space-y-6">
-      <div className="rounded-2xl border border-slate-200/80 bg-white/85 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600">
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
-                <path d="M12 9v6M8.75 12h6.5" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
-                Dashboard
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-                Super Admin Portal
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Live operational metrics and pricing controls.
-              </p>
-            </div>
+    <div className="dashboard-shell space-y-8 animate-fade-in pb-12">
+      <div className="glass-panel rounded-2xl px-6 py-6 md:px-8 md:py-8 shadow-glass-md flex flex-col gap-5 md:flex-row md:items-center md:justify-between border-t border-l border-white">
+        <div className="flex items-center gap-5">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-soft ring-1 ring-white/40">
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
+              <path d="M12 9v6M8.75 12h6.5" />
+            </svg>
           </div>
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-              {statsUpdatedAt
-                ? `Updated ${statsUpdatedAt.toLocaleTimeString()}`
-                : 'Updating metrics...'}
-            </div>
-            <Button type="button" size="sm" onClick={() => void loadStats()} disabled={statsLoading}>
-              {statsLoading ? 'Refreshing...' : 'Refresh Metrics'}
-            </Button>
+          <div className="flex flex-col justify-center">
+            <h1 className="text-[1.75rem] font-bold tracking-tight text-slate-900 leading-none">
+              Super Admin Portal
+            </h1>
           </div>
+        </div>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center bg-white/50 p-2 rounded-2xl border border-slate-200/50 backdrop-blur-sm">
+          <div className="px-3 py-1 text-xs font-semibold text-slate-500 flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            {statsUpdatedAt
+              ? `Synced at ${statsUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : 'Connecting...'}
+          </div>
+          <Button type="button" size="sm" onClick={() => void loadStats()} disabled={statsLoading} className="rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            {statsLoading ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
       </div>
 
       {statsError ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <div className="rounded-xl border border-rose-200 bg-rose-50/80 backdrop-blur-md px-5 py-4 text-sm font-medium text-rose-700 shadow-sm animate-fade-in">
           {statsError}
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+              <p className="text-sm font-bold tracking-wider text-indigo-700">
                 Total Companies
               </p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
                 {statsLoading && statsData.companies === null ? '--' : formatCount(statsData.companies)}
               </p>
-              <p className="mt-2 text-xs text-slate-500">Active + inactive</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Active + inactive</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/30 text-[#4c6b82] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="companies" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/40 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+              <p className="text-sm font-bold tracking-wider text-sky-700">
                 Total Branches
               </p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
                 {statsLoading && statsData.branches === null ? '--' : formatCount(statsData.branches)}
               </p>
-              <p className="mt-2 text-xs text-slate-500">Across all companies</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Across all companies</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#F3E3D0]/70 bg-[#F3E3D0]/70 text-[#8a6a4d] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 border border-sky-100 text-sky-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="branches" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#D2C4B4]/35 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+              <p className="text-sm font-bold tracking-wider text-violet-700">
                 Designs
               </p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
                 {statsLoading && statsData.designs === null ? '--' : formatCount(statsData.designs)}
               </p>
-              <p className="mt-2 text-xs text-slate-500">All design entries</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">All design entries</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#D2C4B4]/70 bg-[#D2C4B4]/60 text-[#6d5a45] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 border border-violet-100 text-violet-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="designs" />
             </span>
           </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                Total Design Value
+              <p className="text-sm font-bold tracking-wider text-emerald-700">
+                Design Value
               </p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
                 {statsLoading && statsData.totalValue === null ? '--' : formatCurrency(statsData.totalValue)}
               </p>
-              <p className="mt-2 text-xs text-slate-500">Aggregate value</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Aggregate estimated value</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="revenue" />
             </span>
           </div>
         </Card>
       </div>
 
-      <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/25 px-6 py-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.4)]">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Order Overview</p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">Order Activity</h2>
-            <p className="mt-1 text-sm text-slate-500">Daily and weekly order performance at a glance.</p>
+      <div className="glass-panel rounded-2xl px-6 py-5 shadow-glass-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-t border-l border-white mt-8">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500 shadow-inner">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-            {statsUpdatedAt ? `Updated ${statsUpdatedAt.toLocaleTimeString()}` : 'Updating metrics...'}
+          <div className="flex flex-col justify-center">
+            <h2 className="text-xl font-bold tracking-tight text-slate-800">Order Activity</h2>
           </div>
         </div>
-
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/20 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Orders Received
-                </p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-                  {statsLoading && orderSummary.ordersReceivedToday === null ? '--' : formatCount(orderSummary.ordersReceivedToday)}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">Today</p>
-              </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/25 text-[#4c6b82] shadow-sm">
-                <OrderSummaryIcon kind="received" />
-              </span>
-            </div>
-          </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#D2C4B4]/25 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Orders Due Today
-                </p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-                  {statsLoading && orderSummary.ordersDueToday === null ? '--' : formatCount(orderSummary.ordersDueToday)}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">Delivery schedule</p>
-              </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#D2C4B4]/60 bg-[#D2C4B4]/45 text-[#6d5a45] shadow-sm">
-                <OrderSummaryIcon kind="due" />
-              </span>
-            </div>
-          </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/22 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Sales This Week
-                </p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-                  {statsLoading && orderSummary.salesThisWeek === null ? '--' : formatCurrency(orderSummary.salesThisWeek)}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">Week to date</p>
-              </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
-                <OrderSummaryIcon kind="sales" />
-              </span>
-            </div>
-          </Card>
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/30 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
-            <div className="flex items-start justify-between gap-6">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                  Active Orders
-                </p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">
-                  {statsLoading && orderSummary.activeOrders === null ? '--' : formatCount(orderSummary.activeOrders)}
-                </p>
-                <p className="mt-2 text-xs text-slate-500">Live pipeline</p>
-              </div>
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#F3E3D0]/70 bg-[#F3E3D0]/60 text-[#8a6a4d] shadow-sm">
-                <OrderSummaryIcon kind="active" />
-              </span>
-            </div>
-          </Card>
+        <div className="rounded-xl border border-slate-200/50 bg-white/50 backdrop-blur-sm px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm flex items-center gap-2 mt-4 md:mt-0">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          {statsUpdatedAt ? `Updated ${statsUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Updating metrics...'}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/20 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+      <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                Orders Trend
+              <p className="text-sm font-bold tracking-wider text-blue-700">
+                Orders Received
               </p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">Last 7 days</p>
-              <p className="mt-2 text-sm text-slate-500">
-                {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
+                {statsLoading && orderSummary.ordersReceivedToday === null ? '--' : formatCount(orderSummary.ordersReceivedToday)}
               </p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Today</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#AACDDC]/50 bg-[#AACDDC]/25 text-[#4c6b82] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="received" />
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
-            <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
-          </div>
         </Card>
-        <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#81A6C6]/22 shadow-[0_20px_45px_-32px_rgba(15,23,42,0.45)]">
+        
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <div className="flex items-start justify-between gap-6">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                Sales Trend
+              <p className="text-sm font-bold tracking-wider text-amber-700">
+                Orders Due Today
               </p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">Last 7 days</p>
-              <p className="mt-2 text-sm text-slate-500">
-                {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
+                {statsLoading && orderSummary.ordersDueToday === null ? '--' : formatCount(orderSummary.ordersDueToday)}
               </p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Delivery schedule</p>
             </div>
-            <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#81A6C6]/50 bg-[#81A6C6]/25 text-[#3d5f7a] shadow-sm">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 shadow-sm transition-transform group-hover:scale-110">
+              <OrderSummaryIcon kind="due" />
+            </span>
+          </div>
+        </Card>
+
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-sm font-bold tracking-wider text-emerald-700">
+                Sales This Week
+              </p>
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
+                {statsLoading && orderSummary.salesThisWeek === null ? '--' : formatCurrency(orderSummary.salesThisWeek)}
+              </p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Week to date</p>
+            </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="sales" />
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
+        </Card>
+
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-sm font-bold tracking-wider text-rose-700">
+                Active Orders
+              </p>
+              <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
+                {statsLoading && orderSummary.activeOrders === null ? '--' : formatCount(orderSummary.activeOrders)}
+              </p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Live pipeline</p>
+            </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 shadow-sm transition-transform group-hover:scale-110">
+              <OrderSummaryIcon kind="active" />
+            </span>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-sm font-bold tracking-wider text-indigo-700">
+                Orders Trend
+              </p>
+              <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
+              </p>
+            </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+              <OrderSummaryIcon kind="received" />
+            </span>
+          </div>
+          <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
+            <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
+          </div>
+        </Card>
+        
+        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <p className="text-sm font-bold tracking-wider text-indigo-700">
+                Sales Trend
+              </p>
+              <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
+              </p>
+            </div>
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+              <OrderSummaryIcon kind="sales" />
+            </span>
+          </div>
+          <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
             <MiniLineChart values={orderTrends.map((row) => row.sales || 0)} />
           </div>
         </Card>
       </div>
 
       {isSuperAdmin ? (
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#F3E3D0]/55 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)]">
-            <div className="flex h-full flex-col justify-between gap-6">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                      Quick Action
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold text-slate-900">Live Gold Price</h2>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Opens the Gold metal master and updates the stored Gold values. Saving here
-                      recalculates metal caratage rates and dependent design metal values.
-                    </p>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 mt-2">
+          <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
+            <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col justify-center">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-indigo-600 transition-colors">Live Gold Price</h2>
                   </div>
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
-                    <svg
-                      className="h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-500 shadow-soft ring-1 ring-slate-200">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 3c-3.2 3.8-5 6-5 9a5 5 0 1 0 10 0c0-3-1.8-5.2-5-9Z" />
                     </svg>
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Market / Ounce
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">
-                      USD {formatMoney(goldMaster?.marketPricePerOunce)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Market / Gm
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">
-                      USD {formatMoney(goldMaster?.marketPricePerGm)}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">/ Ounce</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-slate-800">
+                      <span className="text-slate-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(goldMaster?.marketPricePerOunce)}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Live / Gm
+                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">/ Gm</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-slate-800">
+                      <span className="text-slate-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(goldMaster?.marketPricePerGm)}
                     </p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">
-                      USD {formatMoney(goldMaster?.livePricePerGm)}
+                  </div>
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-indigo-700">Live / Gm</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-indigo-700">
+                      <span className="text-indigo-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(goldMaster?.livePricePerGm)}
                     </p>
                   </div>
                 </div>
 
                 {goldError ? (
-                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  <p className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-2.5 text-sm font-medium text-rose-700 shadow-sm">
                     {goldError}
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-slate-500">
-                  Last synced: {formatTimestamp(goldMaster?.updatedAt)}
+              <div className="flex flex-col gap-4 border-t border-slate-200/60 pt-5 mt-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {formatTimestamp(goldMaster?.updatedAt)}
                 </p>
-                <Button type="button" size="sm" onClick={() => void openGoldModal()} disabled={goldLoading}>
-                  {goldLoading ? 'Loading...' : 'Add Live Gold Price'}
+                <Button type="button" size="sm" onClick={() => void openGoldModal()} disabled={goldLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                  {goldLoading ? 'Loading...' : 'Update Gold Price'}
                 </Button>
               </div>
             </div>
           </Card>
 
-          <Card className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#AACDDC]/35 shadow-[0_24px_60px_-36px_rgba(15,23,42,0.45)]">
-            <div className="flex h-full flex-col justify-between gap-6">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                      Quick Action
-                    </p>
-                    <h2 className="mt-2 text-xl font-semibold text-slate-900">Live Packet Price</h2>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Update packet selling prices from the dashboard. Saving here recalculates
-                      gemstone amounts in any design using the selected packet.
-                    </p>
+          <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
+            <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col justify-center">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-indigo-600 transition-colors">Live Packet Price</h2>
                   </div>
-                  <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm">
-                    <svg
-                      className="h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                    >
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-500 shadow-soft ring-1 ring-slate-200">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
                       <path d="M12 9v6M8.75 12h6.5" />
                     </svg>
@@ -1018,40 +1008,40 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Active Packets
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-slate-900">{packetRows.length}</p>
+                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">Total Packets</p>
+                    <p className="mt-1.5 text-lg font-bold text-slate-800">{packetRows.length}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-3 md:col-span-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      Current Selection
-                    </p>
-                    <p className="mt-2 truncate text-lg font-semibold text-slate-900">
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 shadow-sm px-4 py-3 md:col-span-2 flex flex-col justify-center">
+                    <div className="flex justify-between items-start">
+                      <p className="text-[0.80rem] font-bold tracking-wider text-indigo-700">Selected</p>
+                      {selectedPacket ? (
+                        <p className="text-[0.95rem] font-bold text-indigo-700">
+                          <span className="text-indigo-400 font-medium text-xs mr-1">$</span>
+                          {formatMoney(selectedPacket.sellingPrice)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <p className="mt-1.5 truncate text-[0.95rem] font-bold text-slate-800">
                       {selectedPacket?.packetName || 'No packet selected'}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {selectedPacket
-                        ? `USD ${formatMoney(selectedPacket.sellingPrice)}`
-                        : 'Load packets to update pricing'}
                     </p>
                   </div>
                 </div>
 
                 {packetError ? (
-                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  <p className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-2.5 text-sm font-medium text-rose-700 shadow-sm">
                     {packetError}
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-slate-500">
-                  Last synced: {formatTimestamp(selectedPacket?.updatedAt)}
+              <div className="flex flex-col gap-4 border-t border-slate-200/60 pt-5 mt-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {formatTimestamp(selectedPacket?.updatedAt)}
                 </p>
-                <Button type="button" size="sm" onClick={() => void openPacketModal()} disabled={packetLoading}>
-                  {packetLoading ? 'Loading...' : 'Add Live Packet Price'}
+                <Button type="button" size="sm" onClick={() => void openPacketModal()} disabled={packetLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                  {packetLoading ? 'Loading...' : 'Update Packet Price'}
                 </Button>
               </div>
             </div>

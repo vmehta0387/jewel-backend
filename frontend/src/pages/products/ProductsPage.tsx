@@ -1,5 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
+import SearchableSelect from '../../components/common/SearchableSelect';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
@@ -69,6 +71,26 @@ interface DesignRow {
   updatedByName: string;
 }
 
+type DesignListColumnKey =
+  | 'media'
+  | 'designNo'
+  | 'jewelryGroup'
+  | 'jewelrySize'
+  | 'metalInfo'
+  | 'collection'
+  | 'stoneInfo'
+  | 'price'
+  | 'tags'
+  | 'stage'
+  | 'status'
+  | 'updatedBy'
+  | 'modifiedAt';
+
+interface DesignListColumn {
+  key: DesignListColumnKey;
+  label: string;
+}
+
 interface ApiDesignRow {
   id: string;
   designNo?: string;
@@ -97,6 +119,12 @@ interface ApiDesignRow {
 interface GalleryItem {
   key: string;
   url: string;
+}
+
+interface ListMediaViewerState {
+  title: string;
+  items: GalleryItem[];
+  activeIndex: number;
 }
 
 interface StlItem {
@@ -189,6 +217,35 @@ interface VendorRow {
   stockType: string;
   supplierStyleNo: string;
 }
+
+const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
+  { key: 'media', label: 'Media' },
+  { key: 'designNo', label: 'Design No.' },
+  { key: 'jewelryGroup', label: 'Jewelry Group' },
+  { key: 'jewelrySize', label: 'Jewelry Size' },
+  { key: 'metalInfo', label: 'Metal Info' },
+  { key: 'collection', label: 'Collection' },
+  { key: 'stoneInfo', label: 'Stone Info' },
+  { key: 'price', label: 'Price' },
+  { key: 'tags', label: 'Tags' },
+  { key: 'stage', label: 'Stage' },
+  { key: 'status', label: 'Status' },
+  { key: 'updatedBy', label: 'Updated By' },
+  { key: 'modifiedAt', label: 'Modified' },
+];
+
+const DEFAULT_DESIGN_LIST_COLUMNS: DesignListColumnKey[] = [
+  'media',
+  'designNo',
+  'jewelryGroup',
+  'jewelrySize',
+  'metalInfo',
+  'collection',
+  'stoneInfo',
+  'price',
+];
+
+const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v2';
 
 interface PacketOption {
   id: string;
@@ -557,7 +614,7 @@ const FINDING_FEATURE_ENABLED = false;
 
 function Tag({ text }: { text: string }) {
   return (
-    <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+    <span className="inline-flex shrink-0 resize-none items-center justify-center whitespace-nowrap rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-0.5 text-[0.7rem] font-bold uppercase tracking-wider text-amber-700 shadow-sm ring-1 ring-amber-500/10">
       {text}
     </span>
   );
@@ -633,7 +690,7 @@ function Modal({
   onClose,
   children,
   size = 'max-w-6xl',
-  zIndexClass = 'z-50',
+  zIndexClass = 'z-[100]',
 }: {
   title: string;
   onClose: () => void;
@@ -641,23 +698,28 @@ function Modal({
   size?: string;
   zIndexClass?: string;
 }) {
-  return (
-    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/55 p-3 backdrop-blur-[1px]`}>
-      <div className={`w-full ${size} max-h-[95vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl`}>
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
-          <h2 className="text-lg font-bold tracking-tight text-slate-900">{title}</h2>
+  return createPortal(
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm transition-all duration-300`}>
+      <div className={`relative flex w-full ${size} max-h-full flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl`}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
+          <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-lg font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="group flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/50 text-slate-500 transition-all hover:bg-slate-200 hover:text-slate-900"
             onClick={onClose}
             aria-label="Close"
           >
-            x
+            <svg className="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-5 sm:p-6">
+          {children}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -689,9 +751,36 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
+  const [importingDesigns, setImportingDesigns] = useState(false);
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<DesignListColumnKey[]>(() => {
+    if (typeof window === 'undefined') {
+      return DEFAULT_DESIGN_LIST_COLUMNS;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(DESIGN_LIST_COLUMNS_STORAGE_KEY);
+      if (!raw) {
+        return DEFAULT_DESIGN_LIST_COLUMNS;
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return DEFAULT_DESIGN_LIST_COLUMNS;
+      }
+
+      const sanitized = parsed.filter((item): item is DesignListColumnKey =>
+        DESIGN_LIST_COLUMNS.some((column) => column.key === item),
+      );
+
+      return sanitized.length > 0 ? sanitized : DEFAULT_DESIGN_LIST_COLUMNS;
+    } catch {
+      return DEFAULT_DESIGN_LIST_COLUMNS;
+    }
+  });
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -790,6 +879,9 @@ export default function ProductsPage() {
   const [detailDesignLoading, setDetailDesignLoading] = useState(false);
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
   const [showStlViewerModal, setShowStlViewerModal] = useState(false);
+  const [listMediaViewer, setListMediaViewer] = useState<ListMediaViewerState | null>(null);
+  const designImportInputRef = useRef<HTMLInputElement | null>(null);
+  const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -1769,6 +1861,29 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(
+      DESIGN_LIST_COLUMNS_STORAGE_KEY,
+      JSON.stringify(visibleColumns),
+    );
+  }, [visibleColumns]);
+
+  useEffect(() => {
+    if (!showColumnPicker) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!columnPickerRef.current?.contains(event.target as Node)) {
+        setShowColumnPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnPicker]);
+
+  useEffect(() => {
     if (!packetOptions.length) return;
     setGemRows((prev) => {
       let changed = false;
@@ -1866,6 +1981,45 @@ export default function ProductsPage() {
       return true;
     });
   }, [filters, rows, search, showInactive]);
+
+  const isColumnVisible = (key: DesignListColumnKey) => visibleColumns.includes(key);
+
+  const toggleColumnVisibility = (key: DesignListColumnKey) => {
+    setVisibleColumns((prev) => {
+      if (prev.includes(key)) {
+        const next = prev.filter((item) => item !== key);
+        return next.length > 0 ? next : prev;
+      }
+      const next = [...prev, key];
+      return DESIGN_LIST_COLUMNS.filter((column) => next.includes(column.key)).map((column) => column.key);
+    });
+  };
+
+  const resetVisibleColumns = () => {
+    setVisibleColumns(DEFAULT_DESIGN_LIST_COLUMNS);
+  };
+
+  const showAllColumns = () => {
+    setVisibleColumns(DESIGN_LIST_COLUMNS.map((column) => column.key));
+  };
+
+  const openListMediaViewer = (row: DesignRow, startIndex = 0) => {
+    const items = (row.imageUrls || []).map((url, index) => ({
+      key: row.imageKeys?.[index] || `${row.id}-${index}`,
+      url,
+    }));
+
+    if (!items.length) {
+      return;
+    }
+
+    const safeIndex = Math.min(Math.max(startIndex, 0), items.length - 1);
+    setListMediaViewer({
+      title: row.designNo || 'DESIGN MEDIA',
+      items,
+      activeIndex: safeIndex,
+    });
+  };
 
   const pageSize = 15;
   const totalPages = useMemo(
@@ -2803,16 +2957,87 @@ const createDefaultVendorRow = (): VendorRow => ({
     setter((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
   };
 
-  const exportCsv = () => {
-    const csv = [['Design No', 'Design Name', 'Version', 'Jewelry Group', 'Jewelry Size', 'Metal Caratage', 'Collection', 'Stone Info', 'Price', 'Tags'], ...filteredRows.map((item) => [item.designNo, item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.goldColour, item.collection, item.stoneInfo, item.price.toFixed(2), item.tags.join('; ')])]
-      .map((line) => line.join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const downloadBlob = (blob: Blob, fileName: string) => {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'design-list.csv';
+    link.download = fileName;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+  };
+
+  const exportExcel = async () => {
+    try {
+      const exportIds = filteredRows.map((item) => item.id);
+      const response = await api.post(
+        '/products/export/by-ids',
+        { ids: exportIds },
+        { responseType: 'blob' },
+      );
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'designs-export.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to export designs.');
+    }
+  };
+
+  const downloadDesignTemplate = async () => {
+    try {
+      const response = await api.get('/products/export/template', {
+        responseType: 'blob',
+      });
+      downloadBlob(
+        new Blob([response.data], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        'designs-import-template.xlsx',
+      );
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to download design import template.');
+    }
+  };
+
+  const handleImportDesigns = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setImportingDesigns(true);
+    try {
+      const response = await api.post('/products/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const summary = response.data as {
+        totalRows: number;
+        created: number;
+        updated: number;
+        failed: number;
+        errors: string[];
+      };
+      const errorPreview =
+        summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
+      window.alert(
+        `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
+      );
+      await fetchDesignRows();
+    } catch (error: any) {
+      console.error(error);
+      const message = error?.response?.data?.message;
+      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import designs.');
+    } finally {
+      setImportingDesigns(false);
+    }
   };
 
   const exportPdf = () => {
@@ -2955,6 +3180,64 @@ const createDefaultVendorRow = (): VendorRow => ({
           <p className="text-sm text-gray-600">Design entries module for super admin review.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="relative" ref={columnPickerRef}>
+            <button
+              type="button"
+              className={exportActionButtonClass}
+              onClick={() => setShowColumnPicker((prev) => !prev)}
+              title="Choose visible columns"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">COL</span>
+              <span>Columns</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                {visibleColumns.length}
+              </span>
+            </button>
+            {showColumnPicker ? (
+              <div className="absolute left-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Visible Columns</p>
+                    <p className="text-xs text-slate-500">
+                      {visibleColumns.length} of {DESIGN_LIST_COLUMNS.length} shown in the list view
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-800"
+                      onClick={showAllColumns}
+                    >
+                      Show all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-primary-700 hover:text-primary-800"
+                      onClick={resetVisibleColumns}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {DESIGN_LIST_COLUMNS.map((column) => (
+                    <label
+                      key={column.key}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={isColumnVisible(column.key)}
+                        onChange={() => toggleColumnVisibility(column.key)}
+                      />
+                      <span>{column.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
           <Button type="button" size="sm" variant="secondary" className="shadow-[0_8px_20px_-16px_rgba(15,23,42,0.35)]" onClick={() => setShowFilters((prev) => !prev)}>
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M4 6h16M7 12h10M10 18h4" />
@@ -2985,6 +3268,25 @@ const createDefaultVendorRow = (): VendorRow => ({
           <button
             type="button"
             className={exportActionButtonClass}
+            onClick={downloadDesignTemplate}
+            title="Download design import template"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-slate-100 text-[9px] font-bold text-slate-700">TPL</span>
+            <span>Template</span>
+          </button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
+            onClick={() => designImportInputRef.current?.click()}
+            disabled={importingDesigns}
+            title="Import designs from Excel workbook"
+          >
+            <span className="flex h-6 w-6 items-center justify-center rounded bg-sky-100 text-[9px] font-bold text-sky-700">IMP</span>
+            <span>{importingDesigns ? 'Importing...' : 'Import Excel'}</span>
+          </button>
+          <button
+            type="button"
+            className={exportActionButtonClass}
             onClick={exportPdf}
             title="Export selected rows to PDF"
           >
@@ -2997,13 +3299,20 @@ const createDefaultVendorRow = (): VendorRow => ({
           <button
             type="button"
             className={exportActionButtonClass}
-            onClick={exportCsv}
-            title="Export design list to Excel (CSV)"
+            onClick={exportExcel}
+            title="Export design list to Excel workbook"
           >
             <span className="flex h-6 w-6 items-center justify-center rounded bg-emerald-100 text-[9px] font-bold text-emerald-700">XLS</span>
             <span>Excel file</span>
           </button>
         </div>
+        <input
+          ref={designImportInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={handleImportDesigns}
+        />
       </div>
 
       <Card>
@@ -3013,93 +3322,75 @@ const createDefaultVendorRow = (): VendorRow => ({
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Group</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.jewelryGroup}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelryGroup: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.jewelryGroups.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelryGroup: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.jewelryGroups.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Collection</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.collection}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, collection: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.collections.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, collection: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.collections.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Jewelry Size</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.jewelrySize}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.jewelrySizes.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelrySize: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.jewelrySizes.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Tags</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.tags}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, tags: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.tags.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, tags: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.tags.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Stone Packet</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.stonePacket}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, stonePacket: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {packetOptions.map((option) => (
-                    <option key={option.id} value={option.packetName}>
-                      {option.packetName}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, stonePacket: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...packetOptions.map(o => ({ value: o.packetName, label: o.packetName }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600">Metal Caratage</label>
-                <select
-                  className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                <SearchableSelect
                   value={filters.goldColour}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, goldColour: event.target.value }))}
-                >
-                  <option value="">All</option>
-                  {masterOptions.metalCaratages.map((option) => (
-                    <option key={option.id} value={option.value}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setFilters((prev) => ({ ...prev, goldColour: val }))}
+                  options={[
+                    { value: '', label: 'All' },
+                    ...masterOptions.metalCaratages.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All"
+                />
               </div>
             </div>
           </div>
@@ -3146,15 +3437,19 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <span>#</span>
                   </div>
                 </th>
-                <th className="app-table-head-cell">Media</th>
-                <th className="app-table-head-cell">Design No.</th>
-                <th className="app-table-head-cell">Jewelry Group</th>
-                <th className="app-table-head-cell">Jewelry Size</th>
-                <th className="app-table-head-cell">Metal Info</th>
-                <th className="app-table-head-cell">Collection</th>
-                <th className="app-table-head-cell">Stone Info</th>
-                <th className="app-table-head-cell">Price</th>
-                <th className="app-table-head-cell">Tags</th>
+                {isColumnVisible('media') ? <th className="app-table-head-cell">Media</th> : null}
+                {isColumnVisible('designNo') ? <th className="app-table-head-cell">Design No.</th> : null}
+                {isColumnVisible('jewelryGroup') ? <th className="app-table-head-cell">Jewelry Group</th> : null}
+                {isColumnVisible('jewelrySize') ? <th className="app-table-head-cell">Jewelry Size</th> : null}
+                {isColumnVisible('metalInfo') ? <th className="app-table-head-cell">Metal Info</th> : null}
+                {isColumnVisible('collection') ? <th className="app-table-head-cell">Collection</th> : null}
+                {isColumnVisible('stoneInfo') ? <th className="app-table-head-cell">Stone Info</th> : null}
+                {isColumnVisible('price') ? <th className="app-table-head-cell">Price</th> : null}
+                {isColumnVisible('tags') ? <th className="app-table-head-cell">Tags</th> : null}
+                {isColumnVisible('stage') ? <th className="app-table-head-cell">Stage</th> : null}
+                {isColumnVisible('status') ? <th className="app-table-head-cell">Status</th> : null}
+                {isColumnVisible('updatedBy') ? <th className="app-table-head-cell">Updated By</th> : null}
+                {isColumnVisible('modifiedAt') ? <th className="app-table-head-cell">Modified</th> : null}
                 <th className="app-table-head-cell">Action</th>
               </tr>
               </thead>
@@ -3173,45 +3468,61 @@ const createDefaultVendorRow = (): VendorRow => ({
                       {idx + 1}
                     </div>
                   </td>
+                  {isColumnVisible('media') ? (
                   <td className="app-table-cell">
                     {row.imageUrls?.[0] ? (
-                      <MediaPreview
-                        url={row.imageUrls[0]}
-                        alt={`${row.designNo} preview`}
-                        className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm"
-                      />
+                      <button
+                        type="button"
+                        className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-2"
+                        onClick={() => openListMediaViewer(row)}
+                        title="Open media viewer"
+                      >
+                        <MediaPreview
+                          url={row.imageUrls[0]}
+                          alt={`${row.designNo} preview`}
+                          className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm transition group-hover:border-slate-300 group-hover:shadow-md"
+                        />
+                      </button>
                     ) : (
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-semibold tracking-[0.12em] text-slate-400">N/A</div>
                     )}
                   </td>
-                  <td className="app-table-cell text-left text-sm font-semibold">
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        className="text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
-                        onClick={() => openEdit(row)}
-                        title="Edit design"
-                      >
-                        {row.designNo}
-                      </button>
-                      <span className="text-xs font-medium text-slate-500">{row.designName || '-'}</span>
-                    </div>
+                  ) : null}
+                  {isColumnVisible('designNo') ? (
+                  <td className="app-table-cell text-left text-sm font-semibold whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="whitespace-nowrap text-slate-900 underline-offset-4 transition hover:text-primary-700 hover:underline"
+                      onClick={() => openEdit(row)}
+                      title={row.designName ? `${row.designNo} - ${row.designName}` : 'Edit design'}
+                    >
+                      {row.designNo}
+                    </button>
                   </td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.jewelrySize}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.goldColour || '-'}</td>
-                  <td className="app-table-cell text-sm text-slate-700">{row.collection}</td>
-                  <td className="app-table-cell text-sm text-slate-700">
-                    <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
+                  ) : null}
+                  {isColumnVisible('jewelryGroup') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.jewelryGroup}</td> : null}
+                  {isColumnVisible('jewelrySize') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.jewelrySize}</td> : null}
+                  {isColumnVisible('metalInfo') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.goldColour || '-'}</td> : null}
+                  {isColumnVisible('collection') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.collection}</td> : null}
+                  {isColumnVisible('stoneInfo') ? (
+                  <td className="app-table-cell">
+                    <span className="inline-flex shrink-0 resize-none items-center justify-center whitespace-nowrap rounded-full border border-cyan-200/80 bg-cyan-50/80 px-2.5 py-0.5 text-[0.7rem] font-bold uppercase tracking-wider text-cyan-700 shadow-sm ring-1 ring-cyan-500/10">
                       {row.stoneInfo}
                     </span>
                   </td>
-                  <td className="app-table-cell text-sm font-semibold text-slate-800">{formatMoney(row.price)}</td>
+                  ) : null}
+                  {isColumnVisible('price') ? <td className="app-table-cell whitespace-nowrap text-sm font-semibold text-slate-800">{formatMoney(row.price)}</td> : null}
+                  {isColumnVisible('tags') ? (
                   <td className="app-table-cell">
-                    <div className="flex flex-wrap gap-1.5">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div>
+                    <div className="flex flex-nowrap gap-1.5 overflow-hidden">{row.tags.map((tag) => <Tag key={`${row.id}-${tag}`} text={tag} />)}</div>
                   </td>
+                  ) : null}
+                  {isColumnVisible('stage') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.stage || '-'}</td> : null}
+                  {isColumnVisible('status') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.status || (row.isActive ? 'Active' : 'Inactive')}</td> : null}
+                  {isColumnVisible('updatedBy') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.updatedByName || '-'}</td> : null}
+                  {isColumnVisible('modifiedAt') ? <td className="app-table-cell whitespace-nowrap text-sm text-slate-700">{row.modifiedAt || '-'}</td> : null}
                   <td className="app-table-cell">
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-nowrap gap-1">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       {canCreateDesign ? (
@@ -3268,7 +3579,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         </div>
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
-          <p>Showing {showingFrom}–{showingTo} of {filteredRows.length} entries</p>
+          <p>Showing {showingFrom}-{showingTo} of {filteredRows.length} entries</p>
           <p className="text-xs text-blue-700">
             {canModifyExistingDesigns
               ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
@@ -3282,8 +3593,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       </Card>
 
       {showAddModal && (
-        <Modal title="ADD NEW DESIGN" size="max-w-[98vw]" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
-          <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-5 [&_input]:rounded-md [&_input]:border-slate-300 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-300 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-300 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
+        <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
+          <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
               <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
@@ -3291,8 +3602,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-              <div className="rounded-xl border border-sky-200 bg-white shadow-sm [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
-                <div className="border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">General Information</div>
+              <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
+                <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">General Information</div>
                 <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
@@ -3623,7 +3934,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
               <div className="space-y-4">
                 <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
-                <div className="border-b border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800">Media Gallery</div>
+                <div className="border-b border-violet-200/60 bg-violet-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-violet-800 backdrop-blur-sm">Media Gallery</div>
                 <div className="space-y-3 p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -3812,8 +4123,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
-                  <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Metal Information</div>
+                <div className="overflow-hidden rounded-2xl border border-amber-200/60 bg-white shadow-sm ring-1 ring-amber-900/5 transition-all hover:shadow-md overflow-hidden">
+                  <div className="border-b border-amber-200/60 bg-amber-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-amber-800 backdrop-blur-sm">Metal Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="w-full min-w-[1020px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -3922,7 +4233,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 placeholder={getMetalValue(item).toFixed(2)}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-slate-100 text-sm font-bold text-slate-900">
@@ -3938,7 +4249,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
                     <button
                       type="button"
-                      className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800"
+                      className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                       onClick={addMetalLine}
                     >
                       + Add Line
@@ -3947,7 +4258,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
 
                 <div className="rounded-xl border border-cyan-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-800">
+                  <div className="flex items-center justify-between border-b border-cyan-200/60 bg-cyan-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan-800 backdrop-blur-sm">
                     <span>Gemstone Information</span>
                     {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
                   </div>
@@ -4037,7 +4348,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 placeholder={getGemValue(item).toFixed(2)}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setGemRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4052,7 +4363,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-cyan-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '', amount: '' }])}>+ Add Line</button>
+                    <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setGemRows((prev) => [...prev, { id: makeId(), packetId: '', stone: '', shape: '', size: '', cut: '', color: '', quality: '', settingType: '', wtPerPcs: '', pcs: '', wtInCts: '', pricePerCt: '', amount: '' }])}>+ Add Line</button>
                   </div>
                 </div>
               </div>
@@ -4061,8 +4372,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="rounded-xl border border-rose-200 bg-white shadow-sm">
-                  <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">Labor Information</div>
+                <div className="overflow-hidden rounded-2xl border border-rose-200/60 bg-white shadow-sm ring-1 ring-rose-900/5 transition-all hover:shadow-md">
+                  <div className="border-b border-rose-200/60 bg-rose-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-rose-800 backdrop-blur-sm">Labor Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="min-w-full text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -4118,7 +4429,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 tabIndex={-1}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4130,13 +4441,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </table>
                   </div>
                   <div className="flex justify-end border-t border-rose-200 bg-white px-3 py-2">
-                    <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
+                    <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
                   </div>
                 </div>
 
                 {FINDING_FEATURE_ENABLED ? (
-                  <div className="rounded-xl border border-indigo-200 bg-white shadow-sm">
-                    <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800">Finding Information</div>
+                  <div className="overflow-hidden rounded-2xl border border-indigo-200/60 bg-white shadow-sm ring-1 ring-indigo-900/5 transition-all hover:shadow-md">
+                    <div className="border-b border-indigo-200/60 bg-indigo-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-indigo-800 backdrop-blur-sm">Finding Information</div>
                     <div className="overflow-x-auto scrollbar-top">
                       <table className="min-w-full text-sm">
                         <thead className="bg-indigo-50/70 text-left text-[11px] font-semibold text-indigo-900">
@@ -4187,7 +4498,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.units} onChange={(event) => updateFindingRow(item.id, 'units', event.target.value)} placeholder="0" /></td>
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.totalWeight} onChange={(event) => updateFindingRow(item.id, 'totalWeight', event.target.value)} placeholder="0.000" /></td>
                               <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.findingValue} onChange={(event) => updateFindingRow(item.id, 'findingValue', event.target.value)} placeholder="0.00" /></td>
-                              <td className="px-2 py-2"><button type="button" className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" onClick={() => setFindingRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                              <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setFindingRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                             </tr>
                           ))}
                           <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
@@ -4199,7 +4510,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </table>
                     </div>
                     <div className="flex justify-end border-t border-indigo-200 bg-white px-3 py-2">
-                      <button type="button" className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800" onClick={() => setFindingRows((prev) => [...prev, { id: makeId(), findingHead: masterOptions.findingHeads[0]?.value || '', pricePerUnit: '', units: '', totalWeight: '', findingValue: '' }])}>+ Add Line</button>
+                      <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setFindingRows((prev) => [...prev, { id: makeId(), findingHead: masterOptions.findingHeads[0]?.value || '', pricePerUnit: '', units: '', totalWeight: '', findingValue: '' }])}>+ Add Line</button>
                     </div>
                   </div>
                 ) : null}
@@ -4884,7 +5195,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="rounded border border-gray-200">
-                <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Design Information</div>
+                <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Design Information</div>
                 <table className="min-w-full text-sm">
                   <tbody>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
@@ -4901,7 +5212,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
               <div className="space-y-4">
                 <div className="rounded border border-gray-200">
-                  <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800">Gallery Media</div>
+                  <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Gallery Media</div>
                   <div className="p-3">
                     {detailGalleryUrls.length ? (
                       <div className="space-y-3">
@@ -4932,7 +5243,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
                 <div className="rounded border border-gray-200">
-                  <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">
                     <span className="text-sm font-semibold text-gray-800">3D STL Model</span>
                     {detailStlUrl ? (
                       <button
@@ -4987,7 +5298,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{detailSummary.totalValue.toFixed(2)}</p></div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Metal Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5022,7 +5333,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Gemstone Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Gemstone Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5065,7 +5376,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             </div>
             <div className="rounded border border-slate-200">
-              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Labor Information</div>
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Labor Information</div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
@@ -5152,6 +5463,71 @@ const createDefaultVendorRow = (): VendorRow => ({
         </Modal>
       )}
 
+      {listMediaViewer ? (
+        <Modal
+          title={`MEDIA (${listMediaViewer.title})`}
+          onClose={() => setListMediaViewer(null)}
+          size="max-w-5xl"
+          zIndexClass="z-[80]"
+        >
+          <div className="space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950/95 p-4">
+              <MediaPreview
+                url={listMediaViewer.items[listMediaViewer.activeIndex].url}
+                alt={`${listMediaViewer.title} media ${listMediaViewer.activeIndex + 1}`}
+                className="h-[26rem] w-full rounded-xl object-contain"
+                controls
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {getFileNameFromUrl(listMediaViewer.items[listMediaViewer.activeIndex].url)}
+                </p>
+                <p className="text-xs text-slate-500">
+                  Media {listMediaViewer.activeIndex + 1} of {listMediaViewer.items.length}
+                </p>
+              </div>
+              <a
+                href={listMediaViewer.items[listMediaViewer.activeIndex].url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#D2C4B4] bg-[#F3E3D0] px-4 py-2 text-sm font-semibold text-slate-800 transition hover:bg-[#e9d8c4]"
+              >
+                Open File
+              </a>
+            </div>
+
+            {listMediaViewer.items.length > 1 ? (
+              <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                {listMediaViewer.items.map((item, index) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`overflow-hidden rounded-xl border p-1 transition ${
+                      index === listMediaViewer.activeIndex
+                        ? 'border-[#81A6C6] bg-[#AACDDC]/20 shadow-sm'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                    onClick={() =>
+                      setListMediaViewer((prev) => (prev ? { ...prev, activeIndex: index } : prev))
+                    }
+                    title={`Open media ${index + 1}`}
+                  >
+                    <MediaPreview
+                      url={item.url}
+                      alt={`${listMediaViewer.title} thumbnail ${index + 1}`}
+                      className="h-16 w-full rounded-lg object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+
       {modal === 'process' && selected && (
         <Modal title={`PROCESS (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-5xl">
           <div className="space-y-3">
@@ -5165,13 +5541,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.netWeight} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, netWeight: event.target.value } : row))} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.duration} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, duration: event.target.value } : row))} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.remarks} onChange={(event) => setProcessRows((prev) => prev.map((row) => row.id === item.id ? { ...row, remarks: event.target.value } : row))} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setProcessRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setProcessRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setProcessRows((prev) => [...prev, { id: makeId(), stage: '', netWeight: '', duration: '', remarks: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setProcessRows((prev) => [...prev, { id: makeId(), stage: '', netWeight: '', duration: '', remarks: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
@@ -5236,13 +5612,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.title} onChange={(event) => updateCostRow(setPricingRows, item.id, 'title', event.target.value)} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.qty} onChange={(event) => updateCostRow(setPricingRows, item.id, 'qty', event.target.value)} /></td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.rate} onChange={(event) => updateCostRow(setPricingRows, item.id, 'rate', event.target.value)} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setPricingRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setPricingRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setPricingRows((prev) => [...prev, { id: makeId(), title: '', qty: '', rate: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setPricingRows((prev) => [...prev, { id: makeId(), title: '', qty: '', rate: '' }])}>+ Add Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
@@ -5275,17 +5651,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                         </select>
                       </td>
                       <td className="px-3 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.supplierStyleNo} onChange={(event) => setVendorRows((prev) => prev.map((row) => row.id === item.id ? { ...row, supplierStyleNo: event.target.value } : row))} /></td>
-                      <td className="px-3 py-2"><button type="button" className="rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700" onClick={() => setVendorRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
+                      <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setVendorRows((prev) => prev.filter((row) => row.id !== item.id))}>Delete</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}
     </div>
   );
 }
+
 

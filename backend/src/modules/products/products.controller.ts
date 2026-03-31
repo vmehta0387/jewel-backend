@@ -10,11 +10,12 @@ import {
   Query,
   Request,
   StreamableFile,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
   CreateStonePacketDto,
   CreateDesignMasterDto,
@@ -60,9 +61,72 @@ export class ProductsController {
     return this.productsService.findAll(query, req.user);
   }
 
+  @Get('export/template')
+  async exportDesignTemplate() {
+    const file = await this.productsService.exportDesignTemplate();
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Get('export')
+  async exportDesigns(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
+    const file = await this.productsService.exportDesigns(query, req.user);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('export/by-ids')
+  async exportDesignsByIds(@Body() body: { ids?: string[] }, @Request() req: { user: AuthUser }) {
+    const file = await this.productsService.exportDesignsByIds(body?.ids || [], req.user);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  importDesigns(
+    @UploadedFile() file: { buffer?: Buffer; originalname?: string },
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.importDesigns(file, req.user);
+  }
+
   @Get('packets')
   findPackets(@Query() query: FindPacketsQueryDto) {
     return this.productsService.findPackets(query);
+  }
+
+  @Get('packets/export/template')
+  async exportPacketTemplate() {
+    const file = await this.productsService.exportPacketTemplate();
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Get('packets/export')
+  async exportPackets(@Query() query: FindPacketsQueryDto) {
+    const file = await this.productsService.exportPackets(query);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('packets/import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  importPackets(
+    @UploadedFile() file: { buffer?: Buffer; originalname?: string },
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.importPackets(file, req.user);
   }
 
   @Post('packets')
@@ -112,6 +176,34 @@ export class ProductsController {
   @Get('masters')
   findMasters(@Query() query: FindDesignMastersQueryDto) {
     return this.productsService.findMasters(query);
+  }
+
+  @Get('masters/export/template')
+  async exportMasterTemplate(@Query() query: FindDesignMastersQueryDto) {
+    const file = await this.productsService.exportMasterTemplate(query);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Get('masters/export')
+  async exportMasters(@Query() query: FindDesignMastersQueryDto) {
+    const file = await this.productsService.exportMasters(query);
+    return new StreamableFile(file.buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('masters/import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  importMasters(
+    @UploadedFile() file: { buffer?: Buffer; originalname?: string },
+    @Query() query: FindDesignMastersQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.importMasters(file, query, req.user);
   }
 
   @Get('global-base-prices')
