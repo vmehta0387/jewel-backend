@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -51,7 +51,7 @@ const navigationTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: colors.background,
+    background: 'transparent',
     primary: colors.primary,
     card: colors.card,
     text: colors.text,
@@ -96,8 +96,13 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
       headerShown: false,
       tabBarStyle: {
         backgroundColor: colors.card,
-        borderTopColor: colors.border,
-        borderTopWidth: 1,
+        borderTopColor: 'transparent',
+        borderTopWidth: 0,
+        elevation: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.04,
+        shadowRadius: 12,
         height: 60 + insets.bottom,
         paddingBottom: 8 + insets.bottom,
         paddingTop: 6,
@@ -136,7 +141,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         })();
         return (
           <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
-            <Ionicons name={name} size={iconSize} color={color} />
+            <Ionicons name={name} size={iconSize} color={focused ? '#2C1E16' : '#8B7355'} />
           </View>
         );
       },
@@ -189,11 +194,11 @@ const styles = StyleSheet.create({
   tabIcon: {
     width: 36,
     height: 36,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabIconActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: 'rgba(255, 252, 245, 0.92)',
   },
 });

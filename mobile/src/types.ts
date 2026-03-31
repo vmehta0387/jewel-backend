@@ -15,11 +15,17 @@ export type AuthUser = {
 export type Design = {
   id: string;
   designNo: string;
+  designName?: string | null;
   version: string;
+  isPrimary?: boolean;
   jewelryGroup: string;
+  collection?: string | null;
   jewelrySize?: string | null;
+  stage?: string | null;
   diamondSpread?: string | null;
   diamondType?: string | null;
+  diamondWeight?: string | null;
+  diamondQuality?: string | null;
   goldColour?: string | null;
   totalValue?: number;
   displayPrice?: number;
@@ -34,6 +40,7 @@ export type Design = {
   }>;
   gemstones?: Array<{
     packetId?: string;
+    stone?: string;
     shape?: string;
     size?: string;
     color?: string;

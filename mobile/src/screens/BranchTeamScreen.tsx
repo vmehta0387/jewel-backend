@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import ScreenHeader from '../components/ScreenHeader';
-import SearchBar from '../components/SearchBar';
 import StatCard from '../components/StatCard';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
@@ -82,7 +82,21 @@ const BranchTeamScreen = () => {
       />
 
       <View style={styles.searchWrapper}>
-        <SearchBar placeholder="Search by name or email" value={search} onChange={setSearch} />
+        <View style={styles.searchShell}>
+          <Ionicons name="search-outline" size={18} color="#a79687" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or email"
+            placeholderTextColor="#a79687"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={18} color="#b2a294" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.statsGrid}>
@@ -163,6 +177,23 @@ const styles = StyleSheet.create({
   searchWrapper: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  searchShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#8B7355',
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#2d221c',
+    height: 40,
   },
   statsGrid: {
     paddingHorizontal: spacing.lg,

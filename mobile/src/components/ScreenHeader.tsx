@@ -1,5 +1,5 @@
-﻿import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '../theme';
 
 const ScreenHeader: React.FC<{ title: string; subtitle?: string; rightSlot?: React.ReactNode }> = ({
@@ -29,7 +29,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 20,
+    fontFamily: 'serif',
+    fontSize: Platform.OS === 'android' ? 28 : 32,
     fontWeight: '700',
     color: colors.text,
   },

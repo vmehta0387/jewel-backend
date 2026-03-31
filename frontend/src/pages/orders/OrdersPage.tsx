@@ -44,6 +44,8 @@ interface DesignOption {
   designNo: string;
   version?: string;
   jewelryGroup?: string | null;
+  isPrimary?: boolean;
+  createdAt?: string;
 }
 
 interface DesignMetal {
@@ -152,6 +154,11 @@ const isVideoUrl = (url: string): boolean => {
 const formatMoney = (value: number): string =>
   `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatWeight = (value?: number | null): string => Number(value || 0).toFixed(3);
+const getBaseDesignNo = (designNo?: string | null): string =>
+  String(designNo || '')
+    .trim()
+    .toUpperCase()
+    .replace(/-V\d+$/i, '');
 
 function MediaPreview({ url, alt }: { url: string; alt: string }) {
   const resolved = resolvePublicAssetUrl(url);
@@ -308,8 +315,27 @@ export default function OrdersPage() {
 
   const loadDesigns = async () => {
     if (designOptions.length) return;
-    const response = await api.get('/products', { params: { limit: 200, status: 'ACTIVE' } });
-    setDesignOptions(response.data?.data || []);
+    try {
+      const response = await api.get('/products', { params: { limit: 200, status: 'ACTIVE' } });
+      const allRows: DesignOption[] = response.data?.data || [];
+
+      // Prefer primary design versions in order flow. If primary flags are missing, keep latest row per base design.
+      const primaryRows = allRows.filter((row) => Boolean(row.isPrimary));
+      const sourceRows = primaryRows.length > 0 ? primaryRows : allRows;
+
+      const deduped = new Map<string, DesignOption>();
+      sourceRows.forEach((row) => {
+        const base = getBaseDesignNo(row.designNo);
+        const key = base || row.designNo || row.id;
+        if (!deduped.has(key)) {
+          deduped.set(key, row);
+        }
+      });
+
+      setDesignOptions(Array.from(deduped.values()));
+    } catch {
+      setDesignOptions([]);
+    }
   };
 
   const loadPackets = async (): Promise<Record<string, string>> => {
@@ -521,7 +547,7 @@ export default function OrdersPage() {
 
   const selectedDesignLabel = useMemo(() => {
     if (!designDetail) return '-';
-    return `${designDetail.designNo}${designDetail.version ? ` (${designDetail.version})` : ''}`;
+    return `${designDetail.designNo}`;
   }, [designDetail]);
 
   const metalsDisplay = useMemo(() => {
@@ -611,7 +637,7 @@ export default function OrdersPage() {
             <div><span class="label">Status</span>${order.status}${order.isActive ? '' : ' (Suspended)'}</div>
             <div><span class="label">Company</span>${order.companyName || '-'}</div>
             <div><span class="label">Branch</span>${order.branchName || '-'}</div>
-            <div><span class="label">Design</span>${design ? `${design.designNo}${design.version ? ` (${design.version})` : ''}` : '-'}</div>
+            <div><span class="label">Design</span>${design ? `${design.designNo}` : '-'}</div>
             <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
             <div><span class="label">Quantity</span>${order.quantity}</div>
             <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
@@ -812,7 +838,7 @@ export default function OrdersPage() {
                     <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                     <td className="app-table-cell text-sm font-semibold text-slate-900">{order.orderNumber}</td>
                     <td className="app-table-cell text-sm text-slate-700">
-                      {order.designNo ? `${order.designNo}${order.designVersion ? ` (${order.designVersion})` : ''}` : '-'}
+                      {order.designNo ? `${order.designNo}` : '-'}
                     </td>
                     <td className="app-table-cell text-sm text-slate-700">{order.companyName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
@@ -937,7 +963,7 @@ export default function OrdersPage() {
                       <option value="">Select Design</option>
                       {designOptions.map((option) => (
                         <option key={option.id} value={option.id}>
-                          {option.designNo}{option.version ? ` (${option.version})` : ''}
+                          {option.designNo}
                         </option>
                       ))}
                     </select>
@@ -1227,7 +1253,7 @@ export default function OrdersPage() {
             <div>
               <label className="text-sm font-medium text-slate-700">Design</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign ? `${viewDesign.designNo}${viewDesign.version ? ` (${viewDesign.version})` : ''}` : '-'}
+                {viewDesign ? `${viewDesign.designNo}` : '-'}
               </div>
             </div>
             <div>

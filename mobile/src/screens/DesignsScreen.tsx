@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -60,9 +61,41 @@ const getSearchableFields = (design: Design) =>
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
 
+const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
+
+const keepPrimaryDesignsOnly = (rows: Design[]) => {
+  if (!rows.length) return rows;
+  const hasExplicitPrimaryFlag = rows.some((row) => typeof row.isPrimary === 'boolean');
+
+  if (hasExplicitPrimaryFlag) {
+    return rows.filter((row) => row.isPrimary === true);
+  }
+
+  const primaryByBase = new Map<string, Design>();
+  for (const row of rows) {
+    const base = normalizeBaseDesignNo(row.designNo);
+    if (!base) continue;
+    const existing = primaryByBase.get(base);
+    const isV1 = /^V1$/i.test(String(row.version || '').trim());
+
+    if (!existing) {
+      primaryByBase.set(base, row);
+      continue;
+    }
+
+    const existingIsV1 = /^V1$/i.test(String(existing.version || '').trim());
+    if (isV1 && !existingIsV1) {
+      primaryByBase.set(base, row);
+    }
+  }
+
+  return primaryByBase.size > 0 ? Array.from(primaryByBase.values()) : rows;
+};
+
 const DesignsScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
+  const numColumns = 2;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,14 +108,16 @@ const DesignsScreen = () => {
     setError(null);
     try {
       const response = await fetchDesigns(token);
-      const baseDesigns = response.data || [];
+      const baseDesigns = keepPrimaryDesignsOnly(response.data || []);
+      // Render immediately so users don't wait for pricing preview round-trips.
+      setDesigns(baseDesigns);
+
       const shouldApplyPricing =
         (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
         Boolean(user?.companyId) &&
         Boolean(user?.branchId);
 
       if (!shouldApplyPricing) {
-        setDesigns(baseDesigns);
         return;
       }
 
@@ -99,7 +134,10 @@ const DesignsScreen = () => {
         }),
       );
 
-      setDesigns(pricedDesigns);
+      setDesigns((current) => {
+        const byId = new Map(pricedDesigns.map((row) => [row.id, row]));
+        return current.map((row) => byId.get(row.id) || row);
+      });
     } catch (err: any) {
       setError(err?.message || 'Unable to load designs');
     } finally {
@@ -171,7 +209,13 @@ const DesignsScreen = () => {
 
           <View style={styles.imageShell}>
             {imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.designImage} resizeMode="cover" />
+              <Image
+                source={{ uri: imageUrl, cache: 'force-cache' }}
+                style={styles.designImage}
+                resizeMode="cover"
+                resizeMethod="resize"
+                fadeDuration={120}
+              />
             ) : (
               <View style={styles.placeholderImage}>
                 <Ionicons name="diamond-outline" size={34} color="#cfb49a" />
@@ -223,6 +267,12 @@ const DesignsScreen = () => {
             placeholderTextColor="#a79687"
             value={search}
             onChangeText={setSearch}
+            underlineColorAndroid="transparent"
+            cursorColor="#8B7355"
+            selectionColor="#8B7355"
+            autoCorrect={false}
+            autoCapitalize="none"
+            textAlignVertical="center"
           />
           {search ? (
             <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -245,7 +295,7 @@ const DesignsScreen = () => {
                   key={item}
                   activeOpacity={0.9}
                   onPress={() => setSelectedCategory(item)}
-                  style={[styles.chip, selected ? styles.chipActive : null]}
+                  style={[styles.chip, styles.chipSpacing, selected ? styles.chipActive : null]}
                 >
                   <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{item}</Text>
                 </TouchableOpacity>
@@ -271,11 +321,16 @@ const DesignsScreen = () => {
       <FlatList
         data={filteredDesigns}
         keyExtractor={(item) => item.id}
-        numColumns={2}
+        numColumns={numColumns}
         renderItem={renderDesignCard}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={6}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        updateCellsBatchingPeriod={30}
+        removeClippedSubviews
         ListEmptyComponent={renderEmpty}
         refreshControl={
           <RefreshControl
@@ -292,28 +347,30 @@ const DesignsScreen = () => {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#f5efe8',
+    backgroundColor: 'transparent',
   },
   fixedHeader: {
     paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 10,
-    backgroundColor: '#f5efe8',
+    paddingTop: Platform.OS === 'android' ? 10 : 18,
+    paddingBottom: Platform.OS === 'android' ? 8 : 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    zIndex: 5,
   },
   searchShell: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.16)',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: '#efe4d8',
+    borderColor: '#8B7355',
     shadowColor: '#9c7f64',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 12,
-    elevation: 1,
+    elevation: Platform.OS === 'android' ? 0 : 1,
+    overflow: 'hidden',
   },
   searchInput: {
     flex: 1,
@@ -321,47 +378,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2d221c',
     height: 40,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingVertical: 0,
+    includeFontPadding: false,
   },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
+    marginTop: Platform.OS === 'android' ? 10 : 14,
   },
   chipList: {
-    gap: 8,
     paddingRight: 12,
   },
+  chipSpacing: {
+    marginRight: 8,
+  },
   chip: {
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 14,
+    height: Platform.OS === 'android' ? 30 : 34,
+    borderRadius: 12,
+    paddingHorizontal: Platform.OS === 'android' ? 12 : 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3ebe2',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderWidth: 1,
-    borderColor: '#eadfce',
+    borderColor: 'rgba(197, 160, 89, 0.3)',
   },
   chipActive: {
-    backgroundColor: '#211711',
-    borderColor: '#211711',
+    backgroundColor: '#2C1E16',
+    borderColor: '#2C1E16',
   },
   chipText: {
-    fontSize: 12,
+    fontSize: Platform.OS === 'android' ? 11 : 12,
     fontWeight: '600',
-    color: '#7f6d60',
+    color: '#8E8E93',
   },
   chipTextActive: {
-    color: '#fff9f4',
+    color: 'rgba(255, 252, 245, 0.82)',
   },
   filterButton: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f3ebe2',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderWidth: 1,
-    borderColor: '#eadfce',
+    borderColor: 'rgba(197, 160, 89, 0.3)',
     marginLeft: 10,
   },
   error: {
@@ -371,28 +434,28 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 18,
-    paddingTop: 6,
-    paddingBottom: 28,
+    paddingTop: Platform.OS === 'android' ? 4 : 6,
+    paddingBottom: Platform.OS === 'android' ? 20 : 28,
     flexGrow: 1,
   },
   gridRow: {
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: Platform.OS === 'android' ? 10 : 14,
   },
   cardTouchable: {
     width: '48.3%',
   },
   designCard: {
-    backgroundColor: '#fffaf5',
-    borderRadius: 22,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#efe3d6',
-    shadowColor: '#513829',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 2,
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)',
+    borderWidth: 1.3,
+    borderColor: '#7C6650',
+    borderRadius: 14,
+    padding: Platform.OS === 'android' ? 10 : 12,
+    shadowColor: '#6E533D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: Platform.OS === 'android' ? 0 : 2,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -422,13 +485,13 @@ const styles = StyleSheet.create({
     color: '#8a4a4a',
   },
   imageShell: {
-    height: 128,
+    height: Platform.OS === 'android' ? 98 : 128,
     borderRadius: 18,
     backgroundColor: '#f6efe7',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: Platform.OS === 'android' ? 8 : 12,
   },
   designImage: {
     width: '100%',
@@ -441,22 +504,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   designName: {
-    fontSize: 14,
-    lineHeight: 18,
+    fontFamily: 'serif',
+    fontSize: Platform.OS === 'android' ? 13 : 14,
+    lineHeight: Platform.OS === 'android' ? 17 : 18,
     fontWeight: '700',
-    color: '#2c2019',
-    minHeight: 36,
+    color: '#2C1E16',
+    minHeight: Platform.OS === 'android' ? 28 : 36,
   },
   designMeta: {
-    fontSize: 11,
-    color: '#8c7a6c',
-    marginTop: 4,
+    fontSize: Platform.OS === 'android' ? 10 : 11,
+    color: '#8E8E93',
+    marginTop: Platform.OS === 'android' ? 2 : 4,
   },
   designPrice: {
-    fontSize: 16,
+    fontFamily: 'serif',
+    fontSize: Platform.OS === 'android' ? 15 : 16,
     fontWeight: '800',
-    color: '#2c2019',
-    marginTop: 10,
+    color: '#2C1E16',
+    marginTop: Platform.OS === 'android' ? 6 : 10,
   },
   loadingState: {
     alignItems: 'center',
@@ -469,13 +534,13 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: '#fbf7f2',
-    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
     paddingHorizontal: 22,
     paddingVertical: 34,
     borderWidth: 1,
-    borderColor: '#ece2d7',
-    marginTop: 10,
+    borderColor: '#8B7355',
+    marginTop: 20,
   },
   emptyIcon: {
     width: 56,

@@ -1,8 +1,9 @@
-﻿import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Screen from '../components/Screen';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
@@ -21,15 +22,17 @@ import { uploadMyPhoto } from '../api/auth';
 
 const APP_VERSION = '1.0.0';
 
-const BG = '#F5F0EB';
-const DARK_CARD = '#1C1C1E';
-const WHITE = '#FFFFFF';
-const TEXT_DARK = '#1C1C1E';
-const TEXT_MUTED = '#8A8A8E';
-const GREEN = '#34C759';
-const RED = '#FF3B30';
-const ACCENT = '#E8DDD0';
-const BORDER = '#E0D8CF';
+const BG = 'transparent';
+const DARK_CARD = 'rgba(44, 30, 22, 0.75)';
+const WHITE = 'rgba(255, 255, 255, 0.15)';
+const TEXT_DARK = '#2C1E16';
+const TEXT_MUTED = '#8E8E93';
+const GREEN = '#2C1E16';
+const RED = '#2C1E16';
+const ACCENT = 'rgba(255, 255, 255, 0.2)';
+const BORDER = '#8B7355';
+const GLASS_CARD_IOS = 'rgba(255, 255, 255, 0.22)';
+const GLASS_CARD_ANDROID = 'rgba(255, 255, 255, 0.12)';
 
 type ActivityItem = {
   id: string;
@@ -224,7 +227,7 @@ const BranchDashboardScreen = () => {
   }, [token, refresh]);
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen style={styles.safe}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -370,15 +373,15 @@ const BranchDashboardScreen = () => {
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Orders{'\n'}Today</Text>
+            <Text style={styles.statLabel}>Orders Today</Text>
             <Text style={styles.statValue}>{summary?.ordersReceivedToday ?? 0}</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Due{'\n'}Today</Text>
+            <Text style={styles.statLabel}>Due Today</Text>
             <Text style={styles.statValue}>{summary?.ordersDueToday ?? 0}</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Active{'\n'}Orders</Text>
+            <Text style={styles.statLabel}>Active Orders</Text>
             <Text style={styles.statValue}>{summary?.activeOrders ?? 0}</Text>
           </View>
         </View>
@@ -390,15 +393,23 @@ const BranchDashboardScreen = () => {
             style={[styles.actionBtn, styles.actionBtnDark]}
             onPress={() => navigation.navigate('OrdersTab')}
           >
-            <Ionicons name="add" size={20} color={WHITE} />
-            <Text style={[styles.actionBtnText, { color: WHITE }]}>New Order</Text>
+            <View style={styles.actionBtnContent}>
+              <View style={styles.actionIconWrap}>
+                <Ionicons name="add" size={20} color="#FFFFFF" />
+              </View>
+              <Text style={[styles.actionBtnText, { color: "#FFFFFF" }]}>New Order</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.actionBtnLight]}
             onPress={() => navigation.navigate('DesignsTab')}
           >
-            <Ionicons name="diamond-outline" size={20} color={TEXT_DARK} />
-            <Text style={[styles.actionBtnText, { color: TEXT_DARK }]}>Browse Designs</Text>
+            <View style={styles.actionBtnContent}>
+              <View style={styles.actionIconWrap}>
+                <Ionicons name="diamond-outline" size={20} color={TEXT_DARK} />
+              </View>
+              <Text style={[styles.actionBtnText, { color: TEXT_DARK }]}>Browse Designs</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -430,12 +441,12 @@ const BranchDashboardScreen = () => {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Screen>
   );
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { flex: 1, backgroundColor: 'transparent' },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 32 },
   header: {
@@ -451,11 +462,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerHeadline: {
+    fontFamily: 'serif',
     fontSize: 40,
     lineHeight: 40,
     color: TEXT_DARK,
   },
   headerGreeting: {
+    fontFamily: 'serif',
     fontSize: 18,
     fontWeight: '500',
     color: '#7E736A',
@@ -485,28 +498,29 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(44, 30, 22, 0.12)',
   },
   profileMenu: {
     position: 'absolute',
-    backgroundColor: 'transparent',
-    borderRadius: 16,
+    backgroundColor: '#FFF8F1',
+    borderRadius: 12,
     minWidth: 230,
     gap: 0,
   },
   menuBlock: {
-    backgroundColor: WHITE,
+    backgroundColor: '#FFF8F1',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    borderBottomRightRadius: 12,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.10,
-    shadowRadius: 16,
-    elevation: 8,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    elevation: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: '#D7C6B6',
   },
   menuRow: {
     flexDirection: 'row',
@@ -520,7 +534,7 @@ const styles = StyleSheet.create({
   },
   menuInnerDivider: {
     height: 1,
-    backgroundColor: BORDER,
+    backgroundColor: '#E6D9CC',
     marginHorizontal: 14,
   },
   menuAvatar: {
@@ -575,7 +589,7 @@ const styles = StyleSheet.create({
   versionInfoBlock: {
     backgroundColor: '#FEFCFA',
     borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    borderTopRightRadius: 12,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
     paddingHorizontal: 14,
@@ -593,7 +607,7 @@ const styles = StyleSheet.create({
   versionIconBox: {
     width: 30,
     height: 30,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#F7F1EB',
     alignItems: 'center',
     justifyContent: 'center',
@@ -620,19 +634,19 @@ const styles = StyleSheet.create({
   },
   salesCard: {
     backgroundColor: DARK_CARD,
-    borderRadius: 20,
+    borderRadius: 12,
     padding: 24,
     marginBottom: 14,
   },
-  salesAmount: { fontSize: 38, fontWeight: '700', color: WHITE, marginBottom: 4 },
-  salesLabel: { fontSize: 14, color: '#AEAEB2', marginBottom: 10 },
+  salesAmount: { fontFamily: 'serif', fontSize: 44, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 },
+  salesLabel: { fontSize: 14, color: '#FFFFFF', marginBottom: 10 },
   salesBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 12,
   },
   salesBadgeText: { fontSize: 12, fontWeight: '600' },
   statsRow: {
@@ -642,33 +656,83 @@ const styles = StyleSheet.create({
   },
   statBox: {
     flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    alignItems: 'flex-start',
-    backgroundColor: WHITE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-  statLabel: { fontSize: 11, color: TEXT_MUTED, lineHeight: 15, marginBottom: 6 },
-  statValue: { fontSize: 22, fontWeight: '700', color: TEXT_DARK },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: TEXT_DARK, marginBottom: 12 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  actionBtn: {
-    flex: 1,
-    borderRadius: 16,
-    paddingVertical: 18,
+    backgroundColor: Platform.OS === 'android' ? GLASS_CARD_ANDROID : GLASS_CARD_IOS,
+    borderWidth: 1.4,
+    borderColor: Platform.OS === 'android' ? 'rgba(124, 102, 80, 0.8)' : '#7C6650',
+    borderRadius: 14,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    minHeight: 90,
+    justifyContent: 'flex-start',
+    minHeight: 78,
+    shadowColor: '#6E533D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: Platform.OS === 'android' ? 0 : 2,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: TEXT_MUTED,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    lineHeight: 14,
+  },
+  statValue: {
+    marginTop: 6,
+    fontFamily: 'serif',
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: '700',
+    color: TEXT_DARK,
+  },
+  sectionTitle: {
+    fontFamily: 'serif',
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: TEXT_DARK,
+    marginBottom: 10,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionBtn: {
+    flex: 1,
+    minHeight: 86,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnContent: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionIconWrap: {
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 7,
   },
   actionBtnDark: { backgroundColor: DARK_CARD },
-  actionBtnLight: { backgroundColor: ACCENT },
-  actionBtnText: { fontSize: 14, fontWeight: '600', marginTop: 12 },
+  actionBtnLight: { backgroundColor: ACCENT, borderWidth: 1, borderColor: '#6B4D2C' },
+  actionBtnText: {
+    fontFamily: 'serif',
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '600',
+    textAlign: 'center',
+    includeFontPadding: false,
+  },
   activityCard: {
-    backgroundColor: WHITE,
-    borderRadius: 16,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
     overflow: 'hidden',
     paddingHorizontal: 14,
     paddingVertical: 6,
@@ -691,7 +755,7 @@ const styles = StyleSheet.create({
   activityIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: BG,
     alignItems: 'center',
     justifyContent: 'center',

@@ -33,7 +33,7 @@ const Button: React.FC<{
       disabled={disabled || loading}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' ? '#fff' : colors.primaryDark} />
+        <ActivityIndicator color={variant === 'ghost' ? colors.primaryDark : '#fff'} />
       ) : (
         <Text style={[buttonStyles.text, textStyles]} numberOfLines={1} ellipsizeMode="tail">
           {title}
@@ -68,7 +68,7 @@ const buttonStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   secondaryText: {
-    color: colors.text,
+    color: '#F9F4EE',
   },
   ghost: {
     backgroundColor: 'transparent',

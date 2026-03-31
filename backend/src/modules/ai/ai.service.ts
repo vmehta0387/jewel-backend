@@ -23,6 +23,7 @@ export class AiService {
 
     const search = dto.message?.trim() || '';
     const aiQuery = this.parseAiQuery(search);
+    const requestedLimit = aiQuery.resultLimit ?? limit;
     if (!aiQuery.isDesignQuery) {
       if (aiQuery.isGreeting) {
         return {
@@ -49,7 +50,8 @@ export class AiService {
       return { reply: 'No matching results found', designs: [] };
     }
     const inferredFilters = aiQuery.filters;
-    const baseLimit = Math.max(limit, aiQuery.needsPricing ? 50 : limit);
+    const hasStructuredFilters = Boolean(inferredFilters && Object.keys(inferredFilters).length > 0);
+    const baseLimit = Math.max(requestedLimit, aiQuery.needsPricing ? 100 : requestedLimit);
     let results = inferredFilters
       ? await this.productsService.findAll(
           { ...inferredFilters, page: 1, limit: baseLimit, status: 'ACTIVE' },
@@ -61,7 +63,7 @@ export class AiService {
         );
 
     let candidates = results?.data || [];
-    if (candidates.length === 0) {
+    if (candidates.length === 0 && !hasStructuredFilters) {
       results = await this.productsService.findAll(
         { search, page: 1, limit: baseLimit, status: 'ACTIVE' },
         readUser,
@@ -69,7 +71,7 @@ export class AiService {
       candidates = results?.data || [];
     }
 
-    if (candidates.length === 0) {
+    if (candidates.length === 0 && !hasStructuredFilters) {
       results = await this.productsService.findAll(
         { page: 1, limit: baseLimit, status: 'ACTIVE' },
         readUser,
@@ -88,16 +90,28 @@ export class AiService {
       candidates.slice(0, baseLimit).map((design) => this.productsService.findOne(design.id, readUser)),
     );
 
+    const semanticallyFiltered = this.applySemanticFilters(details, aiQuery);
+    if (semanticallyFiltered.length === 0) {
+      return { reply: 'No matching results found', designs: [] };
+    }
+
     const pricing = aiQuery.needsPricing
-      ? await this.resolvePricing(details, companyId, branchId)
+      ? await this.resolvePricing(semanticallyFiltered, companyId, branchId)
       : [];
 
-    const filteredDetails = this.filterByPrice(details, pricing, aiQuery.priceMin, aiQuery.priceMax);
+    const filteredDetails = this.filterByPrice(
+      semanticallyFiltered,
+      pricing,
+      aiQuery.priceMin,
+      aiQuery.priceMax,
+    );
     if (filteredDetails.length === 0) {
       return { reply: 'No matching results found', designs: [] };
     }
 
-    const topDetails = filteredDetails.slice(0, limit);
+    const rankedDetails = this.sortByPrice(filteredDetails, pricing, aiQuery.priceSort);
+    const finalPool = rankedDetails.length ? rankedDetails : filteredDetails;
+    const topDetails = finalPool.slice(0, requestedLimit);
     const reply = this.buildReply(aiQuery, topDetails, pricing);
 
     const context = topDetails.map((design) => {
@@ -159,6 +173,10 @@ export class AiService {
     needsPricing: boolean;
     priceMin?: number;
     priceMax?: number;
+    priceSort?: 'asc' | 'desc';
+    resultLimit?: number;
+    requiresLab: boolean;
+    requiresNatural: boolean;
     wantsPrice: boolean;
     designNo?: string;
     isDesignQuery: boolean;
@@ -206,6 +224,8 @@ export class AiService {
     if (text.includes('diamond')) {
       filters.stone = 'Diamond';
     }
+    const requiresLab = /\blab\b|\blaboratory\b/i.test(message);
+    const requiresNatural = /\bnatural\b/i.test(message);
 
     const shapes = [
       'round',
@@ -259,7 +279,27 @@ export class AiService {
     }
 
     const { priceMin, priceMax } = this.extractPriceRange(text);
-    const needsPricing = Boolean(priceMin !== undefined || priceMax !== undefined || wantsPrice);
+    const wantsLowestPrice =
+      /\b(lowest|cheapest|minimum|min|least expensive|most affordable|best price)\b/i.test(message);
+    const wantsHighestPrice =
+      /\b(highest|max|maximum|most expensive|costliest|premium)\b/i.test(message);
+    const priceSort: 'asc' | 'desc' | undefined = wantsLowestPrice
+      ? 'asc'
+      : wantsHighestPrice
+      ? 'desc'
+      : undefined;
+    const explicitTopMatch = /\btop\s*(\d{1,2})\b/i.exec(message);
+    const explicitCount = explicitTopMatch ? Number.parseInt(explicitTopMatch[1], 10) : undefined;
+    const wantsSingleBest = /\b(lowest|cheapest|highest|costliest|best)\b/i.test(message);
+    const resultLimit =
+      explicitCount && Number.isFinite(explicitCount)
+        ? Math.max(1, Math.min(25, explicitCount))
+        : wantsSingleBest
+        ? 1
+        : undefined;
+    const needsPricing = Boolean(
+      priceMin !== undefined || priceMax !== undefined || wantsPrice || priceSort,
+    );
 
     const isGreeting =
       /^(hi|hello|hey|good morning|good evening|good afternoon|yo|hola|thanks|thank you)\b/i.test(
@@ -281,6 +321,10 @@ export class AiService {
       needsPricing,
       priceMin,
       priceMax,
+      priceSort,
+      resultLimit,
+      requiresLab,
+      requiresNatural,
       wantsPrice,
       designNo: designNoMatch?.[0],
       isDesignQuery,
@@ -398,5 +442,103 @@ export class AiService {
 
     const header = `Found ${designs.length} design${designs.length === 1 ? '' : 's'}:`;
     return [header, ...lines].join('\n');
+  }
+
+  private includesCI(haystack?: string | null, needle?: string | null) {
+    if (!haystack || !needle) return false;
+    return haystack.toLowerCase().includes(needle.toLowerCase());
+  }
+
+  private applySemanticFilters(
+    designs: any[],
+    aiQuery: {
+      filters: {
+        jewelryGroup?: string;
+        stone?: string;
+        shape?: string;
+        cut?: string;
+        color?: string;
+        quality?: string;
+        goldColour?: string;
+      } | null;
+      requiresLab: boolean;
+      requiresNatural: boolean;
+      designNo?: string;
+    },
+  ) {
+    const f = aiQuery.filters || {};
+    return designs.filter((design) => {
+      if (aiQuery.designNo && design.designNo?.toLowerCase() !== aiQuery.designNo.toLowerCase()) {
+        return false;
+      }
+
+      if (f.jewelryGroup && !this.includesCI(design.jewelryGroup, f.jewelryGroup)) {
+        return false;
+      }
+
+      if (f.stone) {
+        const inDiamondType = this.includesCI(design.diamondType, f.stone);
+        const inGemstones = (design.gemstones || []).some((gem) => this.includesCI(gem.stone, f.stone));
+        if (!inDiamondType && !inGemstones) return false;
+      }
+
+      if (f.shape) {
+        const hasShape = (design.gemstones || []).some((gem) => this.includesCI(gem.shape, f.shape));
+        if (!hasShape) return false;
+      }
+
+      if (f.cut) {
+        const hasCut = (design.gemstones || []).some((gem) => this.includesCI(gem.cut, f.cut));
+        if (!hasCut) return false;
+      }
+
+      if (f.quality) {
+        const inDiamondQuality = this.includesCI(design.diamondQuality, f.quality);
+        const inGemstones = (design.gemstones || []).some((gem) => this.includesCI(gem.quality, f.quality));
+        if (!inDiamondQuality && !inGemstones) return false;
+      }
+
+      if (f.color || f.goldColour) {
+        const colorNeedle = f.color || f.goldColour || '';
+        const inGold = this.includesCI(design.goldColour, colorNeedle);
+        const inMetals = (design.metals || []).some(
+          (metal) =>
+            this.includesCI(metal.goldColour, colorNeedle) ||
+            this.includesCI(metal.metalCaratage, colorNeedle),
+        );
+        const inGemColor = (design.gemstones || []).some((gem) => this.includesCI(gem.color, colorNeedle));
+        if (!inGold && !inMetals && !inGemColor) return false;
+      }
+
+      if (aiQuery.requiresLab || aiQuery.requiresNatural) {
+        const target = aiQuery.requiresLab ? 'lab' : 'natural';
+        const inDiamondType = this.includesCI(design.diamondType, target);
+        const inStone = (design.gemstones || []).some((gem) => this.includesCI(gem.stone, target));
+        if (!inDiamondType && !inStone) return false;
+      }
+
+      return true;
+    });
+  }
+
+  private sortByPrice(
+    designs: any[],
+    pricing: { designId: string; finalPrice: number | null }[],
+    direction?: 'asc' | 'desc',
+  ) {
+    if (!direction) return designs;
+    const sortable = designs
+      .map((design) => ({
+        design,
+        price: pricing.find((row) => row.designId === design.id)?.finalPrice,
+      }))
+      .filter((row) => row.price !== null && row.price !== undefined) as { design: any; price: number }[];
+
+    if (!sortable.length) return [];
+
+    sortable.sort((a, b) =>
+      direction === 'asc' ? a.price - b.price : b.price - a.price,
+    );
+    return sortable.map((row) => row.design);
   }
 }

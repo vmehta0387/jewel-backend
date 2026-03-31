@@ -1,6 +1,6 @@
 ﻿import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import { colors, radii, shadows, spacing } from '../theme';
+import { radii, spacing } from '../theme';
 
 const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ children, style }) => (
   <View style={[styles.card, style]}>{children}</View>
@@ -8,12 +8,16 @@ const Card: React.FC<{ children: React.ReactNode; style?: ViewStyle }> = ({ chil
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: radii.md,
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
+    borderWidth: 1.3,
+    borderColor: '#7C6650',
+    shadowColor: '#6E533D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 2,
   },
 });
 

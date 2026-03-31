@@ -58,21 +58,14 @@ const LoginScreen = () => {
   };
 
   return (
-    <Screen style={styles.container}>
-      <View style={styles.background}>
-        <View style={styles.topWash} />
-        <View style={styles.bottomWash} />
-        <View style={styles.sideWash} />
-      </View>
+    <Screen style={styles.container} bgImage={require('../../assets/login_bg.png')}>
+  
 
       <View style={styles.content}>
         <View style={styles.frame}>
           <View style={styles.card}>
             <View style={styles.brandRow}>
-              <View style={styles.brandBadge}>
-                <Text style={styles.brandBadgeText}>JS</Text>
-              </View>
-              <Text style={styles.brandTitle}>Jewelry Sales</Text>
+              <Text style={styles.brandTitle}>JEWELRY SALES</Text>
             </View>
 
             <Text style={styles.welcomeTitle}>WELCOME</Text>
@@ -140,110 +133,67 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: colors.background,
-  },
-  topWash: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 220,
-    backgroundColor: colors.accent,
-    opacity: 0.2,
-  },
-  bottomWash: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-    backgroundColor: colors.muted,
-    opacity: 0.18,
-  },
-  sideWash: {
-    position: 'absolute',
-    top: 120,
-    right: -40,
-    width: 180,
-    height: 260,
-    borderRadius: 120,
-    backgroundColor: colors.secondary,
-    opacity: 0.18,
+    backgroundColor: 'transparent',
   },
   content: {
+    flex: 1,
     zIndex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    paddingBottom: 120,
   },
   frame: {
-    backgroundColor: '#f4ede2',
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: '#e2d6c8',
-    padding: spacing.md,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.08,
-    shadowRadius: 24,
-    elevation: 4,
-    alignSelf: 'center',
     width: '100%',
     maxWidth: 420,
+    paddingHorizontal: spacing.lg,
   },
   card: {
-    backgroundColor: '#fffdf9',
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    borderColor: '#eadfd2',
-    borderWidth: 1,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    padding: spacing.xl,
+    paddingHorizontal: spacing.md,
   },
   brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  brandBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#d59a5a',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  brandBadgeText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+    marginBottom: 40,
   },
   brandTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#5b3a1a',
-  },
-  welcomeTitle: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-    letterSpacing: 0.5,
+    letterSpacing: 2,
+  },
+  welcomeTitle: {
+    fontFamily: 'serif',
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: '500',
+    color: colors.text,
   },
   welcomeSubtitle: {
-    marginTop: 4,
-    marginBottom: spacing.md,
+    marginTop: 6,
+    marginBottom: spacing.xl,
     color: colors.textMuted,
+    fontSize: 14,
   },
   label: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   input: {
-    borderWidth: 1.2,
-    borderColor: '#d9c9b6',
-    borderRadius: radii.md,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: spacing.md,
-    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#8B7355',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: spacing.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     color: colors.text,
   },
   inputGroup: {
@@ -254,13 +204,18 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     position: 'absolute',
-    right: 12,
+    right: 14,
     top: 0,
-    bottom: spacing.md,
+    bottom: spacing.lg,
     justifyContent: 'center',
   },
   signInButton: {
-    backgroundColor: '#111827',
+    backgroundColor: '#2C1E16',
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 18,
+    width: '60%',
+    alignSelf: 'center',
   },
   biometricButton: {
     marginTop: spacing.sm,
