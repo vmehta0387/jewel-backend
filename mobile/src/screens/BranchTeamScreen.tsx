@@ -77,6 +77,7 @@ const BranchTeamScreen = () => {
             title="Add Employee"
             variant="secondary"
             onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'create' })}
+            style={styles.addEmployeeBtn}
           />
         }
       />
@@ -90,6 +91,10 @@ const BranchTeamScreen = () => {
             placeholderTextColor="#a79687"
             value={search}
             onChangeText={setSearch}
+            underlineColorAndroid="transparent"
+            autoCorrect={false}
+            autoCapitalize="none"
+            textAlignVertical="center"
           />
           {search ? (
             <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -157,7 +162,7 @@ const BranchTeamScreen = () => {
                 title="Edit"
                 variant="secondary"
                 onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'edit', employeeId: item.id })}
-                style={styles.actionButton}
+                style={[styles.actionButton, styles.actionButtonFirst]}
               />
               <Button
                 title={item.isActive ? 'Disable' : 'Enable'}
@@ -174,6 +179,11 @@ const BranchTeamScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  addEmployeeBtn: {
+    minWidth: 124,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
   searchWrapper: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
@@ -194,6 +204,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2d221c',
     height: 40,
+    backgroundColor: 'transparent',
+    includeFontPadding: false,
+    paddingVertical: 0,
   },
   statsGrid: {
     paddingHorizontal: spacing.lg,
@@ -310,6 +323,9 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+  },
+  actionButtonFirst: {
+    marginRight: 0,
   },
 });
 

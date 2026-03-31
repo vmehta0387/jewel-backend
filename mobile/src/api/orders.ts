@@ -52,6 +52,7 @@ export type CreateOrderPayload = {
   branchId: string;
   designId: string;
   quantity: number;
+  price: number;
   deliveryDate?: string;
   shortDescription?: string;
   notes?: string;

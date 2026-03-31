@@ -1268,6 +1268,9 @@ export class ProductsService {
 
   async updateStatus(id: string, isActive: boolean, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
+    if (isActive && requester.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only Super Admin can activate inactive designs.');
+    }
     const design = await this.getDesignForWrite(id, requester);
     design.isActive = isActive;
     design.updatedBy = requester.id;

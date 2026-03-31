@@ -63,6 +63,13 @@ const getSearchableFields = (design: Design) =>
 
 const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
 
+const isActiveDesign = (design: Design) => {
+  const row = design as Design & { status?: string; isActive?: boolean };
+  if (typeof row.isActive === 'boolean') return row.isActive;
+  if (typeof row.status === 'string') return row.status.toUpperCase() === 'ACTIVE';
+  return true;
+};
+
 const keepPrimaryDesignsOnly = (rows: Design[]) => {
   if (!rows.length) return rows;
   const hasExplicitPrimaryFlag = rows.some((row) => typeof row.isPrimary === 'boolean');
@@ -108,7 +115,8 @@ const DesignsScreen = () => {
     setError(null);
     try {
       const response = await fetchDesigns(token);
-      const baseDesigns = keepPrimaryDesignsOnly(response.data || []);
+      const activeDesigns = (response.data || []).filter(isActiveDesign);
+      const baseDesigns = keepPrimaryDesignsOnly(activeDesigns);
       // Render immediately so users don't wait for pricing preview round-trips.
       setDesigns(baseDesigns);
 

@@ -119,7 +119,7 @@ const AiChatScreen = () => {
 
   const listEmpty = useMemo(
     () => (
-      <Card>
+      <Card style={styles.quickQuestionCard}>
         <Text style={styles.emptyTitle}>Try one of these</Text>
         <Text style={styles.emptyText}>Tap any question to start.</Text>
         <View style={styles.quickQuestionWrap}>
@@ -217,11 +217,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingBottom: Platform.OS === 'android' ? 4 : spacing.lg,
   },
   listContent: {
-    paddingBottom: spacing.lg,
+    paddingBottom: Platform.OS === 'android' ? 8 : spacing.lg,
     gap: spacing.sm,
+  },
+  quickQuestionCard: {
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.22)',
+    borderColor: '#7C6650',
+    borderWidth: 1.2,
+    elevation: Platform.OS === 'android' ? 0 : 2,
+    shadowOpacity: Platform.OS === 'android' ? 0 : 0.12,
   },
   emptyTitle: {
     fontFamily: 'serif',
@@ -245,7 +252,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.45)',
   },
   quickQuestionChipDisabled: {
     opacity: 0.5,
@@ -324,6 +331,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.sm,
     paddingTop: spacing.sm,
+    paddingBottom: Platform.OS === 'android' ? 2 : 0,
+    marginBottom: Platform.OS === 'android' ? 2 : 0,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
@@ -409,7 +418,7 @@ const ChatBubble = React.memo(
                 >
                   <Text style={styles.designTitle}>{design.designNo || 'Design'}</Text>
                   <Text style={styles.designMeta}>
-                    {[design.jewelryGroup, design.collection, design.goldColour].filter(Boolean).join(' • ')}
+                    {[design.jewelryGroup, design.collection, design.goldColour].filter(Boolean).join(' â€¢ ')}
                   </Text>
                 </TouchableOpacity>
               ))}

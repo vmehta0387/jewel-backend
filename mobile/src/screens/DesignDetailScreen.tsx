@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -17,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { fetchDesign, fetchDesigns } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
@@ -299,6 +301,7 @@ const OptionSection = ({
 
 const DesignDetailScreen = () => {
   const { token, user } = useAuth();
+  const { addItem, itemCount } = useCart();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width } = useWindowDimensions();
@@ -491,6 +494,49 @@ const DesignDetailScreen = () => {
     });
   }, [activeDesign, displayPrice, selectedMetalColor]);
 
+  const handleAddToCart = useCallback(() => {
+    if (!activeDesign) return;
+    const shortDescription = [
+      selectedMetalColor ? `Metal: ${selectedMetalColor}` : null,
+      selectedRingSize ? `Size: ${selectedRingSize}` : null,
+      selectedStyle ? `Spread: ${selectedStyle}` : null,
+      selectedQuality ? `Quality: ${selectedQuality}` : null,
+      selectedWeight ? `Weight: ${selectedWeight}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    addItem({
+      designId: activeDesign.id,
+      designNo: activeDesign.designNo,
+      designName: activeDesign.designName,
+      imageUrl: activeImage || null,
+      unitPrice: Number(displayPrice || 0),
+      shortDescription,
+      selection: {
+        shape: selectedShape,
+        style: selectedStyle,
+        metalColor: selectedMetalColor,
+        weight: selectedWeight,
+        quality: selectedQuality,
+        ringSize: selectedRingSize,
+      },
+    });
+
+    Alert.alert('Added to cart', `${activeDesign.designNo} has been added to cart.`);
+  }, [
+    activeDesign,
+    activeImage,
+    addItem,
+    displayPrice,
+    selectedMetalColor,
+    selectedQuality,
+    selectedRingSize,
+    selectedShape,
+    selectedStyle,
+    selectedWeight,
+  ]);
+
   const generalInfoRows = useMemo(
     () =>
       [
@@ -555,6 +601,18 @@ const DesignDetailScreen = () => {
           <View style={styles.heroTopBar}>
             <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()} activeOpacity={0.88}>
               <Ionicons name="arrow-back" size={18} color="#2f2119" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('Cart')}
+              activeOpacity={0.88}
+            >
+              <Ionicons name="cart-outline" size={18} color="#2f2119" />
+              {itemCount > 0 ? (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{itemCount > 99 ? '99+' : itemCount}</Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           </View>
 
@@ -667,9 +725,9 @@ const DesignDetailScreen = () => {
             <TouchableOpacity
               style={styles.primaryAction}
               activeOpacity={0.92}
-              onPress={() => navigation.navigate('FinalizeDesign', { designId: activeDesign.id })}
+              onPress={handleAddToCart}
             >
-              <Text style={styles.primaryActionText}>Add to Order</Text>
+              <Text style={styles.primaryActionText}>Add to Cart</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.secondaryAction}
@@ -739,7 +797,7 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 2,
   },
@@ -752,6 +810,23 @@ const styles = StyleSheet.create({
     backgroundColor: Platform.OS === 'android' ? 'rgba(255, 252, 245, 0.5)' : 'rgba(255, 252, 245, 0.92)',
     borderWidth: 1,
     borderColor: 'rgba(197, 160, 89, 0.3)',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#A67F3F',
+  },
+  cartBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   heroImageShell: {
     height: 300,

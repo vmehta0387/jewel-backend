@@ -157,6 +157,7 @@ export class OrdersService {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const { orderNumber } = await this.getNextOrderNumber();
+      const computedStatus = this.resolveCreateStatus(dto.status, requester.role);
       const order = this.orderRepo.create({
         orderNumber,
         companyId: scope.companyId ?? null,
@@ -168,7 +169,7 @@ export class OrdersService {
         price: pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
         notes: dto.notes?.trim() || null,
-        status: dto.status ?? OrderStatus.QUOTE,
+        status: computedStatus,
         isActive: true,
       });
 
@@ -186,6 +187,18 @@ export class OrdersService {
     }
 
     throw new BadRequestException('Unable to generate unique order number. Please retry.');
+  }
+
+  private resolveCreateStatus(requestedStatus: OrderStatus | undefined, role: UserRole): OrderStatus {
+    if (role === UserRole.SALES_REP) {
+      return OrderStatus.PENDING_APPROVAL;
+    }
+
+    if (role === UserRole.BRANCH_MANAGER) {
+      return requestedStatus ?? OrderStatus.APPROVED;
+    }
+
+    return requestedStatus ?? OrderStatus.QUOTE;
   }
 
   async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {

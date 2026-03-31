@@ -1,5 +1,5 @@
 ﻿import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, ViewStyle, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, ViewStyle, ActivityIndicator, StyleProp } from 'react-native';
 import { colors, radii, spacing } from '../theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
@@ -10,7 +10,7 @@ const Button: React.FC<{
   variant?: ButtonVariant;
   loading?: boolean;
   disabled?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }> = ({ title, onPress, variant = 'primary', loading, disabled, style }) => {
   const stylesForVariant =
     variant === 'secondary'

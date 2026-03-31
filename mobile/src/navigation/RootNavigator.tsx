@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
 import DesignsScreen from '../screens/DesignsScreen';
 import DesignDetailScreen from '../screens/DesignDetailScreen';
-import FinalizeDesignScreen from '../screens/FinalizeDesignScreen';
+import CartScreen from '../screens/CartScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
@@ -27,7 +27,7 @@ export type RootStackParamList = {
 export type DesignsStackParamList = {
   Designs: undefined;
   DesignDetail: { designId: string };
-  FinalizeDesign: { designId: string };
+  Cart: undefined;
 };
 
 export type OrdersStackParamList = {
@@ -69,7 +69,7 @@ const DesignsNavigator = () => (
   <DesignsStack.Navigator screenOptions={{ headerShown: false }}>
     <DesignsStack.Screen name="Designs" component={DesignsScreen} options={{ title: 'Designs' }} />
     <DesignsStack.Screen name="DesignDetail" component={DesignDetailScreen} options={{ title: 'Design Detail' }} />
-    <DesignsStack.Screen name="FinalizeDesign" component={FinalizeDesignScreen} options={{ title: 'Finalize Design' }} />
+    <DesignsStack.Screen name="Cart" component={CartScreen} options={{ title: 'Cart' }} />
   </DesignsStack.Navigator>
 );
 

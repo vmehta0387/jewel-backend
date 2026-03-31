@@ -152,7 +152,7 @@ const BranchEmployeeFormScreen = () => {
       <ScreenHeader
         title={isEdit ? 'Edit Employee' : 'Add Employee'}
         subtitle={isEdit ? employee?.email : 'Create a new branch employee'}
-        rightSlot={<Button title="Close" variant="ghost" onPress={() => navigation.goBack()} />}
+        rightSlot={<Button title="Close" variant="ghost" onPress={() => navigation.goBack()} style={styles.closeBtn} />}
       />
 
       <ScrollView contentContainerStyle={styles.container}>
@@ -191,6 +191,9 @@ const BranchEmployeeFormScreen = () => {
               onChangeText={(value) => setForm((prev) => ({ ...prev, email: value }))}
               autoCapitalize="none"
               editable={!isEdit}
+              underlineColorAndroid="transparent"
+              autoCorrect={false}
+              textAlignVertical="center"
             />
           </View>
 
@@ -204,6 +207,8 @@ const BranchEmployeeFormScreen = () => {
                 value={form.password}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, password: value }))}
                 secureTextEntry
+                underlineColorAndroid="transparent"
+                textAlignVertical="center"
               />
             </View>
           ) : null}
@@ -217,6 +222,8 @@ const BranchEmployeeFormScreen = () => {
                 placeholderTextColor={colors.textMuted}
                 value={form.firstName}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, firstName: value }))}
+                underlineColorAndroid="transparent"
+                textAlignVertical="center"
               />
             </View>
             <View style={[styles.fieldBlock, styles.half]}>
@@ -227,6 +234,8 @@ const BranchEmployeeFormScreen = () => {
                 placeholderTextColor={colors.textMuted}
                 value={form.lastName}
                 onChangeText={(value) => setForm((prev) => ({ ...prev, lastName: value }))}
+                underlineColorAndroid="transparent"
+                textAlignVertical="center"
               />
             </View>
           </View>
@@ -240,6 +249,8 @@ const BranchEmployeeFormScreen = () => {
               value={form.phone}
               onChangeText={(value) => setForm((prev) => ({ ...prev, phone: value }))}
               keyboardType="phone-pad"
+              underlineColorAndroid="transparent"
+              textAlignVertical="center"
             />
           </View>
 
@@ -262,6 +273,10 @@ const BranchEmployeeFormScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  closeBtn: {
+    minWidth: 78,
+    paddingVertical: 8,
+  },
   container: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
@@ -304,6 +319,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     padding: spacing.sm,
     backgroundColor: '#fff',
+    color: colors.text,
+    includeFontPadding: false,
   },
   inputDisabled: {
     backgroundColor: colors.background,

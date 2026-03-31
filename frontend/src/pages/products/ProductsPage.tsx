@@ -3097,11 +3097,22 @@ const createDefaultVendorRow = (): VendorRow => ({
       return;
     }
 
+    if (nextActive && currentUser?.role !== 'SUPER_ADMIN') {
+      window.alert('Only Super Admin can activate inactive designs.');
+      return;
+    }
+
     if (deletingId) return;
-    const confirmed = window.confirm(
-      nextActive ? 'Activate this design? It will be marked active.' : 'Disable this design? It will be marked inactive.',
-    );
-    if (!confirmed) return;
+
+    if (nextActive) {
+      const typed = window.prompt('Type ACTIVATE to confirm design activation.', '');
+      if ((typed || '').trim().toUpperCase() !== 'ACTIVATE') {
+        return;
+      }
+    } else {
+      const confirmed = window.confirm('Disable this design? It will be marked inactive.');
+      if (!confirmed) return;
+    }
 
     setDeletingId(id);
     try {
@@ -3110,6 +3121,11 @@ const createDefaultVendorRow = (): VendorRow => ({
       if ((showInactive && nextActive) || (!showInactive && !nextActive)) {
         setSelectedId((current) => (current === id ? '' : current));
       }
+      const actor = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || currentUser?.email || 'Current user';
+      const changedAt = new Date().toLocaleString();
+      window.alert(
+        `Design marked as ${nextActive ? 'active' : 'inactive'}.\nUpdated by: ${actor}\nTime: ${changedAt}`,
+      );
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to update design status.');
     } finally {
@@ -3907,7 +3923,24 @@ const createDefaultVendorRow = (): VendorRow => ({
                       {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
-                          {row.isActive ? (
+                          {showInactive ? (
+                            <button
+                              type="button"
+                              title="Activate (Type ACTIVATE to confirm)"
+                              aria-label="Activate"
+                              className="app-table-icon-action border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => setDesignActiveStatus(row.id, true)}
+                              disabled={deletingId === row.id}
+                            >
+                              {deletingId === row.id ? (
+                                '...'
+                              ) : (
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M20 6L9 17l-5-5" />
+                                </svg>
+                              )}
+                            </button>
+                          ) : (
                             <button
                               type="button"
                               title="Disable"
@@ -3922,23 +3955,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <circle cx="12" cy="12" r="9" />
                                   <path d="M5 5l14 14" />
-                                </svg>
-                              )}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              title="Activate"
-                              aria-label="Activate"
-                              className="app-table-icon-action border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                              onClick={() => setDesignActiveStatus(row.id, true)}
-                              disabled={deletingId === row.id}
-                            >
-                              {deletingId === row.id ? (
-                                '...'
-                              ) : (
-                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M20 6L9 17l-5-5" />
                                 </svg>
                               )}
                             </button>

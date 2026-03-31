@@ -397,7 +397,7 @@ const BranchDashboardScreen = () => {
               <View style={styles.actionIconWrap}>
                 <Ionicons name="add" size={20} color="#FFFFFF" />
               </View>
-              <Text style={[styles.actionBtnText, { color: "#FFFFFF" }]}>New Order</Text>
+              <Text numberOfLines={1} style={[styles.actionBtnText, { color: "#FFFFFF" }]}>New Order</Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity
@@ -408,7 +408,7 @@ const BranchDashboardScreen = () => {
               <View style={styles.actionIconWrap}>
                 <Ionicons name="diamond-outline" size={20} color={TEXT_DARK} />
               </View>
-              <Text style={[styles.actionBtnText, { color: TEXT_DARK }]}>Browse Designs</Text>
+              <Text numberOfLines={1} style={[styles.actionBtnText, { color: TEXT_DARK }]}>Browse Designs</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -635,11 +635,21 @@ const styles = StyleSheet.create({
   salesCard: {
     backgroundColor: DARK_CARD,
     borderRadius: 12,
-    padding: 24,
+    padding: Platform.OS === 'android' ? 16 : 24,
     marginBottom: 14,
   },
-  salesAmount: { fontFamily: 'serif', fontSize: 44, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 },
-  salesLabel: { fontSize: 14, color: '#FFFFFF', marginBottom: 10 },
+  salesAmount: {
+    fontFamily: 'serif',
+    fontSize: Platform.OS === 'android' ? 34 : 44,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: Platform.OS === 'android' ? 2 : 4,
+  },
+  salesLabel: {
+    fontSize: Platform.OS === 'android' ? 13 : 14,
+    color: '#FFFFFF',
+    marginBottom: Platform.OS === 'android' ? 8 : 10,
+  },
   salesBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -702,9 +712,9 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
-    minHeight: 86,
+    minHeight: Platform.OS === 'android' ? 68 : 86,
     borderRadius: 14,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'android' ? 8 : 10,
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
@@ -715,17 +725,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionIconWrap: {
-    height: 22,
+    height: Platform.OS === 'android' ? 18 : 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 7,
+    marginBottom: Platform.OS === 'android' ? 4 : 7,
   },
   actionBtnDark: { backgroundColor: DARK_CARD },
   actionBtnLight: { backgroundColor: ACCENT, borderWidth: 1, borderColor: '#6B4D2C' },
   actionBtnText: {
     fontFamily: 'serif',
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: Platform.OS === 'android' ? 13 : 15,
+    lineHeight: Platform.OS === 'android' ? 16 : 19,
     fontWeight: '600',
     textAlign: 'center',
     includeFontPadding: false,
