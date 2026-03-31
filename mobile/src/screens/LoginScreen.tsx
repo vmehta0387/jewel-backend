@@ -11,16 +11,13 @@ const LoginScreen = () => {
     signIn,
     biometricAvailable,
     biometricEnabled,
-    biometricRequired,
     biometricPrompted,
-    biometricSignIn,
     setBiometricPreference,
   } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [biometricLoading, setBiometricLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
@@ -42,18 +39,6 @@ const LoginScreen = () => {
       setError(err?.message || 'Unable to sign in');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleBiometric = async () => {
-    setError(null);
-    setBiometricLoading(true);
-    try {
-      await biometricSignIn();
-    } catch (err: any) {
-      setError(err?.message || 'Biometric login failed');
-    } finally {
-      setBiometricLoading(false);
     }
   };
 
@@ -100,15 +85,6 @@ const LoginScreen = () => {
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
-            {biometricAvailable && biometricEnabled ? (
-              <Button
-                title={biometricRequired ? 'Unlock with Biometrics' : 'Use Biometrics'}
-                onPress={handleBiometric}
-                loading={biometricLoading}
-                variant="secondary"
-                style={styles.biometricButton}
-              />
-            ) : null}
           </View>
         </View>
       </View>
@@ -216,9 +192,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
     width: '60%',
     alignSelf: 'center',
-  },
-  biometricButton: {
-    marginTop: spacing.sm,
   },
   error: {
     color: colors.danger,

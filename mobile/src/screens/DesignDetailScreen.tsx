@@ -635,7 +635,7 @@ const DesignDetailScreen = () => {
 
           <View style={[styles.heroImageShell, { height: heroHeight }]}>
             {activeImage ? (
-              <Image source={{ uri: activeImage }} style={styles.heroImage} resizeMode="cover" />
+              <Image source={{ uri: activeImage, cache: 'force-cache' }} style={styles.heroImage} resizeMode="cover" />
             ) : (
               <View style={styles.placeholderHero}>
                 <Ionicons name="diamond-outline" size={42} color="#c5a890" />
@@ -662,7 +662,7 @@ const DesignDetailScreen = () => {
                   index === selectedImageIndex ? styles.thumbnailFrameActive : null,
                 ]}
               >
-                <Image source={{ uri: imageUrl }} style={styles.thumbnailImage} resizeMode="cover" />
+                <Image source={{ uri: imageUrl, cache: 'force-cache' }} style={styles.thumbnailImage} resizeMode="cover" />
               </TouchableOpacity>
             ))}
           </ScrollView>

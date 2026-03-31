@@ -17,14 +17,13 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import CompactDatePickerModal from '../components/CompactDatePickerModal';
 import ScreenHeader from '../components/ScreenHeader';
-import StatCard from '../components/StatCard';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrder, updateOrder } from '../api/orders';
 import { fetchDesign } from '../api/designs';
 import type { Design, Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatDate } from '../utils/format';
 
 const formatStatusLabel = (value?: string | null) =>
   String(value || 'PENDING_APPROVAL')
@@ -32,6 +31,20 @@ const formatStatusLabel = (value?: string | null) =>
     .split('_')
     .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
     .join(' ');
+
+const formatStatusCardValue = (value?: string | null) => {
+  const normalized = String(value || 'PENDING_APPROVAL').toUpperCase();
+  if (normalized === 'PENDING_APPROVAL') return 'Pending';
+  if (normalized === 'APPROVED') return 'Approved';
+  if (normalized === 'CANCELLED') return 'Cancelled';
+  return formatStatusLabel(value);
+};
+
+const formatCompactCurrency = (value: number | string | null | undefined) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '$0.00';
+  return `$${num.toFixed(2)}`;
+};
 
 const toYyyyMmDd = (date: Date) => {
   const y = date.getFullYear();
@@ -181,7 +194,7 @@ const OrderDetailScreen = () => {
           <Text style={styles.sectionTitle}>Order Summary</Text>
 
           {primaryImageUrl ? (
-            <Image source={{ uri: primaryImageUrl }} style={styles.designImage} resizeMode="cover" />
+            <Image source={{ uri: primaryImageUrl, cache: 'force-cache' }} style={styles.designImage} resizeMode="cover" />
           ) : null}
 
           <View style={styles.row}>
@@ -196,9 +209,24 @@ const OrderDetailScreen = () => {
           </View>
 
           <View style={styles.statRow}>
-            <StatCard label="Status" value={formatStatusLabel(order.status)} />
-            <StatCard label="Quantity" value={String(order.quantity || 1)} />
-            <StatCard label="Total" value={formatCurrency(order.price)} />
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Status</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {formatStatusCardValue(order.status)}
+              </Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Qty</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {String(order.quantity || 1)}
+              </Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>Total</Text>
+              <Text style={styles.statValue} numberOfLines={1}>
+                {formatCompactCurrency(order.price)}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.notesBlock}>
@@ -366,6 +394,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  statCard: {
+    flex: 1,
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.42)',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    justifyContent: 'space-between',
+  },
+  statLabel: {
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  statValue: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2C1E16',
   },
   infoBlock: {
     flex: 1,

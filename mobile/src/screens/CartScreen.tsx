@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,12 +12,12 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
-import CompactDatePickerModal from '../components/CompactDatePickerModal';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { createOrder } from '../api/orders';
@@ -46,9 +48,14 @@ const CartScreen = () => {
   const [shortDescription, setShortDescription] = useState('');
   const [notes, setNotes] = useState('');
   const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showIosDatePicker, setShowIosDatePicker] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const minimumDeliveryDate = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
 
   const canCheckout = useMemo(
     () => Boolean(token && user?.companyId && user?.branchId && items.length > 0 && !placingOrder),
@@ -101,6 +108,31 @@ const CartScreen = () => {
     }
   };
 
+  const normalizeToDateOnly = (value: Date) => {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const openDeliveryDatePicker = () => {
+    const initialValue = expectedDeliveryDate ? normalizeToDateOnly(expectedDeliveryDate) : minimumDeliveryDate;
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: initialValue < minimumDeliveryDate ? minimumDeliveryDate : initialValue,
+        mode: 'date',
+        display: 'calendar',
+        minimumDate: minimumDeliveryDate,
+        onChange: (event, selectedDate) => {
+          if (event.type !== 'set' || !selectedDate) return;
+          const normalized = normalizeToDateOnly(selectedDate);
+          setExpectedDeliveryDate(normalized < minimumDeliveryDate ? minimumDeliveryDate : normalized);
+        },
+      });
+      return;
+    }
+    setShowIosDatePicker(true);
+  };
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -131,7 +163,7 @@ const CartScreen = () => {
           <View key={item.id} style={styles.itemCard}>
             <View style={styles.itemTop}>
               {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
+                <Image source={{ uri: item.imageUrl, cache: 'force-cache' }} style={styles.thumb} />
               ) : (
                 <View style={[styles.thumb, styles.thumbPlaceholder]}>
                   <Ionicons name="diamond-outline" size={18} color="#A67F3F" />
@@ -173,7 +205,7 @@ const CartScreen = () => {
               <Text style={styles.fieldLabel}>Expected Delivery Date</Text>
               <TouchableOpacity
                 style={styles.datePickerTrigger}
-                onPress={() => setShowDatePicker(true)}
+                onPress={openDeliveryDatePicker}
                 activeOpacity={0.9}
               >
                 <Text style={[styles.datePickerText, !expectedDeliveryDate ? styles.datePickerPlaceholder : null]}>
@@ -216,13 +248,33 @@ const CartScreen = () => {
           </View>
         ) : null}
       </ScrollView>
-      <CompactDatePickerModal
-        visible={showDatePicker}
-        value={expectedDeliveryDate}
-        minimumDate={new Date()}
-        onClose={() => setShowDatePicker(false)}
-        onConfirm={setExpectedDeliveryDate}
-      />
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showIosDatePicker} transparent animationType="fade" onRequestClose={() => setShowIosDatePicker(false)}>
+          <View style={styles.iosPickerOverlay}>
+            <View style={styles.iosPickerSheet}>
+              <View style={styles.iosPickerHeader}>
+                <TouchableOpacity onPress={() => setShowIosDatePicker(false)} activeOpacity={0.9}>
+                  <Text style={styles.iosPickerAction}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowIosDatePicker(false)} activeOpacity={0.9}>
+                  <Text style={styles.iosPickerAction}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={expectedDeliveryDate || minimumDeliveryDate}
+                mode="date"
+                display="inline"
+                minimumDate={minimumDeliveryDate}
+                onChange={(_, selectedDate) => {
+                  if (!selectedDate) return;
+                  const normalized = normalizeToDateOnly(selectedDate);
+                  setExpectedDeliveryDate(normalized < minimumDeliveryDate ? minimumDeliveryDate : normalized);
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </Screen>
   );
 };
@@ -328,20 +380,25 @@ const styles = StyleSheet.create({
   qtyWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    minWidth: 126,
   },
   qtyLabel: {
     fontSize: 12,
     color: colors.textMuted,
   },
   qtyInput: {
-    width: 56,
-    height: 34,
+    width: 72,
+    height: 36,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 0,
     color: '#2C1E16',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
     backgroundColor: 'rgba(255,255,255,0.45)',
   },
   price: {
@@ -438,6 +495,31 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#2C1E16',
     fontWeight: '700',
+  },
+  iosPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    justifyContent: 'flex-end',
+  },
+  iosPickerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 16,
+  },
+  iosPickerHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e6dfd8',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  iosPickerAction: {
+    color: '#7b4f2f',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
 

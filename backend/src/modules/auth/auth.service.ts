@@ -15,6 +15,8 @@ import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 @Injectable()
 export class AuthService {
   private s3Client: S3Client | null = null;
+  private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+  private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
 
   constructor(
     @InjectRepository(User)
@@ -230,7 +232,38 @@ export class AuthService {
     if (Number.isFinite(parsed) && parsed > 0) {
       return parsed;
     }
-    return 3600;
+    return 21600;
+  }
+
+  private getSignedUrlCacheKey(bucket: string, key: string): string {
+    return `${bucket}/${key}`;
+  }
+
+  private getCachedSignedUrl(bucket: string, key: string): string | null {
+    const cacheKey = this.getSignedUrlCacheKey(bucket, key);
+    const cached = this.signedUrlCache.get(cacheKey);
+    if (!cached) return null;
+    if (Date.now() >= cached.expiresAt - this.signedUrlCacheSkewMs) {
+      this.signedUrlCache.delete(cacheKey);
+      return null;
+    }
+    return cached.url;
+  }
+
+  private setCachedSignedUrl(bucket: string, key: string, url: string, expiresInSeconds: number): void {
+    const cacheKey = this.getSignedUrlCacheKey(bucket, key);
+    this.signedUrlCache.set(cacheKey, {
+      url,
+      expiresAt: Date.now() + expiresInSeconds * 1000,
+    });
+    if (this.signedUrlCache.size > 2000) {
+      const now = Date.now();
+      for (const [entryKey, entry] of this.signedUrlCache.entries()) {
+        if (entry.expiresAt <= now || this.signedUrlCache.size > 1600) {
+          this.signedUrlCache.delete(entryKey);
+        }
+      }
+    }
   }
 
   private parseS3KeyFromUrl(value: string, bucket: string): string | null {
@@ -287,7 +320,14 @@ export class AuthService {
       return trimmed;
     }
 
+    const cached = this.getCachedSignedUrl(bucket, key);
+    if (cached) {
+      return cached;
+    }
+    const expiresIn = this.getSignedUrlExpiresIn();
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-    return getSignedUrl(client, command, { expiresIn: this.getSignedUrlExpiresIn() });
+    const url = await getSignedUrl(client, command, { expiresIn });
+    this.setCachedSignedUrl(bucket, key, url, expiresIn);
+    return url;
   }
 }
