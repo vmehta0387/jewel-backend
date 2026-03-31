@@ -1,6 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
+  Image,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -194,9 +196,13 @@ const OrdersScreen = () => {
         onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
       >
         <View style={styles.thumbnailWrap}>
-          <View style={[styles.thumbnailPlaceholder, { backgroundColor: thumbPalette.background }]}>
-            <Ionicons name="diamond-outline" size={28} color={thumbPalette.accent} />
-          </View>
+          {item.designImageUrl ? (
+            <Image source={{ uri: item.designImageUrl, cache: 'force-cache' }} style={styles.thumbnailImage} />
+          ) : (
+            <View style={[styles.thumbnailPlaceholder, { backgroundColor: thumbPalette.background }]}>
+              <Ionicons name="diamond-outline" size={28} color={thumbPalette.accent} />
+            </View>
+          )}
         </View>
 
         <View style={styles.orderBody}>
@@ -305,9 +311,10 @@ const styles = StyleSheet.create({
   },
   fixedHeader: {
     paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 10,
-    backgroundColor: 'transparent',
+    paddingTop: Platform.OS === 'android' ? 10 : 18,
+    paddingBottom: Platform.OS === 'android' ? 8 : 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    zIndex: 5,
   },
   pageTitle: {
     fontFamily: 'serif',
@@ -320,13 +327,18 @@ const styles = StyleSheet.create({
   searchShell: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderWidth: 1,
     borderColor: '#8B7355',
-    
+    shadowColor: '#9c7f64',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: Platform.OS === 'android' ? 0 : 1,
+    overflow: 'hidden',
   },
   searchInput: {
     flex: 1,
@@ -334,27 +346,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2d221c',
     height: 40,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingVertical: 0,
+    includeFontPadding: false,
   },
   filterRow: {
-    paddingTop: 14,
+    paddingTop: Platform.OS === 'android' ? 10 : 14,
     gap: 8,
   },
   filterChip: {
-    height: 34,
+    height: Platform.OS === 'android' ? 30 : 34,
     borderRadius: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: Platform.OS === 'android' ? 12 : 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderWidth: 1,
-    borderColor: '#8B7355',
+    borderColor: 'rgba(197, 160, 89, 0.3)',
   },
   filterChipActive: {
     backgroundColor: '#2C1E16',
     borderColor: '#2C1E16',
   },
   filterChipText: {
-    fontSize: 12,
+    fontSize: Platform.OS === 'android' ? 11 : 12,
     fontWeight: '600',
     color: '#8E8E93',
   },
@@ -368,14 +384,14 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 18,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingTop: Platform.OS === 'android' ? 4 : 8,
+    paddingBottom: Platform.OS === 'android' ? 20 : 12,
     flexGrow: 1,
   },
   orderCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)',
     borderRadius: 14,
     padding: 10,
     borderWidth: 1.3,
@@ -384,7 +400,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
-    elevation: 2,
+    elevation: Platform.OS === 'android' ? 0 : 2,
     marginBottom: 12,
   },
   thumbnailWrap: {
@@ -398,6 +414,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
   },
   orderBody: {
     flex: 1,
@@ -453,7 +473,7 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.15)',
     borderRadius: 12,
     paddingHorizontal: 22,
     paddingVertical: 34,

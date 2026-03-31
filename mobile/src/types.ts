@@ -62,6 +62,7 @@ export type Order = {
   orderNumber: string;
   designId?: string | null;
   designNo?: string | null;
+  designImageUrl?: string | null;
   status: string;
   price: number;
   quantity: number;

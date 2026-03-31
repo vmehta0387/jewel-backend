@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
@@ -30,10 +32,12 @@ const formatMoney = (value: number) =>
 
 const CartScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
+  const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
   const { items, totalValue, removeItem, updateQuantity, clear } = useCart();
 
-  const [deliveryDate, setDeliveryDate] = useState('');
+  const [shortDescription, setShortDescription] = useState('');
+  const [notes, setNotes] = useState('');
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +56,9 @@ const CartScreen = () => {
       return;
     }
 
+    const normalizedShortDescription = shortDescription.trim();
+    const normalizedNotes = notes.trim();
+
     setPlacingOrder(true);
     setError(null);
     try {
@@ -62,9 +69,8 @@ const CartScreen = () => {
           designId: item.designId,
           quantity: item.quantity,
           price: Number(item.unitPrice || 0),
-          deliveryDate: deliveryDate || undefined,
-          shortDescription: item.shortDescription,
-          notes: JSON.stringify({ selection: item.selection, source: 'mobile_cart_checkout' }),
+          shortDescription: normalizedShortDescription || undefined,
+          notes: normalizedNotes || undefined,
           status: user.role === 'BRANCH_MANAGER' ? 'APPROVED' : 'PENDING_APPROVAL',
         });
       }
@@ -86,7 +92,10 @@ const CartScreen = () => {
 
   return (
     <Screen style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.container, { paddingBottom: Math.max(28, insets.bottom + 16) }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
             <Ionicons name="arrow-back" size={18} color="#2C1E16" />
@@ -150,13 +159,25 @@ const CartScreen = () => {
           <View style={styles.checkoutCard}>
             <Text style={styles.checkoutTitle}>Checkout</Text>
             <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Estimated Delivery (optional)</Text>
+              <Text style={styles.fieldLabel}>Short Description</Text>
               <TextInput
                 style={styles.deliveryInput}
-                value={deliveryDate}
-                onChangeText={setDeliveryDate}
-                placeholder="dd-mm-yyyy"
+                value={shortDescription}
+                onChangeText={setShortDescription}
+                placeholder="e.g. Customer approved showroom selection"
                 placeholderTextColor="#a08f80"
+              />
+            </View>
+            <View style={styles.fieldBlock}>
+              <Text style={styles.fieldLabel}>Notes</Text>
+              <TextInput
+                style={styles.notesInput}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Add notes for approval / order processing"
+                placeholderTextColor="#a08f80"
+                multiline
+                textAlignVertical="top"
               />
             </View>
             <View style={styles.totalRow}>
@@ -314,6 +335,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.lg,
     padding: spacing.md,
+    paddingBottom: spacing.lg,
     backgroundColor: 'rgba(255,252,245,0.72)',
     gap: spacing.sm,
     marginTop: spacing.xs,
@@ -339,11 +361,24 @@ const styles = StyleSheet.create({
     color: '#2C1E16',
     backgroundColor: 'rgba(255,255,255,0.45)',
   },
+  notesInput: {
+    minHeight: Platform.OS === 'ios' ? 96 : 90,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+    color: '#2C1E16',
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    marginBottom: Platform.OS === 'ios' ? 12 : 10,
+  },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginTop: 8,
+    marginBottom: 8,
   },
   totalLabel: {
     fontSize: 14,
@@ -358,4 +393,3 @@ const styles = StyleSheet.create({
 });
 
 export default CartScreen;
-

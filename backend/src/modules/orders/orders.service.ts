@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Order } from './entities/order.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
@@ -12,6 +14,8 @@ import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.
 
 @Injectable()
 export class OrdersService {
+  private s3Client: S3Client | null = null;
+
   constructor(
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
     @InjectRepository(Company) private readonly companyRepo: Repository<Company>,
@@ -83,13 +87,23 @@ export class OrdersService {
     }
 
     const [data, total] = await qb.getManyAndCount();
-    const enriched = data.map((order) => ({
-      ...order,
-      companyName: order.company?.companyName ?? null,
-      branchName: order.branch?.name ?? null,
-      designNo: order.design?.designNo ?? null,
-      designVersion: order.design?.version ?? null,
-    }));
+    const enriched = await Promise.all(
+      data.map(async (order) => {
+        const primaryImage = Array.isArray(order.design?.imageUrls)
+          ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
+          : null;
+        const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
+
+        return {
+          ...order,
+          companyName: order.company?.companyName ?? null,
+          branchName: order.branch?.name ?? null,
+          designNo: order.design?.designNo ?? null,
+          designVersion: order.design?.version ?? null,
+          designImageUrl,
+        };
+      }),
+    );
 
     return {
       data: enriched,
@@ -589,5 +603,113 @@ export class OrdersService {
 
   private roundMoney(value: number): number {
     return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+  }
+
+  private optionalText(value: unknown): string | null {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private getS3Config(): {
+    bucket: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+  } | null {
+    const bucket = this.optionalText(process.env.AWS_S3_BUCKET);
+    const region = this.optionalText(process.env.AWS_REGION);
+    const accessKeyId = this.optionalText(process.env.AWS_ACCESS_KEY_ID) || this.optionalText(process.env.AWS_ACCESS_KEY);
+    const secretAccessKey =
+      this.optionalText(process.env.AWS_SECRET_ACCESS_KEY) || this.optionalText(process.env.AWS_SECRET_KEY);
+
+    if (!bucket || !region || !accessKeyId || !secretAccessKey) {
+      return null;
+    }
+
+    return { bucket, region, accessKeyId, secretAccessKey };
+  }
+
+  private getS3Client(): { client: S3Client; bucket: string; region: string } | null {
+    const config = this.getS3Config();
+    if (!config) return null;
+
+    if (!this.s3Client) {
+      const endpoint = this.optionalText(process.env.AWS_S3_ENDPOINT);
+      this.s3Client = new S3Client({
+        region: config.region,
+        endpoint: endpoint || undefined,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
+    }
+
+    return { client: this.s3Client, bucket: config.bucket, region: config.region };
+  }
+
+  private getSignedUrlExpiresIn(): number {
+    const raw = this.optionalText(process.env.AWS_S3_SIGNED_URL_EXPIRES);
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    return 3600;
+  }
+
+  private parseS3KeyFromUrl(value: string, bucket: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('s3://')) {
+      const withoutScheme = trimmed.slice(5);
+      const [bucketName, ...rest] = withoutScheme.split('/');
+      if (!bucketName || rest.length === 0) return null;
+      if (bucketName !== bucket) return null;
+      return rest.join('/');
+    }
+
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(trimmed);
+    } catch {
+      return null;
+    }
+
+    const host = parsedUrl.hostname;
+    const path = parsedUrl.pathname.replace(/^\/+/, '');
+
+    if (host.startsWith(`${bucket}.s3`)) {
+      return path || null;
+    }
+
+    if (host.startsWith('s3') && path.startsWith(`${bucket}/`)) {
+      return path.slice(bucket.length + 1) || null;
+    }
+
+    return null;
+  }
+
+  private async createSignedUrl(client: S3Client, bucket: string, key: string): Promise<string> {
+    const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    return getSignedUrl(client, command, { expiresIn: this.getSignedUrlExpiresIn() });
+  }
+
+  private async resolveOrderDesignImageUrl(value: string | null): Promise<string | null> {
+    if (!value || typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    const s3Config = this.getS3Client();
+    if (!s3Config) return trimmed;
+
+    const { client, bucket } = s3Config;
+    const key = this.parseS3KeyFromUrl(trimmed, bucket);
+    if (!key) return trimmed;
+
+    try {
+      return await this.createSignedUrl(client, bucket, key);
+    } catch {
+      return null;
+    }
   }
 }

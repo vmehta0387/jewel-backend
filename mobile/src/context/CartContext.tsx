@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
 export type CartSelection = {
+  diamondType?: string;
   shape?: string;
   style?: string;
   metalColor?: string;
@@ -43,6 +44,7 @@ const buildSignature = (item: AddCartItemInput) => {
   const selection = item.selection || {};
   return [
     item.designId,
+    normalize(selection.diamondType),
     normalize(selection.shape),
     normalize(selection.style),
     normalize(selection.metalColor),
@@ -120,4 +122,3 @@ export const useCart = () => {
   }
   return context;
 };
-

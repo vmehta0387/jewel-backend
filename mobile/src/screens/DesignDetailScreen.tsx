@@ -28,6 +28,7 @@ import { formatNumber } from '../utils/format';
 type OptionVariant = 'default' | 'shape' | 'color';
 
 type VersionFilters = {
+  diamondType: string;
   shape: string;
   style: string;
   metalColor: string;
@@ -111,14 +112,15 @@ const metalSwatchByValue = (value: string) => {
 };
 
 const getVersionAttributes = (design: Design) => ({
+  diamondTypes: uniqueValues([design.diamondType]),
   shapes: uniqueValues(design.gemstones?.map((gem) => gem.shape) || []),
   // Spread must come only from design-level field (not gemstone type).
   styles: uniqueValues([design.diamondSpread]),
   metalColors: uniqueValues(
     [
+      ...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []),
       design.goldColour,
-      ...(design.metals?.map((metal) => metal.goldColour) || []),
-    ].map((entry) => canonicalMetalColor(entry)),
+    ],
   ),
   // Quality/weight/ring size options are version-level selections from general info.
   qualities: uniqueValues([design.diamondQuality]),
@@ -129,6 +131,7 @@ const getVersionAttributes = (design: Design) => ({
 const getFilterValuesFromDesign = (design: Design): VersionFilters => {
   const attrs = getVersionAttributes(design);
   return {
+    diamondType: attrs.diamondTypes[0] || '',
     shape: attrs.shapes[0] || '',
     style: attrs.styles[0] || '',
     metalColor: attrs.metalColors[0] || '',
@@ -164,6 +167,7 @@ const findBestMatchingVersion = (
   const candidates = family.filter((design) => {
     const attrs = getVersionAttributes(design);
     return (
+      matchesFilter(attrs.diamondTypes, filters.diamondType) &&
       matchesFilter(attrs.shapes, filters.shape) &&
       matchesFilter(attrs.styles, filters.style) &&
       matchesFilter(attrs.metalColors, filters.metalColor) &&
@@ -182,6 +186,8 @@ const findBestMatchingVersion = (
 const filterMatchesDesign = (design: Design, key: FilterKey, value: string) => {
   const attrs = getVersionAttributes(design);
   switch (key) {
+    case 'diamondType':
+      return attrs.diamondTypes.includes(value);
     case 'shape':
       return attrs.shapes.includes(value);
     case 'style':
@@ -315,6 +321,7 @@ const DesignDetailScreen = () => {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const [selectedShape, setSelectedShape] = useState('');
+  const [selectedDiamondType, setSelectedDiamondType] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
   const [selectedMetalColor, setSelectedMetalColor] = useState('');
   const [selectedWeight, setSelectedWeight] = useState('');
@@ -325,6 +332,7 @@ const DesignDetailScreen = () => {
     const next = getFilterValuesFromDesign(design);
     setActiveDesignId(design.id);
     setSelectedShape(next.shape);
+    setSelectedDiamondType(next.diamondType);
     setSelectedStyle(next.style);
     setSelectedMetalColor(next.metalColor);
     setSelectedWeight(next.weight);
@@ -425,6 +433,10 @@ const DesignDetailScreen = () => {
     () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).shapes)),
     [familyDesigns],
   );
+  const diamondTypeOptions = useMemo(
+    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).diamondTypes)),
+    [familyDesigns],
+  );
   const styleOptions = useMemo(
     () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).styles)),
     [familyDesigns],
@@ -449,6 +461,7 @@ const DesignDetailScreen = () => {
   const resolveVersionSelection = useCallback(
     (selectedKey: FilterKey, selectedValue: string) => {
       const currentFilters: VersionFilters = {
+        diamondType: selectedDiamondType,
         shape: selectedShape,
         style: selectedStyle,
         metalColor: selectedMetalColor,
@@ -477,6 +490,7 @@ const DesignDetailScreen = () => {
       familyDesigns,
       activeDesignId,
       selectedShape,
+      selectedDiamondType,
       selectedStyle,
       selectedMetalColor,
       selectedWeight,
@@ -497,6 +511,7 @@ const DesignDetailScreen = () => {
   const handleAddToCart = useCallback(() => {
     if (!activeDesign) return;
     const shortDescription = [
+      selectedDiamondType ? `Type: ${selectedDiamondType}` : null,
       selectedMetalColor ? `Metal: ${selectedMetalColor}` : null,
       selectedRingSize ? `Size: ${selectedRingSize}` : null,
       selectedStyle ? `Spread: ${selectedStyle}` : null,
@@ -514,6 +529,7 @@ const DesignDetailScreen = () => {
       unitPrice: Number(displayPrice || 0),
       shortDescription,
       selection: {
+        diamondType: selectedDiamondType,
         shape: selectedShape,
         style: selectedStyle,
         metalColor: selectedMetalColor,
@@ -530,6 +546,7 @@ const DesignDetailScreen = () => {
     addItem,
     displayPrice,
     selectedMetalColor,
+    selectedDiamondType,
     selectedQuality,
     selectedRingSize,
     selectedShape,
@@ -604,7 +621,7 @@ const DesignDetailScreen = () => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.iconButton}
-              onPress={() => navigation.navigate('Cart')}
+              onPress={() => navigation.navigate('CartTab' as never)}
               activeOpacity={0.88}
             >
               <Ionicons name="cart-outline" size={18} color="#2f2119" />
@@ -682,7 +699,15 @@ const DesignDetailScreen = () => {
             onSelect={(value) => {
               resolveVersionSelection('metalColor', value);
             }}
-            variant="color"
+          />
+
+          <OptionSection
+            title={`Diamond Type: ${selectedDiamondType || '-'}`}
+            options={diamondTypeOptions}
+            selected={selectedDiamondType}
+            onSelect={(value) => {
+              resolveVersionSelection('diamondType', value);
+            }}
           />
 
           <OptionSection
