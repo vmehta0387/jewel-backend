@@ -534,7 +534,7 @@ const DesignDetailScreen = () => {
       designNo: activeDesign.designNo,
       designName: activeDesign.designName,
       imageUrl: activeImage || null,
-      unitPrice: Number(displayPrice || 0),
+      unitPrice: Math.round(Number(displayPrice || 0)),
       shortDescription,
       selection: {
         diamondType: selectedDiamondType,

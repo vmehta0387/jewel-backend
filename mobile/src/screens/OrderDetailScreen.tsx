@@ -2,12 +2,15 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -15,7 +18,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Screen from '../components/Screen';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import CompactDatePickerModal from '../components/CompactDatePickerModal';
 import ScreenHeader from '../components/ScreenHeader';
 import { colors, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
@@ -42,8 +44,8 @@ const formatStatusCardValue = (value?: string | null) => {
 
 const formatCompactCurrency = (value: number | string | null | undefined) => {
   const num = Number(value);
-  if (!Number.isFinite(num)) return '$0.00';
-  return `$${num.toFixed(2)}`;
+  if (!Number.isFinite(num)) return '$0';
+  return `$${Math.round(num)}`;
 };
 
 const toYyyyMmDd = (date: Date) => {
@@ -69,7 +71,7 @@ const OrderDetailScreen = () => {
   const [primaryImageUrl, setPrimaryImageUrl] = useState<string | null>(null);
   const [designDetails, setDesignDetails] = useState<Design | null>(null);
   const [deliveryDate, setDeliveryDate] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showIosDatePicker, setShowIosDatePicker] = useState(false);
   const [savingDate, setSavingDate] = useState(false);
   const [actionLoading, setActionLoading] = useState<'APPROVED' | 'CANCELLED' | null>(null);
   const [loading, setLoading] = useState(false);
@@ -77,6 +79,11 @@ const OrderDetailScreen = () => {
 
   const canApproveReject = user?.role === 'BRANCH_MANAGER';
   const isApprovedOrder = order?.status === 'APPROVED';
+  const minimumDeliveryDate = useMemo(() => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
 
   const loadOrder = useCallback(async () => {
     if (!token) return;
@@ -159,6 +166,31 @@ const OrderDetailScreen = () => {
     }
   };
 
+  const normalizeToDateOnly = (value: Date) => {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const openDeliveryDatePicker = () => {
+    const initialValue = deliveryDate ? normalizeToDateOnly(deliveryDate) : minimumDeliveryDate;
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: initialValue < minimumDeliveryDate ? minimumDeliveryDate : initialValue,
+        mode: 'date',
+        display: 'calendar',
+        minimumDate: minimumDeliveryDate,
+        onChange: (event, selectedDate) => {
+          if (event.type !== 'set' || !selectedDate) return;
+          const normalized = normalizeToDateOnly(selectedDate);
+          setDeliveryDate(normalized < minimumDeliveryDate ? minimumDeliveryDate : normalized);
+        },
+      });
+      return;
+    }
+    setShowIosDatePicker(true);
+  };
+
   if (loading && !order) {
     return (
       <Screen style={styles.center}>
@@ -235,9 +267,9 @@ const OrderDetailScreen = () => {
           </View>
 
           <View style={styles.statRow}>
-            <View style={styles.statCard}>
+            <View style={[styles.statCard, styles.statCardStatus]}>
               <Text style={styles.statLabel}>Status</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
+              <Text style={styles.statValueStatus}>
                 {formatStatusCardValue(order.status)}
               </Text>
             </View>
@@ -301,7 +333,7 @@ const OrderDetailScreen = () => {
             <Text style={styles.fieldLabel}>Expected Delivery Date</Text>
             <TouchableOpacity
               style={styles.datePickerTrigger}
-              onPress={() => setShowDatePicker(true)}
+              onPress={openDeliveryDatePicker}
               activeOpacity={0.9}
             >
               <Text style={[styles.datePickerText, !deliveryDate ? styles.datePickerPlaceholder : null]}>
@@ -346,13 +378,33 @@ const OrderDetailScreen = () => {
         ) : null}
       </ScrollView>
 
-      <CompactDatePickerModal
-        visible={showDatePicker}
-        value={deliveryDate}
-        minimumDate={new Date()}
-        onClose={() => setShowDatePicker(false)}
-        onConfirm={setDeliveryDate}
-      />
+      {Platform.OS === 'ios' ? (
+        <Modal visible={showIosDatePicker} transparent animationType="fade" onRequestClose={() => setShowIosDatePicker(false)}>
+          <View style={styles.iosPickerOverlay}>
+            <View style={styles.iosPickerSheet}>
+              <View style={styles.iosPickerHeader}>
+                <TouchableOpacity onPress={() => setShowIosDatePicker(false)} activeOpacity={0.9}>
+                  <Text style={styles.iosPickerAction}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowIosDatePicker(false)} activeOpacity={0.9}>
+                  <Text style={styles.iosPickerAction}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={deliveryDate || minimumDeliveryDate}
+                mode="date"
+                display="inline"
+                minimumDate={minimumDeliveryDate}
+                onChange={(_, selectedDate) => {
+                  if (!selectedDate) return;
+                  const normalized = normalizeToDateOnly(selectedDate);
+                  setDeliveryDate(normalized < minimumDeliveryDate ? minimumDeliveryDate : normalized);
+                }}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </Screen>
   );
 };
@@ -432,6 +484,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     justifyContent: 'space-between',
   },
+  statCardStatus: {
+    flex: 1.15,
+  },
   statLabel: {
     fontSize: 11,
     letterSpacing: 0.5,
@@ -441,9 +496,17 @@ const styles = StyleSheet.create({
   },
   statValue: {
     marginTop: 4,
-    fontSize: 16,
+    fontSize: Platform.OS === 'android' ? 15 : 16,
     fontWeight: '700',
     color: '#2C1E16',
+    includeFontPadding: false,
+  },
+  statValueStatus: {
+    marginTop: 4,
+    fontSize: Platform.OS === 'android' ? 14 : 15,
+    fontWeight: '700',
+    color: '#2C1E16',
+    includeFontPadding: false,
   },
   infoBlock: {
     flex: 1,
@@ -598,6 +661,31 @@ const styles = StyleSheet.create({
   },
   datePickerPlaceholder: {
     color: '#a08f80',
+  },
+  iosPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    justifyContent: 'flex-end',
+  },
+  iosPickerSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 16,
+  },
+  iosPickerHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e6dfd8',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  iosPickerAction: {
+    color: '#7b4f2f',
+    fontSize: 15,
+    fontWeight: '600',
   },
   actionRow: {
     flexDirection: 'row',

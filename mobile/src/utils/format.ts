@@ -1,7 +1,7 @@
 ﻿export const formatCurrency = (value: number | string | null | undefined, currency = 'USD') => {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return `${currency} 0.00`;
-  return `${currency} ${numeric.toFixed(2)}`;
+  if (!Number.isFinite(numeric)) return `${currency} 0`;
+  return `${currency} ${Math.round(numeric)}`;
 };
 
 export const formatNumber = (value: number | string | null | undefined, decimals = 2) => {

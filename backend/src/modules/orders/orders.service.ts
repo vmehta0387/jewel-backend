@@ -670,7 +670,7 @@ export class OrdersService {
   }
 
   private roundMoney(value: number): number {
-    return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+    return Number.isFinite(value) ? Math.round(value) : 0;
   }
 
   private getSalesRepDisplayName(order: Order): string | null {

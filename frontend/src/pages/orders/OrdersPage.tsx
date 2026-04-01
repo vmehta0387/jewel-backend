@@ -152,7 +152,7 @@ const isVideoUrl = (url: string): boolean => {
 };
 
 const formatMoney = (value: number): string =>
-  `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 const formatWeight = (value?: number | null): string => Number(value || 0).toFixed(3);
 const getBaseDesignNo = (designNo?: string | null): string =>
   String(designNo || '')
@@ -430,7 +430,7 @@ export default function OrdersPage() {
         });
         const nextPrice = response.data?.finalPrice;
         if (nextPrice !== undefined && nextPrice !== null) {
-          setForm((prev) => ({ ...prev, price: String(nextPrice) }));
+          setForm((prev) => ({ ...prev, price: String(Math.round(Number(nextPrice) || 0)) }));
         }
       } catch {
         // ignore preview failures

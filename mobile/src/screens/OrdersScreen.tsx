@@ -84,14 +84,14 @@ const THUMB_COLORS = [
 const formatMoney = (value: number | null | undefined) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return '$0.00';
+    return '$0';
   }
 
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(numeric);
 };
 
