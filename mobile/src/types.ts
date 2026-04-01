@@ -67,6 +67,7 @@ export type Order = {
   salesRepId?: string | null;
   salesRepName?: string | null;
   salesRepEmail?: string | null;
+  branchManagerName?: string | null;
   status: string;
   price: number;
   quantity: number;

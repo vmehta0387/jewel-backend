@@ -208,6 +208,32 @@ const OrderDetailScreen = () => {
             </View>
           </View>
 
+          <View style={styles.sourceSection}>
+            <Text style={styles.sourceHeading}>Order Source</Text>
+            <View style={styles.sourceGrid}>
+              <View style={styles.sourceCell}>
+                <Text style={styles.sourceLabel}>Company</Text>
+                <Text style={styles.sourceValue} numberOfLines={1}>
+                  {order.companyName?.trim() || '-'}
+                </Text>
+              </View>
+              <View style={styles.sourceCell}>
+                <Text style={styles.sourceLabel}>Branch</Text>
+                <Text style={styles.sourceValue} numberOfLines={1}>
+                  {order.branchName?.trim() || '-'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sourceGrid}>
+              <View style={styles.sourceCellFull}>
+                <Text style={styles.sourceLabel}>Sales Rep</Text>
+                <Text style={styles.sourceValue} numberOfLines={1}>
+                  {order.salesRepName?.trim() || order.salesRepEmail?.trim() || '-'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <View style={styles.statRow}>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>Status</Text>
@@ -443,6 +469,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#4b3b2f',
     lineHeight: 19,
+  },
+  sourceSection: {
+    marginTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  sourceHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2C1E16',
+    marginBottom: 2,
+  },
+  sourceGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  sourceCell: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.36)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  sourceCellFull: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.36)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  sourceLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.35,
+    fontWeight: '600',
+  },
+  sourceValue: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#3d2f25',
+    fontWeight: '700',
   },
   emptyGemText: {
     color: colors.textMuted,

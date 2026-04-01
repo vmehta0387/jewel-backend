@@ -70,7 +70,7 @@ export const buildOrderNotifications = (
     return {
       count: updates.length,
       items: updates.map((order) => ({
-        id: `decision-${order.id}`,
+        id: `decision-${String(order.status || '').toUpperCase()}-${order.id}`,
         orderId: order.id,
         title:
           String(order.status || '').toUpperCase() === 'APPROVED'

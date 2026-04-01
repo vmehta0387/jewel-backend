@@ -21,6 +21,7 @@ import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import type { UserRole } from '../types';
 import { buildOrderNotifications } from '../utils/orderNotifications';
+import { loadSeenNotificationIds } from '../utils/notificationReadState';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -103,7 +104,9 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
     try {
       const response = await fetchOrders(token, 1, 100, 'ALL');
       const summary = buildOrderNotifications(response.data || [], user);
-      setOrdersBadgeCount(summary.count);
+      const seen = await loadSeenNotificationIds(user.id);
+      const unread = summary.items.filter((item) => !seen.has(item.id)).length;
+      setOrdersBadgeCount(unread);
     } catch {
       setOrdersBadgeCount(0);
     }
@@ -111,7 +114,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
 
   useEffect(() => {
     loadOrdersBadge();
-    const interval = setInterval(loadOrdersBadge, 30000);
+    const interval = setInterval(loadOrdersBadge, 8000);
     return () => clearInterval(interval);
   }, [loadOrdersBadge]);
 

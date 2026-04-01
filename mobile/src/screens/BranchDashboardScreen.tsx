@@ -20,6 +20,7 @@ import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders'
 import { uploadMyPhoto } from '../api/auth';
 import type { Order } from '../types';
 import { buildOrderNotifications, type OrderNotification } from '../utils/orderNotifications';
+import { loadSeenNotificationIds, markNotificationsAsSeen } from '../utils/notificationReadState';
 
 const APP_VERSION = '1.0.0';
 
@@ -63,18 +64,6 @@ const statusIcon = (status: string): keyof typeof Ionicons.glyphMap => {
     case 'COMPLETED': return 'bag-check-outline';
     case 'CANCELLED': return 'close-circle-outline';
     default: return 'receipt-outline';
-  }
-};
-
-const statusLabel = (status: string): string => {
-  switch (status) {
-    case 'SHIPPED': return 'shipped';
-    case 'APPROVED': return 'approved by client';
-    case 'IN_PRODUCTION': return 'in production';
-    case 'COMPLETED': return 'completed';
-    case 'CANCELLED': return 'cancelled';
-    case 'PENDING_APPROVAL': return 'pending approval';
-    default: return 'created';
   }
 };
 
@@ -135,9 +124,11 @@ const BranchDashboardScreen = () => {
 
     const notificationSummary = buildOrderNotifications(orderRows, user || null);
     setNotifications(notificationSummary.items.slice(0, 20));
-    setNotificationCount(notificationSummary.count);
+    const seen = await loadSeenNotificationIds(user?.id);
+    const unread = notificationSummary.items.filter((item) => !seen.has(item.id)).length;
+    setNotificationCount(unread);
 
-    // Build recent activity (manager sees branch approval flow, sales sees own activity)
+    // Build recent activity with explicit role-specific approval text
     const items: ActivityItem[] = [];
 
     const activityRows =
@@ -148,18 +139,47 @@ const BranchDashboardScreen = () => {
     for (const order of activityRows.slice(0, 5)) {
       const date = order.createdAt ? new Date(order.createdAt) : new Date();
       const salesPerson = order.salesRepName || order.salesRepEmail || 'Sales rep';
-      const managerTitle =
-        String(order.status || '').toUpperCase() === 'PENDING_APPROVAL'
-          ? `Order #${order.orderNumber} awaiting your approval`
-          : `Order #${order.orderNumber} ${statusLabel(order.status)}`;
+      const managerName = order.branchManagerName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Manager';
+      const normalizedStatus = String(order.status || '').toUpperCase();
+
+      let title = '';
+      let subtitle = order.designNo || 'No design';
+
+      if (user?.role === 'BRANCH_MANAGER') {
+        if (normalizedStatus === 'PENDING_APPROVAL') {
+          title = `Order #${order.orderNumber} came for approval`;
+          subtitle = `From sales rep ${salesPerson}`;
+        } else if (normalizedStatus === 'APPROVED') {
+          title = `Order #${order.orderNumber} approved`;
+          subtitle = `For sales rep ${salesPerson}`;
+        } else if (normalizedStatus === 'CANCELLED') {
+          title = `Order #${order.orderNumber} cancelled`;
+          subtitle = `For sales rep ${salesPerson}`;
+        } else {
+          title = `Order #${order.orderNumber} updated`;
+          subtitle = `${order.designNo || 'No design'} • ${salesPerson}`;
+        }
+      } else {
+        if (normalizedStatus === 'PENDING_APPROVAL') {
+          title = `Order #${order.orderNumber} sent for approval`;
+          subtitle = `To manager ${managerName}`;
+        } else if (normalizedStatus === 'APPROVED') {
+          title = `Order #${order.orderNumber} approved`;
+          subtitle = `By manager ${managerName}`;
+        } else if (normalizedStatus === 'CANCELLED') {
+          title = `Order #${order.orderNumber} cancelled`;
+          subtitle = `By manager ${managerName}`;
+        } else {
+          title = `Order #${order.orderNumber} updated`;
+          subtitle = order.designNo || 'No design';
+        }
+      }
+
       items.push({
         id: `order-${order.id}`,
         icon: statusIcon(order.status),
-        title: user?.role === 'BRANCH_MANAGER' ? managerTitle : `Order #${order.orderNumber} ${statusLabel(order.status)}`,
-        subtitle:
-          user?.role === 'BRANCH_MANAGER'
-            ? `${order.designNo || 'No design'} • ${salesPerson}`
-            : order.designNo || 'No design',
+        title,
+        subtitle,
         time: formatRelativeTime(date),
         sortDate: date,
       });
@@ -235,6 +255,16 @@ const BranchDashboardScreen = () => {
     }
   }, [token, refresh]);
 
+  const handleOpenNotifications = useCallback(async () => {
+    setNotificationsVisible(true);
+    if (!user?.id || !notifications.length) return;
+    await markNotificationsAsSeen(
+      user.id,
+      notifications.map((item) => item.id),
+    );
+    setNotificationCount(0);
+  }, [user?.id, notifications]);
+
   return (
     <Screen style={styles.safe}>
       <ScrollView
@@ -251,7 +281,7 @@ const BranchDashboardScreen = () => {
             </Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => setNotificationsVisible(true)}>
+            <TouchableOpacity style={styles.iconBtn} onPress={handleOpenNotifications}>
               <Ionicons name="notifications-outline" size={22} color={TEXT_DARK} />
               {notificationCount > 0 ? (
                 <View style={styles.notificationBadge}>

@@ -46,6 +46,7 @@ export class OrdersService {
       .createQueryBuilder('order')
       .leftJoinAndSelect('order.company', 'company')
       .leftJoinAndSelect('order.branch', 'branch')
+      .leftJoinAndSelect('branch.branchManager', 'branchManager')
       .leftJoinAndSelect('order.design', 'design')
       .leftJoinAndSelect('order.salesRep', 'salesRep')
       .orderBy('order.createdAt', 'DESC')
@@ -105,6 +106,7 @@ export class OrdersService {
           designVersion: order.design?.version ?? null,
           salesRepName: this.getSalesRepDisplayName(order),
           salesRepEmail: order.salesRep?.email ?? null,
+          branchManagerName: this.getBranchManagerDisplayName(order),
           designImageUrl,
         };
       }),
@@ -121,7 +123,7 @@ export class OrdersService {
   async findOne(id: string, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
-      relations: ['company', 'branch', 'design', 'salesRep'],
+      relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
     });
 
     if (!order) {
@@ -142,6 +144,7 @@ export class OrdersService {
       designVersion: order.design?.version ?? null,
       salesRepName: this.getSalesRepDisplayName(order),
       salesRepEmail: order.salesRep?.email ?? null,
+      branchManagerName: this.getBranchManagerDisplayName(order),
       designImageUrl,
     };
   }
@@ -676,6 +679,14 @@ export class OrdersService {
     const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
     if (fullName) return fullName;
     return order.salesRep?.email?.trim() || null;
+  }
+
+  private getBranchManagerDisplayName(order: Order): string | null {
+    const firstName = order.branch?.branchManager?.firstName?.trim() ?? '';
+    const lastName = order.branch?.branchManager?.lastName?.trim() ?? '';
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (fullName) return fullName;
+    return order.branch?.branchManager?.email?.trim() || null;
   }
 
   private optionalText(value: unknown): string | null {
