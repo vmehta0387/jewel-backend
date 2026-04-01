@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -8,6 +8,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { fetchOrders } from '../api/orders';
 import LoginScreen from '../screens/LoginScreen';
 import DesignsScreen from '../screens/DesignsScreen';
 import DesignDetailScreen from '../screens/DesignDetailScreen';
@@ -19,6 +20,7 @@ import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import type { UserRole } from '../types';
+import { buildOrderNotifications } from '../utils/orderNotifications';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -89,6 +91,29 @@ const TeamNavigator = () => (
 const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
   const { itemCount } = useCart();
+  const { token, user } = useAuth();
+  const [ordersBadgeCount, setOrdersBadgeCount] = useState(0);
+
+  const loadOrdersBadge = useCallback(async () => {
+    if (!token || !user || (role !== 'BRANCH_MANAGER' && role !== 'SALES_REP')) {
+      setOrdersBadgeCount(0);
+      return;
+    }
+
+    try {
+      const response = await fetchOrders(token, 1, 100, 'ALL');
+      const summary = buildOrderNotifications(response.data || [], user);
+      setOrdersBadgeCount(summary.count);
+    } catch {
+      setOrdersBadgeCount(0);
+    }
+  }, [token, user, role]);
+
+  useEffect(() => {
+    loadOrdersBadge();
+    const interval = setInterval(loadOrdersBadge, 30000);
+    return () => clearInterval(interval);
+  }, [loadOrdersBadge]);
 
   return (
     <Tabs.Navigator
@@ -150,6 +175,13 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
               {route.name === 'CartTab' && itemCount > 0 ? (
                 <View style={styles.badgePill}>
                   <Text style={styles.badgePillText}>{itemCount > 99 ? '99+' : String(itemCount)}</Text>
+                </View>
+              ) : null}
+              {route.name === 'OrdersTab' && ordersBadgeCount > 0 ? (
+                <View style={styles.badgePill}>
+                  <Text style={styles.badgePillText}>
+                    {ordersBadgeCount > 99 ? '99+' : String(ordersBadgeCount)}
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -238,4 +270,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-

@@ -47,6 +47,7 @@ export class OrdersService {
       .leftJoinAndSelect('order.company', 'company')
       .leftJoinAndSelect('order.branch', 'branch')
       .leftJoinAndSelect('order.design', 'design')
+      .leftJoinAndSelect('order.salesRep', 'salesRep')
       .orderBy('order.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -102,6 +103,8 @@ export class OrdersService {
           branchName: order.branch?.name ?? null,
           designNo: order.design?.designNo ?? null,
           designVersion: order.design?.version ?? null,
+          salesRepName: this.getSalesRepDisplayName(order),
+          salesRepEmail: order.salesRep?.email ?? null,
           designImageUrl,
         };
       }),
@@ -118,7 +121,7 @@ export class OrdersService {
   async findOne(id: string, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
-      relations: ['company', 'branch', 'design'],
+      relations: ['company', 'branch', 'design', 'salesRep'],
     });
 
     if (!order) {
@@ -137,6 +140,8 @@ export class OrdersService {
       branchName: order.branch?.name ?? null,
       designNo: order.design?.designNo ?? null,
       designVersion: order.design?.version ?? null,
+      salesRepName: this.getSalesRepDisplayName(order),
+      salesRepEmail: order.salesRep?.email ?? null,
       designImageUrl,
     };
   }
@@ -663,6 +668,14 @@ export class OrdersService {
 
   private roundMoney(value: number): number {
     return Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+  }
+
+  private getSalesRepDisplayName(order: Order): string | null {
+    const firstName = order.salesRep?.firstName?.trim() ?? '';
+    const lastName = order.salesRep?.lastName?.trim() ?? '';
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (fullName) return fullName;
+    return order.salesRep?.email?.trim() || null;
   }
 
   private optionalText(value: unknown): string | null {

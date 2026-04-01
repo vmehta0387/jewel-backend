@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -62,6 +64,15 @@ const getSearchableFields = (design: Design) =>
     .map((value) => String(value).toLowerCase());
 
 const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
+type SortOption = 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
+
+const SORT_OPTIONS: Array<{ key: SortOption; label: string }> = [
+  { key: 'recent', label: 'Newest first' },
+  { key: 'priceAsc', label: 'Price: Low to High' },
+  { key: 'priceDesc', label: 'Price: High to Low' },
+  { key: 'designAsc', label: 'Design No: A to Z' },
+  { key: 'designDesc', label: 'Design No: Z to A' },
+];
 
 const isActiveDesign = (design: Design) => {
   const row = design as Design & { status?: string; isActive?: boolean };
@@ -108,6 +119,8 @@ const DesignsScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
   const loadDesigns = useCallback(async () => {
     if (!token) return;
@@ -174,7 +187,7 @@ const DesignsScreen = () => {
   const filteredDesigns = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    return designs.filter((design) => {
+    const filtered = designs.filter((design) => {
       const matchesCategory =
         selectedCategory === 'All' ||
         (design.jewelryGroup || '').toLowerCase() === selectedCategory.toLowerCase();
@@ -182,7 +195,23 @@ const DesignsScreen = () => {
 
       return matchesCategory && matchesSearch;
     });
-  }, [designs, search, selectedCategory]);
+
+    const sorted = [...filtered];
+    const getPrice = (design: Design) => Number(getDisplayPrice(design, user?.role) || 0);
+    const getDesignNo = (design: Design) => String(design.designNo || '').toLowerCase();
+
+    if (sortOption === 'priceAsc') {
+      sorted.sort((a, b) => getPrice(a) - getPrice(b));
+    } else if (sortOption === 'priceDesc') {
+      sorted.sort((a, b) => getPrice(b) - getPrice(a));
+    } else if (sortOption === 'designAsc') {
+      sorted.sort((a, b) => getDesignNo(a).localeCompare(getDesignNo(b)));
+    } else if (sortOption === 'designDesc') {
+      sorted.sort((a, b) => getDesignNo(b).localeCompare(getDesignNo(a)));
+    }
+
+    return sorted;
+  }, [designs, search, selectedCategory, sortOption, user?.role]);
 
   const renderDesignCard = ({ item, index }: { item: Design; index: number }) => {
     const badge = getBadge(index);
@@ -313,10 +342,7 @@ const DesignsScreen = () => {
 
           <TouchableOpacity
             style={styles.filterButton}
-            onPress={() => {
-              setSelectedCategory('All');
-              setSearch('');
-            }}
+            onPress={() => setSortMenuVisible(true)}
             activeOpacity={0.85}
           >
             <Ionicons name="options-outline" size={16} color="#6f6257" />
@@ -325,6 +351,64 @@ const DesignsScreen = () => {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
+
+      <Modal
+        visible={sortMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSortMenuVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSortMenuVisible(false)}>
+          <View style={styles.sortOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.sortCard}>
+                <Text style={styles.sortTitle}>Sort & Filters</Text>
+                {SORT_OPTIONS.map((option) => {
+                  const selected = sortOption === option.key;
+                  return (
+                    <TouchableOpacity
+                      key={option.key}
+                      style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
+                      onPress={() => {
+                        setSortOption(option.key);
+                        setSortMenuVisible(false);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
+                        {option.label}
+                      </Text>
+                      {selected ? <Ionicons name="checkmark-circle" size={18} color="#2C1E16" /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <View style={styles.sortActionsRow}>
+                  <TouchableOpacity
+                    style={styles.sortActionButton}
+                    onPress={() => {
+                      setSelectedCategory('All');
+                      setSearch('');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.sortActionText}>Reset Search</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.sortActionButton}
+                    onPress={() => {
+                      setSortOption('recent');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.sortActionText}>Reset Sort</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       <FlatList
         data={filteredDesigns}
@@ -434,6 +518,78 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(197, 160, 89, 0.3)',
     marginLeft: 10,
+  },
+  sortOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: Platform.OS === 'android' ? 104 : 118,
+    paddingRight: 18,
+  },
+  sortCard: {
+    width: 246,
+    borderRadius: 14,
+    backgroundColor: '#FFF8F1',
+    borderWidth: 1,
+    borderColor: '#D8C4AF',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  sortTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2C1E16',
+    marginBottom: 8,
+  },
+  sortOption: {
+    minHeight: 38,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.52)',
+    borderWidth: 1,
+    borderColor: '#E3D1BC',
+  },
+  sortOptionActive: {
+    backgroundColor: 'rgba(210, 186, 161, 0.45)',
+    borderColor: '#BFA17E',
+  },
+  sortOptionText: {
+    fontSize: 12,
+    color: '#5E5045',
+    fontWeight: '600',
+  },
+  sortOptionTextActive: {
+    color: '#2C1E16',
+  },
+  sortActionsRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sortActionButton: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.68)',
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+  },
+  sortActionText: {
+    fontSize: 11,
+    color: '#6A5A4D',
+    fontWeight: '700',
   },
   error: {
     marginTop: 12,

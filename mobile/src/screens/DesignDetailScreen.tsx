@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { StackActions, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -328,6 +328,14 @@ const DesignDetailScreen = () => {
   const [selectedQuality, setSelectedQuality] = useState('');
   const [selectedRingSize, setSelectedRingSize] = useState('');
 
+  const handleBackToDesigns = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.dispatch(StackActions.popToTop());
+      return;
+    }
+    navigation.navigate('Designs');
+  }, [navigation]);
+
   const applyActiveDesignSelection = useCallback((design: Design) => {
     const next = getFilterValuesFromDesign(design);
     setActiveDesignId(design.id);
@@ -616,7 +624,7 @@ const DesignDetailScreen = () => {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <View style={styles.heroTopBar}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()} activeOpacity={0.88}>
+            <TouchableOpacity style={styles.iconButton} onPress={handleBackToDesigns} activeOpacity={0.88}>
               <Ionicons name="arrow-back" size={18} color="#2f2119" />
             </TouchableOpacity>
             <TouchableOpacity

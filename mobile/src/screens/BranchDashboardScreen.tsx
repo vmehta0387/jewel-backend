@@ -17,8 +17,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
-import { fetchDesigns } from '../api/designs';
 import { uploadMyPhoto } from '../api/auth';
+import type { Order } from '../types';
+import { buildOrderNotifications, type OrderNotification } from '../utils/orderNotifications';
 
 const APP_VERSION = '1.0.0';
 
@@ -81,6 +82,7 @@ const BranchDashboardScreen = () => {
   const { token, user, signOut, refresh } = useAuth();
   const navigation = useNavigation<any>();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const profileBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -94,15 +96,16 @@ const BranchDashboardScreen = () => {
 
   const [weekChange, setWeekChange] = useState<number | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [notifications, setNotifications] = useState<OrderNotification[]>([]);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     if (!token) return;
 
-    const [summaryRes, trendsRes, ordersRes, designsRes] = await Promise.allSettled([
+    const [summaryRes, trendsRes, ordersRes] = await Promise.allSettled([
       fetchOrderSummary(token),
       fetchOrderTrends(token),
-      fetchOrders(token, 1, 5, 'ALL'),
-      fetchDesigns(token, 1, 3),
+      fetchOrders(token, 1, 100, 'ALL'),
     ]);
 
     // Summary
@@ -125,40 +128,46 @@ const BranchDashboardScreen = () => {
       }
     }
 
-    // Build activity from recent orders + designs
-    const items: ActivityItem[] = [];
-
+    let orderRows: Order[] = [];
     if (ordersRes.status === 'fulfilled') {
-      for (const order of ordersRes.value.data.slice(0, 5)) {
-        const date = order.createdAt ? new Date(order.createdAt) : new Date();
-        items.push({
-          id: `order-${order.id}`,
-          icon: statusIcon(order.status),
-          title: `Order #${order.orderNumber} ${statusLabel(order.status)}`,
-          subtitle: order.designNo || 'No design',
-          time: formatRelativeTime(date),
-          sortDate: date,
-        });
-      }
+      orderRows = ordersRes.value.data || [];
     }
 
-    if (designsRes.status === 'fulfilled') {
-      for (const design of designsRes.value.data.slice(0, 3)) {
-        const date = new Date(); // designs don't expose createdAt in list
-        items.push({
-          id: `design-${design.id}`,
-          icon: 'diamond-outline',
-          title: 'New design created',
-          subtitle: design.designNo || design.jewelryGroup || 'Design',
-          time: formatRelativeTime(date),
-          sortDate: date,
-        });
-      }
+    const notificationSummary = buildOrderNotifications(orderRows, user || null);
+    setNotifications(notificationSummary.items.slice(0, 20));
+    setNotificationCount(notificationSummary.count);
+
+    // Build recent activity (manager sees branch approval flow, sales sees own activity)
+    const items: ActivityItem[] = [];
+
+    const activityRows =
+      user?.role === 'BRANCH_MANAGER'
+        ? orderRows.filter((order) => ['PENDING_APPROVAL', 'APPROVED', 'CANCELLED'].includes(String(order.status || '').toUpperCase()))
+        : orderRows.filter((order) => (user?.id ? order.salesRepId === user.id : false));
+
+    for (const order of activityRows.slice(0, 5)) {
+      const date = order.createdAt ? new Date(order.createdAt) : new Date();
+      const salesPerson = order.salesRepName || order.salesRepEmail || 'Sales rep';
+      const managerTitle =
+        String(order.status || '').toUpperCase() === 'PENDING_APPROVAL'
+          ? `Order #${order.orderNumber} awaiting your approval`
+          : `Order #${order.orderNumber} ${statusLabel(order.status)}`;
+      items.push({
+        id: `order-${order.id}`,
+        icon: statusIcon(order.status),
+        title: user?.role === 'BRANCH_MANAGER' ? managerTitle : `Order #${order.orderNumber} ${statusLabel(order.status)}`,
+        subtitle:
+          user?.role === 'BRANCH_MANAGER'
+            ? `${order.designNo || 'No design'} • ${salesPerson}`
+            : order.designNo || 'No design',
+        time: formatRelativeTime(date),
+        sortDate: date,
+      });
     }
 
     items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
     setActivity(items.slice(0, 5));
-  }, [token]);
+  }, [token, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -236,14 +245,21 @@ const BranchDashboardScreen = () => {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTextBlock}>
-            <Text style={styles.headerHeadline} numberOfLines={1}>
-              <Text style={styles.headerGreeting}>{greeting}, </Text>
-              <Text style={styles.headerName}>{firstName}</Text>
+            <Text style={styles.headerGreeting}>{greeting},</Text>
+            <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
+              {firstName}
             </Text>
           </View>
           <View style={styles.headerIcons}>
-            <TouchableOpacity style={styles.iconBtn}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setNotificationsVisible(true)}>
               <Ionicons name="notifications-outline" size={22} color={TEXT_DARK} />
+              {notificationCount > 0 ? (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {notificationCount > 99 ? '99+' : String(notificationCount)}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             <TouchableOpacity
               ref={profileBtnRef}
@@ -346,6 +362,61 @@ const BranchDashboardScreen = () => {
                     <Text style={styles.versionValue}>{APP_VERSION}</Text>
                   </View>
 
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* Notifications Popup */}
+        <Modal
+          visible={notificationsVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNotificationsVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.notificationsMenu}>
+                  <Text style={styles.notificationsTitle}>Notifications</Text>
+                  {notifications.length ? (
+                    notifications.slice(0, 8).map((item, index) => (
+                      <View key={item.id}>
+                        <TouchableOpacity
+                          style={styles.notificationRow}
+                          onPress={() => {
+                            setNotificationsVisible(false);
+                            navigation.navigate('OrdersTab');
+                          }}
+                        >
+                          <View style={styles.notificationIcon}>
+                            <Ionicons
+                              name={item.status === 'CANCELLED' ? 'close-circle-outline' : 'notifications-outline'}
+                              size={16}
+                              color={TEXT_DARK}
+                            />
+                          </View>
+                          <View style={styles.notificationTextWrap}>
+                            <Text style={styles.notificationTitle} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+                            <Text style={styles.notificationSubtitle} numberOfLines={1}>
+                              {item.subtitle}
+                            </Text>
+                          </View>
+                          <Text style={styles.notificationTime}>{item.time}</Text>
+                        </TouchableOpacity>
+                        {index < Math.min(notifications.length, 8) - 1 ? (
+                          <View style={styles.notificationDivider} />
+                        ) : null}
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.notificationEmpty}>
+                      <Text style={styles.notificationEmptyText}>No new notifications</Text>
+                    </View>
+                  )}
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -461,20 +532,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  headerHeadline: {
-    fontFamily: 'serif',
-    fontSize: 40,
-    lineHeight: 40,
-    color: TEXT_DARK,
-  },
   headerGreeting: {
     fontFamily: 'serif',
     fontSize: 18,
+    lineHeight: 22,
     fontWeight: '500',
     color: '#7E736A',
   },
   headerName: {
-    fontSize: 20,
+    marginTop: 2,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: '700',
     color: TEXT_DARK,
   },
@@ -491,6 +559,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: '#A67F3F',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   headerAvatarImage: {
     width: 38,
     height: 38,
@@ -506,6 +593,76 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     minWidth: 230,
     gap: 0,
+  },
+  notificationsMenu: {
+    position: 'absolute',
+    top: 78,
+    right: 20,
+    width: 320,
+    maxHeight: 420,
+    backgroundColor: '#FFF8F1',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D7C6B6',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    elevation: 12,
+  },
+  notificationsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TEXT_DARK,
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  notificationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 2,
+  },
+  notificationIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: 'rgba(82,161,216,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationTextWrap: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 12,
+    color: TEXT_DARK,
+    fontWeight: '600',
+  },
+  notificationSubtitle: {
+    fontSize: 11,
+    color: TEXT_MUTED,
+    marginTop: 1,
+  },
+  notificationTime: {
+    fontSize: 10,
+    color: TEXT_MUTED,
+  },
+  notificationDivider: {
+    height: 1,
+    backgroundColor: '#E8DDD1',
+    marginLeft: 36,
+  },
+  notificationEmpty: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  notificationEmptyText: {
+    fontSize: 12,
+    color: TEXT_MUTED,
   },
   menuBlock: {
     backgroundColor: '#FFF8F1',
