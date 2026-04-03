@@ -203,6 +203,7 @@ interface DesignMetalImportRow {
 interface DesignGemstoneImportRow {
   designNo: string;
   version?: string;
+  packetBarcode?: string;
   packetName?: string;
   stone?: string;
   shape?: string;
@@ -474,12 +475,26 @@ export class ProductsService {
         '@ Per Gm': 125.39,
         Value: 689.65,
       },
+      {
+        'Design No': 'RING-0001',
+        Version: 'V2',
+        'Sort Order': 1,
+        'Metal Caratage': '14-Rose-Gold',
+        'Gold Colour': 'Rose',
+        'Net Wt': 4.7,
+        'Wastage %': 9,
+        'Wastage Wt': '',
+        'Total Wt': '',
+        '@ Per Gm': '',
+        Value: '',
+      },
     ];
     const gemstoneRows = [
       {
         'Design No': 'RING-0001',
         Version: 'V1',
         'Sort Order': 1,
+        'Packet Barcode': '1000000001',
         Packet: 'LD-ROU-400-DF-VV',
         Stone: 'Lab Diamonds',
         Shape: 'Round',
@@ -494,6 +509,25 @@ export class ProductsService {
         '@ (P/Ct)': 500,
         Amount: 1200,
       },
+      {
+        'Design No': 'RING-0001',
+        Version: 'V2',
+        'Sort Order': 1,
+        'Packet Barcode': '1000000002',
+        Packet: 'LD-EMR-200-DF-VV',
+        Stone: '',
+        Shape: '',
+        Size: '',
+        Cut: '',
+        Color: '',
+        Quality: '',
+        'Stone Type': '',
+        'Wt/Pcs': 0.18,
+        Pcs: 12,
+        'Wt (Cts)': '',
+        '@ (P/Ct)': '',
+        Amount: '',
+      },
     ];
     const laborRows = [
       {
@@ -504,6 +538,15 @@ export class ProductsService {
         'Labor/Unit': 100,
         'Unit Qty': 1,
         'Labor Value': 100,
+      },
+      {
+        'Design No': 'RING-0001',
+        Version: 'V1',
+        'Sort Order': 2,
+        'Labor Head': 'Polish',
+        'Labor/Unit': 45,
+        'Unit Qty': 1,
+        'Labor Value': '',
       },
     ];
     const findingRows = [
@@ -519,12 +562,14 @@ export class ProductsService {
       },
     ];
     const referenceRows = [
+      { Field: 'How to use this file', AllowedValues: 'Fill all relevant sheets', Notes: 'Use Designs + Metals + Gemstones + Labors (+ Findings if needed). Multiple rows per version are supported.' },
       { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional. Defaults to ACTIVE.' },
       { Field: 'Version', AllowedValues: 'V1, V2, V3...', Notes: 'Required. Import is matched by Design No + Version.' },
       { Field: 'Design No', AllowedValues: 'One base design number per import', Notes: 'Use same Design No with different versions (V1, V2, V3...) to bulk-import versions.' },
       { Field: 'Company Code', AllowedValues: 'Existing company code', Notes: 'Optional. Leave blank for global designs.' },
       { Field: 'Branch Code', AllowedValues: 'Existing branch code', Notes: 'Optional. Must match company when provided.' },
-      { Field: 'Packet', AllowedValues: 'Existing stone packet name', Notes: 'Optional, but recommended for gemstone rows.' },
+      { Field: 'Packet Barcode', AllowedValues: 'Existing numeric packet barcode', Notes: 'Recommended for gemstone rows. If present, barcode match is used first.' },
+      { Field: 'Packet', AllowedValues: 'Existing stone packet name', Notes: 'Used if barcode is empty.' },
       { Field: 'Image Keys', AllowedValues: 'Comma-separated media keys from Media Library', Notes: 'Example: s3://bucket/path/a.jpg, s3://bucket/path/b.mp4' },
       { Field: 'STL Key', AllowedValues: 'One STL key from Media Library', Notes: 'Example: s3://bucket/path/model.stl' },
       { Field: 'Unsupported in phase 1', AllowedValues: 'vendors, process stages, pricing tiers', Notes: 'These are not imported from Excel yet.' },
@@ -582,7 +627,7 @@ export class ProductsService {
       ),
     );
     const packets = packetIds.length ? await this.packetRepo.find({ where: { id: In(packetIds) } }) : [];
-    const packetNameMap = new Map(packets.map((packet) => [packet.id, packet.packetName]));
+    const packetByIdMap = new Map(packets.map((packet) => [packet.id, packet]));
 
     XLSX.utils.book_append_sheet(
       workbook,
@@ -646,7 +691,8 @@ export class ProductsService {
             'Design No': design.designNo,
             Version: design.version,
             'Sort Order': index + 1,
-            Packet: row.packetId ? packetNameMap.get(row.packetId) || '' : '',
+            'Packet Barcode': row.packetId ? packetByIdMap.get(row.packetId)?.barcode || '' : '',
+            Packet: row.packetId ? packetByIdMap.get(row.packetId)?.packetName || '' : '',
             Stone: row.stone || '',
             Shape: row.shape || '',
             Size: row.size || '',
@@ -755,7 +801,8 @@ export class ProductsService {
 
     const companyMap = await this.getProductCompanyCodeMap();
     const branchMap = await this.getProductBranchCodeMap();
-    const packetMap = await this.getPacketNameMap();
+    const packetNameMap = await this.getPacketNameMap();
+    const packetBarcodeMap = await this.getPacketBarcodeMap();
 
     const metalMap = this.groupRowsByDesignKey(metalRows, (row) => this.getDesignImportKey(row));
     const gemstoneMap = this.groupRowsByDesignKey(gemstoneRows, (row) => this.getDesignImportKey(row));
@@ -803,7 +850,11 @@ export class ProductsService {
           isActive: this.parseImportStatus(designRow.isActive),
           metals: (metalMap.get(designKey) || []).map((row) => this.toImportedMetalDto(this.normalizeDesignMetalImportRow(row))),
           gemstones: (gemstoneMap.get(designKey) || []).map((row) =>
-            this.toImportedGemstoneDto(this.normalizeDesignGemstoneImportRow(row), packetMap),
+            this.toImportedGemstoneDto(
+              this.normalizeDesignGemstoneImportRow(row),
+              packetNameMap,
+              packetBarcodeMap,
+            ),
           ),
           labors: (laborMap.get(designKey) || []).map((row) => this.toImportedLaborDto(this.normalizeDesignLaborImportRow(row))),
           findings: (findingMap.get(designKey) || []).map((row) => this.toImportedFindingDto(this.normalizeDesignFindingImportRow(row))),
@@ -4003,6 +4054,7 @@ export class ProductsService {
     return {
       designNo: this.getImportCell(row, 'Design No', 'designNo'),
       version: this.getImportCell(row, 'Version', 'version'),
+      packetBarcode: this.getImportCell(row, 'Packet Barcode', 'packetBarcode', 'Barcode', 'barcode'),
       packetName: this.getImportCell(row, 'Packet', 'packetName'),
       stone: this.getImportCell(row, 'Stone', 'stone'),
       shape: this.getImportCell(row, 'Shape', 'shape'),
@@ -4123,6 +4175,15 @@ export class ProductsService {
     return new Map(packets.map((packet) => [packet.packetName.trim().toUpperCase(), packet]));
   }
 
+  private async getPacketBarcodeMap(): Promise<Map<string, StonePacket>> {
+    const packets = await this.packetRepo.find();
+    return new Map(
+      packets
+        .filter((packet) => Boolean((packet.barcode || '').trim()))
+        .map((packet) => [packet.barcode!.trim(), packet]),
+    );
+  }
+
   private async resolveImportDesignScope(
     row: DesignImportRow,
     companyMap: Map<string, Company>,
@@ -4182,13 +4243,37 @@ export class ProductsService {
 
   private toImportedGemstoneDto(
     row: DesignGemstoneImportRow,
-    packetMap: Map<string, StonePacket>,
+    packetNameMap: Map<string, StonePacket>,
+    packetBarcodeMap: Map<string, StonePacket>,
   ): DesignGemstoneDto {
+    const packetBarcode = row.packetBarcode?.trim();
     const packetName = row.packetName?.trim();
-    const packet = packetName ? packetMap.get(packetName.toUpperCase()) : undefined;
-    if (packetName && !packet) {
+    const packetByBarcode = packetBarcode ? packetBarcodeMap.get(packetBarcode) : undefined;
+    const packetByName = packetName ? packetNameMap.get(packetName.toUpperCase()) : undefined;
+    const packet = packetByBarcode || packetByName;
+
+    if (packetBarcode && !packetByBarcode) {
+      throw new BadRequestException(`Packet barcode "${packetBarcode}" not found`);
+    }
+    if (!packet && packetName) {
       throw new BadRequestException(`Packet "${packetName}" not found`);
     }
+    const normalizedWtPerPcs = this.optionalNonNegativeNumber(row.wtPerPcs, 'wtPerPcs');
+    const normalizedPcs = this.optionalNonNegativeNumber(row.pcs, 'pcs');
+    const normalizedPricePerCt = this.optionalNonNegativeNumber(row.pricePerCt, 'pricePerCt');
+    const normalizedAmount = this.optionalNonNegativeNumber(row.amount, 'amount');
+
+    const fallbackWtPerPcs =
+      packet && packet.weightPerPc !== null && packet.weightPerPc !== undefined
+        ? this.toNumber(packet.weightPerPc)
+        : undefined;
+    const fallbackPcs =
+      packet && packet.pieces !== null && packet.pieces !== undefined ? this.toNumber(packet.pieces) : undefined;
+    const fallbackPricePerCt =
+      packet && packet.sellingPrice !== null && packet.sellingPrice !== undefined
+        ? this.toNumber(packet.sellingPrice)
+        : undefined;
+
     return {
       packetId: packet?.id,
       stone: row.stone?.trim() || undefined,
@@ -4198,11 +4283,11 @@ export class ProductsService {
       color: row.color?.trim() || undefined,
       quality: row.quality?.trim() || undefined,
       stoneType: row.stoneType?.trim() || undefined,
-      wtPerPcs: this.optionalNonNegativeNumber(row.wtPerPcs, 'wtPerPcs') ?? undefined,
-      pcs: this.optionalNonNegativeNumber(row.pcs, 'pcs') ?? undefined,
+      wtPerPcs: normalizedWtPerPcs ?? fallbackWtPerPcs ?? undefined,
+      pcs: normalizedPcs ?? fallbackPcs ?? undefined,
       wtInCts: this.optionalNonNegativeNumber(row.wtInCts, 'wtInCts') ?? undefined,
-      pricePerCt: this.optionalNonNegativeNumber(row.pricePerCt, 'pricePerCt') ?? undefined,
-      amount: this.optionalNonNegativeNumber(row.amount, 'amount') ?? undefined,
+      pricePerCt: normalizedPricePerCt ?? fallbackPricePerCt ?? undefined,
+      amount: normalizedAmount ?? undefined,
     };
   }
 
