@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
@@ -91,6 +91,8 @@ const TeamNavigator = () => (
 
 const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
+  const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
+  const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
   const { itemCount } = useCart();
   const { token, user } = useAuth();
   const [ordersBadgeCount, setOrdersBadgeCount] = useState(0);
@@ -122,30 +124,31 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
     <Tabs.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopColor: 'transparent',
-          borderTopWidth: 0,
-          elevation: 0,
+          backgroundColor: '#F8F1E8',
+          borderTopColor: 'rgba(139, 115, 85, 0.24)',
+          borderTopWidth: 1,
+          elevation: 12,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.04,
-          shadowRadius: 12,
-          height: 60 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
-          paddingTop: 6,
+          shadowOpacity: 0.06,
+          shadowRadius: 10,
+          height: tabBarHeight,
+          paddingBottom: Platform.OS === 'android' ? tabBarBottomInset : 8 + tabBarBottomInset,
+          paddingTop: Platform.OS === 'android' ? 6 : 6,
           marginHorizontal: 0,
           marginBottom: 0,
           borderRadius: 0,
         },
         tabBarItemStyle: {
-          paddingVertical: 2,
+          paddingVertical: 1,
         },
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '600',
           marginTop: 2,
-          lineHeight: 12,
+          lineHeight: 14,
         },
         tabBarActiveTintColor: colors.primaryDark,
         tabBarInactiveTintColor: colors.textMuted,
@@ -239,19 +242,19 @@ export default RootNavigator;
 const styles = StyleSheet.create({
   iconWrap: {
     width: 36,
-    height: 36,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabIconActive: {
-    backgroundColor: 'rgba(255, 252, 245, 0.92)',
+    backgroundColor: 'rgba(255, 252, 245, 0.95)',
   },
   badgePill: {
     position: 'absolute',

@@ -23,6 +23,7 @@ import {
   GetNextDesignVersionQueryDto,
   FindPacketsQueryDto,
   FindDesignMastersQueryDto,
+  FindDesignMediaLibraryQueryDto,
   FindProductsQueryDto,
   ReplacePricingTiersDto,
   ReplaceProcessStagesDto,
@@ -100,6 +101,11 @@ export class ProductsController {
   @Get('packets')
   findPackets(@Query() query: FindPacketsQueryDto) {
     return this.productsService.findPackets(query);
+  }
+
+  @Get('media-library')
+  findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
+    return this.productsService.findMediaLibrary(query);
   }
 
   @Get('packets/export/template')

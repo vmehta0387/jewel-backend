@@ -130,6 +130,20 @@ interface GalleryItem {
   url: string;
 }
 
+type MediaLibraryTypeFilter = 'ALL' | 'IMAGE' | 'VIDEO' | 'STL';
+
+interface MediaLibraryItem {
+  id: string;
+  mediaType: MediaLibraryTypeFilter;
+  fileName: string;
+  fileKey: string;
+  mimeType?: string | null;
+  fileSizeBytes?: number | null;
+  url: string;
+  uploadedBy?: string | null;
+  createdAt?: string | null;
+}
+
 interface ListMediaViewerState {
   title: string;
   items: GalleryItem[];
@@ -883,6 +897,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
+  const [showMediaLibraryModal, setShowMediaLibraryModal] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -978,12 +993,19 @@ export default function ProductsPage() {
   const [showStlViewerModal, setShowStlViewerModal] = useState(false);
   const [listMediaViewer, setListMediaViewer] = useState<ListMediaViewerState | null>(null);
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
+  const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
+  const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
+  const [mediaLibraryRows, setMediaLibraryRows] = useState<MediaLibraryItem[]>([]);
+  const [mediaLibraryLoading, setMediaLibraryLoading] = useState(false);
+  const [mediaLibraryUploading, setMediaLibraryUploading] = useState(false);
   const designImportInputRef = useRef<HTMLInputElement | null>(null);
   const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const stlUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaLibraryGalleryInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaLibraryStlInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
 
@@ -1578,6 +1600,108 @@ export default function ProductsPage() {
     }
   };
 
+  const fetchMediaLibrary = async () => {
+    setMediaLibraryLoading(true);
+    try {
+      const response = await api.get('/products/media-library', {
+        params: {
+          page: 1,
+          limit: 200,
+          type: mediaLibraryType,
+          search: mediaLibrarySearch.trim() || undefined,
+        },
+      });
+
+      const rows = (response.data?.data || []) as Array<Record<string, unknown>>;
+      const mapped = rows.map((entry) => ({
+        id: String(entry.id || ''),
+        mediaType: String(entry.mediaType || 'IMAGE').toUpperCase() as MediaLibraryTypeFilter,
+        fileName: String(entry.fileName || ''),
+        fileKey: String(entry.fileKey || ''),
+        mimeType: entry.mimeType ? String(entry.mimeType) : null,
+        fileSizeBytes:
+          entry.fileSizeBytes !== undefined && entry.fileSizeBytes !== null
+            ? Number(entry.fileSizeBytes)
+            : null,
+        url: resolvePublicAssetUrl(String(entry.url || entry.fileKey || '')),
+        uploadedBy: entry.uploadedBy ? String(entry.uploadedBy) : null,
+        createdAt: entry.createdAt ? String(entry.createdAt) : null,
+      }));
+      setMediaLibraryRows(mapped.filter((item) => item.id && item.fileKey));
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to load media library.');
+      setMediaLibraryRows([]);
+    } finally {
+      setMediaLibraryLoading(false);
+    }
+  };
+
+  const handleMediaLibraryGalleryUploadChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const mediaFiles = files.filter(isGalleryUploadFile);
+    if (mediaFiles.length === 0) {
+      window.alert('Please select image or video files only.');
+      return;
+    }
+
+    const formData = new FormData();
+    mediaFiles.forEach((file) => formData.append('files', file));
+
+    setMediaLibraryUploading(true);
+    try {
+      await api.post('/products/gallery-files', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await fetchMediaLibrary();
+      window.alert('Media uploaded and added to library.');
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to upload media.');
+    } finally {
+      setMediaLibraryUploading(false);
+    }
+  };
+
+  const handleMediaLibraryStlUploadChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (files.length === 0) return;
+
+    const stlFiles = files.filter(isStlUploadFile);
+    if (stlFiles.length === 0) {
+      window.alert('Please select STL files only.');
+      return;
+    }
+
+    const formData = new FormData();
+    stlFiles.forEach((file) => formData.append('files', file));
+
+    setMediaLibraryUploading(true);
+    try {
+      await api.post('/products/stl-files/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await fetchMediaLibrary();
+      window.alert('STL uploaded and added to library.');
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to upload STL files.');
+    } finally {
+      setMediaLibraryUploading(false);
+    }
+  };
+
+  const copyMediaLibraryKey = async (key: string) => {
+    const value = (key || '').trim();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      window.alert('Unable to copy key. Please copy manually.');
+    }
+  };
+
   const fetchDesignHistory = async (designId: string) => {
     if (!designId) {
       setHistoryRows([]);
@@ -2023,6 +2147,13 @@ export default function ProductsPage() {
     fetchMasterOptions();
     fetchPacketOptions();
   }, []);
+
+  useEffect(() => {
+    if (!showMediaLibraryModal) {
+      return;
+    }
+    void fetchMediaLibrary();
+  }, [showMediaLibraryModal, mediaLibraryType, mediaLibrarySearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -3626,6 +3757,21 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                     Import Excel
                   </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaLibraryModal(true);
+                      setShowActionsDropdown(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V7.5A2.25 2.25 0 0018.75 5.25h-3.879a1.125 1.125 0 01-.796-.33l-1.09-1.09a1.125 1.125 0 00-.795-.33H5.25A2.25 2.25 0 003 5.75v10.75Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 12h9m-9 3h5.25" />
+                      </svg>
+                    </div>
+                    Media Library
+                  </button>
 
                   <div className="my-1 border-t border-slate-100" />
                   <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Export Data</div>
@@ -4029,6 +4175,150 @@ const createDefaultVendorRow = (): VendorRow => ({
         </div>
         <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </Card>
+
+      {showMediaLibraryModal ? (
+        <Modal title="MEDIA LIBRARY (FOR EXCEL IMPORT KEYS)" size="max-w-6xl" onClose={() => setShowMediaLibraryModal(false)}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_auto_auto_auto]">
+              <input
+                type="text"
+                value={mediaLibrarySearch}
+                onChange={(event) => setMediaLibrarySearch(event.target.value)}
+                placeholder="Search by file name or key"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+              <select
+                value={mediaLibraryType}
+                onChange={(event) => setMediaLibraryType(event.target.value as MediaLibraryTypeFilter)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="ALL">All Types</option>
+                <option value="IMAGE">Images</option>
+                <option value="VIDEO">Videos</option>
+                <option value="STL">STL</option>
+              </select>
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                onClick={() => void fetchMediaLibrary()}
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => mediaLibraryGalleryInputRef.current?.click()}
+                disabled={mediaLibraryUploading}
+              >
+                Upload Image/Video
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => mediaLibraryStlInputRef.current?.click()}
+                disabled={mediaLibraryUploading}
+              >
+                Upload STL
+              </button>
+            </div>
+
+            <input
+              ref={mediaLibraryGalleryInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              className="hidden"
+              onChange={handleMediaLibraryGalleryUploadChange}
+            />
+            <input
+              ref={mediaLibraryStlInputRef}
+              type="file"
+              accept=".stl,model/stl,application/sla,model/x.stl-ascii"
+              multiple
+              className="hidden"
+              onChange={handleMediaLibraryStlUploadChange}
+            />
+
+            <div className="rounded-2xl border border-slate-200 bg-white">
+              <div className="app-table-scroll scrollbar-top">
+                <table className="app-table app-table-compact">
+                  <thead>
+                    <tr>
+                      <th className="app-table-head-cell">Preview</th>
+                      <th className="app-table-head-cell">Type</th>
+                      <th className="app-table-head-cell">File</th>
+                      <th className="app-table-head-cell">Media Key (use in Excel)</th>
+                      <th className="app-table-head-cell">Uploaded</th>
+                      <th className="app-table-head-cell">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mediaLibraryLoading ? (
+                      <tr>
+                        <td className="app-table-cell text-sm text-slate-500" colSpan={6}>
+                          Loading media library...
+                        </td>
+                      </tr>
+                    ) : mediaLibraryRows.length === 0 ? (
+                      <tr>
+                        <td className="app-table-cell text-sm text-slate-500" colSpan={6}>
+                          No media files found.
+                        </td>
+                      </tr>
+                    ) : (
+                      mediaLibraryRows.map((item) => (
+                        <tr key={item.id}>
+                          <td className="app-table-cell">
+                            {item.mediaType === 'STL' ? (
+                              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500">
+                                STL
+                              </div>
+                            ) : (
+                              <MediaPreview
+                                url={item.url}
+                                alt={item.fileName}
+                                className="h-10 w-10 rounded-lg border border-slate-200 object-cover"
+                              />
+                            )}
+                          </td>
+                          <td className="app-table-cell">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                              {item.mediaType}
+                            </span>
+                          </td>
+                          <td className="app-table-cell text-sm text-slate-700">{item.fileName}</td>
+                          <td className="app-table-cell">
+                            <code className="select-all break-all rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                              {item.fileKey}
+                            </code>
+                          </td>
+                          <td className="app-table-cell text-xs text-slate-500">
+                            <div>{item.uploadedBy || 'System'}</div>
+                            <div>{formatDetailDateTime(item.createdAt || '')}</div>
+                          </td>
+                          <td className="app-table-cell">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                              onClick={() => void copyMediaLibraryKey(item.fileKey)}
+                            >
+                              Copy Key
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Tip: Use <span className="font-semibold">Image Keys</span> (comma separated) and <span className="font-semibold">STL Key</span> columns in Excel import for version media mapping.
+            </p>
+          </div>
+        </Modal>
+      ) : null}
 
       {showAddModal && (
         <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>

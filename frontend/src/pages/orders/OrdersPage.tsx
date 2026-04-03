@@ -16,6 +16,8 @@ interface OrderRow {
   companyName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
+  salesRepName?: string | null;
+  salesRepEmail?: string | null;
   deliveryDate?: string | null;
   quantity: number;
   price: number;
@@ -261,6 +263,7 @@ export default function OrdersPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
   const [orderNumber, setOrderNumber] = useState('');
+  const [editingDesignNo, setEditingDesignNo] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -480,6 +483,7 @@ export default function OrdersPage() {
       }
       setShowAddModal(false);
       setEditingOrderId(null);
+      setEditingDesignNo('');
       setForm(defaultForm);
       setDesignDetail(null);
       loadOrders();
@@ -500,6 +504,8 @@ export default function OrdersPage() {
       ...raw,
       companyName: raw?.company?.companyName ?? raw?.companyName ?? null,
       branchName: raw?.branch?.name ?? raw?.branchName ?? null,
+      salesRepName: raw?.salesRepName ?? null,
+      salesRepEmail: raw?.salesRepEmail ?? null,
     };
     let design: DesignDetail | null = null;
     if (detail?.designId) {
@@ -525,6 +531,7 @@ export default function OrdersPage() {
 
   const openEditModal = async (order: OrderRow) => {
     setEditingOrderId(order.id);
+    setEditingDesignNo(order.designNo || '');
     setPriceManuallyEdited(false);
     setForm({
       companyId: order.companyId || '',
@@ -549,6 +556,13 @@ export default function OrdersPage() {
     if (!designDetail) return '-';
     return `${designDetail.designNo}`;
   }, [designDetail]);
+
+  const editingDesignLabel = useMemo(() => {
+    if (selectedDesignLabel !== '-') return selectedDesignLabel;
+    if (editingDesignNo) return editingDesignNo;
+    const matched = designOptions.find((option) => option.id === form.designId);
+    return matched?.designNo || '';
+  }, [selectedDesignLabel, editingDesignNo, designOptions, form.designId]);
 
   const metalsDisplay = useMemo(() => {
     if (!designDetail?.metals?.length) return [];
@@ -641,6 +655,7 @@ export default function OrdersPage() {
             <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
             <div><span class="label">Quantity</span>${order.quantity}</div>
             <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
+            <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
             <div><span class="label">Short Description</span>${order.shortDescription || '-'}</div>
             <div><span class="label">Notes</span>${order.notes || '-'}</div>
           </div>
@@ -742,6 +757,7 @@ export default function OrdersPage() {
           <Button
             onClick={() => {
               setEditingOrderId(null);
+              setEditingDesignNo('');
               setForm(defaultForm);
               setDesignDetail(null);
               setBranches([]);
@@ -934,6 +950,7 @@ export default function OrdersPage() {
           onClose={() => {
             setShowAddModal(false);
             setEditingOrderId(null);
+            setEditingDesignNo('');
           }}
           size="max-w-6xl"
         >
@@ -951,22 +968,31 @@ export default function OrdersPage() {
                 <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
                   <div>
                     <label className="text-sm font-medium text-slate-700">Design No*</label>
-                    <select
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.designId}
-                      disabled={isEditing}
-                      onChange={(event) => {
-                        setPriceManuallyEdited(false);
-                        setForm((prev) => ({ ...prev, designId: event.target.value }));
-                      }}
-                    >
-                      <option value="">Select Design</option>
-                      {designOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.designNo}
-                        </option>
-                      ))}
-                    </select>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                        value={editingDesignLabel}
+                        disabled
+                        readOnly
+                      />
+                    ) : (
+                      <select
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.designId}
+                        onChange={(event) => {
+                          setPriceManuallyEdited(false);
+                          setForm((prev) => ({ ...prev, designId: event.target.value }));
+                        }}
+                      >
+                        <option value="">Select Design</option>
+                        {designOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.designNo}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div>
@@ -1233,6 +1259,7 @@ export default function OrdersPage() {
               onClick={() => {
                 setShowAddModal(false);
                 setEditingOrderId(null);
+                setEditingDesignNo('');
               }}
             >
               Close
@@ -1332,6 +1359,12 @@ export default function OrdersPage() {
               <label className="text-sm font-medium text-slate-700">Price</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
                 {formatMoney(Number(viewOrder?.price || 0))}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Sales Rep</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}
               </div>
             </div>
           </div>

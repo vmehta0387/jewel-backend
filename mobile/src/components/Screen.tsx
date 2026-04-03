@@ -6,15 +6,18 @@ interface ScreenProps {
   children: React.ReactNode;
   style?: ViewStyle;
   bgImage?: any;
+  includeBottomInset?: boolean;
 }
 
-const Screen: React.FC<ScreenProps> = ({ children, style, bgImage }) => (
+const Screen: React.FC<ScreenProps> = ({ children, style, bgImage, includeBottomInset = false }) => (
   <ImageBackground
     source={bgImage || require('../../assets/soft_golden.png')}
     style={styles.container}
     resizeMode="cover"
   >
-    <SafeAreaView style={[styles.safeArea, style]}>{children}</SafeAreaView>
+    <SafeAreaView edges={includeBottomInset ? ['top', 'left', 'right', 'bottom'] : ['top', 'left', 'right']} style={[styles.safeArea, style]}>
+      {children}
+    </SafeAreaView>
   </ImageBackground>
 );
 

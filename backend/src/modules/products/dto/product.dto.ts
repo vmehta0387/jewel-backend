@@ -714,6 +714,29 @@ export class FindProductsQueryDto {
   modificationTo?: string;
 }
 
+export class FindDesignMediaLibraryQueryDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  page?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(200)
+  @IsOptional()
+  limit?: number;
+
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @IsIn(['ALL', 'IMAGE', 'VIDEO', 'STL'])
+  @IsOptional()
+  type?: 'ALL' | 'IMAGE' | 'VIDEO' | 'STL';
+}
+
 export class FindPacketsQueryDto {
   @IsString()
   @IsOptional()

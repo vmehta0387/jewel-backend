@@ -20,6 +20,7 @@ import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster } from './entities/design-master.entity';
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
+import { DesignMediaLibrary } from './entities/design-media-library.entity';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { User } from '../users/entities/user.entity';
       DesignHistory,
       StonePacket,
       DesignMaster,
+      DesignMediaLibrary,
       GlobalBasePrice,
       User,
       Company,

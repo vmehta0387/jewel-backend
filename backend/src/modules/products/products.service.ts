@@ -24,6 +24,7 @@ import {
   DesignLaborDto,
   DesignMetalDto,
   FindDesignMastersQueryDto,
+  FindDesignMediaLibraryQueryDto,
   DesignPricingTierDto,
   DesignProcessStageDto,
   DesignVendorDto,
@@ -56,6 +57,7 @@ import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster, DesignMasterType, FindingPriceIn } from './entities/design-master.entity';
 import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
+import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-library.entity';
 
 interface ScopeResult {
   companyId: string | null;
@@ -178,6 +180,8 @@ interface DesignImportRow {
   tags?: string;
   drawerLocation?: string;
   otherWeight?: string | number;
+  imageKeys?: string;
+  stlKey?: string;
   designDescription?: string;
   remarks?: string;
   isActive?: string;
@@ -313,6 +317,8 @@ export class ProductsService {
     private readonly branchRepo: Repository<Branch>,
     @InjectRepository(GlobalBasePrice)
     private readonly globalBasePriceRepo: Repository<GlobalBasePrice>,
+    @InjectRepository(DesignMediaLibrary)
+    private readonly designMediaLibraryRepo: Repository<DesignMediaLibrary>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {}
@@ -447,6 +453,8 @@ export class ProductsService {
         Tags: 'eternity,classic',
         'Drawer Location': '',
         'Other Wt': '',
+        'Image Keys': 's3://your-bucket/design-gallery/2026/04/03/ring-v1-front.jpg, s3://your-bucket/design-gallery/2026/04/03/ring-v1-side.jpg',
+        'STL Key': 's3://your-bucket/design-stl/2026/04/03/ring-v1.stl',
         'Design Description': 'Imported from Excel',
         Remarks: '',
         Status: 'ACTIVE',
@@ -513,10 +521,13 @@ export class ProductsService {
     const referenceRows = [
       { Field: 'Status', AllowedValues: 'ACTIVE, INACTIVE', Notes: 'Optional. Defaults to ACTIVE.' },
       { Field: 'Version', AllowedValues: 'V1, V2, V3...', Notes: 'Required. Import is matched by Design No + Version.' },
+      { Field: 'Design No', AllowedValues: 'One base design number per import', Notes: 'Use same Design No with different versions (V1, V2, V3...) to bulk-import versions.' },
       { Field: 'Company Code', AllowedValues: 'Existing company code', Notes: 'Optional. Leave blank for global designs.' },
       { Field: 'Branch Code', AllowedValues: 'Existing branch code', Notes: 'Optional. Must match company when provided.' },
       { Field: 'Packet', AllowedValues: 'Existing stone packet name', Notes: 'Optional, but recommended for gemstone rows.' },
-      { Field: 'Unsupported in phase 1', AllowedValues: 'Images, STL, vendors, process stages, pricing tiers', Notes: 'These are not imported from Excel yet.' },
+      { Field: 'Image Keys', AllowedValues: 'Comma-separated media keys from Media Library', Notes: 'Example: s3://bucket/path/a.jpg, s3://bucket/path/b.mp4' },
+      { Field: 'STL Key', AllowedValues: 'One STL key from Media Library', Notes: 'Example: s3://bucket/path/model.stl' },
+      { Field: 'Unsupported in phase 1', AllowedValues: 'vendors, process stages, pricing tiers', Notes: 'These are not imported from Excel yet.' },
     ];
 
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(designRows), 'Designs');
@@ -597,6 +608,8 @@ export class ProductsService {
             design.otherWeight !== null && design.otherWeight !== undefined
               ? this.toNumber(design.otherWeight)
               : '',
+          'Image Keys': Array.isArray(design.imageUrls) ? design.imageUrls.join(', ') : '',
+          'STL Key': design.stlFileUrl || '',
           'Design Description': design.designDescription || '',
           Remarks: design.remarks || '',
           Status: design.isActive ? 'ACTIVE' : 'INACTIVE',
@@ -722,6 +735,19 @@ export class ProductsService {
       throw new BadRequestException('The Designs sheet does not contain any rows');
     }
 
+    const uniqueBaseDesignNos = Array.from(
+      new Set(
+        designRows
+          .map((row) => this.normalizeBaseDesignNo(this.normalizeDesignNo(this.getImportCell(row, 'Design No', 'designNo'))))
+          .filter(Boolean),
+      ),
+    );
+    if (uniqueBaseDesignNos.length > 1) {
+      throw new BadRequestException(
+        'Bulk version import supports one base Design No per file. Split multiple design families into separate imports.',
+      );
+    }
+
     const metalRows = this.readSheetRows(workbook, 'Metals');
     const gemstoneRows = this.readSheetRows(workbook, 'Gemstones');
     const laborRows = this.readSheetRows(workbook, 'Labors');
@@ -770,6 +796,8 @@ export class ProductsService {
             designRow.otherWeight !== undefined && String(designRow.otherWeight).trim().length > 0
               ? this.optionalNonNegativeNumber(designRow.otherWeight, 'otherWeight') ?? undefined
               : undefined,
+          imageUrls: this.parseImportMediaKeys(designRow.imageKeys),
+          stlFileUrl: this.optionalText(designRow.stlKey),
           designDescription: designRow.designDescription?.trim() || undefined,
           remarks: designRow.remarks?.trim() || undefined,
           isActive: this.parseImportStatus(designRow.isActive),
@@ -1389,7 +1417,7 @@ export class ProductsService {
       throw new BadRequestException('At least one image or video file is required.');
     }
 
-    const uploaded: Array<{ fileName: string; url: string }> = [];
+    const uploaded: Array<{ fileName: string; url: string; key?: string }> = [];
     const s3Config = this.getS3Client();
 
     if (s3Config) {
@@ -1425,11 +1453,20 @@ export class ProductsService {
         await upload.done();
 
         const signedUrl = await this.createSignedUrl(client, bucket, key);
+        const fileKey = `s3://${bucket}/${key}`;
+        await this.saveMediaLibraryEntry({
+          fileName,
+          fileKey,
+          mediaType: this.resolveGalleryMediaType(file.originalname, file.mimetype),
+          mimeType: file.mimetype || null,
+          fileSizeBytes: file.buffer.length,
+          uploadedBy: requester?.id || null,
+        });
         uploaded.push({
           fileName,
           url: signedUrl,
-          key: `s3://${bucket}/${key}`,
-        } as any);
+          key: fileKey,
+        });
       }
 
       if (uploaded.length === 0) {
@@ -1455,12 +1492,22 @@ export class ProductsService {
       const extension = this.resolveGalleryExtension(file.originalname, file.mimetype);
       const fileName = `${Date.now()}-${randomUUID()}${extension}`;
       const outputPath = join(uploadDir, fileName);
+      const fileKey = `/uploads/design-gallery/${fileName}`;
 
       await writeFile(outputPath, file.buffer);
+      await this.saveMediaLibraryEntry({
+        fileName,
+        fileKey,
+        mediaType: this.resolveGalleryMediaType(file.originalname, file.mimetype),
+        mimeType: file.mimetype || null,
+        fileSizeBytes: file.buffer.length,
+        uploadedBy: requester?.id || null,
+      });
 
       uploaded.push({
         fileName,
-        url: this.buildPublicAssetUrl(request, `/uploads/design-gallery/${fileName}`),
+        url: this.buildPublicAssetUrl(request, fileKey),
+        key: fileKey,
       });
     }
 
@@ -1517,10 +1564,19 @@ export class ProductsService {
         await upload.done();
 
         const signedUrl = await this.createSignedUrl(client, bucket, key);
+        const fileKey = `s3://${bucket}/${key}`;
+        await this.saveMediaLibraryEntry({
+          fileName,
+          fileKey,
+          mediaType: DesignMediaType.STL,
+          mimeType: file.mimetype || null,
+          fileSizeBytes: file.buffer.length,
+          uploadedBy: requester?.id || null,
+        });
         uploaded.push({
           fileName,
           url: signedUrl,
-          key: `s3://${bucket}/${key}`,
+          key: fileKey,
         });
       }
 
@@ -1545,11 +1601,21 @@ export class ProductsService {
 
       const fileName = `${Date.now()}-${randomUUID()}${this.resolveStlExtension(file.originalname)}`;
       const outputPath = join(uploadDir, fileName);
+      const fileKey = `/uploads/design-stl/${fileName}`;
       await writeFile(outputPath, file.buffer);
+      await this.saveMediaLibraryEntry({
+        fileName,
+        fileKey,
+        mediaType: DesignMediaType.STL,
+        mimeType: file.mimetype || null,
+        fileSizeBytes: file.buffer.length,
+        uploadedBy: requester?.id || null,
+      });
 
       uploaded.push({
         fileName,
-        url: this.buildPublicAssetUrl(request, `/uploads/design-stl/${fileName}`),
+        url: this.buildPublicAssetUrl(request, fileKey),
+        key: fileKey,
       });
     }
 
@@ -1649,6 +1715,59 @@ export class ProductsService {
     }
 
     const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findMediaLibrary(query: FindDesignMediaLibraryQueryDto): Promise<any> {
+    const page = query.page || 1;
+    const limit = query.limit || 30;
+    const skip = (page - 1) * limit;
+
+    const qb = this.designMediaLibraryRepo
+      .createQueryBuilder('media')
+      .leftJoinAndSelect('media.uploadedByUser', 'uploadedByUser')
+      .orderBy('media.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    const type = (query.type || 'ALL').trim().toUpperCase();
+    if (type !== 'ALL') {
+      qb.andWhere('media.mediaType = :type', { type });
+    }
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where('media.fileName LIKE :search', { search })
+            .orWhere('media.fileKey LIKE :search', { search });
+        }),
+      );
+    }
+
+    const [rows, total] = await qb.getManyAndCount();
+    const data = await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        mediaType: row.mediaType,
+        fileName: row.fileName,
+        fileKey: row.fileKey,
+        mimeType: row.mimeType,
+        fileSizeBytes: row.fileSizeBytes ? Number(row.fileSizeBytes) : null,
+        url: (await this.resolveAssetUrl(row.fileKey)) || row.fileKey,
+        uploadedBy: row.uploadedByUser
+          ? `${row.uploadedByUser.firstName || ''} ${row.uploadedByUser.lastName || ''}`.trim() || row.uploadedByUser.email
+          : null,
+        createdAt: row.createdAt,
+      })),
+    );
 
     return {
       data,
@@ -3857,6 +3976,8 @@ export class ProductsService {
       tags: this.getImportCell(row, 'Tags', 'tags'),
       drawerLocation: this.getImportCell(row, 'Drawer Location', 'drawerLocation'),
       otherWeight: this.getImportCell(row, 'Other Wt', 'otherWeight'),
+      imageKeys: this.getImportCell(row, 'Image Keys', 'imageKeys', 'Image Key', 'imageKey', 'Images'),
+      stlKey: this.getImportCell(row, 'STL Key', 'stlKey', 'STL', 'stlFileUrl'),
       designDescription: this.getImportCell(row, 'Design Description', 'designDescription'),
       remarks: this.getImportCell(row, 'Remarks', 'remarks'),
       isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),
@@ -3959,6 +4080,25 @@ export class ProductsService {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private parseImportMediaKeys(value?: string): string[] | undefined {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    const keys = normalized
+      .split(/[\n,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (keys.length === 0) {
+      return undefined;
+    }
+
+    const deduped = Array.from(new Set(keys));
+    return this.normalizeGalleryUrls(deduped);
   }
 
   private async getProductCompanyCodeMap(): Promise<Map<string, Company>> {
@@ -5177,6 +5317,66 @@ export class ProductsService {
   private resolveStlExtension(originalName: string): string {
     const extension = extname(originalName || '').toLowerCase();
     return extension === '.stl' ? extension : '.stl';
+  }
+
+  private resolveGalleryMediaType(originalName?: string | null, mimeType?: string | null): DesignMediaType {
+    const normalizedMime = (mimeType || '').trim().toLowerCase();
+    if (normalizedMime.startsWith('video/')) {
+      return DesignMediaType.VIDEO;
+    }
+    if (normalizedMime.startsWith('image/')) {
+      return DesignMediaType.IMAGE;
+    }
+
+    const normalizedExt = extname(originalName || '').toLowerCase();
+    const videoExt = new Set(['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg']);
+    if (videoExt.has(normalizedExt)) {
+      return DesignMediaType.VIDEO;
+    }
+    return DesignMediaType.IMAGE;
+  }
+
+  private async saveMediaLibraryEntry(input: {
+    fileName: string;
+    fileKey: string;
+    mediaType: DesignMediaType;
+    mimeType?: string | null;
+    fileSizeBytes?: number | null;
+    uploadedBy?: string | null;
+  }): Promise<void> {
+    const fileName = (input.fileName || '').trim();
+    const fileKey = (input.fileKey || '').trim();
+    if (!fileName || !fileKey) {
+      return;
+    }
+
+    const existing = await this.designMediaLibraryRepo.findOne({ where: { fileKey } });
+    if (existing) {
+      existing.fileName = fileName;
+      existing.mediaType = input.mediaType;
+      existing.mimeType = this.optionalText(input.mimeType || null);
+      existing.fileSizeBytes =
+        input.fileSizeBytes !== null && input.fileSizeBytes !== undefined
+          ? String(Math.max(0, Math.floor(input.fileSizeBytes)))
+          : null;
+      existing.uploadedBy = input.uploadedBy || existing.uploadedBy || null;
+      await this.designMediaLibraryRepo.save(existing);
+      return;
+    }
+
+    await this.designMediaLibraryRepo.save(
+      this.designMediaLibraryRepo.create({
+        fileName,
+        fileKey,
+        mediaType: input.mediaType,
+        mimeType: this.optionalText(input.mimeType || null),
+        fileSizeBytes:
+          input.fileSizeBytes !== null && input.fileSizeBytes !== undefined
+            ? String(Math.max(0, Math.floor(input.fileSizeBytes)))
+            : null,
+        uploadedBy: input.uploadedBy || null,
+      }),
+    );
   }
 
   private buildPublicAssetUrl(request: any, assetPath: string): string {
