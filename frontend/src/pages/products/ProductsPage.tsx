@@ -3734,7 +3734,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
               {showActionsDropdown && (
                 <div className="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ring-1 ring-slate-900/5 animate-in fade-in slide-in-from-top-2 duration-200">
-                  <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Import & Template</div>
+                  <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Version Import</div>
                   <button 
                     onClick={() => { downloadDesignTemplate(); setShowActionsDropdown(false); }}
                     className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 hover:text-indigo-600"
@@ -3744,7 +3744,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                       </svg>
                     </div>
-                    Download Template
+                    Download Version Template
                   </button>
                   <button 
                     onClick={() => { designImportInputRef.current?.click(); setShowActionsDropdown(false); }}
@@ -3755,7 +3755,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                       </svg>
                     </div>
-                    Import Excel
+                    Import Versions Excel
                   </button>
                   <button
                     onClick={() => {
@@ -3773,6 +3773,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                     Media Library
                   </button>
 
+                  <div className="px-3 pb-2 pt-1 text-[10px] font-medium text-slate-500">
+                    Use one base Design No per file with multiple versions (V1, V2, V3...).
+                  </div>
                   <div className="my-1 border-t border-slate-100" />
                   <div className="mb-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Export Data</div>
                   <button 

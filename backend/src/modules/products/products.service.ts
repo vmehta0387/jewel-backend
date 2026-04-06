@@ -435,6 +435,81 @@ export class ProductsService {
 
   async exportDesignTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
     const workbook = XLSX.utils.book_new();
+    const designHeaders = [
+      'Design No',
+      'Design Name',
+      'Version',
+      'Company Code',
+      'Branch Code',
+      'Category',
+      'Sub Category',
+      'Jewelry Size',
+      'Stage',
+      'Diamond Spread',
+      'Diamond Type',
+      'Diamond Wt',
+      'Diamond Quality',
+      'Design Status',
+      'Tags',
+      'Drawer Location',
+      'Other Wt',
+      'Image Keys',
+      'STL Key',
+      'Design Description',
+      'Remarks',
+      'Status',
+    ] as const;
+    const metalHeaders = [
+      'Design No',
+      'Version',
+      'Sort Order',
+      'Metal Caratage',
+      'Gold Colour',
+      'Net Wt',
+      'Wastage %',
+      'Wastage Wt',
+      'Total Wt',
+      '@ Per Gm',
+      'Value',
+    ] as const;
+    const gemstoneHeaders = [
+      'Design No',
+      'Version',
+      'Sort Order',
+      'Packet Barcode',
+      'Packet',
+      'Stone',
+      'Shape',
+      'Size',
+      'Cut',
+      'Color',
+      'Quality',
+      'Stone Type',
+      'Wt/Pcs',
+      'Pcs',
+      'Wt (Cts)',
+      '@ (P/Ct)',
+      'Amount',
+    ] as const;
+    const laborHeaders = [
+      'Design No',
+      'Version',
+      'Sort Order',
+      'Labor Head',
+      'Labor/Unit',
+      'Unit Qty',
+      'Labor Value',
+    ] as const;
+    const findingHeaders = [
+      'Design No',
+      'Version',
+      'Sort Order',
+      'Finding Head',
+      'Price/Unit',
+      'Units',
+      'Total Weight',
+      'Finding Value',
+    ] as const;
     const designRows = [
       {
         'Design No': 'RING-0001',
@@ -575,11 +650,31 @@ export class ProductsService {
       { Field: 'Unsupported in phase 1', AllowedValues: 'vendors, process stages, pricing tiers', Notes: 'These are not imported from Excel yet.' },
     ];
 
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(designRows), 'Designs');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(metalRows), 'Metals');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(gemstoneRows), 'Gemstones');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(laborRows), 'Labors');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(findingRows), 'Findings');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(designRows, { header: [...designHeaders] }),
+      'Designs',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(metalRows, { header: [...metalHeaders] }),
+      'Metals',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(gemstoneRows, { header: [...gemstoneHeaders] }),
+      'Gemstones',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(laborRows, { header: [...laborHeaders] }),
+      'Labors',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(findingRows, { header: [...findingHeaders] }),
+      'Findings',
+    );
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(referenceRows), 'Reference');
 
     return {
