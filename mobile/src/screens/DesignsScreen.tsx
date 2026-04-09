@@ -17,7 +17,8 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesigns } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
@@ -54,10 +55,16 @@ const getDesignMeta = (design: Design) => {
 const getSearchableFields = (design: Design) =>
   [
     design.designNo,
+    design.designName,
     design.jewelryGroup,
+    design.collection,
     design.jewelrySize,
     design.goldColour,
+    design.diamondType,
+    design.diamondSpread,
+    design.diamondQuality,
     design.version,
+    ...(design.gemstones?.flatMap((gem) => [gem.stone, gem.shape, gem.size, gem.color, gem.quality]) || []),
     ...(design.metals?.flatMap((metal) => [metal.goldColour, metal.metalCaratage]) || []),
   ]
     .filter(Boolean)
@@ -65,6 +72,7 @@ const getSearchableFields = (design: Design) =>
 
 const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
 type SortOption = 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
+type PriceBand = 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
 
 const SORT_OPTIONS: Array<{ key: SortOption; label: string }> = [
   { key: 'recent', label: 'Newest first' },
@@ -73,6 +81,19 @@ const SORT_OPTIONS: Array<{ key: SortOption; label: string }> = [
   { key: 'designAsc', label: 'Design No: A to Z' },
   { key: 'designDesc', label: 'Design No: Z to A' },
 ];
+
+const PRICE_BAND_OPTIONS: Array<{ key: PriceBand; label: string }> = [
+  { key: 'ALL', label: 'Any Price' },
+  { key: 'UNDER_2000', label: 'Under USD 2000' },
+  { key: 'BETWEEN_2000_5000', label: 'USD 2000 - 5000' },
+  { key: 'ABOVE_5000', label: 'Above USD 5000' },
+];
+
+const normalizeText = (value?: string | null) => String(value || '').trim();
+const toLower = (value?: string | null) => normalizeText(value).toLowerCase();
+
+const uniqueNonEmpty = (values: Array<string | null | undefined>) =>
+  Array.from(new Set(values.map((v) => normalizeText(v)).filter(Boolean)));
 
 const isActiveDesign = (design: Design) => {
   const row = design as Design & { status?: string; isActive?: boolean };
@@ -110,15 +131,33 @@ const keepPrimaryDesignsOnly = (rows: Design[]) => {
   return primaryByBase.size > 0 ? Array.from(primaryByBase.values()) : rows;
 };
 
+const getDesignShapes = (design: Design) =>
+  uniqueNonEmpty((design.gemstones || []).map((gem) => gem.shape));
+
+const getDesignDiamondTypes = (design: Design) =>
+  uniqueNonEmpty([design.diamondType, ...(design.gemstones || []).map((gem) => gem.stone)]);
+
+// Kept as a compatibility helper to avoid runtime stale-bundle crashes
+// when older cached JS still references this function.
+const getDesignMetals = (design: Design) =>
+  uniqueNonEmpty([
+    design.goldColour,
+    ...(design.metals || []).flatMap((metal) => [metal.goldColour, metal.metalCaratage]),
+  ]);
+
 const DesignsScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
-  const numColumns = 1;
+  const numColumns = 2;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCollection, setSelectedCollection] = useState('All');
+  const [selectedShape, setSelectedShape] = useState('All');
+  const [selectedDiamondType, setSelectedDiamondType] = useState('All');
+  const [selectedPriceBand, setSelectedPriceBand] = useState<PriceBand>('ALL');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
 
@@ -184,16 +223,55 @@ const DesignsScreen = () => {
     return ['All', ...orderedGroups];
   }, [designs]);
 
+  const collections = useMemo(() => {
+    const source =
+      selectedCategory === 'All'
+        ? designs
+        : designs.filter((design) => toLower(design.jewelryGroup) === toLower(selectedCategory));
+
+    return ['All', ...uniqueNonEmpty(source.map((design) => design.collection))];
+  }, [designs, selectedCategory]);
+
+  const shapeOptions = useMemo(
+    () => ['All', ...uniqueNonEmpty(designs.flatMap((design) => getDesignShapes(design)))],
+    [designs],
+  );
+
+  const diamondTypeOptions = useMemo(
+    () => ['All', ...uniqueNonEmpty(designs.flatMap((design) => getDesignDiamondTypes(design)))],
+    [designs],
+  );
+
   const filteredDesigns = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     const filtered = designs.filter((design) => {
       const matchesCategory =
-        selectedCategory === 'All' ||
-        (design.jewelryGroup || '').toLowerCase() === selectedCategory.toLowerCase();
+        selectedCategory === 'All' || toLower(design.jewelryGroup) === toLower(selectedCategory);
+      const matchesCollection =
+        selectedCollection === 'All' || toLower(design.collection) === toLower(selectedCollection);
+      const matchesShape =
+        selectedShape === 'All' ||
+        getDesignShapes(design).some((shape) => toLower(shape) === toLower(selectedShape));
+      const matchesDiamondType =
+        selectedDiamondType === 'All' ||
+        getDesignDiamondTypes(design).some((type) => toLower(type) === toLower(selectedDiamondType));
+      const designPrice = Number(getDisplayPrice(design, user?.role) || 0);
+      const matchesPriceBand =
+        selectedPriceBand === 'ALL' ||
+        (selectedPriceBand === 'UNDER_2000' && designPrice < 2000) ||
+        (selectedPriceBand === 'BETWEEN_2000_5000' && designPrice >= 2000 && designPrice <= 5000) ||
+        (selectedPriceBand === 'ABOVE_5000' && designPrice > 5000);
       const matchesSearch = !term || getSearchableFields(design).some((value) => value.includes(term));
 
-      return matchesCategory && matchesSearch;
+      return (
+        matchesCategory &&
+        matchesCollection &&
+        matchesShape &&
+        matchesDiamondType &&
+        matchesPriceBand &&
+        matchesSearch
+      );
     });
 
     const sorted = [...filtered];
@@ -211,7 +289,17 @@ const DesignsScreen = () => {
     }
 
     return sorted;
-  }, [designs, search, selectedCategory, sortOption, user?.role]);
+  }, [
+    designs,
+    search,
+    selectedCategory,
+    selectedCollection,
+    selectedShape,
+    selectedDiamondType,
+    selectedPriceBand,
+    sortOption,
+    user?.role,
+  ]);
 
   const renderDesignCard = ({ item, index }: { item: Design; index: number }) => {
     const badge = getBadge(index);
@@ -220,7 +308,7 @@ const DesignsScreen = () => {
     return (
       <TouchableOpacity
         activeOpacity={0.92}
-        style={styles.cardTouchable}
+        style={[styles.cardTouchable, numColumns > 1 ? styles.cardTouchableGrid : null]}
         onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
       >
         <View style={styles.designCard}>
@@ -272,6 +360,16 @@ const DesignsScreen = () => {
     );
   };
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (selectedCategory !== 'All') count += 1;
+    if (selectedCollection !== 'All') count += 1;
+    if (selectedShape !== 'All') count += 1;
+    if (selectedDiamondType !== 'All') count += 1;
+    if (selectedPriceBand !== 'ALL') count += 1;
+    return count;
+  }, [selectedCategory, selectedCollection, selectedShape, selectedDiamondType, selectedPriceBand]);
+
   const renderEmpty = () => {
     if (loading && designs.length === 0) {
       return (
@@ -294,7 +392,9 @@ const DesignsScreen = () => {
   };
 
   return (
-    <Screen style={styles.screen}>
+    <View style={styles.container}>
+      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
       <View style={styles.fixedHeader}>
         <View style={styles.searchShell}>
           <Ionicons name="search-outline" size={18} color="#a79687" />
@@ -324,14 +424,14 @@ const DesignsScreen = () => {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipList}
           >
-            {categories.map((item) => {
-              const selected = item === selectedCategory;
+            {collections.map((item) => {
+              const selected = item === selectedCollection;
 
               return (
                 <TouchableOpacity
-                  key={item}
+                  key={`collection-${item}`}
                   activeOpacity={0.9}
-                  onPress={() => setSelectedCategory(item)}
+                  onPress={() => setSelectedCollection(item)}
                   style={[styles.chip, styles.chipSpacing, selected ? styles.chipActive : null]}
                 >
                   <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{item}</Text>
@@ -346,6 +446,11 @@ const DesignsScreen = () => {
             activeOpacity={0.85}
           >
             <Ionicons name="options-outline" size={16} color="#6f6257" />
+            {activeFilterCount > 0 ? (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
 
@@ -362,32 +467,84 @@ const DesignsScreen = () => {
           <View style={styles.sortOverlay}>
             <TouchableWithoutFeedback>
               <View style={styles.sortCard}>
-                <Text style={styles.sortTitle}>Sort & Filters</Text>
-                {SORT_OPTIONS.map((option) => {
-                  const selected = sortOption === option.key;
-                  return (
-                    <TouchableOpacity
-                      key={option.key}
-                      style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
-                      onPress={() => {
-                        setSortOption(option.key);
-                        setSortMenuVisible(false);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
-                        {option.label}
-                      </Text>
-                      {selected ? <Ionicons name="checkmark-circle" size={18} color="#2C1E16" /> : null}
-                    </TouchableOpacity>
-                  );
-                })}
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <Text style={styles.sortTitle}>Sort & Filters</Text>
+                  {SORT_OPTIONS.map((option) => {
+                    const selected = sortOption === option.key;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
+                        onPress={() => {
+                          setSortOption(option.key);
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
+                          {option.label}
+                        </Text>
+                        {selected ? <Ionicons name="checkmark-circle" size={18} color="#9C7127" /> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
 
-                <View style={styles.sortActionsRow}>
+                <Text style={styles.filterSectionTitle}>Collection</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                  {collections.map((item) => {
+                    const selected = item === selectedCollection;
+                    return (
+                      <TouchableOpacity
+                        key={`m-col-${item}`}
+                        style={[styles.modalChip, selected ? styles.modalChipActive : null]}
+                        onPress={() => setSelectedCollection(item)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text style={styles.filterSectionTitle}>Diamond Type</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                  {diamondTypeOptions.map((item) => {
+                    const selected = item === selectedDiamondType;
+                    return (
+                      <TouchableOpacity
+                        key={`m-type-${item}`}
+                        style={[styles.modalChip, selected ? styles.modalChipActive : null]}
+                        onPress={() => setSelectedDiamondType(item)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <Text style={styles.filterSectionTitle}>Price</Text>
+                <View style={styles.priceBandGrid}>
+                  {PRICE_BAND_OPTIONS.map((option) => {
+                    const selected = option.key === selectedPriceBand;
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[styles.modalChip, styles.priceBandChip, selected ? styles.modalChipActive : null]}
+                        onPress={() => setSelectedPriceBand(option.key)}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                  <View style={styles.sortActionsRow}>
                   <TouchableOpacity
                     style={styles.sortActionButton}
                     onPress={() => {
-                      setSelectedCategory('All');
                       setSearch('');
                     }}
                     activeOpacity={0.85}
@@ -403,7 +560,30 @@ const DesignsScreen = () => {
                   >
                     <Text style={styles.sortActionText}>Reset Sort</Text>
                   </TouchableOpacity>
-                </View>
+                  </View>
+                  <View style={styles.sortActionsRow}>
+                  <TouchableOpacity
+                    style={styles.sortActionButton}
+                    onPress={() => {
+                      setSelectedCategory('All');
+                      setSelectedCollection('All');
+                      setSelectedShape('All');
+                      setSelectedDiamondType('All');
+                      setSelectedPriceBand('ALL');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.sortActionText}>Reset Filters</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sortActionButton, styles.sortApplyButton]}
+                    onPress={() => setSortMenuVisible(false)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={[styles.sortActionText, styles.sortApplyText]}>Apply</Text>
+                  </TouchableOpacity>
+                  </View>
+                </ScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -412,6 +592,7 @@ const DesignsScreen = () => {
 
       <FlatList
         data={filteredDesigns}
+        key={`design-grid-${numColumns}`}
         keyExtractor={(item) => item.id}
         numColumns={numColumns}
         renderItem={renderDesignCard}
@@ -433,12 +614,17 @@ const DesignsScreen = () => {
           />
         }
       />
-    </Screen>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   screen: {
+    flex: 1,
     backgroundColor: 'transparent',
   },
   fixedHeader: {
@@ -483,6 +669,10 @@ const styles = StyleSheet.create({
   chipList: {
     paddingRight: 12,
   },
+  subChipList: {
+    paddingRight: 8,
+    marginTop: 8,
+  },
   chipSpacing: {
     marginRight: 8,
   },
@@ -497,16 +687,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(197, 160, 89, 0.3)',
   },
   chipActive: {
-    backgroundColor: '#2C1E16',
-    borderColor: '#2C1E16',
+    backgroundColor: '#D8AB52',
+    borderColor: '#C6973F',
   },
   chipText: {
     fontSize: Platform.OS === 'android' ? 11 : 12,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: '#6A5F56',
   },
   chipTextActive: {
-    color: 'rgba(255, 252, 245, 0.82)',
+    color: '#FFFFFF',
   },
   filterButton: {
     width: 34,
@@ -518,6 +708,49 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(197, 160, 89, 0.3)',
     marginLeft: 10,
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    backgroundColor: '#D8AB52',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#f8efe5',
+  },
+  filterBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  subChip: {
+    height: Platform.OS === 'android' ? 28 : 30,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(197, 160, 89, 0.24)',
+    marginRight: 8,
+  },
+  subChipActive: {
+    backgroundColor: '#FAF5EE',
+    borderColor: '#C6973F',
+  },
+  subChipText: {
+    fontSize: 11,
+    color: '#6A5F56',
+    fontWeight: '600',
+  },
+  subChipTextActive: {
+    color: '#9C7127',
   },
   sortOverlay: {
     flex: 1,
@@ -528,7 +761,9 @@ const styles = StyleSheet.create({
     paddingRight: 18,
   },
   sortCard: {
-    width: 246,
+    width: '92%',
+    maxWidth: 360,
+    maxHeight: '80%',
     borderRadius: 14,
     backgroundColor: '#FFF8F1',
     borderWidth: 1,
@@ -547,6 +782,49 @@ const styles = StyleSheet.create({
     color: '#2C1E16',
     marginBottom: 8,
   },
+  filterSectionTitle: {
+    marginTop: 8,
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#5E5045',
+  },
+  modalChipRow: {
+    paddingBottom: 4,
+    paddingRight: 4,
+  },
+  modalChip: {
+    minHeight: 32,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.52)',
+    borderWidth: 1,
+    borderColor: '#E3D1BC',
+  },
+  modalChipActive: {
+    backgroundColor: '#FAF5EE',
+    borderColor: '#C6973F',
+  },
+  modalChipText: {
+    fontSize: 11,
+    color: '#6A5F56',
+    fontWeight: '600',
+  },
+  modalChipTextActive: {
+    color: '#9C7127',
+  },
+  priceBandGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
+  priceBandChip: {
+    marginRight: 8,
+  },
   sortOption: {
     minHeight: 38,
     borderRadius: 10,
@@ -560,16 +838,16 @@ const styles = StyleSheet.create({
     borderColor: '#E3D1BC',
   },
   sortOptionActive: {
-    backgroundColor: 'rgba(210, 186, 161, 0.45)',
-    borderColor: '#BFA17E',
+    backgroundColor: '#FAF5EE',
+    borderColor: '#C6973F',
   },
   sortOptionText: {
     fontSize: 12,
-    color: '#5E5045',
+    color: '#6A5F56',
     fontWeight: '600',
   },
   sortOptionTextActive: {
-    color: '#2C1E16',
+    color: '#9C7127',
   },
   sortActionsRow: {
     marginTop: 4,
@@ -591,6 +869,13 @@ const styles = StyleSheet.create({
     color: '#6A5A4D',
     fontWeight: '700',
   },
+  sortApplyButton: {
+    backgroundColor: '#D8AB52',
+    borderColor: '#C6973F',
+  },
+  sortApplyText: {
+    color: '#FFFFFF',
+  },
   error: {
     marginTop: 12,
     color: '#b14b42',
@@ -610,10 +895,14 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: Platform.OS === 'android' ? 10 : 14,
   },
+  cardTouchableGrid: {
+    width: '48.5%',
+    marginBottom: 0,
+  },
   designCard: {
     backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)',
-    borderWidth: 1.3,
-    borderColor: '#7C6650',
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
     borderRadius: 14,
     padding: Platform.OS === 'android' ? 10 : 12,
     shadowColor: '#6E533D',
@@ -673,7 +962,7 @@ const styles = StyleSheet.create({
     fontSize: Platform.OS === 'android' ? 13 : 14,
     lineHeight: Platform.OS === 'android' ? 17 : 18,
     fontWeight: '700',
-    color: '#2C1E16',
+    color: '#4A3E35',
     minHeight: Platform.OS === 'android' ? 28 : 36,
   },
   designMeta: {
@@ -685,7 +974,7 @@ const styles = StyleSheet.create({
     fontFamily: 'serif',
     fontSize: Platform.OS === 'android' ? 15 : 16,
     fontWeight: '800',
-    color: '#2C1E16',
+    color: '#4A3E35',
     marginTop: Platform.OS === 'android' ? 6 : 10,
   },
   loadingState: {

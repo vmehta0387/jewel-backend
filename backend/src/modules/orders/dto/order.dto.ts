@@ -36,6 +36,22 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  customerName?: string;
+
+  @IsOptional()
+  @IsString()
+  customerPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  customerEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  purchaseOrderNumber?: string;
+
+  @IsOptional()
+  @IsString()
   notes?: string;
 }
 
@@ -71,6 +87,22 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsString()
   shortDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  customerName?: string;
+
+  @IsOptional()
+  @IsString()
+  customerPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  customerEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  purchaseOrderNumber?: string;
 
   @IsOptional()
   @IsString()

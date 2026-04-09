@@ -47,6 +47,18 @@ export class Order {
   @Column({ name: 'short_description', type: 'text', nullable: true })
   shortDescription: string | null;
 
+  @Column({ name: 'customer_name', type: 'varchar', length: 255, nullable: true })
+  customerName: string | null;
+
+  @Column({ name: 'customer_phone', type: 'varchar', length: 50, nullable: true })
+  customerPhone: string | null;
+
+  @Column({ name: 'customer_email', type: 'varchar', length: 255, nullable: true })
+  customerEmail: string | null;
+
+  @Column({ name: 'purchase_order_number', type: 'varchar', length: 120, nullable: true })
+  purchaseOrderNumber: string | null;
+
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.QUOTE })
   status: OrderStatus;
 

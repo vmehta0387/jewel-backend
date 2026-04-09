@@ -22,6 +22,10 @@ interface OrderRow {
   quantity: number;
   price: number;
   shortDescription?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  purchaseOrderNumber?: string | null;
   notes?: string | null;
   status: string;
   isActive: boolean;
@@ -103,6 +107,10 @@ interface OrderFormState {
   price: string;
   quantity: string;
   shortDescription: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  purchaseOrderNumber: string;
   notes: string;
 }
 
@@ -115,6 +123,10 @@ const defaultForm: OrderFormState = {
   price: '',
   quantity: '1',
   shortDescription: '',
+  customerName: '',
+  customerPhone: '',
+  customerEmail: '',
+  purchaseOrderNumber: '',
   notes: '',
 };
 
@@ -473,6 +485,10 @@ export default function OrdersPage() {
         price: Number(form.price || 0),
         quantity: Number(form.quantity || 1),
         shortDescription: form.shortDescription?.trim() || undefined,
+        customerName: form.customerName?.trim() || undefined,
+        customerPhone: form.customerPhone?.trim() || undefined,
+        customerEmail: form.customerEmail?.trim() || undefined,
+        purchaseOrderNumber: form.purchaseOrderNumber?.trim() || undefined,
         notes: form.notes?.trim() || undefined,
       };
 
@@ -542,6 +558,10 @@ export default function OrdersPage() {
       price: order.price !== undefined && order.price !== null ? String(order.price) : '',
       quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
       shortDescription: order.shortDescription || '',
+      customerName: order.customerName || '',
+      customerPhone: order.customerPhone || '',
+      customerEmail: order.customerEmail || '',
+      purchaseOrderNumber: order.purchaseOrderNumber || '',
       notes: order.notes || '',
     });
     setOrderNumber(order.orderNumber || '');
@@ -656,6 +676,10 @@ export default function OrdersPage() {
             <div><span class="label">Quantity</span>${order.quantity}</div>
             <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
             <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
+            <div><span class="label">Customer Name</span>${order.customerName || '-'}</div>
+            <div><span class="label">Customer Phone</span>${order.customerPhone || '-'}</div>
+            <div><span class="label">Customer Email</span>${order.customerEmail || '-'}</div>
+            <div><span class="label">PO Number</span>${order.purchaseOrderNumber || '-'}</div>
             <div><span class="label">Short Description</span>${order.shortDescription || '-'}</div>
             <div><span class="label">Notes</span>${order.notes || '-'}</div>
           </div>
@@ -1128,6 +1152,45 @@ export default function OrdersPage() {
                     />
                   </div>
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Customer Name</label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.customerName}
+                      onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Customer Phone</label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.customerPhone}
+                      onChange={(event) => setForm((prev) => ({ ...prev, customerPhone: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Customer Email</label>
+                    <input
+                      type="email"
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.customerEmail}
+                      onChange={(event) => setForm((prev) => ({ ...prev, customerEmail: event.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={form.purchaseOrderNumber}
+                      onChange={(event) => setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }))}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1365,6 +1428,30 @@ export default function OrdersPage() {
               <label className="text-sm font-medium text-slate-700">Sales Rep</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Customer Name</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.customerName || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Customer Phone</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.customerPhone || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Customer Email</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.customerEmail || '-'}
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.purchaseOrderNumber || '-'}
               </div>
             </div>
           </div>

@@ -85,7 +85,7 @@ export class OrdersService {
     if (query.search?.trim()) {
       const search = `%${query.search.trim()}%`;
       qb.andWhere(
-        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search)',
+        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
         { search },
       );
     }
@@ -204,6 +204,10 @@ export class OrdersService {
         quantity: dto.quantity ?? 1,
         price: pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
+        customerName: dto.customerName?.trim() || null,
+        customerPhone: dto.customerPhone?.trim() || null,
+        customerEmail: dto.customerEmail?.trim() || null,
+        purchaseOrderNumber: dto.purchaseOrderNumber?.trim() || null,
         notes: dto.notes?.trim() || null,
         status: computedStatus,
         isActive: true,
@@ -290,6 +294,18 @@ export class OrdersService {
     order.price = pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
       order.shortDescription = dto.shortDescription?.trim() || null;
+    }
+    if (dto.customerName !== undefined) {
+      order.customerName = dto.customerName?.trim() || null;
+    }
+    if (dto.customerPhone !== undefined) {
+      order.customerPhone = dto.customerPhone?.trim() || null;
+    }
+    if (dto.customerEmail !== undefined) {
+      order.customerEmail = dto.customerEmail?.trim() || null;
+    }
+    if (dto.purchaseOrderNumber !== undefined) {
+      order.purchaseOrderNumber = dto.purchaseOrderNumber?.trim() || null;
     }
     if (dto.notes !== undefined) {
       order.notes = dto.notes?.trim() || null;

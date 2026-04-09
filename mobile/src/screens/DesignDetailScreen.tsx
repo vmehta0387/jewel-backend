@@ -16,7 +16,8 @@ import { StackActions, useFocusEffect, useNavigation, useRoute } from '@react-na
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { fetchDesign, fetchDesigns } from '../api/designs';
@@ -269,7 +270,7 @@ const OptionSection = ({
                 onPress={() => onSelect(option)}
                 activeOpacity={0.9}
               >
-                <Ionicons name={shapeIconByValue(option)} size={24} color={active ? '#2C1E16' : '#7E736A'} />
+                <Ionicons name={shapeIconByValue(option)} size={24} color={active ? '#C6973F' : '#7E736A'} />
               </TouchableOpacity>
             );
           }
@@ -278,11 +279,14 @@ const OptionSection = ({
             return (
               <TouchableOpacity
                 key={`${title}-${option}`}
-                style={[styles.colorOption, active ? styles.colorOptionActive : null]}
+                style={[styles.colorBox, active ? styles.colorBoxActive : null]}
                 onPress={() => onSelect(option)}
                 activeOpacity={0.9}
               >
-                <View style={[styles.colorSwatch, { backgroundColor: metalSwatchByValue(option) }]} />
+                <View style={[styles.colorSwatch, { backgroundColor: metalSwatchByValue(option), width: 18, height: 18, borderRadius: 9, marginBottom: 4 }]} />
+                <Text style={[styles.colorBoxText, active ? styles.colorBoxTextActive : null]} numberOfLines={2}>
+                  {canonicalMetalColor(option).split(' ').join('\n')}
+                </Text>
               </TouchableOpacity>
             );
           }
@@ -547,7 +551,7 @@ const DesignDetailScreen = () => {
       },
     });
 
-    Alert.alert('Added to cart', `${activeDesign.designNo} has been added to cart.`);
+    Alert.alert('Added to quote', `${activeDesign.designNo} has been added to quote.`);
   }, [
     activeDesign,
     activeImage,
@@ -598,30 +602,38 @@ const DesignDetailScreen = () => {
 
   if (!activeDesign && !error) {
     return (
-      <Screen style={styles.stateScreen}>
-        <ActivityIndicator size="large" color="#8a6b55" />
-        <Text style={styles.stateText}>Loading design...</Text>
-      </Screen>
+      <View style={{flex: 1}}>
+        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <SafeAreaView style={styles.stateScreen} edges={['top']}>
+          <ActivityIndicator size="large" color="#8a6b55" />
+          <Text style={styles.stateText}>Loading design...</Text>
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (!activeDesign) {
     return (
-      <Screen style={styles.stateScreen}>
-        <View style={styles.stateCard}>
-          <Text style={styles.stateTitle}>Unable to load design</Text>
-          <Text style={styles.stateText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} activeOpacity={0.9} onPress={loadDesign}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      </Screen>
+      <View style={{flex: 1}}>
+        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <SafeAreaView style={styles.stateScreen} edges={['top']}>
+          <View style={styles.stateCard}>
+            <Text style={styles.stateTitle}>Unable to load design</Text>
+            <Text style={styles.stateText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} activeOpacity={0.9} onPress={loadDesign}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <Screen style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+    <View style={{flex: 1}}>
+      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      <SafeAreaView style={{flex: 1}} edges={['top']}>
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <View style={styles.heroTopBar}>
             <TouchableOpacity style={styles.iconButton} onPress={handleBackToDesigns} activeOpacity={0.88}>
@@ -686,9 +698,6 @@ const DesignDetailScreen = () => {
           >
             {activeDesign.designName || activeDesign.designNo}
           </Text>
-          <Text style={[styles.designPrice, compactLayout ? styles.designPriceCompact : null]}>
-            {formatDetailPrice(displayPrice)}
-          </Text>
 
           <OptionSection
             title={`Shape: ${selectedShape || '-'}`}
@@ -707,6 +716,7 @@ const DesignDetailScreen = () => {
             onSelect={(value) => {
               resolveVersionSelection('metalColor', value);
             }}
+            variant="color"
           />
 
           <OptionSection
@@ -754,24 +764,6 @@ const DesignDetailScreen = () => {
             }}
           />
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.primaryAction}
-              activeOpacity={0.92}
-              onPress={handleAddToCart}
-            >
-              <Text style={styles.primaryActionText}>Add to Cart</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.secondaryAction}
-              activeOpacity={0.92}
-              onPress={handleShare}
-            >
-              <Ionicons name="arrow-redo-outline" size={16} color="#3f3026" />
-              <Text style={styles.secondaryActionText}>Share</Text>
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.descriptionBlock}>
             <Text style={styles.descriptionTitle}>Product Description</Text>
             <Text style={styles.descriptionIntro}>
@@ -808,7 +800,58 @@ const DesignDetailScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </Screen>
+
+      <View style={styles.stickyFooterCard}>
+        <View style={styles.stickyTopRow}>
+          <View style={styles.stickyPriceBlock}>
+             <Text style={styles.stickySummarySubtitle}>Your retail price</Text>
+             <View style={{flexDirection: 'row', alignItems: 'center'}}>
+               <Text style={styles.stickySummaryPrice}>{formatDetailPrice(displayPrice)}</Text>
+               <Ionicons name="flash-sharp" size={18} color="#D8AB52" style={{ marginLeft: 6 }} />
+             </View>
+          </View>
+          <View style={styles.stickySummaryBlock}>
+             <Text style={styles.stickySummaryDetails} numberOfLines={2}>
+                {[
+                  selectedMetalColor ? canonicalMetalColor(selectedMetalColor) : null,
+                  selectedStyle,
+                ].filter(Boolean).join(' - ')}
+                {'\n'}
+                {[
+                  selectedDiamondType,
+                  selectedRingSize ? `Size ${selectedRingSize}` : null
+                ].filter(Boolean).join(' - ')}
+             </Text>
+          </View>
+        </View>
+
+        <View style={styles.actionRowSticky}>
+          <TouchableOpacity
+            style={[styles.primaryActionSticky, { elevation: 8, shadowColor: '#B88B35', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 }]}
+            activeOpacity={0.8}
+            onPress={handleAddToCart}
+          >
+            <LinearGradient
+              colors={['#D8AB52', '#C6973F', '#A37728']}
+              start={{ x: 0, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.primaryGradientBtn}
+            >
+              <Ionicons name="flash-sharp" size={16} color="#FFF" style={styles.btnFlashIcon} />
+              <Text style={styles.primaryActionTextSticky}>Add to quote</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryActionSticky}
+            activeOpacity={0.92}
+            onPress={handleShare}
+          >
+            <Ionicons name="arrow-redo-outline" size={18} color="#A37728" />
+          </TouchableOpacity>
+        </View>
+      </View>
+      </SafeAreaView>
+    </View>
   );
 };
 
@@ -956,7 +999,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#2C1E16',
+    color: '#4A3E35',
     marginBottom: 8,
   },
   optionWrap: {
@@ -977,7 +1020,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   shapeOptionActive: {
-    borderBottomColor: '#2C1E16',
+    borderBottomColor: '#C6973F',
   },
   colorWrap: {
     alignItems: 'center',
@@ -1015,16 +1058,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   optionChipActive: {
-    backgroundColor: '#2C1E16',
-    borderColor: '#2C1E16',
+    backgroundColor: '#D8AB52',
+    borderColor: '#C6973F',
   },
   optionChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#2C1E16',
+    color: '#4A3E35',
   },
   optionChipTextActive: {
-    color: 'rgba(255, 252, 245, 0.94)',
+    color: '#FFFFFF',
   },
   emptyOption: {
     fontSize: 12,
@@ -1073,7 +1116,7 @@ const styles = StyleSheet.create({
   descriptionTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#2C1E16',
+    color: '#4A3E35',
     marginBottom: 6,
     letterSpacing: 0.25,
   },
@@ -1129,7 +1172,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     fontSize: 12,
-    color: '#2C1E16',
+    color: '#4A3E35',
     fontWeight: '700',
   },
   infoValueStack: {
@@ -1180,6 +1223,116 @@ const styles = StyleSheet.create({
     color: '#fffdf8',
     fontSize: 14,
     fontWeight: '700',
+  },
+  stickyFooterCard: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    backgroundColor: '#FAF7F3',
+    borderTopWidth: 1,
+    borderTopColor: '#E8E1D7',
+    shadowColor: '#AFA191',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
+  },
+  stickyTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  stickyPriceBlock: {
+    flex: 1,
+  },
+  stickySummarySubtitle: {
+    fontSize: 11,
+    color: '#A0978C',
+    fontWeight: '600',
+    marginBottom: 2,
+    letterSpacing: 0.5,
+  },
+  stickySummaryPrice: {
+    fontSize: 26,
+    fontFamily: 'serif',
+    fontWeight: '800',
+    color: '#D8AB52', 
+  },
+  stickySummaryBlock: {
+    flex: 1.2,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#E8E1D7',
+    borderRadius: 8,
+    backgroundColor: '#FBF9F6',
+    justifyContent: 'center',
+  },
+  stickySummaryDetails: {
+    fontSize: 10,
+    color: '#A0978C',
+    textAlign: 'center',
+    lineHeight: 14,
+    fontWeight: '500',
+  },
+  actionRowSticky: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  primaryActionSticky: {
+    flex: 1,
+  },
+  primaryGradientBtn: {
+    height: 52,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnFlashIcon: {
+    marginRight: 6,
+  },
+  primaryActionTextSticky: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  secondaryActionSticky: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FBF9F6',
+    borderWidth: 1,
+    borderColor: '#E8E1D7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+  colorBox: {
+    width: 66,
+    height: 66,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BCA48B',
+    backgroundColor: GLASS_CHIP_BG,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  colorBoxActive: {
+    backgroundColor: '#FDF7EE',
+    borderColor: '#C6973F',
+  },
+  colorBoxText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#4A3E35',
+    textAlign: 'center',
+  },
+  colorBoxTextActive: {
+    color: '#9C7127',
   },
 });
 
