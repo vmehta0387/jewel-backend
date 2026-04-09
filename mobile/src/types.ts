@@ -1,4 +1,4 @@
-﻿export type UserRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'BRANCH_MANAGER' | 'SALES_REP' | 'INTERNAL_REP';
+export type UserRole = 'SUPER_ADMIN' | 'COMPANY_ADMIN' | 'BRANCH_MANAGER' | 'SALES_REP' | 'INTERNAL_REP';
 
 export type AuthUser = {
   id: string;
@@ -10,6 +10,8 @@ export type AuthUser = {
   branchId?: string | null;
   photoUrl?: string | null;
   taskPermissions?: string[];
+  companyName?: string | null;
+  branchName?: string | null;
 };
 
 export type Design = {

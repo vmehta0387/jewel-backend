@@ -159,7 +159,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
               case 'DashboardTab':
                 return focused ? 'grid' : 'grid-outline';
               case 'DesignsTab':
-                return focused ? 'diamond' : 'diamond-outline';
+                return focused ? 'search' : 'search-outline';
               case 'OrdersTab':
                 return focused ? 'receipt' : 'receipt-outline';
               case 'CartTab':
@@ -198,7 +198,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
       {role === 'BRANCH_MANAGER' || role === 'SALES_REP' ? (
         <Tabs.Screen name="DashboardTab" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
       ) : null}
-      <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Designs' }} />
+      <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Catalog' }} />
       <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
       <Tabs.Screen name="CartTab" component={CartScreen} options={{ title: 'Cart' }} />
       <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI' }} />

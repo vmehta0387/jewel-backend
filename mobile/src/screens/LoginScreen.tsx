@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
-import Button from '../components/Button';
-import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = () => {
@@ -43,134 +40,151 @@ const LoginScreen = () => {
   };
 
   return (
-    <Screen style={styles.container} bgImage={require('../../assets/login_bg.png')}>
-  
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={styles.keyboardView}
+      >
+        <View style={styles.content}>
+          <View style={styles.frame}>
 
-      <View style={styles.content}>
-        <View style={styles.frame}>
-          <View style={styles.card}>
             <View style={styles.brandRow}>
-              <Text style={styles.brandTitle}>JEWELRY SALES</Text>
+              <Ionicons name="flash-sharp" size={46} color="#C59A39" style={{ marginBottom: 12 }} />
+              <Text style={styles.brandTitle}>BLITZ</Text>
+              <Text style={styles.brandSubtitle}>N E W   Y O R K   C I T Y</Text>
+              <View style={styles.divider} />
             </View>
 
-            <Text style={styles.welcomeTitle}>WELCOME</Text>
-            <Text style={styles.welcomeSubtitle}>Please enter your details to continue.</Text>
+            <View style={styles.formContainer}>
+              <View style={styles.inputWrapper}>
+                <Text style={styles.label}>EMAIL</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="sarah@luxejewels.com"
+                  placeholderTextColor="#191715"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+              </View>
 
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={colors.textMuted}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
+              <View style={styles.inputWrapper}>
+                <Text style={styles.label}>PASSWORD</Text>
+                <View style={styles.inputGroup}>
+                  <TextInput
+                    style={[styles.input, styles.inputWithIcon]}
+                    placeholder="••••••••••"
+                    placeholderTextColor="#A8A29A"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#A8A29A" />
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={styles.forgotBtn}>
+                  <Text style={styles.forgotText}>Forgot password?</Text>
+                </TouchableOpacity>
+              </View>
 
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.inputGroup}>
-              <TextInput
-                style={[styles.input, styles.inputWithIcon]}
-                placeholder="Password"
-                placeholderTextColor={colors.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
-                <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={colors.textMuted} />
+              {error ? <Text style={styles.error}>{error}</Text> : null}
+
+              <TouchableOpacity 
+                style={[styles.signInButton, loading && styles.signInButtonDisabled]} 
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                   <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <View style={styles.btnContent}>
+                    <Ionicons name="flash" size={18} color="#FFF" />
+                    <Text style={styles.signInButtonText}>Sign in instantly</Text>
+                  </View>
+                )}
               </TouchableOpacity>
+              
+              <View style={styles.bottomLinkContainer}>
+                <Text style={styles.bottomLinkText}>Need access? Contact your admin</Text>
+              </View>
+
             </View>
-
-            {error ? <Text style={styles.error}>{error}</Text> : null}
-
-            <Button title="Sign In" onPress={handleLogin} loading={loading} style={styles.signInButton} />
           </View>
         </View>
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : null}
-    </Screen>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    justifyContent: 'center',
-    padding: spacing.lg,
+    flex: 1,
+    backgroundColor: '#F3EFE9', 
   },
-  background: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: 'transparent',
+  keyboardView: {
+    flex: 1,
   },
   content: {
     flex: 1,
-    zIndex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    paddingBottom: 120,
+    paddingBottom: 40,
   },
   frame: {
     width: '100%',
-    maxWidth: 420,
-    paddingHorizontal: spacing.lg,
-  },
-  card: {
-    backgroundColor: 'transparent',
-    borderRadius: 12,
-    padding: spacing.xl,
-    paddingHorizontal: spacing.md,
+    maxWidth: 400,
+    paddingHorizontal: 28,
   },
   brandRow: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 40,
+    marginBottom: 44,
   },
   brandTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: 2,
-  },
-  welcomeTitle: {
-    fontFamily: 'serif',
     fontSize: 32,
-    lineHeight: 38,
-    fontWeight: '500',
-    color: colors.text,
+    fontWeight: '800',
+    color: '#1C1916',
+    letterSpacing: 4,
+    marginBottom: 6,
   },
-  welcomeSubtitle: {
-    marginTop: 6,
-    marginBottom: spacing.xl,
-    color: colors.textMuted,
-    fontSize: 14,
+  brandSubtitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#C59A39',
+    letterSpacing: 3,
+    marginBottom: 16,
+  },
+  divider: {
+    width: 28,
+    height: 1.5,
+    backgroundColor: '#C59A39',
+  },
+  formContainer: {
+    width: '100%',
+  },
+  inputWrapper: {
+    marginBottom: 20,
   },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    color: colors.text,
+    color: '#9E978F',
     marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   input: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#8B7355',
-    borderRadius: 12,
+    borderColor: '#E6E0D9',
+    borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    marginBottom: spacing.lg,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    color: colors.text,
+    color: '#1C1916',
+    fontSize: 15,
+    fontWeight: '500',
   },
   inputGroup: {
     position: 'relative',
@@ -182,24 +196,54 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 14,
     top: 0,
-    bottom: spacing.lg,
+    bottom: 0,
     justifyContent: 'center',
   },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+  },
+  forgotText: {
+    color: '#C59A39',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   signInButton: {
-    backgroundColor: '#2C1E16',
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginTop: 18,
-    width: '60%',
-    alignSelf: 'center',
+    backgroundColor: '#C89B3A',
+    borderRadius: 14,
+    paddingVertical: 16,
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  signInButtonDisabled: {
+    opacity: 0.7,
+  },
+  btnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  signInButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   error: {
-    color: colors.danger,
-    marginBottom: spacing.sm,
+    color: '#D9534F',
+    marginBottom: 10,
+    fontSize: 13,
+    textAlign: 'center',
   },
-  loadingOverlay: {
-    marginTop: spacing.lg,
+  bottomLinkContainer: {
+    marginTop: 26,
     alignItems: 'center',
+  },
+  bottomLinkText: {
+    color: '#ACA59D',
+    fontSize: 13,
+    fontWeight: '400',
   },
 });
 

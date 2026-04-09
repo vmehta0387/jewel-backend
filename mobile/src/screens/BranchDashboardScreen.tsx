@@ -12,29 +12,15 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import Screen from '../components/Screen';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { uploadMyPhoto } from '../api/auth';
 import type { Order } from '../types';
-import { buildOrderNotifications, type OrderNotification } from '../utils/orderNotifications';
-import { loadSeenNotificationIds, markNotificationsAsSeen } from '../utils/notificationReadState';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const APP_VERSION = '1.0.0';
-
-const BG = 'transparent';
-const DARK_CARD = 'rgba(44, 30, 22, 0.75)';
-const WHITE = 'rgba(255, 255, 255, 0.15)';
-const TEXT_DARK = '#2C1E16';
-const TEXT_MUTED = '#8E8E93';
-const GREEN = '#2C1E16';
-const RED = '#2C1E16';
-const ACCENT = 'rgba(255, 255, 255, 0.2)';
-const BORDER = '#8B7355';
-const GLASS_CARD_IOS = 'rgba(255, 255, 255, 0.22)';
-const GLASS_CARD_ANDROID = 'rgba(255, 255, 255, 0.12)';
 
 type ActivityItem = {
   id: string;
@@ -83,9 +69,10 @@ const BranchDashboardScreen = () => {
     activeOrders: number;
   } | null>(null);
 
-  const [weekChange, setWeekChange] = useState<number | null>(null);
+  const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
+  
+  // recent activity items (acting as notifications per user instruction)
   const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
 
   const loadDashboard = useCallback(async () => {
@@ -97,46 +84,33 @@ const BranchDashboardScreen = () => {
       fetchOrders(token, 1, 100, 'ALL'),
     ]);
 
-    // Summary
     if (summaryRes.status === 'fulfilled') {
       setSummary(summaryRes.value);
     }
 
-    // Week-over-week % change from trends (last 7 days vs prior 7 days)
-    if (trendsRes.status === 'fulfilled') {
-      const salesPoints = trendsRes.value.sales ?? [];
-      const half = Math.floor(salesPoints.length / 2);
-      const lastWeekSales = salesPoints.slice(0, half).reduce((sum, value) => sum + Number(value || 0), 0);
-      const thisWeekSales = salesPoints.slice(half).reduce((sum, value) => sum + Number(value || 0), 0);
-      if (lastWeekSales > 0) {
-        setWeekChange(((thisWeekSales - lastWeekSales) / lastWeekSales) * 100);
-      } else if (thisWeekSales > 0) {
-        setWeekChange(100);
-      } else {
-        setWeekChange(null);
-      }
-    }
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let productionCount = 0;
 
     let orderRows: Order[] = [];
     if (ordersRes.status === 'fulfilled') {
       orderRows = ordersRes.value.data || [];
+      orderRows.forEach(o => {
+          if (o.status === 'PENDING_APPROVAL') pendingCount++;
+          if (o.status === 'APPROVED') approvedCount++;
+          if (o.status === 'IN_PRODUCTION') productionCount++;
+      });
+      setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
     }
 
-    const notificationSummary = buildOrderNotifications(orderRows, user || null);
-    setNotifications(notificationSummary.items.slice(0, 20));
-    const seen = await loadSeenNotificationIds(user?.id);
-    const unread = notificationSummary.items.filter((item) => !seen.has(item.id)).length;
-    setNotificationCount(unread);
-
-    // Build recent activity with explicit role-specific approval text
+    // Build recent activity to display in notifications
     const items: ActivityItem[] = [];
-
     const activityRows =
       user?.role === 'BRANCH_MANAGER'
         ? orderRows.filter((order) => ['PENDING_APPROVAL', 'APPROVED', 'CANCELLED'].includes(String(order.status || '').toUpperCase()))
         : orderRows.filter((order) => (user?.id ? order.salesRepId === user.id : false));
 
-    for (const order of activityRows.slice(0, 5)) {
+    for (const order of activityRows.slice(0, 15)) {
       const date = order.createdAt ? new Date(order.createdAt) : new Date();
       const salesPerson = order.salesRepName || order.salesRepEmail || 'Sales rep';
       const managerName = order.branchManagerName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Manager';
@@ -176,7 +150,7 @@ const BranchDashboardScreen = () => {
       }
 
       items.push({
-        id: `order-${order.id}`,
+        id: `order-${order.id}-${normalizedStatus}`,
         icon: statusIcon(order.status),
         title,
         subtitle,
@@ -186,8 +160,9 @@ const BranchDashboardScreen = () => {
     }
 
     items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
-    setActivity(items.slice(0, 5));
-  }, [token, user?.id]);
+    setActivity(items);
+    setNotificationCount(items.length > 0 ? items.length : 0);
+  }, [token, user?.id, user?.role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -195,27 +170,10 @@ const BranchDashboardScreen = () => {
     }, [loadDashboard]),
   );
 
-  const greeting = (() => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  })();
-
-  const firstName = user?.firstName || 'there';
-
-  const salesFormatted = (() => {
-    if (!summary) return '$0';
-    const v = Number(summary.salesThisWeek);
-    if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-    if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-    return `$${v.toFixed(0)}`;
-  })();
-
-  const changePositive = weekChange !== null && weekChange >= 0;
-  const changeLabel = weekChange !== null
-    ? `${changePositive ? '↑' : '↓'} ${Math.abs(weekChange).toFixed(0)}% vs last week`
-    : null;
+  const handleOpenNotifications = useCallback(() => {
+    setNotificationsVisible(true);
+    setNotificationCount(0); // clear badge
+  }, []);
 
   const handleChangePhoto = useCallback(async () => {
     if (!token) return;
@@ -225,97 +183,249 @@ const BranchDashboardScreen = () => {
         Alert.alert('Permission needed', 'Please allow photo library access to upload a profile photo.');
         return;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (result.canceled || !result.assets?.length) {
-        return;
-      }
-
+      if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
-      const fileName = asset.fileName || `profile-${Date.now()}.jpg`;
-      const fileType = asset.mimeType || 'image/jpeg';
-
       setUploadingPhoto(true);
       await uploadMyPhoto(token, {
         uri: asset.uri,
-        name: fileName,
-        type: fileType,
+        name: asset.fileName || 'profile.jpg',
+        type: asset.mimeType || 'image/jpeg',
       });
       await refresh();
       setProfileMenuVisible(false);
-    } catch (error: any) {
-      Alert.alert('Upload failed', error?.message || 'Could not upload profile photo.');
+    } catch (e: any) {
+      Alert.alert('Upload failed', e.message);
     } finally {
       setUploadingPhoto(false);
     }
   }, [token, refresh]);
 
-  const handleOpenNotifications = useCallback(async () => {
-    setNotificationsVisible(true);
-    if (!user?.id || !notifications.length) return;
-    await markNotificationsAsSeen(
-      user.id,
-      notifications.map((item) => item.id),
-    );
-    setNotificationCount(0);
-  }, [user?.id, notifications]);
+  // DYNAMIC NAME AND BRANCH INFO (Strictly dynamic, no fallbacks to sarah)
+  const repName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Sales Rep';
+  const companyBranch = [user?.companyName, user?.branchName].filter(Boolean).join(' • ') || 'No branch assigned';
+
+  // Format Helpers
+  const formatMoney = (v: number | undefined) => {
+    if (!v) return '$0';
+    if (v >= 1000) return `$${(v / 1000).toFixed(1)}k`;
+    return `$${v}`;
+  };
 
   return (
-    <Screen style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Header Block with Logo + Icons from old design */}
         <View style={styles.header}>
-          <View style={styles.headerTextBlock}>
-            <Text style={styles.headerGreeting}>{greeting},</Text>
-            <Text style={styles.headerName} numberOfLines={1} ellipsizeMode="tail">
-              {firstName}
-            </Text>
+          <View style={styles.logoRow}>
+            <View style={styles.blackLogo}>
+              <Ionicons name="flash" size={24} color="#CE9C36" />
+            </View>
+            <View style={styles.appTitleBlock}>
+              <Text style={styles.appName}>BLITZ NYC</Text>
+              <Text style={styles.appSubtitle}>Built for closers</Text>
+            </View>
           </View>
-          <View style={styles.headerIcons}>
+          
+          <View style={styles.headerIconsContainer}>
+            {/* Notification Bell */}
             <TouchableOpacity style={styles.iconBtn} onPress={handleOpenNotifications}>
-              <Ionicons name="notifications-outline" size={22} color={TEXT_DARK} />
+              <Ionicons name="notifications-outline" size={22} color="#1A1816" />
               {notificationCount > 0 ? (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {notificationCount > 99 ? '99+' : String(notificationCount)}
+                <View style={styles.redBadge}>
+                  <Text style={styles.redBadgeText}>
+                    {notificationCount > 99 ? '99+' : notificationCount}
                   </Text>
                 </View>
               ) : null}
             </TouchableOpacity>
+
+            {/* Profile Avatar (From Current Design) */}
             <TouchableOpacity
               ref={profileBtnRef}
               style={styles.iconBtn}
               onPress={() => {
-                profileBtnRef.current?.measureInWindow((
-                  _x: number,
-                  y: number,
-                  _w: number,
-                  h: number,
-                ) => {
+                profileBtnRef.current?.measureInWindow((x, y, w, h) => {
                   setMenuPosition({ top: y + h + 6, right: 20 });
                   setProfileMenuVisible(true);
                 });
               }}
             >
               {user?.photoUrl ? (
-                <Image source={{ uri: user.photoUrl }} style={styles.headerAvatarImage} />
+                <Image source={{ uri: user.photoUrl }} style={styles.headerAvatarImg} />
               ) : (
-                <Ionicons name="person-circle-outline" size={24} color={TEXT_DARK} />
+                <Ionicons name="person-circle-outline" size={26} color="#1A1816" />
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Profile Popup */}
+        {/* Greeting Area */}
+        <View style={styles.greetingArea}>
+          <Text style={styles.greetingText}>GOOD MORNING</Text>
+          <Text style={styles.userName}>{repName}</Text>
+          <Text style={styles.userBranch}>{companyBranch}</Text>
+        </View>
+
+        {/* Stats Grid */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statTitle}>TODAY</Text>
+            <Text style={styles.statValue}>{summary?.ordersReceivedToday || 0}</Text>
+            <Text style={styles.statTrendUp}>orders</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statTitle}>MONTHLY</Text>
+            <Text style={styles.statValue}>{formatMoney(summary?.salesThisWeek)}</Text>
+            <Text style={styles.statTrendUp}>volume</Text>
+          </View>
+          <View style={[styles.statCard, styles.spiffCard]}>
+            <Text style={styles.statTitleSpiff}>ACTIVE ORDERS</Text>
+            <Text style={styles.statValueSpiff}>{summary?.activeOrders || 0}</Text>
+            <Text style={styles.statEarnedSpiff}>current</Text>
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <Text style={styles.sectionTitle}>Quick actions</Text>
+        <View style={styles.quickActionsGrid}>
+          <View style={styles.actionRow}>
+            <TouchableOpacity 
+              style={[styles.actionCard, styles.actionCardDark]}
+              onPress={() => navigation.navigate('OrdersTab')}
+            >
+              <Ionicons name="clipboard-outline" size={28} color="#FFFFFF" style={styles.actionIcon} />
+              <Text style={styles.actionTextDark}>My{"\n"}Orders</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.actionCard}
+              onPress={() => navigation.navigate('DesignsTab')}
+            >
+              <Ionicons name="search-outline" size={28} color="#7E766D" style={styles.actionIcon} />
+              <Text style={styles.actionText}>Browse{"\n"}Catalog</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.actionCard}>
+              <Ionicons name="apps-outline" size={28} color="#7E766D" style={styles.actionIcon} />
+              <Text style={styles.actionText}>Scan{"\n"}Ring</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionCard}>
+              <Ionicons name="chatbubble-outline" size={28} color="#7E766D" style={styles.actionIcon} />
+              <Text style={styles.actionText}>Message{"\n"}Support</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Sales Pipeline */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Sales pipeline</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
+            <Text style={styles.liveViewText}>Live view →</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.pipelineCard}>
+          <View style={styles.pipelineRow}>
+            <View style={styles.pipelineTextRow}>
+              <Text style={styles.pipelineLabel}>Pending approval</Text>
+              <Text style={styles.pipelineValuePending}>{pipeline.pending} orders</Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { backgroundColor: '#C89B3A', width: pipeline.pending ? '40%' : '2%' }]} />
+            </View>
+          </View>
+
+          <View style={styles.pipelineDivider} />
+
+          <View style={styles.pipelineRow}>
+            <View style={styles.pipelineTextRow}>
+              <Text style={styles.pipelineLabel}>Approved</Text>
+              <Text style={styles.pipelineValueApproved}>{pipeline.approved} orders</Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { backgroundColor: '#38734C', width: pipeline.approved ? '65%' : '2%' }]} />
+            </View>
+          </View>
+
+          <View style={styles.pipelineDivider} />
+
+          <View style={styles.pipelineRow}>
+            <View style={styles.pipelineTextRow}>
+              <Text style={styles.pipelineLabel}>In production</Text>
+              <Text style={styles.pipelineValueProd}>{pipeline.production} orders</Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { backgroundColor: '#2C4FA1', width: pipeline.production ? '50%' : '2%' }]} />
+            </View>
+          </View>
+        </View>
+
+      </ScrollView>
+
+      {/* Notifications Modal (Moved Activity Content Here) */}
+      <Modal
+          visible={notificationsVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNotificationsVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.notificationsMenu}>
+                  <Text style={styles.notificationsTitle}>Notifications & Activity</Text>
+                  {activity.length ? (
+                    <ScrollView style={{maxHeight: 280}}>
+                    {activity.slice(0, 10).map((item, index) => (
+                      <View key={item.id}>
+                        <TouchableOpacity
+                          style={styles.notificationRow}
+                          onPress={() => {
+                            setNotificationsVisible(false);
+                            navigation.navigate('OrdersTab');
+                          }}
+                        >
+                          <View style={styles.activityIcon}>
+                            <Ionicons name={item.icon} size={15} color="#5B534B" />
+                          </View>
+                          <View style={styles.notificationTextWrap}>
+                            <Text style={styles.notificationTitle} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+                            <Text style={styles.notificationSubtitle} numberOfLines={1}>
+                              {item.subtitle}
+                            </Text>
+                          </View>
+                          <Text style={styles.activityTime}>{item.time}</Text>
+                        </TouchableOpacity>
+                        {index < Math.min(activity.length, 10) - 1 ? (
+                          <View style={styles.notificationDivider} />
+                        ) : null}
+                      </View>
+                    ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.notificationEmpty}>
+                      <Text style={styles.notificationEmptyText}>No recent activity</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* Profile Menu Popup (Retained logic from previous implementations) */}
         <Modal
           visible={profileMenuVisible}
           transparent
@@ -326,44 +436,18 @@ const BranchDashboardScreen = () => {
             <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback>
                 <View style={[styles.profileMenu, { top: menuPosition.top, right: menuPosition.right }]}>
-
                   <View style={styles.menuBlock}>
-                    <View style={styles.menuRow}>
-                      <View style={styles.menuAvatar}>
-                        {user?.photoUrl ? (
-                          <Image source={{ uri: user.photoUrl }} style={styles.menuAvatarImage} />
-                        ) : (
-                          <Text style={styles.menuAvatarText}>
-                            {(user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '')}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={styles.menuNameBlock}>
-                        <Text style={styles.menuName}>
-                          {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User'}
-                        </Text>
-                        <Text style={styles.menuEmail}>{user?.email || ''}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.menuInnerDivider} />
-
                     <TouchableOpacity
-                      style={[styles.menuRow, uploadingPhoto ? styles.menuRowDisabled : null]}
+                      style={styles.menuRow}
                       onPress={handleChangePhoto}
                       disabled={uploadingPhoto}
                     >
-                      <View style={[styles.menuIconBox, { backgroundColor: 'rgba(82,161,216,0.16)' }]}>
-                        <Ionicons name="image-outline" size={16} color="#2F5D80" />
-                      </View>
                       <Text style={styles.menuRowText}>
                         {uploadingPhoto ? 'Uploading...' : 'Update Photo'}
                       </Text>
-                      <Ionicons name="chevron-forward" size={14} color={TEXT_MUTED} style={styles.menuChevron} />
+                      <Ionicons name="image-outline" size={16} color="#5B534B" />
                     </TouchableOpacity>
-
                     <View style={styles.menuInnerDivider} />
-
                     <TouchableOpacity
                       style={styles.menuRow}
                       onPress={() => {
@@ -371,296 +455,334 @@ const BranchDashboardScreen = () => {
                         signOut();
                       }}
                     >
-                      <View style={[styles.menuIconBox, { backgroundColor: 'rgba(255,59,48,0.1)' }]}>
-                        <Ionicons name="log-out-outline" size={16} color={RED} />
-                      </View>
-                      <Text style={[styles.menuRowText, { color: RED }]}>Logout</Text>
-                      <Ionicons name="chevron-forward" size={14} color={RED} style={styles.menuChevron} />
+                      <Text style={[styles.menuRowText, { color: '#DE4A4A' }]}>Logout</Text>
+                      <Ionicons name="log-out-outline" size={16} color="#DE4A4A" />
                     </TouchableOpacity>
                   </View>
-
-                  <View style={styles.versionInfoBlock}>
-                    <View style={styles.versionInfoTop}>
-                      <View style={styles.versionIconBox}>
-                        <Ionicons name="information-circle-outline" size={16} color={TEXT_MUTED} />
-                      </View>
-                      <View style={styles.versionTextBlock}>
-                        <Text style={styles.versionLabel}>App Version</Text>
-                        <Text style={styles.versionHint}>Current installed build</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.versionValue}>{APP_VERSION}</Text>
-                  </View>
-
                 </View>
               </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
         </Modal>
 
-        {/* Notifications Popup */}
-        <Modal
-          visible={notificationsVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setNotificationsVisible(false)}
-        >
-          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={styles.notificationsMenu}>
-                  <Text style={styles.notificationsTitle}>Notifications</Text>
-                  {notifications.length ? (
-                    notifications.slice(0, 8).map((item, index) => (
-                      <View key={item.id}>
-                        <TouchableOpacity
-                          style={styles.notificationRow}
-                          onPress={() => {
-                            setNotificationsVisible(false);
-                            navigation.navigate('OrdersTab');
-                          }}
-                        >
-                          <View style={styles.notificationIcon}>
-                            <Ionicons
-                              name={item.status === 'CANCELLED' ? 'close-circle-outline' : 'notifications-outline'}
-                              size={16}
-                              color={TEXT_DARK}
-                            />
-                          </View>
-                          <View style={styles.notificationTextWrap}>
-                            <Text style={styles.notificationTitle} numberOfLines={1}>
-                              {item.title}
-                            </Text>
-                            <Text style={styles.notificationSubtitle} numberOfLines={1}>
-                              {item.subtitle}
-                            </Text>
-                          </View>
-                          <Text style={styles.notificationTime}>{item.time}</Text>
-                        </TouchableOpacity>
-                        {index < Math.min(notifications.length, 8) - 1 ? (
-                          <View style={styles.notificationDivider} />
-                        ) : null}
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.notificationEmpty}>
-                      <Text style={styles.notificationEmptyText}>No new notifications</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        {/* Dark Sales Card */}
-        <View style={styles.salesCard}>
-          <Text style={styles.salesAmount}>{salesFormatted}</Text>
-          <Text style={styles.salesLabel}>Sales This Week</Text>
-          {changeLabel ? (
-            <View style={[styles.salesBadge, { backgroundColor: changePositive ? 'rgba(52,199,89,0.15)' : 'rgba(255,59,48,0.15)' }]}>
-              <Ionicons
-                name={changePositive ? 'trending-up' : 'trending-down'}
-                size={12}
-                color={changePositive ? GREEN : RED}
-              />
-              <Text style={[styles.salesBadgeText, { color: changePositive ? GREEN : RED }]}>
-                {' '}{changeLabel}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Orders Today</Text>
-            <Text style={styles.statValue}>{summary?.ordersReceivedToday ?? 0}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Due Today</Text>
-            <Text style={styles.statValue}>{summary?.ordersDueToday ?? 0}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Active Orders</Text>
-            <Text style={styles.statValue}>{summary?.activeOrders ?? 0}</Text>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnDark]}
-            onPress={() => navigation.navigate('OrdersTab')}
-          >
-            <View style={styles.actionBtnContent}>
-              <View style={styles.actionIconWrap}>
-                <Ionicons name="add" size={20} color="#FFFFFF" />
-              </View>
-              <Text numberOfLines={1} style={[styles.actionBtnText, { color: "#FFFFFF" }]}>New Order</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnLight]}
-            onPress={() => navigation.navigate('DesignsTab')}
-          >
-            <View style={styles.actionBtnContent}>
-              <View style={styles.actionIconWrap}>
-                <Ionicons name="diamond-outline" size={20} color={TEXT_DARK} />
-              </View>
-              <Text numberOfLines={1} style={[styles.actionBtnText, { color: TEXT_DARK }]}>Browse Designs</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Recent Activity */}
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {activity.length > 0 ? (
-          <View style={styles.activityCard}>
-            {activity.map((item, index) => (
-              <View key={item.id}>
-                <View style={styles.activityRow}>
-                  <View style={styles.activityIcon}>
-                    <Ionicons name={item.icon} size={18} color={TEXT_MUTED} />
-                  </View>
-                  <View style={styles.activityText}>
-                    <Text style={styles.activityTitle}>{item.title}</Text>
-                    <Text style={styles.activitySubtitle}>{item.subtitle}</Text>
-                  </View>
-                  <Text style={styles.activityTime}>{item.time}</Text>
-                </View>
-                {index < activity.length - 1 ? <View style={styles.activityDivider} /> : null}
-              </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.activityCard}>
-            <View style={styles.activityRow}>
-              <Text style={styles.activitySubtitle}>No recent activity</Text>
-            </View>
-          </View>
-        )}
-      </ScrollView>
-    </Screen>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: 'transparent' },
+  safe: { flex: 1, backgroundColor: '#F5F0E8' }, 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingBottom: 32 },
+  content: { paddingHorizontal: 22, paddingBottom: 40, paddingTop: 10 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 18,
-    gap: 12,
+    marginBottom: 28,
   },
-  headerTextBlock: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  headerGreeting: {
-    fontFamily: 'serif',
-    fontSize: 18,
-    lineHeight: 22,
-    fontWeight: '500',
-    color: '#7E736A',
-  },
-  headerName: {
-    marginTop: 2,
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '700',
-    color: TEXT_DARK,
-  },
-  headerIcons: {
+  logoRow: {
     flexDirection: 'row',
-    gap: 8,
     alignItems: 'center',
   },
+  blackLogo: {
+    width: 44,
+    height: 44,
+    backgroundColor: '#1E1B18',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  appTitleBlock: {
+    justifyContent: 'center',
+  },
+  appName: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: '#1E1B18',
+  },
+  appSubtitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#B68832',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  headerIconsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6DDD3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    shadowColor: '#3A2E24',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  headerAvatarImg: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: WHITE,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  notificationBadge: {
+  redBadge: {
     position: 'absolute',
-    top: -2,
-    right: -2,
+    top: -4,
+    right: -4,
+    backgroundColor: '#DE4A4A',
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    paddingHorizontal: 4,
-    backgroundColor: '#A67F3F',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#F8F4EE',
   },
-  notificationBadgeText: {
+  redBadgeText: {
+    color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
-  headerAvatarImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  greetingArea: {
+    marginBottom: 20,
+  },
+  greetingText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B68832',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  userName: {
+    fontFamily: 'serif',
+    fontSize: 32,
+    color: '#1E1B18',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  userBranch: {
+    fontSize: 13,
+    color: '#8E867D',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 32,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    shadowColor: '#3A2E24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  spiffCard: {
+    backgroundColor: '#F8EEDC', 
+  },
+  statTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8E867D',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  statTitleSpiff: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A97C2B',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  statValue: {
+    fontFamily: 'serif',
+    fontSize: 20,
+    color: '#1E1B18',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  statValueSpiff: {
+    fontFamily: 'serif',
+    fontSize: 20,
+    color: '#A97C2B',
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  statTrendUp: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#38734C',
+  },
+  statEarnedSpiff: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#A97C2B',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1E1B18',
+    marginBottom: 14,
+  },
+  quickActionsGrid: {
+    gap: 12,
+    marginBottom: 32,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionCard: {
+    flex: 1, 
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    aspectRatio: 1.1,
+    shadowColor: '#3A2E24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  actionCardDark: {
+    backgroundColor: '#1E1B18',
+  },
+  actionIcon: {
+    marginBottom: 10,
+  },
+  actionTextDark: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  actionText: {
+    color: '#5B534B',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 12,
+  },
+  liveViewText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B68832',
+    fontStyle: 'italic',
+  },
+  pipelineCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    shadowColor: '#3A2E24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
+  },
+  pipelineRow: {
+    marginVertical: 4,
+  },
+  pipelineTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  pipelineLabel: {
+    fontSize: 12,
+    color: '#5B534B',
+    fontWeight: '500',
+  },
+  pipelineValuePending: {
+    fontSize: 12,
+    color: '#B68832',
+    fontWeight: '700',
+  },
+  pipelineValueApproved: {
+    fontSize: 12,
+    color: '#38734C',
+    fontWeight: '700',
+  },
+  pipelineValueProd: {
+    fontSize: 12,
+    color: '#2C4FA1',
+    fontWeight: '700',
+  },
+  progressBarBg: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#EAE2D8',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  pipelineDivider: {
+    height: 1,
+    backgroundColor: '#F3EDE6',
+    marginVertical: 12,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(44, 30, 22, 0.12)',
-  },
-  profileMenu: {
-    position: 'absolute',
-    backgroundColor: '#FFF8F1',
-    borderRadius: 12,
-    minWidth: 230,
-    gap: 0,
+    backgroundColor: 'rgba(28, 25, 22, 0.2)',
   },
   notificationsMenu: {
     position: 'absolute',
     top: 78,
     right: 20,
     width: 320,
-    maxHeight: 420,
-    backgroundColor: '#FFF8F1',
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#D7C6B6',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    shadowColor: '#2C1E16',
+    borderColor: '#E6DDD3',
+    padding: 12,
+    shadowColor: '#1E1B18',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.15,
     shadowRadius: 22,
     elevation: 12,
   },
   notificationsTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: TEXT_DARK,
+    color: '#1E1B18',
     marginBottom: 8,
-    paddingHorizontal: 2,
   },
   notificationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 2,
+    paddingVertical: 10,
+    gap: 10,
   },
-  notificationIcon: {
+  activityIcon: {
     width: 28,
     height: 28,
-    borderRadius: 10,
-    backgroundColor: 'rgba(82,161,216,0.16)',
+    borderRadius: 8,
+    backgroundColor: '#F5F0E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -669,299 +791,63 @@ const styles = StyleSheet.create({
   },
   notificationTitle: {
     fontSize: 12,
-    color: TEXT_DARK,
+    color: '#1E1B18',
     fontWeight: '600',
   },
   notificationSubtitle: {
     fontSize: 11,
-    color: TEXT_MUTED,
-    marginTop: 1,
+    color: '#8E867D',
+    marginTop: 2,
   },
-  notificationTime: {
+  activityTime: {
     fontSize: 10,
-    color: TEXT_MUTED,
+    color: '#8E867D',
   },
   notificationDivider: {
     height: 1,
-    backgroundColor: '#E8DDD1',
-    marginLeft: 36,
+    backgroundColor: '#F5F0E8',
+    marginLeft: 38,
   },
   notificationEmpty: {
-    paddingVertical: 18,
+    padding: 20,
     alignItems: 'center',
   },
   notificationEmptyText: {
     fontSize: 12,
-    color: TEXT_MUTED,
+    color: '#8E867D',
+  },
+  profileMenu: {
+    position: 'absolute',
+    width: 180,
   },
   menuBlock: {
-    backgroundColor: '#FFF8F1',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#2C1E16',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 22,
-    elevation: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 4,
     borderWidth: 1,
-    borderColor: '#D7C6B6',
+    borderColor: '#E6DDD3',
+    shadowColor: '#1E1B18',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
   },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    gap: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  menuRowDisabled: {
-    opacity: 0.7,
+  menuRowText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#5B534B',
   },
   menuInnerDivider: {
     height: 1,
-    backgroundColor: '#E6D9CC',
-    marginHorizontal: 14,
+    backgroundColor: '#F5F0E8',
   },
-  menuAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  menuAvatarImage: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-  },
-  menuAvatarText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: TEXT_DARK,
-    textTransform: 'uppercase',
-  },
-  menuNameBlock: {
-    flex: 1,
-  },
-  menuName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: TEXT_DARK,
-  },
-  menuEmail: {
-    fontSize: 11,
-    color: TEXT_MUTED,
-    marginTop: 1,
-  },
-  menuIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuRowText: {
-    flex: 1,
-    fontSize: 14,
-    color: TEXT_DARK,
-    fontWeight: '500',
-  },
-  menuChevron: {
-    marginLeft: 'auto',
-  },
-  versionInfoBlock: {
-    backgroundColor: '#FEFCFA',
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 12,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: '#EAE2D9',
-  },
-  versionInfoTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  versionIconBox: {
-    width: 30,
-    height: 30,
-    borderRadius: 12,
-    backgroundColor: '#F7F1EB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  versionTextBlock: {
-    flex: 1,
-  },
-  versionLabel: {
-    fontSize: 11,
-    color: '#A09183',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  versionHint: {
-    fontSize: 12,
-    color: '#B1A295',
-    marginTop: 2,
-  },
-  versionValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#76685D',
-  },
-  salesCard: {
-    backgroundColor: DARK_CARD,
-    borderRadius: 12,
-    padding: Platform.OS === 'android' ? 16 : 24,
-    marginBottom: 14,
-  },
-  salesAmount: {
-    fontFamily: 'serif',
-    fontSize: Platform.OS === 'android' ? 34 : 44,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: Platform.OS === 'android' ? 2 : 4,
-  },
-  salesLabel: {
-    fontSize: Platform.OS === 'android' ? 13 : 14,
-    color: '#FFFFFF',
-    marginBottom: Platform.OS === 'android' ? 8 : 10,
-  },
-  salesBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  salesBadgeText: { fontSize: 12, fontWeight: '600' },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 24,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: Platform.OS === 'android' ? GLASS_CARD_ANDROID : GLASS_CARD_IOS,
-    borderWidth: 1.4,
-    borderColor: Platform.OS === 'android' ? 'rgba(124, 102, 80, 0.8)' : '#7C6650',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    minHeight: 78,
-    shadowColor: '#6E533D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: Platform.OS === 'android' ? 0 : 2,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: TEXT_MUTED,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    lineHeight: 14,
-  },
-  statValue: {
-    marginTop: 6,
-    fontFamily: 'serif',
-    fontSize: 28,
-    lineHeight: 31,
-    fontWeight: '700',
-    color: TEXT_DARK,
-  },
-  sectionTitle: {
-    fontFamily: 'serif',
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '700',
-    color: TEXT_DARK,
-    marginBottom: 10,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  actionBtn: {
-    flex: 1,
-    minHeight: Platform.OS === 'android' ? 68 : 86,
-    borderRadius: 14,
-    paddingVertical: Platform.OS === 'android' ? 8 : 10,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnContent: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionIconWrap: {
-    height: Platform.OS === 'android' ? 18 : 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Platform.OS === 'android' ? 4 : 7,
-  },
-  actionBtnDark: { backgroundColor: DARK_CARD },
-  actionBtnLight: { backgroundColor: ACCENT, borderWidth: 1, borderColor: '#6B4D2C' },
-  actionBtnText: {
-    fontFamily: 'serif',
-    fontSize: Platform.OS === 'android' ? 13 : 15,
-    lineHeight: Platform.OS === 'android' ? 16 : 19,
-    fontWeight: '600',
-    textAlign: 'center',
-    includeFontPadding: false,
-  },
-  activityCard: {
-    backgroundColor: 'transparent',
-    borderRadius: 12,
-    overflow: 'hidden',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  activityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 2,
-  },
-  activityDivider: {
-    marginLeft: 50,
-    marginRight: 4,
-    height: 2,
-    borderTopWidth: 1,
-    borderTopColor: '#E3D8CC',
-    borderBottomWidth: 1,
-    borderBottomColor: '#FFF8F1',
-  },
-  activityIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: BG,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  activityText: { flex: 1 },
-  activityTitle: { fontSize: 14, fontWeight: '600', color: TEXT_DARK },
-  activitySubtitle: { fontSize: 12, color: TEXT_MUTED, marginTop: 2 },
-  activityTime: { fontSize: 12, color: TEXT_MUTED },
 });
 
 export default BranchDashboardScreen;

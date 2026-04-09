@@ -11,6 +11,8 @@ export interface AuthUser {
   branchId: string | null;
   photoUrl: string | null;
   taskPermissions: TaskPermission[];
+  companyName?: string | null;
+  branchName?: string | null;
 }
 
 export interface JwtPayload {

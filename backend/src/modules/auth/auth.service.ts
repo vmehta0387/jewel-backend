@@ -44,7 +44,7 @@ export class AuthService {
   async me(userId: string): Promise<AuthUser> {
     const user = await this.userRepo.findOne({
       where: { id: userId, isActive: true },
-      relations: ['branch'],
+      relations: ['branch', 'company'],
     });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -66,7 +66,7 @@ export class AuthService {
       throw new BadRequestException('Only image files are allowed');
     }
 
-    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true }, relations: ['branch'] });
+    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true }, relations: ['branch', 'company'] });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -108,7 +108,7 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.userRepo.findOne({
       where: { email: normalizedEmail, isActive: true },
-      relations: ['branch'],
+      relations: ['branch', 'company'],
     });
 
     if (!user) {
@@ -140,6 +140,8 @@ export class AuthService {
       branchId: user.branchId || null,
       photoUrl: await this.resolvePhotoUrl(user.photoUrl || null),
       taskPermissions: user.taskPermissions || [],
+      companyName: user.company?.companyName || null,
+      branchName: user.branch?.name || null,
     };
   }
 
