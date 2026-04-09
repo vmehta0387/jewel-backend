@@ -366,6 +366,28 @@ export class OrdersService {
     const salesLastMonth = this.toNumber(summaryRow?.salesLastMonth ?? 0);
     const ordersToday = this.toNumber(summaryRow?.ordersToday ?? 0);
     const ordersThisMonth = this.toNumber(summaryRow?.ordersThisMonth ?? 0);
+    const statusRows = await baseQuery
+      .clone()
+      .select('order.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('order.status')
+      .getRawMany();
+
+    const statusCounts = new Map<string, number>();
+    for (const row of statusRows ?? []) {
+      const key = String(row?.status ?? '').toUpperCase();
+      if (!key) continue;
+      statusCounts.set(key, this.toNumber(row?.count ?? 0));
+    }
+
+    const pipeline = {
+      pending: (statusCounts.get('PENDING_APPROVAL') || 0) + (statusCounts.get('QUOTE') || 0),
+      approved: statusCounts.get('APPROVED') || 0,
+      inProduction: statusCounts.get('IN_PRODUCTION') || 0,
+      shipped: statusCounts.get('SHIPPED') || 0,
+      completed: statusCounts.get('COMPLETED') || 0,
+      cancelled: statusCounts.get('CANCELLED') || 0,
+    };
 
     const calcTrend = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
@@ -380,6 +402,7 @@ export class OrdersService {
       monthlyTrend: calcTrend(salesThisMonth, salesLastMonth),
       ordersToday,
       ordersThisMonth,
+      pipeline,
     };
   }
 
@@ -507,11 +530,14 @@ export class OrdersService {
       qb.andWhere('order.branchId = :scopeBranchId', {
         scopeBranchId: requester.branchId,
       });
-      return;
     }
 
-    if (normalizedBranchId) {
+    if (!requester.branchId && normalizedBranchId) {
       qb.andWhere('order.branchId = :scopeBranchId', { scopeBranchId: normalizedBranchId });
+    }
+
+    if (requester.role === UserRole.SALES_REP) {
+      qb.andWhere('order.salesRepId = :scopeSalesRepId', { scopeSalesRepId: requester.id });
     }
   }
 
@@ -530,6 +556,10 @@ export class OrdersService {
 
     if (requester.branchId && order.branchId !== requester.branchId) {
       throw new ForbiddenException('You cannot access another branch data');
+    }
+
+    if (requester.role === UserRole.SALES_REP && order.salesRepId !== requester.id) {
+      throw new ForbiddenException('You cannot access another sales order');
     }
   }
 

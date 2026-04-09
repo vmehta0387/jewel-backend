@@ -24,6 +24,14 @@ export const fetchOrderSummary = (token: string) =>
     monthlyTrend: number;
     ordersToday: number;
     ordersThisMonth: number;
+    pipeline?: {
+      pending: number;
+      approved: number;
+      inProduction: number;
+      shipped: number;
+      completed: number;
+      cancelled: number;
+    };
   }>('/orders/summary', { method: 'GET' }, token);
 
 export const fetchOrderTrends = (token: string) =>

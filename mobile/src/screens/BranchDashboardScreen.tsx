@@ -71,6 +71,14 @@ const BranchDashboardScreen = () => {
     monthlyTrend: number;
     ordersToday: number;
     ordersThisMonth: number;
+    pipeline?: {
+      pending: number;
+      approved: number;
+      inProduction: number;
+      shipped: number;
+      completed: number;
+      cancelled: number;
+    };
   } | null>(null);
 
   const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
@@ -90,6 +98,13 @@ const BranchDashboardScreen = () => {
 
     if (summaryRes.status === 'fulfilled') {
       setSummary(summaryRes.value);
+      if (summaryRes.value.pipeline) {
+        setPipeline({
+          pending: summaryRes.value.pipeline.pending || 0,
+          approved: summaryRes.value.pipeline.approved || 0,
+          production: summaryRes.value.pipeline.inProduction || 0,
+        });
+      }
     }
 
     let pendingCount = 0;
@@ -99,12 +114,16 @@ const BranchDashboardScreen = () => {
     let orderRows: Order[] = [];
     if (ordersRes.status === 'fulfilled') {
       orderRows = ordersRes.value.data || [];
-      orderRows.forEach(o => {
-          if (o.status === 'PENDING_APPROVAL') pendingCount++;
-          if (o.status === 'APPROVED') approvedCount++;
-          if (o.status === 'IN_PRODUCTION') productionCount++;
-      });
-      setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
+      // Fallback: if summary pipeline is unavailable for any reason,
+      // derive counts from fetched orders.
+      if (summaryRes.status !== 'fulfilled' || !summaryRes.value.pipeline) {
+        orderRows.forEach((o) => {
+          if (o.status === 'PENDING_APPROVAL' || o.status === 'QUOTE') pendingCount += 1;
+          if (o.status === 'APPROVED') approvedCount += 1;
+          if (o.status === 'IN_PRODUCTION') productionCount += 1;
+        });
+        setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
+      }
     }
 
     // Build recent activity to display in notifications
@@ -310,28 +329,36 @@ const BranchDashboardScreen = () => {
               style={[styles.quickCard, styles.quickCardDark]}
               onPress={() => navigation.navigate('OrdersTab')}
             >
-              <Ionicons name="documents-outline" size={32} color="#FFFFFF" style={{ marginBottom: 12 }} />
-              <Text style={styles.quickCardTextWhite}>My{"\n"}Orders</Text>
+              <Ionicons name="documents-outline" size={30} color="#FFFFFF" style={styles.quickCardIcon} />
+              <Text style={styles.quickCardTextWhite} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
+                My Orders
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.quickCard}
               onPress={() => navigation.navigate('DesignsTab')}
             >
-              <Ionicons name="search-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
-              <Text style={styles.quickCardTextDark}>Browse{"\n"}Catalog</Text>
+              <Ionicons name="search-outline" size={30} color="#554B41" style={styles.quickCardIcon} />
+              <Text style={styles.quickCardTextDark} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
+                Browse Catalog
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.quickCard}>
               <View style={styles.iconWithDot}>
-                <Ionicons name="qr-code-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
+                <Ionicons name="qr-code-outline" size={30} color="#554B41" style={styles.quickCardIcon} />
               </View>
-              <Text style={styles.quickCardTextDark}>Scan{"\n"}Ring</Text>
+              <Text style={styles.quickCardTextDark} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78}>
+                Scan Ring
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.quickCard}>
-              <Ionicons name="chatbubble-ellipses-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
-              <Text style={styles.quickCardTextDark}>Message{"\n"}Support</Text>
+              <Ionicons name="chatbubble-ellipses-outline" size={30} color="#554B41" style={styles.quickCardIcon} />
+              <Text style={styles.quickCardTextDark} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                Message Support
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -497,6 +524,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: Platform.OS === 'android' ? 12 : 8,
     marginBottom: 34,
   },
   logoWrapRow: {
@@ -607,8 +635,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FCFBFA',
     borderRadius: 22,
-    paddingVertical: 16,
+    minHeight: 106,
+    paddingVertical: 12,
     paddingHorizontal: 12,
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#FFFFFF',
     shadowColor: '#A19183',
@@ -625,38 +655,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#A19B94',
     letterSpacing: 1,
-    height: 26,
-    marginBottom: 4,
+    lineHeight: 12,
+    marginBottom: 2,
   },
   statLabelGold: {
     fontSize: 10,
     fontWeight: '700',
     color: '#B08846',
     letterSpacing: 1,
-    height: 26,
-    marginBottom: 4,
+    lineHeight: 12,
+    marginBottom: 2,
   },
   statNumber: {
     fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
-    fontSize: 24,
+    fontSize: 22,
     color: '#211D1A',
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   statNumberGold: {
     fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
-    fontSize: 24,
+    fontSize: 22,
     color: '#946C2B',
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   statSubTextGreen: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#4B8860',
   },
   statSubTextGold: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#A07A3E',
   },
@@ -676,9 +706,12 @@ const styles = StyleSheet.create({
     width: '47.5%',
     backgroundColor: '#FCFBFA',
     borderRadius: 22,
-    aspectRatio: 1,
+    height: 118,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#FFFFFF',
     shadowColor: '#A49789',
@@ -695,17 +728,26 @@ const styles = StyleSheet.create({
   iconWithDot: {
     position: 'relative',
   },
+  quickCardIcon: {
+    marginBottom: 2,
+  },
   quickCardTextWhite: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+    width: '100%',
+    lineHeight: 18,
+    includeFontPadding: false,
   },
   quickCardTextDark: {
     color: '#453E38',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
+    width: '100%',
+    lineHeight: 18,
+    includeFontPadding: false,
   },
   pipelineHeaderSpread: {
     flexDirection: 'row',
