@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -97,13 +98,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = useCallback(
     async (email: string, password: string) => {
       const response = await loginApi(email, password);
+      
+      const available = await checkBiometricAvailable();
+      setBiometricAvailable(available);
+
+      const promptedFlag = await AsyncStorage.getItem(BIOMETRIC_PROMPTED_KEY);
+      const isPrompted = promptedFlag === 'true';
+
+      if (available && !isPrompted) {
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            'Enable biometrics?',
+            'Use Face ID or fingerprint for faster sign-in on this device.',
+            [
+              { 
+                text: 'Not now', 
+                style: 'cancel', 
+                onPress: async () => {
+                  setBiometricPrompted(true);
+                  await AsyncStorage.setItem(BIOMETRIC_PROMPTED_KEY, 'true');
+                  setBiometricEnabled(false);
+                  await AsyncStorage.removeItem(BIOMETRIC_KEY);
+                  await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+                  resolve();
+                } 
+              },
+              { 
+                text: 'Enable', 
+                onPress: async () => {
+                  setBiometricPrompted(true);
+                  await AsyncStorage.setItem(BIOMETRIC_PROMPTED_KEY, 'true');
+                  await SecureStore.setItemAsync(SECURE_TOKEN_KEY, response.accessToken);
+                  await AsyncStorage.setItem(BIOMETRIC_KEY, 'true');
+                  setBiometricEnabled(true);
+                  resolve();
+                } 
+              },
+            ],
+            { cancelable: false }
+          );
+        });
+      }
+
       setToken(response.accessToken);
       setUser(response.user);
       await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
-
-      const available = await checkBiometricAvailable();
-      setBiometricAvailable(available);
     },
     [checkBiometricAvailable],
   );

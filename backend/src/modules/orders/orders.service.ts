@@ -324,52 +324,75 @@ export class OrdersService {
 
   async getSummary(requester: AuthUser) {
     const now = new Date();
+    
+    // Today
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
     const endOfToday = new Date(now);
     endOfToday.setHours(23, 59, 59, 999);
 
-    const startOfWeek = new Date(now);
-    const weekday = startOfWeek.getDay(); // 0 Sunday
-    const diff = (weekday + 6) % 7; // Monday start
-    startOfWeek.setDate(startOfWeek.getDate() - diff);
-    startOfWeek.setHours(0, 0, 0, 0);
+    // Yesterday
+    const startOfYesterday = new Date(startOfToday);
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const endOfYesterday = new Date(endOfToday);
+    endOfYesterday.setDate(endOfYesterday.getDate() - 1);
+
+    // This Month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    endOfMonth.setHours(23, 59, 59, 999);
+
+    // Last Month
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    startOfLastMonth.setHours(0, 0, 0, 0);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+    endOfLastMonth.setHours(23, 59, 59, 999);
 
     const baseQuery = this.orderRepo.createQueryBuilder('order');
     this.applyScopeFilter(baseQuery, requester);
+    baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
 
-    const activeOrders = await baseQuery.clone()
-      .andWhere('order.isActive = :isActive', { isActive: true })
-      .getCount();
+    // Active Orders
+    const activeOrders = await baseQuery.clone().getCount();
 
-    const ordersReceivedToday = await baseQuery.clone()
-      .andWhere('order.createdAt >= :startToday AND order.createdAt <= :endToday', {
-        startToday: startOfToday,
-        endToday: endOfToday,
-      })
-      .getCount();
-
-    const ordersDueToday = await baseQuery.clone()
-      .andWhere('order.isActive = :isActive', { isActive: true })
-      .andWhere('order.deliveryDate >= :startToday AND order.deliveryDate <= :endToday', {
-        startToday: startOfToday,
-        endToday: endOfToday,
-      })
-      .getCount();
-
-    const salesThisWeekRow = await baseQuery.clone()
+    // Sales Queries
+    const salesTodayRow = await baseQuery.clone()
       .select('SUM(order.price)', 'total')
-      .andWhere('order.isActive = :isActive', { isActive: true })
-      .andWhere('order.createdAt >= :startOfWeek', { startOfWeek })
+      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfToday, end: endOfToday })
+      .getRawOne();
+      
+    const salesYesterdayRow = await baseQuery.clone()
+      .select('SUM(order.price)', 'total')
+      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfYesterday, end: endOfYesterday })
       .getRawOne();
 
-    const salesThisWeek = this.toNumber(salesThisWeekRow?.total ?? 0);
+    const salesThisMonthRow = await baseQuery.clone()
+      .select('SUM(order.price)', 'total')
+      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfMonth, end: endOfMonth })
+      .getRawOne();
+
+    const salesLastMonthRow = await baseQuery.clone()
+      .select('SUM(order.price)', 'total')
+      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfLastMonth, end: endOfLastMonth })
+      .getRawOne();
+
+    const salesToday = this.toNumber(salesTodayRow?.total ?? 0);
+    const salesYesterday = this.toNumber(salesYesterdayRow?.total ?? 0);
+    const salesThisMonth = this.toNumber(salesThisMonthRow?.total ?? 0);
+    const salesLastMonth = this.toNumber(salesLastMonthRow?.total ?? 0);
+
+    const calcTrend = (current: number, previous: number) => {
+      if (previous === 0) return current > 0 ? 100 : 0;
+      return Math.round(((current - previous) / previous) * 100);
+    };
 
     return {
       activeOrders,
-      ordersReceivedToday,
-      ordersDueToday,
-      salesThisWeek,
+      salesToday,
+      todayTrend: calcTrend(salesToday, salesYesterday),
+      salesThisMonth,
+      monthlyTrend: calcTrend(salesThisMonth, salesLastMonth),
     };
   }
 

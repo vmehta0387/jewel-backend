@@ -1,4 +1,4 @@
-﻿import { apiRequest } from './client';
+import { apiRequest } from './client';
 import type { OrdersResponse, Order } from '../types';
 
 export const fetchOrders = (
@@ -17,10 +17,11 @@ export const fetchOrders = (
 
 export const fetchOrderSummary = (token: string) =>
   apiRequest<{
-    ordersReceivedToday: number;
-    ordersDueToday: number;
-    salesThisWeek: number;
     activeOrders: number;
+    salesToday: number;
+    todayTrend: number;
+    salesThisMonth: number;
+    monthlyTrend: number;
   }>('/orders/summary', { method: 'GET' }, token);
 
 export const fetchOrderTrends = (token: string) =>

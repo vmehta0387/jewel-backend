@@ -14,6 +14,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { uploadMyPhoto } from '../api/auth';
@@ -63,10 +64,11 @@ const BranchDashboardScreen = () => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [summary, setSummary] = useState<{
-    ordersReceivedToday: number;
-    ordersDueToday: number;
-    salesThisWeek: number;
     activeOrders: number;
+    salesToday: number;
+    todayTrend: number;
+    salesThisMonth: number;
+    monthlyTrend: number;
   } | null>(null);
 
   const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
@@ -218,635 +220,668 @@ const BranchDashboardScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Block with Logo + Icons from old design */}
-        <View style={styles.header}>
-          <View style={styles.logoRow}>
-            <View style={styles.blackLogo}>
-              <Ionicons name="flash" size={24} color="#CE9C36" />
+    <View style={styles.container}>
+      <LinearGradient 
+        colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} 
+        style={StyleSheet.absoluteFillObject} 
+      />
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Top Brand & Notification Row */}
+          <View style={styles.header}>
+            <View style={styles.logoWrapRow}>
+              <View style={styles.darkLogoBlock}>
+                <Ionicons name="flash-sharp" size={20} color="#DDB153" />
+              </View>
+              <View style={styles.headTextGroup}>
+                <Text style={styles.headBlitz}>BLITZ NYC</Text>
+                <Text style={styles.headSub}>Built for closers</Text>
+              </View>
             </View>
-            <View style={styles.appTitleBlock}>
-              <Text style={styles.appName}>BLITZ NYC</Text>
-              <Text style={styles.appSubtitle}>Built for closers</Text>
+
+            <View style={styles.topRightControls}>
+              <TouchableOpacity style={styles.bellTile} onPress={handleOpenNotifications}>
+                <Ionicons name="notifications-outline" size={22} color="#352D26" />
+                {notificationCount > 0 && (
+                  <View style={styles.redDot}>
+                    <Text style={styles.redDotText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                ref={profileBtnRef}
+                style={[styles.bellTile, { marginLeft: 10 }]}
+                onPress={() => {
+                  profileBtnRef.current?.measureInWindow((x, y, w, h) => {
+                    setMenuPosition({ top: y + h + 6, right: 20 });
+                    setProfileMenuVisible(true);
+                  });
+                }}
+              >
+                {user?.photoUrl ? (
+                  <Image source={{ uri: user.photoUrl }} style={styles.headerAvatarImg} />
+                ) : (
+                  <Ionicons name="person-circle-outline" size={28} color="#A79F93" />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
-          
-          <View style={styles.headerIconsContainer}>
-            {/* Notification Bell */}
-            <TouchableOpacity style={styles.iconBtn} onPress={handleOpenNotifications}>
-              <Ionicons name="notifications-outline" size={22} color="#1A1816" />
-              {notificationCount > 0 ? (
-                <View style={styles.redBadge}>
-                  <Text style={styles.redBadgeText}>
-                    {notificationCount > 99 ? '99+' : notificationCount}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
 
-            {/* Profile Avatar (From Current Design) */}
-            <TouchableOpacity
-              ref={profileBtnRef}
-              style={styles.iconBtn}
-              onPress={() => {
-                profileBtnRef.current?.measureInWindow((x, y, w, h) => {
-                  setMenuPosition({ top: y + h + 6, right: 20 });
-                  setProfileMenuVisible(true);
-                });
-              }}
-            >
-              {user?.photoUrl ? (
-                <Image source={{ uri: user.photoUrl }} style={styles.headerAvatarImg} />
-              ) : (
-                <Ionicons name="person-circle-outline" size={26} color="#1A1816" />
-              )}
-            </TouchableOpacity>
+          {/* User Greeting block */}
+          <View style={styles.greetingArea}>
+            <Text style={styles.greetingSubText}>GOOD MORNING</Text>
+            <Text style={styles.userNameText}>{repName}</Text>
+            <Text style={styles.userBranchText}>{companyBranch}</Text>
           </View>
-        </View>
 
-        {/* Greeting Area */}
-        <View style={styles.greetingArea}>
-          <Text style={styles.greetingText}>GOOD MORNING</Text>
-          <Text style={styles.userName}>{repName}</Text>
-          <Text style={styles.userBranch}>{companyBranch}</Text>
-        </View>
+          {/* Core Stats Row (3 Columns) */}
+          <View style={styles.statsHorizontal}>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>TODAY</Text>
+              <Text style={styles.statNumber}>{formatMoney(summary?.salesToday)}</Text>
+              <Text style={styles.statSubTextGreen}>
+                {summary?.todayTrend && summary.todayTrend < 0 ? '↓' : '↑'} {Math.abs(summary?.todayTrend || 0)}%
+              </Text> 
+            </View>
+            <View style={styles.statTile}>
+              <Text style={styles.statLabel}>MONTHLY</Text>
+              <Text style={styles.statNumber}>{formatMoney(summary?.salesThisMonth)}</Text>
+              <Text style={styles.statSubTextGreen}>
+                {summary?.monthlyTrend && summary.monthlyTrend < 0 ? '↓' : '↑'} {Math.abs(summary?.monthlyTrend || 0)}%
+              </Text>
+            </View>
+            <View style={[styles.statTile, styles.statTileGold]}>
+              <Text style={styles.statLabelGold}>ACTIVE ORDERS</Text>
+              <Text style={styles.statNumberGold}>{summary?.activeOrders || '0'}</Text>
+            </View>
+          </View>
 
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statTitle}>TODAY</Text>
-            <Text style={styles.statValue}>{summary?.ordersReceivedToday || 0}</Text>
-            <Text style={styles.statTrendUp}>orders</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statTitle}>MONTHLY</Text>
-            <Text style={styles.statValue}>{formatMoney(summary?.salesThisWeek)}</Text>
-            <Text style={styles.statTrendUp}>volume</Text>
-          </View>
-          <View style={[styles.statCard, styles.spiffCard]}>
-            <Text style={styles.statTitleSpiff}>ACTIVE ORDERS</Text>
-            <Text style={styles.statValueSpiff}>{summary?.activeOrders || 0}</Text>
-            <Text style={styles.statEarnedSpiff}>current</Text>
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <Text style={styles.sectionTitle}>Quick actions</Text>
-        <View style={styles.quickActionsGrid}>
-          <View style={styles.actionRow}>
+          {/* Quick Actions (2x2 Grid) */}
+          <Text style={styles.sectionHeading}>Quick actions</Text>
+          <View style={styles.quickGrid}>
             <TouchableOpacity 
-              style={[styles.actionCard, styles.actionCardDark]}
+              style={[styles.quickCard, styles.quickCardDark]}
               onPress={() => navigation.navigate('OrdersTab')}
             >
-              <Ionicons name="clipboard-outline" size={28} color="#FFFFFF" style={styles.actionIcon} />
-              <Text style={styles.actionTextDark}>My{"\n"}Orders</Text>
+              <Ionicons name="documents-outline" size={32} color="#FFFFFF" style={{ marginBottom: 12 }} />
+              <Text style={styles.quickCardTextWhite}>My{"\n"}Orders</Text>
             </TouchableOpacity>
+
             <TouchableOpacity 
-              style={styles.actionCard}
+              style={styles.quickCard}
               onPress={() => navigation.navigate('DesignsTab')}
             >
-              <Ionicons name="search-outline" size={28} color="#7E766D" style={styles.actionIcon} />
-              <Text style={styles.actionText}>Browse{"\n"}Catalog</Text>
+              <Ionicons name="search-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
+              <Text style={styles.quickCardTextDark}>Browse{"\n"}Catalog</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.quickCard}>
+              <View style={styles.iconWithDot}>
+                <Ionicons name="qr-code-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
+              </View>
+              <Text style={styles.quickCardTextDark}>Scan{"\n"}Ring</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.quickCard}>
+              <Ionicons name="chatbubble-ellipses-outline" size={32} color="#554B41" style={{ marginBottom: 12 }} />
+              <Text style={styles.quickCardTextDark}>Message{"\n"}Support</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.actionCard}>
-              <Ionicons name="apps-outline" size={28} color="#7E766D" style={styles.actionIcon} />
-              <Text style={styles.actionText}>Scan{"\n"}Ring</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionCard}>
-              <Ionicons name="chatbubble-outline" size={28} color="#7E766D" style={styles.actionIcon} />
-              <Text style={styles.actionText}>Message{"\n"}Support</Text>
+
+          {/* Sales Pipeline */}
+          <View style={styles.pipelineHeaderSpread}>
+            <Text style={styles.sectionHeading}>Sales pipeline</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
+              <Text style={styles.liveViewLink}>Live view →</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Sales Pipeline */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Sales pipeline</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
-            <Text style={styles.liveViewText}>Live view →</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.pipelinePlate}>
+            
+            <View style={styles.pipelineItem}>
+              <View style={styles.pipelineFlexText}>
+                <Text style={styles.pipeStateText}>Pending approval</Text>
+                <Text style={styles.pipeValueGold}>{pipeline.pending} orders</Text>
+              </View>
+              <View style={styles.pipeTrack}>
+                <View style={[styles.pipeFillGlowGold, { width: pipeline.pending ? '35%' : '2%' }]} />
+              </View>
+            </View>
 
-        <View style={styles.pipelineCard}>
-          <View style={styles.pipelineRow}>
-            <View style={styles.pipelineTextRow}>
-              <Text style={styles.pipelineLabel}>Pending approval</Text>
-              <Text style={styles.pipelineValuePending}>{pipeline.pending} orders</Text>
+            <View style={styles.pipelineItem}>
+              <View style={styles.pipelineFlexText}>
+                <Text style={styles.pipeStateText}>Approved</Text>
+                <Text style={styles.pipeValueGreen}>{pipeline.approved} orders</Text>
+              </View>
+              <View style={styles.pipeTrack}>
+                <View style={[styles.pipeFillGlowGreen, { width: pipeline.approved ? '65%' : '2%' }]} />
+              </View>
             </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { backgroundColor: '#C89B3A', width: pipeline.pending ? '40%' : '2%' }]} />
+
+            <View style={styles.pipelineItem}>
+              <View style={styles.pipelineFlexText}>
+                <Text style={styles.pipeStateText}>In production</Text>
+                <Text style={styles.pipeValueBlue}>{pipeline.production} orders</Text>
+              </View>
+              <View style={styles.pipeTrack}>
+                <View style={[styles.pipeFillGlowBlue, { width: pipeline.production ? '45%' : '2%' }]} />
+              </View>
             </View>
+
           </View>
 
-          <View style={styles.pipelineDivider} />
+          <View style={{ height: 24 }} />
+        </ScrollView>
 
-          <View style={styles.pipelineRow}>
-            <View style={styles.pipelineTextRow}>
-              <Text style={styles.pipelineLabel}>Approved</Text>
-              <Text style={styles.pipelineValueApproved}>{pipeline.approved} orders</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { backgroundColor: '#38734C', width: pipeline.approved ? '65%' : '2%' }]} />
-            </View>
-          </View>
-
-          <View style={styles.pipelineDivider} />
-
-          <View style={styles.pipelineRow}>
-            <View style={styles.pipelineTextRow}>
-              <Text style={styles.pipelineLabel}>In production</Text>
-              <Text style={styles.pipelineValueProd}>{pipeline.production} orders</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { backgroundColor: '#2C4FA1', width: pipeline.production ? '50%' : '2%' }]} />
-            </View>
-          </View>
-        </View>
-
-      </ScrollView>
-
-      {/* Notifications Modal (Moved Activity Content Here) */}
-      <Modal
-          visible={notificationsVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setNotificationsVisible(false)}
-        >
-          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={styles.notificationsMenu}>
-                  <Text style={styles.notificationsTitle}>Notifications & Activity</Text>
-                  {activity.length ? (
-                    <ScrollView style={{maxHeight: 280}}>
-                    {activity.slice(0, 10).map((item, index) => (
-                      <View key={item.id}>
-                        <TouchableOpacity
-                          style={styles.notificationRow}
-                          onPress={() => {
-                            setNotificationsVisible(false);
-                            navigation.navigate('OrdersTab');
-                          }}
-                        >
-                          <View style={styles.activityIcon}>
-                            <Ionicons name={item.icon} size={15} color="#5B534B" />
-                          </View>
-                          <View style={styles.notificationTextWrap}>
-                            <Text style={styles.notificationTitle} numberOfLines={1}>
-                              {item.title}
-                            </Text>
-                            <Text style={styles.notificationSubtitle} numberOfLines={1}>
-                              {item.subtitle}
-                            </Text>
-                          </View>
-                          <Text style={styles.activityTime}>{item.time}</Text>
-                        </TouchableOpacity>
-                        {index < Math.min(activity.length, 10) - 1 ? (
-                          <View style={styles.notificationDivider} />
-                        ) : null}
-                      </View>
-                    ))}
-                    </ScrollView>
-                  ) : (
-                    <View style={styles.notificationEmpty}>
-                      <Text style={styles.notificationEmptyText}>No recent activity</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-
-        {/* Profile Menu Popup (Retained logic from previous implementations) */}
+        {/* Notifications Modal Wrapper */}
         <Modal
-          visible={profileMenuVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setProfileMenuVisible(false)}
-        >
-          <TouchableWithoutFeedback onPress={() => setProfileMenuVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={[styles.profileMenu, { top: menuPosition.top, right: menuPosition.right }]}>
-                  <View style={styles.menuBlock}>
-                    <TouchableOpacity
-                      style={styles.menuRow}
-                      onPress={handleChangePhoto}
-                      disabled={uploadingPhoto}
-                    >
-                      <Text style={styles.menuRowText}>
-                        {uploadingPhoto ? 'Uploading...' : 'Update Photo'}
-                      </Text>
-                      <Ionicons name="image-outline" size={16} color="#5B534B" />
-                    </TouchableOpacity>
-                    <View style={styles.menuInnerDivider} />
-                    <TouchableOpacity
-                      style={styles.menuRow}
-                      onPress={() => {
-                        setProfileMenuVisible(false);
-                        signOut();
-                      }}
-                    >
-                      <Text style={[styles.menuRowText, { color: '#DE4A4A' }]}>Logout</Text>
-                      <Ionicons name="log-out-outline" size={16} color="#DE4A4A" />
-                    </TouchableOpacity>
+            visible={notificationsVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setNotificationsVisible(false)}
+          >
+            <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
+              <View style={styles.modalOverlayLock}>
+                <TouchableWithoutFeedback>
+                  <View style={styles.notificationsWindow}>
+                    <Text style={styles.notificationsTitle}>Notifications & Activity</Text>
+                    {activity.length ? (
+                      <ScrollView style={{maxHeight: 280}}>
+                      {activity.slice(0, 10).map((item, index) => (
+                        <View key={item.id}>
+                          <TouchableOpacity
+                            style={styles.notifRowTight}
+                            onPress={() => {
+                              setNotificationsVisible(false);
+                              navigation.navigate('OrdersTab');
+                            }}
+                          >
+                            <View style={styles.actIconBall}>
+                              <Ionicons name={item.icon} size={15} color="#5B534B" />
+                            </View>
+                            <View style={styles.notifTextBlockFlex}>
+                              <Text style={styles.notifTitleMain} numberOfLines={1}>
+                                {item.title}
+                              </Text>
+                              <Text style={styles.notifSubMain} numberOfLines={1}>
+                                {item.subtitle}
+                              </Text>
+                            </View>
+                            <Text style={styles.timeTag}>{item.time}</Text>
+                          </TouchableOpacity>
+                          {index < Math.min(activity.length, 10) - 1 ? (
+                            <View style={styles.lineDivNotification} />
+                          ) : null}
+                        </View>
+                      ))}
+                      </ScrollView>
+                    ) : (
+                      <View style={styles.emptyNotifBox}>
+                        <Text style={styles.emptyNotifString}>No recent activity</Text>
+                      </View>
+                    )}
                   </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
 
-    </SafeAreaView>
+          {/* Profile Auth Context Menu */}
+          <Modal
+            visible={profileMenuVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setProfileMenuVisible(false)}
+          >
+            <TouchableWithoutFeedback onPress={() => setProfileMenuVisible(false)}>
+              <View style={styles.modalOverlayLock}>
+                <TouchableWithoutFeedback>
+                  <View style={[styles.menuPopoutWindow, { top: menuPosition.top, left: 24 }]}>
+                    <View style={styles.menuPopInnerData}>
+                      <TouchableOpacity
+                        style={styles.menuHitRow}
+                        onPress={handleChangePhoto}
+                        disabled={uploadingPhoto}
+                      >
+                        <Text style={styles.menuHitText}>
+                          {uploadingPhoto ? 'Uploading...' : 'Update Photo'}
+                        </Text>
+                        <Ionicons name="image-outline" size={16} color="#5B534B" />
+                      </TouchableOpacity>
+                      <View style={styles.menuDividerH} />
+                      <TouchableOpacity
+                        style={styles.menuHitRow}
+                        onPress={() => {
+                          setProfileMenuVisible(false);
+                          signOut();
+                        }}
+                      >
+                        <Text style={[styles.menuHitText, { color: '#DE4A4A' }]}>Logout</Text>
+                        <Ionicons name="log-out-outline" size={16} color="#DE4A4A" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </TouchableWithoutFeedback>
+              </View>
+            </TouchableWithoutFeedback>
+          </Modal>
+
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F5F0E8' }, 
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 22, paddingBottom: 40, paddingTop: 10 },
+  container: {
+    flex: 1,
+  },
+  safe: {
+    flex: 1,
+  },
+  scroll: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    paddingTop: 8,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 34,
   },
-  logoRow: {
+  logoWrapRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  blackLogo: {
-    width: 44,
-    height: 44,
+  darkLogoBlock: {
+    width: 42,
+    height: 42,
     backgroundColor: '#1E1B18',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
+    shadowColor: '#1E1B18',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  appTitleBlock: {
+  headTextGroup: {
     justifyContent: 'center',
   },
-  appName: {
+  headBlitz: {
     fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 2,
-    color: '#1E1B18',
+    fontWeight: '800',
+    color: '#2C2723',
+    letterSpacing: 3,
   },
-  appSubtitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#B68832',
+  headSub: {
+    fontSize: 12,
+    fontWeight: '500',
     fontStyle: 'italic',
+    color: '#BC9450',
     marginTop: 2,
   },
-  headerIconsContainer: {
+  topRightControls: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E6DDD3',
+  bellTile: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#FAF5F0',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    shadowColor: '#3A2E24',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowColor: '#9D856B',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 4,
   },
-  headerAvatarImg: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-  },
-  redBadge: {
+  redDot: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: '#DE4A4A',
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -5,
+    right: -5,
+    backgroundColor: '#DE5858',
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: '#F8F4EE',
+    borderWidth: 2,
+    borderColor: '#F8EFE4',
   },
-  redBadgeText: {
+  redDotText: {
     color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
   },
   greetingArea: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  greetingText: {
+  greetingSubText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#B68832',
-    letterSpacing: 1,
-    marginBottom: 4,
+    color: '#BC9450',
+    letterSpacing: 1.5,
+    marginBottom: 8,
   },
-  userName: {
-    fontFamily: 'serif',
-    fontSize: 32,
-    color: '#1E1B18',
+  userNameText: {
+    fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
+    fontSize: 34,
+    color: '#1C1917',
     fontWeight: '500',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  userBranch: {
+  userBranchText: {
     fontSize: 13,
-    color: '#8E867D',
+    fontWeight: '500',
+    color: '#908982',
   },
-  statsGrid: {
+  headerAvatarImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  statsHorizontal: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
+    marginBottom: 34,
   },
-  statCard: {
+  statTile: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: '#3A2E24',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
+    aspectRatio: 0.95,
+    backgroundColor: '#FCFBFA',
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowColor: '#A19183',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 6,
   },
-  spiffCard: {
-    backgroundColor: '#F8EEDC', 
+  statTileGold: {
+    backgroundColor: '#FAECD6',
   },
-  statTitle: {
+  statLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#8E867D',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  statTitleSpiff: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#A97C2B',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  statValue: {
-    fontFamily: 'serif',
-    fontSize: 20,
-    color: '#1E1B18',
-    fontWeight: '500',
-    marginBottom: 6,
-  },
-  statValueSpiff: {
-    fontFamily: 'serif',
-    fontSize: 20,
-    color: '#A97C2B',
-    fontWeight: '500',
-    marginBottom: 6,
-  },
-  statTrendUp: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#38734C',
-  },
-  statEarnedSpiff: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#A97C2B',
-  },
-  sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1E1B18',
-    marginBottom: 14,
-  },
-  quickActionsGrid: {
-    gap: 12,
-    marginBottom: 32,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionCard: {
-    flex: 1, 
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    aspectRatio: 1.1,
-    shadowColor: '#3A2E24',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
-  },
-  actionCardDark: {
-    backgroundColor: '#1E1B18',
-  },
-  actionIcon: {
+    color: '#A19B94',
+    letterSpacing: 1,
     marginBottom: 10,
   },
-  actionTextDark: {
+  statLabelGold: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#B08846',
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
+  statNumber: {
+    fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
+    fontSize: 24,
+    color: '#211D1A',
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  statNumberGold: {
+    fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
+    fontSize: 24,
+    color: '#946C2B',
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  statSubTextGreen: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B8860',
+  },
+  statSubTextGold: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A07A3E',
+  },
+  sectionHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#201D1A',
+    marginBottom: 16,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    marginBottom: 36,
+  },
+  quickCard: {
+    width: '47.5%',
+    backgroundColor: '#FCFBFA',
+    borderRadius: 22,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowColor: '#A49789',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 8,
+  },
+  quickCardDark: {
+    backgroundColor: '#26221E',
+    borderWidth: 0,
+    shadowColor: '#1A1816',
+  },
+  iconWithDot: {
+    position: 'relative',
+  },
+  quickCardTextWhite: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 16,
   },
-  actionText: {
-    color: '#5B534B',
-    fontSize: 12,
-    fontWeight: '600',
+  quickCardTextDark: {
+    color: '#453E38',
+    fontSize: 14,
+    fontWeight: '500',
     textAlign: 'center',
-    lineHeight: 16,
   },
-  sectionHeaderRow: {
+  pipelineHeaderSpread: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  liveViewText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#B68832',
+  liveViewLink: {
+    fontSize: 12,
+    fontWeight: '600',
     fontStyle: 'italic',
+    color: '#C39A57',
   },
-  pipelineCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 20,
-    shadowColor: '#3A2E24',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 1,
+  pipelinePlate: {
+    width: '100%',
+    backgroundColor: '#FAFAF9',
+    borderRadius: 24,
+    paddingVertical: 22,
+    paddingHorizontal: 22,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    shadowColor: '#ABA195',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.24,
+    shadowRadius: 32,
+    elevation: 10,
+    gap: 18,
   },
-  pipelineRow: {
-    marginVertical: 4,
+  pipelineItem: {
+    width: '100%',
   },
-  pipelineTextRow: {
+  pipelineFlexText: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 10,
   },
-  pipelineLabel: {
-    fontSize: 12,
-    color: '#5B534B',
-    fontWeight: '500',
+  pipeStateText: {
+    fontSize: 13,
+    color: '#453E38',
+    fontWeight: '600',
   },
-  pipelineValuePending: {
-    fontSize: 12,
-    color: '#B68832',
+  pipeValueGold: {
+    fontSize: 13,
+    color: '#BA9252',
     fontWeight: '700',
   },
-  pipelineValueApproved: {
-    fontSize: 12,
-    color: '#38734C',
+  pipeValueGreen: {
+    fontSize: 13,
+    color: '#4C8560',
     fontWeight: '700',
   },
-  pipelineValueProd: {
-    fontSize: 12,
-    color: '#2C4FA1',
+  pipeValueBlue: {
+    fontSize: 13,
+    color: '#4768AB',
     fontWeight: '700',
   },
-  progressBarBg: {
+  pipeTrack: {
     width: '100%',
     height: 6,
-    backgroundColor: '#EAE2D8',
+    backgroundColor: '#EBE4DC',
     borderRadius: 3,
-    overflow: 'hidden',
   },
-  progressBarFill: {
+  pipeFillGlowGold: {
     height: '100%',
+    backgroundColor: '#C59A44',
     borderRadius: 3,
   },
-  pipelineDivider: {
-    height: 1,
-    backgroundColor: '#F3EDE6',
-    marginVertical: 12,
+  pipeFillGlowGreen: {
+    height: '100%',
+    backgroundColor: '#528E67',
+    borderRadius: 3,
   },
-  modalOverlay: {
+  pipeFillGlowBlue: {
+    height: '100%',
+    backgroundColor: '#5075BA',
+    borderRadius: 3,
+  },
+  // Reused Modal Styles
+  modalOverlayLock: {
     flex: 1,
-    backgroundColor: 'rgba(28, 25, 22, 0.2)',
+    backgroundColor: 'rgba(28, 25, 22, 0.35)',
   },
-  notificationsMenu: {
+  notificationsWindow: {
     position: 'absolute',
-    top: 78,
+    top: 90,
     right: 20,
     width: 320,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    backgroundColor: '#FAFAF9',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E6DDD3',
-    padding: 12,
-    shadowColor: '#1E1B18',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 22,
-    elevation: 12,
+    borderColor: '#FFFFFF',
+    padding: 16,
+    shadowColor: '#1A1816',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 30,
+    elevation: 16,
   },
   notificationsTitle: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#1E1B18',
-    marginBottom: 8,
+    color: '#26221E',
+    marginBottom: 12,
   },
-  notificationRow: {
+  notifRowTight: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    gap: 10,
+    paddingVertical: 12,
+    gap: 12,
   },
-  activityIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    backgroundColor: '#F5F0E8',
+  actIconBall: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#F0E9DF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notificationTextWrap: {
+  notifTextBlockFlex: {
     flex: 1,
   },
-  notificationTitle: {
-    fontSize: 12,
-    color: '#1E1B18',
+  notifTitleMain: {
+    fontSize: 13,
+    color: '#26221E',
     fontWeight: '600',
   },
-  notificationSubtitle: {
-    fontSize: 11,
+  notifSubMain: {
+    fontSize: 12,
     color: '#8E867D',
     marginTop: 2,
   },
-  activityTime: {
-    fontSize: 10,
-    color: '#8E867D',
+  timeTag: {
+    fontSize: 11,
+    color: '#AFA8A0',
   },
-  notificationDivider: {
+  lineDivNotification: {
     height: 1,
-    backgroundColor: '#F5F0E8',
-    marginLeft: 38,
+    backgroundColor: '#EEE8E0',
+    marginLeft: 46,
   },
-  notificationEmpty: {
-    padding: 20,
+  emptyNotifBox: {
+    padding: 24,
     alignItems: 'center',
   },
-  notificationEmptyText: {
-    fontSize: 12,
-    color: '#8E867D',
+  emptyNotifString: {
+    fontSize: 13,
+    color: '#9E968D',
   },
-  profileMenu: {
+  menuPopoutWindow: {
     position: 'absolute',
-    width: 180,
+    width: 200,
   },
-  menuBlock: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 4,
+  menuPopInnerData: {
+    backgroundColor: '#FAFAF9',
+    borderRadius: 16,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#E6DDD3',
-    shadowColor: '#1E1B18',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 8,
+    borderColor: '#FFFFFF',
+    shadowColor: '#1A1816',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 12,
   },
-  menuRow: {
+  menuHitRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
-  menuRowText: {
-    fontSize: 13,
+  menuHitText: {
+    fontSize: 14,
     fontWeight: '500',
-    color: '#5B534B',
+    color: '#4B433C',
   },
-  menuInnerDivider: {
+  menuDividerH: {
     height: 1,
-    backgroundColor: '#F5F0E8',
+    backgroundColor: '#EFEDE9',
   },
 });
 
