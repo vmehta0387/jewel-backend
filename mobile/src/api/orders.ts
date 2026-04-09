@@ -22,6 +22,8 @@ export const fetchOrderSummary = (token: string) =>
     todayTrend: number;
     salesThisMonth: number;
     monthlyTrend: number;
+    ordersToday: number;
+    ordersThisMonth: number;
   }>('/orders/summary', { method: 'GET' }, token);
 
 export const fetchOrderTrends = (token: string) =>

@@ -69,6 +69,8 @@ const BranchDashboardScreen = () => {
     todayTrend: number;
     salesThisMonth: number;
     monthlyTrend: number;
+    ordersToday: number;
+    ordersThisMonth: number;
   } | null>(null);
 
   const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
@@ -282,22 +284,22 @@ const BranchDashboardScreen = () => {
           {/* Core Stats Row (3 Columns) */}
           <View style={styles.statsHorizontal}>
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>TODAY</Text>
-              <Text style={styles.statNumber}>{formatMoney(summary?.salesToday)}</Text>
+              <Text style={styles.statLabel}>TODAY ORDERS</Text>
+              <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>{summary?.ordersToday ?? 0}</Text>
               <Text style={styles.statSubTextGreen}>
-                {summary?.todayTrend && summary.todayTrend < 0 ? '↓' : '↑'} {Math.abs(summary?.todayTrend || 0)}%
+                Sales {formatMoney(summary?.salesToday)}
               </Text> 
             </View>
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>MONTHLY</Text>
-              <Text style={styles.statNumber}>{formatMoney(summary?.salesThisMonth)}</Text>
+              <Text style={styles.statLabel}>MONTHLY ORDERS</Text>
+              <Text style={styles.statNumber} numberOfLines={1} adjustsFontSizeToFit>{summary?.ordersThisMonth ?? 0}</Text>
               <Text style={styles.statSubTextGreen}>
-                {summary?.monthlyTrend && summary.monthlyTrend < 0 ? '↓' : '↑'} {Math.abs(summary?.monthlyTrend || 0)}%
+                Sales {formatMoney(summary?.salesThisMonth)}
               </Text>
             </View>
             <View style={[styles.statTile, styles.statTileGold]}>
               <Text style={styles.statLabelGold}>ACTIVE ORDERS</Text>
-              <Text style={styles.statNumberGold}>{summary?.activeOrders || '0'}</Text>
+              <Text style={styles.statNumberGold} numberOfLines={1} adjustsFontSizeToFit>{summary?.activeOrders || '0'}</Text>
             </View>
           </View>
 
@@ -603,10 +605,9 @@ const styles = StyleSheet.create({
   },
   statTile: {
     flex: 1,
-    aspectRatio: 0.95,
     backgroundColor: '#FCFBFA',
     borderRadius: 22,
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#FFFFFF',
@@ -624,14 +625,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#A19B94',
     letterSpacing: 1,
-    marginBottom: 10,
+    height: 26,
+    marginBottom: 4,
   },
   statLabelGold: {
     fontSize: 10,
     fontWeight: '700',
     color: '#B08846',
     letterSpacing: 1,
-    marginBottom: 10,
+    height: 26,
+    marginBottom: 4,
   },
   statNumber: {
     fontFamily: Platform.OS === 'ios' ? 'Hoefler Text' : 'serif',
@@ -886,3 +889,4 @@ const styles = StyleSheet.create({
 });
 
 export default BranchDashboardScreen;
+

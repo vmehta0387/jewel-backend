@@ -323,32 +323,6 @@ export class OrdersService {
   }
 
   async getSummary(requester: AuthUser) {
-    const now = new Date();
-    
-    // Today
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(now);
-    endOfToday.setHours(23, 59, 59, 999);
-
-    // Yesterday
-    const startOfYesterday = new Date(startOfToday);
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-    const endOfYesterday = new Date(endOfToday);
-    endOfYesterday.setDate(endOfYesterday.getDate() - 1);
-
-    // This Month
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    endOfMonth.setHours(23, 59, 59, 999);
-
-    // Last Month
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    startOfLastMonth.setHours(0, 0, 0, 0);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-    endOfLastMonth.setHours(23, 59, 59, 999);
-
     const baseQuery = this.orderRepo.createQueryBuilder('order');
     this.applyScopeFilter(baseQuery, requester);
     baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
@@ -356,31 +330,42 @@ export class OrdersService {
     // Active Orders
     const activeOrders = await baseQuery.clone().getCount();
 
-    // Sales Queries
-    const salesTodayRow = await baseQuery.clone()
-      .select('SUM(order.price)', 'total')
-      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfToday, end: endOfToday })
-      .getRawOne();
-      
-    const salesYesterdayRow = await baseQuery.clone()
-      .select('SUM(order.price)', 'total')
-      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfYesterday, end: endOfYesterday })
+    // NOTE:
+    // Use DB date boundaries (CURDATE/CURRENT_DATE) instead of JS Date ranges to avoid
+    // server-timezone drift causing wrong "today/monthly" values.
+    const summaryRow = await baseQuery.clone()
+      .select(
+        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
+        'salesToday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
+        'salesYesterday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(CURRENT_DATE) AND MONTH(order.createdAt) = MONTH(CURRENT_DATE) THEN order.price ELSE 0 END), 0)`,
+        'salesThisMonth',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)) AND MONTH(order.createdAt) = MONTH(DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)) THEN order.price ELSE 0 END), 0)`,
+        'salesLastMonth',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = CURRENT_DATE THEN 1 ELSE 0 END), 0)`,
+        'ordersToday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(CURRENT_DATE) AND MONTH(order.createdAt) = MONTH(CURRENT_DATE) THEN 1 ELSE 0 END), 0)`,
+        'ordersThisMonth',
+      )
       .getRawOne();
 
-    const salesThisMonthRow = await baseQuery.clone()
-      .select('SUM(order.price)', 'total')
-      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfMonth, end: endOfMonth })
-      .getRawOne();
-
-    const salesLastMonthRow = await baseQuery.clone()
-      .select('SUM(order.price)', 'total')
-      .andWhere('order.createdAt >= :start AND order.createdAt <= :end', { start: startOfLastMonth, end: endOfLastMonth })
-      .getRawOne();
-
-    const salesToday = this.toNumber(salesTodayRow?.total ?? 0);
-    const salesYesterday = this.toNumber(salesYesterdayRow?.total ?? 0);
-    const salesThisMonth = this.toNumber(salesThisMonthRow?.total ?? 0);
-    const salesLastMonth = this.toNumber(salesLastMonthRow?.total ?? 0);
+    const salesToday = this.toNumber(summaryRow?.salesToday ?? 0);
+    const salesYesterday = this.toNumber(summaryRow?.salesYesterday ?? 0);
+    const salesThisMonth = this.toNumber(summaryRow?.salesThisMonth ?? 0);
+    const salesLastMonth = this.toNumber(summaryRow?.salesLastMonth ?? 0);
+    const ordersToday = this.toNumber(summaryRow?.ordersToday ?? 0);
+    const ordersThisMonth = this.toNumber(summaryRow?.ordersThisMonth ?? 0);
 
     const calcTrend = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
@@ -393,6 +378,8 @@ export class OrdersService {
       todayTrend: calcTrend(salesToday, salesYesterday),
       salesThisMonth,
       monthlyTrend: calcTrend(salesThisMonth, salesLastMonth),
+      ordersToday,
+      ordersThisMonth,
     };
   }
 
@@ -517,7 +504,7 @@ export class OrdersService {
       if (normalizedBranchId && normalizedBranchId !== requester.branchId) {
         throw new ForbiddenException('You cannot access another branch data');
       }
-      qb.andWhere('(order.branchId = :scopeBranchId OR order.branchId IS NULL)', {
+      qb.andWhere('order.branchId = :scopeBranchId', {
         scopeBranchId: requester.branchId,
       });
       return;
@@ -541,7 +528,7 @@ export class OrdersService {
       throw new ForbiddenException('You cannot access another company data');
     }
 
-    if (requester.branchId && order.branchId && order.branchId !== requester.branchId) {
+    if (requester.branchId && order.branchId !== requester.branchId) {
       throw new ForbiddenException('You cannot access another branch data');
     }
   }
