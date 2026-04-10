@@ -323,6 +323,7 @@ const BranchDashboardScreen = () => {
           </View>
 
           {/* Quick Actions (2x2 Grid) */}
+          <View style={styles.sectionDivider} />
           <Text style={styles.sectionHeading}>Quick actions</Text>
           <View style={styles.quickGrid}>
             <TouchableOpacity 
@@ -363,6 +364,7 @@ const BranchDashboardScreen = () => {
           </View>
 
           {/* Sales Pipeline */}
+          <View style={styles.sectionDivider} />
           <View style={styles.pipelineHeaderSpread}>
             <Text style={styles.sectionHeading}>Sales pipeline</Text>
             <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
@@ -689,6 +691,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#A07A3E',
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: '#E8DFD5',
+    marginBottom: 24,
   },
   sectionHeading: {
     fontSize: 16,

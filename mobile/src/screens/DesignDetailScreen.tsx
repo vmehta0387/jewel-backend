@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Platform,
+  Linking,
   ScrollView,
   Share,
   StyleSheet,
@@ -67,6 +68,13 @@ const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(String(version || '').trim());
   const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+};
+
+const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null) => {
+  const trimmedId = String(modelId || '').trim();
+  if (!trimmedId) return null;
+  const trimmedBase = String(baseName || '').trim() || 'drive';
+  return `https://${trimmedBase}.ijewel3d.com/${trimmedBase}/files/${trimmedId}/embedded`;
 };
 
 const toCaratLabel = (value?: string | number | null) => {
@@ -436,6 +444,10 @@ const DesignDetailScreen = () => {
 
   const gallery = useMemo(() => activeDesign?.imageUrls?.filter(Boolean) || [], [activeDesign?.imageUrls]);
   const activeImage = gallery[selectedImageIndex] || gallery[0];
+  const ijewelViewerUrl = useMemo(
+    () => buildIjewelEmbedUrl(activeDesign?.ijewelModelId, activeDesign?.ijewelBaseName),
+    [activeDesign?.ijewelModelId, activeDesign?.ijewelBaseName],
+  );
   const displayPrice = useMemo(
     () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.totalValue ?? 0 : 0),
     [activeDesign, priceByDesignId],
@@ -565,6 +577,15 @@ const DesignDetailScreen = () => {
     selectedStyle,
     selectedWeight,
   ]);
+
+  const handleOpenIjewelViewer = useCallback(async () => {
+    if (!ijewelViewerUrl) return;
+    try {
+      await Linking.openURL(ijewelViewerUrl);
+    } catch {
+      Alert.alert('Unable to open viewer', 'Please try again.');
+    }
+  }, [ijewelViewerUrl]);
 
   const generalInfoRows = useMemo(
     () =>
@@ -769,6 +790,12 @@ const DesignDetailScreen = () => {
             <Text style={styles.descriptionIntro}>
               Refined showroom-ready jewelry profile with selected specifications below.
             </Text>
+            {ijewelViewerUrl ? (
+              <TouchableOpacity style={styles.ijewelButton} activeOpacity={0.9} onPress={handleOpenIjewelViewer}>
+                <Ionicons name="cube-outline" size={16} color="#2C1E16" />
+                <Text style={styles.ijewelButtonText}>Open 3D Viewer</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <View style={styles.infoPanels}>
               <View style={styles.infoPanel}>
@@ -1125,6 +1152,24 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: '#6E635B',
     marginBottom: 10,
+  },
+  ijewelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: GLASS_BUTTON_BG,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 160, 89, 0.3)',
+    marginBottom: 12,
+  },
+  ijewelButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2C1E16',
   },
   infoPanels: {
     marginTop: 4,

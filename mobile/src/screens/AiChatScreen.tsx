@@ -12,10 +12,9 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
-import ScreenHeader from '../components/ScreenHeader';
-import Card from '../components/Card';
-import { colors, radii, spacing } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useAuth } from '../context/AuthContext';
 import { chatDesigns } from '../api/ai';
 import type { NavigationProp } from '@react-navigation/native';
@@ -35,10 +34,9 @@ type ChatMessage = {
 };
 
 const QUICK_QUESTIONS = [
-  'Search ring designs',
-  'Show the lowest price ring design',
-  'Which designs have lab diamonds?',
-  'Show bracelet designs with rose gold',
+  'Find lab diamond eternity rings',
+  'What is the status of my recent orders?',
+  'Quote price for design RING-0001',
 ];
 
 const AiChatScreen = () => {
@@ -119,9 +117,10 @@ const AiChatScreen = () => {
 
   const listEmpty = useMemo(
     () => (
-      <Card style={styles.quickQuestionCard}>
-        <Text style={styles.emptyTitle}>Try one of these</Text>
-        <Text style={styles.emptyText}>Tap any question to start.</Text>
+      <View style={styles.quickQuestionCard}>
+        <Ionicons name="sparkles" size={20} color="#DDB153" style={styles.emptyIcon} />
+        <Text style={styles.emptyTitle}>Start your session</Text>
+        <Text style={styles.emptyText}>Tap any question to see AI in action.</Text>
         <View style={styles.quickQuestionWrap}>
           {QUICK_QUESTIONS.map((question) => (
             <TouchableOpacity
@@ -135,7 +134,7 @@ const AiChatScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
-      </Card>
+      </View>
     ),
     [loading, sendMessage],
   );
@@ -156,231 +155,79 @@ const AiChatScreen = () => {
   );
 
   return (
-    <Screen>
-      <ScreenHeader
-        title="AI"
-        subtitle="Design assistant"
-        rightSlot={
-          <TouchableOpacity
-            onPress={() => setMessages([])}
-            disabled={!canClear}
-            style={[styles.clearButton, !canClear ? styles.clearDisabled : null]}
-          >
-            <Ionicons
-              name="trash-outline"
-              size={16}
-              color={canClear ? 'rgba(255, 252, 245, 0.94)' : 'rgba(255, 252, 245, 0.75)'}
-            />
-            <Text style={[styles.clearText, !canClear ? styles.clearTextDisabled : null]}>Clear</Text>
-          </TouchableOpacity>
-        }
-      />
-
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={listEmpty}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={7}
-          removeClippedSubviews
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        />
-
-        <View style={styles.inputBar}>
-          <TextInput
-            style={styles.input}
-            placeholder="Ask about a design..."
-            placeholderTextColor={colors.textMuted}
-            value={input}
-            onChangeText={setInput}
-            multiline
-          />
-          <TouchableOpacity style={[styles.sendButton, !canSend ? styles.sendDisabled : null]} onPress={handleSend}>
-            <Ionicons name="send" size={18} color="#fff" />
-          </TouchableOpacity>
+    <View style={styles.screen}>
+      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        {/* Custom Header */}
+        <View style={styles.customHeader}>
+          <View style={styles.logoWrapRow}>
+            <View style={styles.darkLogoBlock}>
+              <Ionicons name="flash-sharp" size={20} color="#DDB153" />
+            </View>
+            <View style={styles.headTextGroup}>
+              <Text style={styles.headBlitz}>Blitz AI</Text>
+              <Text style={styles.headSub}>Your 24/7 sales weapon</Text>
+            </View>
+          </View>
+          <View style={styles.topRightControls}>
+            <TouchableOpacity 
+              style={[styles.clearBtn, !canClear ? styles.clearBtnDisabled : null]} 
+              onPress={() => setMessages([])} 
+              disabled={!canClear}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={20} color={canClear ? '#2C1E16' : '#A79F93'} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.callAgentBtn} activeOpacity={0.8}>
+              <Text style={styles.callAgentText}>Call{'\n'}agent</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </KeyboardAvoidingView>
-    </Screen>
+
+        {/* Divider */}
+        <View style={styles.headerDivider} />
+
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={listEmpty}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            removeClippedSubviews
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          />
+
+          <View style={styles.inputArea}>
+            <View style={styles.inputPill}>
+              <TextInput
+                style={styles.input}
+                placeholder="Ask me anything · I never sleep"
+                placeholderTextColor="#A79687"
+                value={input}
+                onChangeText={setInput}
+                multiline
+              />
+            </View>
+            <TouchableOpacity style={[styles.sendButton, !canSend ? styles.sendDisabled : null]} onPress={handleSend} activeOpacity={0.88}>
+              <Ionicons name="flash-sharp" size={20} color="#DDB153" />
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: Platform.OS === 'android' ? 4 : spacing.lg,
-  },
-  listContent: {
-    paddingBottom: Platform.OS === 'android' ? 8 : spacing.lg,
-    gap: spacing.sm,
-  },
-  quickQuestionCard: {
-    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.22)',
-    borderColor: '#7C6650',
-    borderWidth: 1.2,
-    elevation: Platform.OS === 'android' ? 0 : 2,
-    shadowOpacity: Platform.OS === 'android' ? 0 : 0.12,
-  },
-  emptyTitle: {
-    fontFamily: 'serif',
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  emptyText: {
-    color: colors.textMuted,
-  },
-  quickQuestionWrap: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  quickQuestionChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.45)',
-  },
-  quickQuestionChipDisabled: {
-    opacity: 0.5,
-  },
-  quickQuestionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-  },
-  messageRowRight: {
-    justifyContent: 'flex-end',
-  },
-  bubble: {
-    maxWidth: '82%',
-    padding: spacing.md,
-    borderRadius: 12,
-  },
-  userBubble: {
-    backgroundColor: colors.primary,
-  },
-  assistantBubble: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userText: {
-    color: '#fff',
-  },
-  assistantText: {
-    color: colors.text,
-  },
-  imageGrid: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  imageThumb: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: colors.border,
-  },
-  designList: {
-    marginTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  designItem: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  designTitle: {
-    fontFamily: 'serif',
-    fontWeight: '700',
-    color: colors.text,
-  },
-  designMeta: {
-    marginTop: 2,
-    color: colors.textMuted,
-    fontSize: 12,
-  },
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingBottom: Platform.OS === 'android' ? 2 : 0,
-    marginBottom: Platform.OS === 'android' ? 2 : 0,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: '#fff',
-    maxHeight: 120,
-    color: colors.text,
-  },
-  sendButton: {
-    backgroundColor: colors.primaryDark,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendDisabled: {
-    opacity: 0.5,
-  },
-  clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1.2,
-    borderColor: '#2C1E16',
-    backgroundColor: '#2C1E16',
-  },
-  clearDisabled: {
-    opacity: 0.45,
-  },
-  clearText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255, 252, 245, 0.94)',
-  },
-  clearTextDisabled: {
-    color: 'rgba(255, 252, 245, 0.75)',
-  },
-});
 
 const ChatBubble = React.memo(
   ({
@@ -390,12 +237,20 @@ const ChatBubble = React.memo(
     item: ChatMessage;
     onPressDesign: (designId: string) => void;
   }) => {
-    const hasDesignTiles = item.role === 'assistant' && Boolean(item.designs?.length);
+    const isAI = item.role === 'assistant';
+    const hasDesignTiles = isAI && Boolean(item.designs?.length);
+
     return (
-      <View style={[styles.messageRow, item.role === 'user' ? styles.messageRowRight : null]}>
-        <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+      <View style={[styles.messageRow, isAI ? styles.messageRowLeft : styles.messageRowRight]}>
+        {isAI && (
+          <View style={styles.aiAvatarSmall}>
+            <Ionicons name="flash-sharp" size={14} color="#DDB153" />
+          </View>
+        )}
+        
+        <View style={[styles.bubble, isAI ? styles.aiBubble : styles.userBubble]}>
           {!hasDesignTiles ? (
-            <Text style={[styles.messageText, item.role === 'user' ? styles.userText : styles.assistantText]}>
+            <Text style={[styles.messageText, isAI ? styles.aiText : styles.userText]}>
               {item.text}
             </Text>
           ) : null}
@@ -415,6 +270,7 @@ const ChatBubble = React.memo(
                   key={design.id}
                   style={styles.designItem}
                   onPress={() => onPressDesign(design.id)}
+                  activeOpacity={0.9}
                 >
                   <Text style={styles.designTitle}>{design.designNo || 'Design'}</Text>
                   <Text style={styles.designMeta}>
@@ -431,6 +287,321 @@ const ChatBubble = React.memo(
 );
 ChatBubble.displayName = 'ChatBubble';
 
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#FAF5ED',
+  },
+  safe: {
+    flex: 1,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  logoWrapRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  darkLogoBlock: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#1E1711',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#8B7355',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#34A853',
+    borderWidth: 2,
+    borderColor: '#FCFAF8',
+  },
+  headTextGroup: {
+    justifyContent: 'center',
+  },
+  headBlitz: {
+    fontFamily: 'serif',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2C1E16',
+  },
+  headSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8E8276',
+    fontStyle: 'italic',
+  },
+  topRightControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bellBtn: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  bellIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#F3EFEA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  redBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -2,
+    backgroundColor: '#D14848',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FCFAF8',
+  },
+  redBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  callAgentBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#DCC8B2',
+    backgroundColor: '#FDFBF9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  callAgentText: {
+    fontSize: 11,
+    lineHeight: 12,
+    color: '#6A5F56',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  clearBtn: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3EFEA',
+    borderWidth: 1.5,
+    borderColor: '#DCC8B2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearBtnDisabled: {
+    opacity: 0.5,
+  },
+  headerDivider: {
+    height: 1,
+    backgroundColor: '#E8DFD5',
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  inputArea: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    backgroundColor: '#FCFAF8',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DFD5',
+  },
+  inputPill: {
+    flex: 1,
+    backgroundColor: '#F3EFEA',
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    minHeight: 46,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: '#2C1E16',
+    fontStyle: 'italic',
+    padding: 0,
+    margin: 0,
+    lineHeight: 20,
+  },
+  sendButton: {
+    backgroundColor: '#1E1711',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#8B7355',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  sendDisabled: {
+    opacity: 0.4,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 16,
+    flexGrow: 1,
+  },
+  quickQuestionCard: {
+    marginTop: 16,
+    backgroundColor: '#FDFBF9',
+    borderColor: '#DCC8B2',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  emptyIcon: {
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontFamily: 'serif',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2C1E16',
+    marginBottom: 4,
+  },
+  emptyText: {
+    color: '#8E8276',
+    fontSize: 13,
+  },
+  quickQuestionWrap: {
+    marginTop: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickQuestionChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+    backgroundColor: '#FAF5ED',
+  },
+  quickQuestionChipDisabled: {
+    opacity: 0.5,
+  },
+  quickQuestionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6A5F56',
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    width: '100%',
+  },
+  messageRowLeft: {
+    justifyContent: 'flex-start',
+  },
+  messageRowRight: {
+    justifyContent: 'flex-end',
+  },
+  aiAvatarSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: '#1E1711',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginBottom: 4,
+  },
+  bubble: {
+    maxWidth: '78%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  userBubble: {
+    backgroundColor: '#1E1711',
+    borderBottomRightRadius: 4,
+  },
+  aiBubble: {
+    backgroundColor: '#FDFBF9',
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+    borderBottomLeftRadius: 4,
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  userText: {
+    color: '#FFFFFF',
+    fontWeight: '400',
+  },
+  aiText: {
+    color: '#2C1E16',
+    fontWeight: '400',
+  },
+  imageGrid: {
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  imageThumb: {
+    width: 90,
+    height: 90,
+    borderRadius: 12,
+    backgroundColor: '#E8DFD5',
+  },
+  designList: {
+    marginTop: 10,
+    gap: 8,
+  },
+  designItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#FCFAF8',
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+  },
+  designTitle: {
+    fontFamily: 'serif',
+    fontWeight: '700',
+    color: '#2C1E16',
+    fontSize: 15,
+  },
+  designMeta: {
+    marginTop: 2,
+    color: '#8E8276',
+    fontSize: 12,
+  },
+});
+
 export default AiChatScreen;
-
-

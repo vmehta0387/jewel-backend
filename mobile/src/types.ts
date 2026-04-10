@@ -33,6 +33,8 @@ export type Design = {
   displayPrice?: number;
   grossWeight?: number;
   imageUrls?: string[];
+  ijewelModelId?: string | null;
+  ijewelBaseName?: string | null;
   metals?: Array<{
     metalCaratage?: string;
     goldColour?: string;
@@ -76,6 +78,10 @@ export type Order = {
   deliveryDate?: string | null;
   shortDescription?: string | null;
   notes?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  purchaseOrderNumber?: string | null;
   companyName?: string | null;
   branchName?: string | null;
   createdAt?: string;

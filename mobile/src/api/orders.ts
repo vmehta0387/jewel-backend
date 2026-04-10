@@ -66,6 +66,10 @@ export type CreateOrderPayload = {
   price: number;
   deliveryDate?: string;
   shortDescription?: string;
+  purchaseOrderNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   notes?: string;
   status?: string;
 };

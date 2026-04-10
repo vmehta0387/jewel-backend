@@ -355,6 +355,14 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  ijewelModelId?: string;
+
+  @IsString()
+  @IsOptional()
+  ijewelBaseName?: string;
+
+  @IsString()
+  @IsOptional()
   stlFileUrl?: string;
 
   @IsArray()
@@ -520,6 +528,14 @@ export class UpdateProductDto {
   @IsString({ each: true })
   @IsOptional()
   imageUrls?: string[];
+
+  @IsString()
+  @IsOptional()
+  ijewelModelId?: string;
+
+  @IsString()
+  @IsOptional()
+  ijewelBaseName?: string;
 
   @IsString()
   @IsOptional()

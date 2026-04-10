@@ -15,17 +15,13 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
-import Card from '../components/Card';
-import Button from '../components/Button';
-import ScreenHeader from '../components/ScreenHeader';
-import { colors, spacing } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import { useAuth } from '../context/AuthContext';
 import { fetchOrder, updateOrder } from '../api/orders';
 import { fetchDesign } from '../api/designs';
 import type { Design, Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
-import { formatDate } from '../utils/format';
 
 const formatStatusLabel = (value?: string | null) =>
   String(value || 'PENDING_APPROVAL')
@@ -34,18 +30,15 @@ const formatStatusLabel = (value?: string | null) =>
     .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
     .join(' ');
 
-const formatStatusCardValue = (value?: string | null) => {
-  const normalized = String(value || 'PENDING_APPROVAL').toUpperCase();
-  if (normalized === 'PENDING_APPROVAL') return 'Pending';
-  if (normalized === 'APPROVED') return 'Approved';
-  if (normalized === 'CANCELLED') return 'Cancelled';
-  return formatStatusLabel(value);
-};
-
 const formatCompactCurrency = (value: number | string | null | undefined) => {
   const num = Number(value);
-  if (!Number.isFinite(num)) return '$0';
-  return `$${Math.round(num)}`;
+  if (!Number.isFinite(num)) return '-';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num);
 };
 
 const toYyyyMmDd = (date: Date) => {
@@ -61,6 +54,26 @@ const toDateOrNull = (value?: string | null): Date | null => {
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
 };
+
+const formatDateLocal = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+type DetailRowProps = { label: string; value?: string | number | null; boldValue?: boolean };
+const DetailRow = ({ label, value, boldValue = false }: DetailRowProps) => (
+  <View style={styles.detailRow}>
+    <Text style={styles.detailLabel}>{label}</Text>
+    <Text style={[styles.detailValue, boldValue && styles.detailValueBold]}>{value || '-'}</Text>
+  </View>
+);
 
 const OrderDetailScreen = () => {
   const { token, user } = useAuth();
@@ -193,142 +206,169 @@ const OrderDetailScreen = () => {
 
   if (loading && !order) {
     return (
-      <Screen style={styles.center}>
-        <ActivityIndicator color="#8a6b55" />
-        <Text style={styles.muted}>Loading order...</Text>
-      </Screen>
+      <View style={styles.center}>
+        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <ActivityIndicator color="#D8AB52" />
+        <Text style={styles.muted}>Loading detail...</Text>
+      </View>
     );
   }
 
   if (!order) {
     return (
-      <Screen style={styles.center}>
-        <Text style={styles.error}>{error || 'Order not found.'}</Text>
-      </Screen>
+      <View style={styles.center}>
+        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <Text style={styles.errorText}>{error || 'Order not found.'}</Text>
+      </View>
     );
   }
+  
+  // Resolve Status string
+  const activeDesignStatus = (() => {
+    if (designDetails?.stage) return designDetails.stage;
+    const row = designDetails as any;
+    if (typeof row?.isActive === 'boolean') return row?.isActive ? 'Active' : 'Inactive';
+    if (typeof row?.status === 'string') return row?.status;
+    return undefined;
+  })();
 
   return (
-    <Screen>
+    <View style={styles.screenView}>
+      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
-          <Ionicons name="arrow-back" size={18} color="#2C1E16" />
-          <Text style={styles.backText}>Back to Orders</Text>
-        </TouchableOpacity>
+        <View style={styles.headerArea}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
+            <Ionicons name="arrow-back" size={18} color="#2C1E16" />
+            <Text style={styles.backText}>Back to Orders</Text>
+          </TouchableOpacity>
 
-        <ScreenHeader
-          title={order.orderNumber}
-          subtitle={order.designNo ? `${order.designNo}${order.designVersion ? ` - ${order.designVersion}` : ''}` : 'Order detail'}
-        />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.screenHeader}>
+            <Text style={styles.headerTitle}>{order.orderNumber}</Text>
+            <Text style={styles.headerSubtitle}>
+              {order.designNo ? `${order.designNo}${order.designVersion ? ` - ${order.designVersion}` : ''}` : 'Order detail'}
+            </Text>
+          </View>
+        </View>
 
-        <Card style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>Order Summary</Text>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          {primaryImageUrl ? (
-            <Image source={{ uri: primaryImageUrl, cache: 'force-cache' }} style={styles.designImage} resizeMode="cover" />
-          ) : null}
-
-          <View style={styles.row}>
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>Created</Text>
-              <Text style={styles.value}>{formatDate(order.createdAt)}</Text>
-            </View>
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>Expected Delivery</Text>
-              <Text style={styles.value}>{formatDate(order.deliveryDate)}</Text>
+        {primaryImageUrl ? (
+          <View style={[styles.card, { padding: 12 }]}>
+            <View style={[styles.mediaGallery, { marginBottom: 0 }]}>
+              <Image source={{ uri: primaryImageUrl, cache: 'force-cache' }} style={styles.designImage} resizeMode="cover" />
             </View>
           </View>
+        ) : null}
 
-          <View style={styles.sourceSection}>
-            <Text style={styles.sourceHeading}>Order Source</Text>
-            <View style={styles.sourceGrid}>
-              <View style={styles.sourceCell}>
-                <Text style={styles.sourceLabel}>Company</Text>
-                <Text style={styles.sourceValue} numberOfLines={1}>
-                  {order.companyName?.trim() || '-'}
-                </Text>
-              </View>
-              <View style={styles.sourceCell}>
-                <Text style={styles.sourceLabel}>Branch</Text>
-                <Text style={styles.sourceValue} numberOfLines={1}>
-                  {order.branchName?.trim() || '-'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.sourceGrid}>
-              <View style={styles.sourceCellFull}>
-                <Text style={styles.sourceLabel}>Sales Rep</Text>
-                <Text style={styles.sourceValue} numberOfLines={1}>
-                  {order.salesRepName?.trim() || order.salesRepEmail?.trim() || '-'}
-                </Text>
-              </View>
-            </View>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Design Specifications</Text>
+          <View style={styles.detailsList}>
+            <DetailRow label="Design No" value={order.designNo} boldValue />
+            <DetailRow label="Status" value={activeDesignStatus} />
+            <DetailRow label="Category" value={designDetails?.jewelryGroup} />
+            <DetailRow label="Sub Category" value={designDetails?.collection} />
+            <DetailRow label="Jewelry Size" value={designDetails?.jewelrySize} />
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Diamond Metrics</Text>
+          <View style={styles.detailsList}>
+            <DetailRow label="Diamond Type" value={designDetails?.diamondType} />
+            <DetailRow label="Diamond Spread" value={designDetails?.diamondSpread} />
+            <DetailRow label="Diamond Wt" value={designDetails?.diamondWeight || gemstoneTotalWeight.toFixed(3)} />
+            <DetailRow label="Diamond Quality" value={designDetails?.diamondQuality} />
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Order & Fulfillment</Text>
+          <View style={styles.detailsList}>
+            <DetailRow label="Price" value={formatCompactCurrency(order.price)} boldValue />
+            <DetailRow label="Quantity" value={order.quantity} />
+            <DetailRow label="Delivery Date" value={formatDateLocal(order.deliveryDate)} />
+            <DetailRow label="Purchase Order" value={order.purchaseOrderNumber} />
           </View>
 
-          <View style={styles.statRow}>
-            <View style={[styles.statCard, styles.statCardStatus]}>
-              <Text style={styles.statLabel}>Status</Text>
-              <Text style={styles.statValueStatus}>
-                {formatStatusCardValue(order.status)}
-              </Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Qty</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
-                {String(order.quantity || 1)}
-              </Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Total</Text>
-              <Text style={styles.statValue} numberOfLines={1}>
-                {formatCompactCurrency(order.price)}
-              </Text>
-            </View>
+          <View style={styles.textBlock}>
+            <Text style={styles.textLabel}>Short Description</Text>
+            <Text style={styles.textValue}>{order.shortDescription?.trim() || '-'}</Text>
           </View>
 
-          <View style={styles.notesBlock}>
-            <Text style={styles.label}>Short Description</Text>
-            <Text style={styles.notesText}>{order.shortDescription?.trim() || '-'}</Text>
+          <View style={styles.textBlock}>
+            <Text style={styles.textLabel}>Notes</Text>
+            <Text style={styles.textValue}>{order.notes?.trim() || '-'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Client Context</Text>
+          <View style={styles.detailsList}>
+            <DetailRow label="Customer Name" value={order.customerName} />
+            <DetailRow label="Customer Phone" value={order.customerPhone} />
+            <DetailRow label="Customer Email" value={order.customerEmail} />
+            <DetailRow label="Company" value={order.companyName} />
+            <DetailRow label="Branch" value={order.branchName} />
+            <DetailRow label="Sales Rep" value={order.salesRepName || order.salesRepEmail} />
+          </View>
+        </View>
+
+        <View style={[styles.card, { paddingHorizontal: 0 }]}>
+          <View style={{ paddingHorizontal: 16 }}>
+            <Text style={styles.sectionTitle}>Stone Information</Text>
           </View>
 
-          <View style={styles.notesBlock}>
-            <Text style={styles.label}>Notes</Text>
-            <Text style={styles.notesText}>{order.notes?.trim() || '-'}</Text>
-          </View>
-        </Card>
-
-        <Card style={styles.summaryCard}>
-          <Text style={styles.sectionTitle}>Gemstone Information</Text>
           {gemstoneRows.length === 0 ? (
-            <Text style={styles.emptyGemText}>No gemstone lines available for this design.</Text>
+            <Text style={styles.emptyGemText}>-</Text>
           ) : (
-            <View style={styles.gemstoneList}>
-              {gemstoneRows.map((row, index) => (
-                <View key={`gem-${index}-${row.stone || 'na'}-${row.shape || 'na'}-${row.size || 'na'}`} style={styles.gemstoneRow}>
-                  <View style={styles.gemstoneTopRow}>
-                    <Text style={styles.gemstoneTitle}>{row.stone || 'Gemstone'}</Text>
-                    <Text style={styles.gemstoneWeight}>{(Number(row.wtInCts) || 0).toFixed(3)} cts</Text>
-                  </View>
-                  <Text style={styles.gemstoneMeta}>
-                    {(row.shape || 'Shape N/A')} • {(row.size || 'Size N/A')} • {(row.color || 'Color N/A')} • {(row.quality || 'Quality N/A')}
-                  </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScrollArea}>
+              <View style={styles.tableContainer}>
+                {/* Table Header */}
+                <View style={styles.tableHeaderRow}>
+                  <Text style={[styles.tableCellHeader, { width: 120 }]}>Packet</Text>
+                  <Text style={[styles.tableCellHeader, { width: 90 }]}>Stone</Text>
+                  <Text style={[styles.tableCellHeader, { width: 80 }]}>Shape</Text>
+                  <Text style={[styles.tableCellHeader, { width: 70 }]}>Size</Text>
+                  <Text style={[styles.tableCellHeader, { width: 80 }]}>Color</Text>
+                  <Text style={[styles.tableCellHeader, { width: 80 }]}>Quality</Text>
+                  <Text style={[styles.tableCellHeader, { width: 70 }]}>Wt/Pcs</Text>
+                  <Text style={[styles.tableCellHeader, { width: 60 }]}>Pcs</Text>
+                  <Text style={[styles.tableCellHeader, { width: 80, paddingRight: 16 }]}>Wt (Cts)</Text>
                 </View>
-              ))}
-              <View style={styles.gemstoneFooter}>
-                <Text style={styles.gemstoneFooterLabel}>Total Gem Weight</Text>
-                <Text style={styles.gemstoneFooterValue}>{gemstoneTotalWeight.toFixed(3)} cts</Text>
+
+                {/* Table Body */}
+                {gemstoneRows.map((row, index) => (
+                  <View key={`gem-${index}`} style={styles.tableRow}>
+                    <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.packetId || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 90 }]}>{row.stone || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 80 }]}>{row.shape || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 70 }]}>{row.size || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 80 }]}>{row.color || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 80 }]}>{row.quality || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 70 }]}>-</Text>
+                    <Text style={[styles.tableCell, { width: 60 }]}>-</Text>
+                    <Text style={[styles.tableCell, { width: 80, paddingRight: 16 }]}>{(Number(row.wtInCts) || 0).toFixed(3)}</Text>
+                  </View>
+                ))}
+
+                {/* Table Footer */}
+                <View style={styles.tableFooterRow}>
+                  <Text style={styles.tableCellFooterBold}>Total Wt:</Text>
+                  <Text style={styles.tableCellFooterValue}>{gemstoneTotalWeight.toFixed(3)}</Text>
+                </View>
               </View>
-            </View>
+            </ScrollView>
           )}
-        </Card>
+        </View>
 
         {canApproveReject ? (
-          <Card style={styles.manageCard}>
+          <View style={styles.card}>
             <Text style={styles.sectionTitle}>Manager Approval</Text>
-            <Text style={styles.currentStatusLine}>
-              Current Status: <Text style={styles.currentStatusValue}>{formatStatusLabel(order.status)}</Text>
-            </Text>
+            <View style={styles.statusDisplayWrap}>
+              <Text style={styles.statusDisplayTitle}>Current Status</Text>
+              <Text style={styles.statusDisplayValue}>{formatStatusLabel(order.status)}</Text>
+            </View>
 
             <Text style={styles.fieldLabel}>Expected Delivery Date</Text>
             <TouchableOpacity
@@ -339,26 +379,43 @@ const OrderDetailScreen = () => {
               <Text style={[styles.datePickerText, !deliveryDate ? styles.datePickerPlaceholder : null]}>
                 {deliveryDate ? toYyyyMmDd(deliveryDate) : 'Select expected delivery date'}
               </Text>
-              <Ionicons name="calendar-outline" size={18} color="#7e6c5f" />
+              <Ionicons name="calendar-outline" size={18} color="#A79687" />
             </TouchableOpacity>
 
             {!isApprovedOrder ? (
               <View style={styles.actionRow}>
-                <Button
-                  title="Approve"
+                <TouchableOpacity 
+                  style={styles.actionBtnWrap} 
+                  disabled={Boolean(actionLoading)} 
                   onPress={() => handleManagerAction('APPROVED')}
-                  loading={actionLoading === 'APPROVED'}
-                  disabled={Boolean(actionLoading)}
-                  style={styles.actionButton}
-                />
-                <Button
-                  title="Cancel"
+                  activeOpacity={0.88}
+                >
+                  <LinearGradient colors={['#D8AB52', '#C6973F', '#A37728']} style={styles.actionBtnPrimary}>
+                    {actionLoading === 'APPROVED' ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" style={{marginRight: 6}} />
+                        <Text style={styles.actionBtnPrimaryText}>Approve Quote</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={styles.actionBtnWrap} 
+                  disabled={Boolean(actionLoading)} 
                   onPress={() => handleManagerAction('CANCELLED')}
-                  variant="ghost"
-                  loading={actionLoading === 'CANCELLED'}
-                  disabled={Boolean(actionLoading)}
-                  style={styles.cancelButton}
-                />
+                  activeOpacity={0.88}
+                >
+                  <View style={styles.actionBtnSecondary}>
+                    {actionLoading === 'CANCELLED' ? (
+                      <ActivityIndicator color="#A04646" size="small" />
+                    ) : (
+                      <Text style={styles.actionBtnSecondaryText}>Cancel</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.approvedInfoWrap}>
@@ -368,13 +425,21 @@ const OrderDetailScreen = () => {
               </View>
             )}
 
-            <Button
-              title={savingDate ? 'Saving date...' : 'Save Delivery Date'}
+            <TouchableOpacity 
+              style={[styles.actionBtnWrap, { marginTop: 12 }]} 
+              disabled={savingDate || Boolean(actionLoading)} 
               onPress={handleSaveDeliveryDate}
-              disabled={savingDate || Boolean(actionLoading)}
-              variant="secondary"
-            />
-          </Card>
+              activeOpacity={0.88}
+            >
+              <View style={styles.saveDateBtn}>
+                {savingDate ? (
+                  <ActivityIndicator color="#6A5F56" size="small" />
+                ) : (
+                  <Text style={styles.saveDateBtnText}>Save Delivery Date</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
         ) : null}
       </ScrollView>
 
@@ -405,262 +470,323 @@ const OrderDetailScreen = () => {
           </View>
         </Modal>
       ) : null}
-    </Screen>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  screenView: {
+    flex: 1,
+    backgroundColor: '#FAF5ED',
+  },
   container: {
-    padding: spacing.lg,
-    gap: spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 24 : 48,
+    paddingBottom: Platform.OS === 'android' ? 40 : 60,
+    gap: 16,
   },
   center: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FAF5ED',
+  },
+  headerArea: {
+    marginBottom: 4,
   },
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E8DFD5',
     borderRadius: 999,
-    backgroundColor: 'rgba(255,252,245,0.7)',
-    marginBottom: -6,
+    backgroundColor: '#FDFBF9',
+    marginBottom: 16,
   },
   backText: {
     fontSize: 12,
+    fontWeight: '700',
+    color: '#6A5F56',
+  },
+  screenHeader: {
+    paddingLeft: 4,
+  },
+  headerTitle: {
+    fontFamily: 'serif',
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#2C1E16',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
     fontWeight: '600',
-    color: '#4f3b2f',
+    color: '#8E8276',
   },
   muted: {
-    color: colors.textMuted,
-    marginTop: spacing.xs,
+    color: '#8E8276',
+    marginTop: 12,
+    fontWeight: '500',
   },
-  error: {
-    color: colors.danger,
-    fontSize: 13,
+  errorText: {
+    color: '#A04646',
+    fontSize: 14,
+    fontWeight: '500',
   },
-  summaryCard: {
-    backgroundColor: 'rgba(255,252,245,0.68)',
-  },
-  manageCard: {
-    backgroundColor: 'rgba(255,252,245,0.68)',
+  card: {
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#FDFBF9',
+    shadowColor: '#8B7355',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: Platform.OS === 'android' ? 0 : 1,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontFamily: 'serif',
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: spacing.sm,
+    marginBottom: 16,
     color: '#2C1E16',
+  },
+  mediaGallery: {
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8DFD5',
+    overflow: 'hidden',
   },
   designImage: {
     width: '100%',
-    height: 180,
-    borderRadius: 14,
-    marginBottom: spacing.xs,
+    height: 220,
+    backgroundColor: '#FAF5ED',
   },
-  row: {
+  detailsList: {
+    gap: 0,
+  },
+  detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E8DD',
   },
-  statRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    minHeight: 76,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.42)',
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    justifyContent: 'space-between',
-  },
-  statCardStatus: {
-    flex: 1.15,
-  },
-  statLabel: {
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    color: colors.textMuted,
-    fontWeight: '600',
-  },
-  statValue: {
-    marginTop: 4,
-    fontSize: Platform.OS === 'android' ? 15 : 16,
-    fontWeight: '700',
-    color: '#2C1E16',
-    includeFontPadding: false,
-  },
-  statValueStatus: {
-    marginTop: 4,
-    fontSize: Platform.OS === 'android' ? 14 : 15,
-    fontWeight: '700',
-    color: '#2C1E16',
-    includeFontPadding: false,
-  },
-  infoBlock: {
-    flex: 1,
-  },
-  label: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  value: {
-    marginTop: 2,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  notesBlock: {
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-  },
-  notesText: {
-    marginTop: 4,
+  detailLabel: {
     fontSize: 13,
-    color: '#4b3b2f',
-    lineHeight: 19,
+    color: '#8E8276',
+    fontWeight: '600',
+    flex: 1,
   },
-  sourceSection: {
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    gap: spacing.xs,
+  detailValue: {
+    fontSize: 13,
+    color: '#2C1E16',
+    fontWeight: '500',
+    flex: 1.5,
+    textAlign: 'right',
   },
-  sourceHeading: {
+  detailValueBold: {
+    fontWeight: '700',
+    color: '#C6973F',
+  },
+  textBlock: {
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  textLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: '#2C1E16',
-    marginBottom: 2,
+    marginBottom: 6,
   },
-  sourceGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  sourceCell: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.36)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  sourceCellFull: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.36)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  sourceLabel: {
-    fontSize: 11,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.35,
-    fontWeight: '600',
-  },
-  sourceValue: {
-    marginTop: 3,
+  textValue: {
     fontSize: 13,
-    color: '#3d2f25',
-    fontWeight: '700',
+    color: '#6A5F56',
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
   emptyGemText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
+    color: '#A0978C',
+    fontSize: 14,
+    fontWeight: '500',
+    paddingHorizontal: 16,
   },
-  gemstoneList: {
-    gap: spacing.sm,
+  tableScrollArea: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
   },
-  gemstoneRow: {
+  tableContainer: {
+    minWidth: 700,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
+    borderColor: '#DCC8B2',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  tableHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F3E8D6',
+    borderBottomWidth: 1,
+    borderBottomColor: '#DCC8B2',
+  },
+  tableCellHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8E6840',
+    textTransform: 'uppercase',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FDFBF9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8DFD5',
+  },
+  tableCell: {
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.38)',
+    paddingHorizontal: 10,
+    fontSize: 12,
+    color: '#6A5F56',
+    fontWeight: '500',
   },
-  gemstoneTopRow: {
+  tableFooterRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: '#FAF5ED',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    gap: spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
   },
-  gemstoneTitle: {
+  tableCellFooterBold: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8E8276',
+    marginRight: 10,
+  },
+  tableCellFooterValue: {
     fontSize: 14,
     fontWeight: '700',
     color: '#2C1E16',
   },
-  gemstoneWeight: {
-    fontSize: 12,
-    color: '#5f4b3d',
-    fontWeight: '600',
-  },
-  gemstoneMeta: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#6f5e52',
-    lineHeight: 18,
-  },
-  gemstoneFooter: {
-    marginTop: 2,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 10,
+  statusDisplayWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FBF9F6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8DFD5',
   },
-  gemstoneFooterLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
+  statusDisplayTitle: {
+    fontSize: 13,
     fontWeight: '600',
+    color: '#8E8276',
   },
-  gemstoneFooterValue: {
+  statusDisplayValue: {
     fontSize: 14,
-    color: '#2C1E16',
     fontWeight: '700',
+    color: '#2C1E16',
   },
   fieldLabel: {
-    marginTop: spacing.sm,
+    marginTop: 16,
     fontSize: 12,
-    color: colors.textMuted,
+    color: '#8E8276',
+    fontWeight: '600',
   },
   datePickerTrigger: {
-    height: 40,
+    height: 48,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderColor: '#DCC8B2',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#FBF9F6',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.xs,
+    marginTop: 8,
   },
   datePickerText: {
     color: '#2C1E16',
     fontSize: 14,
+    fontWeight: '600',
   },
   datePickerPlaceholder: {
-    color: '#a08f80',
+    color: '#A59D96',
+    fontWeight: '500',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 4,
+  },
+  actionBtnWrap: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  actionBtnPrimary: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  actionBtnSecondary: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#E8A3A3',
+    backgroundColor: '#FDF5F5',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnSecondaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#A04646',
+  },
+  saveDateBtn: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#DCC8B2',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveDateBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6A5F56',
+  },
+  approvedInfoWrap: {
+    marginTop: 20,
+    marginBottom: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#C9DCCF',
+    borderRadius: 12,
+    backgroundColor: '#E4F5EA',
+  },
+  approvedInfoText: {
+    fontSize: 13,
+    color: '#346B48',
+    fontWeight: '600',
   },
   iosPickerOverlay: {
     flex: 1,
@@ -677,55 +803,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e6dfd8',
+    borderBottomColor: '#F0E8DD',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   iosPickerAction: {
-    color: '#7b4f2f',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  currentStatusLine: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 2,
-  },
-  currentStatusValue: {
-    color: '#4f3b2f',
+    color: '#C6973F',
+    fontSize: 16,
     fontWeight: '700',
-  },
-  approvedInfoWrap: {
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#c9dccf',
-    borderRadius: 10,
-    backgroundColor: 'rgba(228,245,234,0.7)',
-  },
-  approvedInfoText: {
-    fontSize: 12,
-    color: '#356b48',
-    fontWeight: '600',
-  },
-  actionButton: {
-    flex: 1,
-  },
-  cancelButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#c99898',
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,245,245,0.6)',
   },
 });
 

@@ -401,6 +401,8 @@ export class ProductsService {
       livePrice: summary.totalValue,
       stlFileUrl: this.optionalText(dto.stlFileUrl),
       imageUrls: this.normalizeGalleryUrls(dto.imageUrls),
+      ijewelModelId: this.optionalText(dto.ijewelModelId),
+      ijewelBaseName: this.optionalText(dto.ijewelBaseName),
       isActive: dto.isActive ?? true,
       isPrimary,
       createdBy: requester.id,
@@ -1344,6 +1346,8 @@ export class ProductsService {
     if (dto.remarks !== undefined) design.remarks = this.optionalText(dto.remarks);
     if (dto.imageUrls !== undefined) design.imageUrls = this.normalizeGalleryUrls(dto.imageUrls);
     if (dto.stlFileUrl !== undefined) design.stlFileUrl = this.optionalText(dto.stlFileUrl);
+    if (dto.ijewelModelId !== undefined) design.ijewelModelId = this.optionalText(dto.ijewelModelId);
+    if (dto.ijewelBaseName !== undefined) design.ijewelBaseName = this.optionalText(dto.ijewelBaseName);
     if (dto.isActive !== undefined) design.isActive = dto.isActive;
     design.metalValue = summary.metalValue;
     design.gemValue = summary.gemValue;

@@ -119,6 +119,12 @@ export class Design {
   @Column({ name: 'image_urls', type: 'json', nullable: true })
   imageUrls: string[];
 
+  @Column({ name: 'ijewel_model_id', nullable: true, length: 120 })
+  ijewelModelId: string | null;
+
+  @Column({ name: 'ijewel_base_name', nullable: true, length: 80 })
+  ijewelBaseName: string | null;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

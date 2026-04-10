@@ -71,6 +71,8 @@ interface DesignRow {
   isPrimary?: boolean;
   imageUrls?: string[];
   imageKeys?: string[];
+  ijewelModelId?: string | null;
+  ijewelBaseName?: string | null;
   createdAt: string;
   modifiedAt: string;
   updatedByName: string;
@@ -118,6 +120,8 @@ interface ApiDesignRow {
   remarks?: string | null;
   imageUrls?: unknown;
   imageKeys?: unknown;
+  ijewelModelId?: string | null;
+  ijewelBaseName?: string | null;
   isActive?: boolean;
   isPrimary?: boolean;
   createdAt?: string | null;
@@ -174,6 +178,8 @@ interface DesignForm {
   drawerLocation: string;
   designDescription: string;
   remarks: string;
+  ijewelModelId: string;
+  ijewelBaseName: string;
 }
 
 interface PricingRow {
@@ -578,6 +584,13 @@ const pickPrimaryDesignRow = (versions: DesignRow[]): DesignRow => {
   return versions.find((row) => row.id === primaryId) || versions[0];
 };
 
+const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null): string | null => {
+  const trimmedId = String(modelId || '').trim();
+  if (!trimmedId) return null;
+  const trimmedBase = String(baseName || '').trim() || 'drive';
+  return `https://${trimmedBase}.ijewel3d.com/${trimmedBase}/files/${trimmedId}/embedded`;
+};
+
 const designSeed: DesignRow[] = [
   { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds - EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, isPrimary: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
   { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds - GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, isPrimary: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
@@ -607,6 +620,8 @@ const defaultForm: DesignForm = {
   drawerLocation: '',
   designDescription: '',
   remarks: '',
+  ijewelModelId: '',
+  ijewelBaseName: '',
 };
 
 const defaultPacketForm: PacketForm = {
@@ -1054,6 +1069,10 @@ export default function ProductsPage() {
   const detailStlUrl = useMemo(
     () => (detailInfo?.stlFileUrl ? resolvePublicAssetUrl(detailInfo.stlFileUrl) : ''),
     [detailInfo],
+  );
+  const ijewelPreviewUrl = useMemo(
+    () => buildIjewelEmbedUrl(detailInfo?.ijewelModelId, detailInfo?.ijewelBaseName),
+    [detailInfo?.ijewelModelId, detailInfo?.ijewelBaseName],
   );
   const detailMetals = useMemo(
     () => (Array.isArray(detailDesign?.metals) ? detailDesign.metals : []),
@@ -2626,6 +2645,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       diamondWeight: masterOptions.diamondWeights[0]?.value || defaultForm.diamondWeight,
       diamondQuality: masterOptions.diamondQualities[0]?.value || defaultForm.diamondQuality,
       designStatus: masterOptions.designStatuses[0]?.value || defaultForm.designStatus,
+      ijewelModelId: '',
+      ijewelBaseName: '',
     });
     syncDesignNoFromServer(initialJewelryGroup);
     setTagPicker('');
@@ -2735,6 +2756,8 @@ const createDefaultVendorRow = (): VendorRow => ({
         drawerLocation: detail.drawerLocation || '',
         designDescription: detail.designDescription || '',
         remarks: detail.remarks || row.remarks || '',
+        ijewelModelId: asInput(detail.ijewelModelId),
+        ijewelBaseName: asInput(detail.ijewelBaseName),
       };
 
       setForm({ ...baseForm, ...(overrides || {}) });
@@ -3089,6 +3112,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       tags: selectedTags,
       imageUrls: galleryKeys,
       stlFileUrl: stlItem?.key || stlItem?.url || undefined,
+      ijewelModelId: form.ijewelModelId.trim(),
+      ijewelBaseName: form.ijewelBaseName.trim(),
     };
     const createPayload = {
       ...basePayload,
@@ -4892,6 +4917,51 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </div>
                     </div>
                   )}
+                  <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      iJewel 3D Embed
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Paste the iJewel model ID to embed the public 3D viewer in design details.
+                    </p>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3">
+                      <div className="md:col-span-2">
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">Model ID</label>
+                        <input
+                          className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                          value={form.ijewelModelId}
+                          onChange={(event) =>
+                            setForm((prev) => ({ ...prev, ijewelModelId: event.target.value }))
+                          }
+                          placeholder="Paste iJewel model ID"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">Base Name</label>
+                        <input
+                          className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                          value={form.ijewelBaseName}
+                          onChange={(event) =>
+                            setForm((prev) => ({ ...prev, ijewelBaseName: event.target.value }))
+                          }
+                          placeholder="drive"
+                        />
+                      </div>
+                    </div>
+                    {form.ijewelModelId.trim() ? (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-xs text-slate-600">Preview link ready.</span>
+                        <a
+                          href={buildIjewelEmbedUrl(form.ijewelModelId, form.ijewelBaseName) || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          Open iJewel Viewer
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
                 </div>
                 <div className="h-fit rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
@@ -6101,6 +6171,61 @@ const createDefaultVendorRow = (): VendorRow => ({
                         <p className="text-sm font-semibold text-slate-700">No STL uploaded</p>
                         <p className="mt-1 text-xs text-slate-500">
                           Upload an STL in the design gallery section to preview the 3D model here.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded border border-gray-200">
+                  <div className="flex items-center justify-between border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">
+                    <span className="text-sm font-semibold text-gray-800">iJewel 3D Model</span>
+                    {ijewelPreviewUrl ? (
+                      <a
+                        href={ijewelPreviewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-semibold text-[#81A6C6] hover:text-[#6f93b0]"
+                      >
+                        Open Viewer
+                      </a>
+                    ) : null}
+                  </div>
+                  <div className="space-y-3 p-3">
+                    {ijewelPreviewUrl ? (
+                      <>
+                        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                          <iframe
+                            title={`iJewel ${detailInfo.designNo}`}
+                            src={ijewelPreviewUrl}
+                            className="h-72 w-full"
+                            allow="autoplay; fullscreen; xr-spatial-tracking; web-share"
+                            allowFullScreen
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                              Model ID: {detailInfo.ijewelModelId}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Embedded iJewel viewer for this design.
+                            </p>
+                          </div>
+                          <a
+                            href={ijewelPreviewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-lg border border-[#D2C4B4] bg-[#F3E3D0] px-3 py-2 text-xs font-semibold text-slate-800 transition hover:bg-[#e9d8c4]"
+                          >
+                            Open in New Tab
+                          </a>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex h-36 flex-col items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 px-4 text-center">
+                        <p className="text-sm font-semibold text-slate-700">No iJewel model linked</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Add the iJewel model ID in the design gallery section to embed the viewer.
                         </p>
                       </div>
                     )}
