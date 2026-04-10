@@ -587,7 +587,13 @@ const pickPrimaryDesignRow = (versions: DesignRow[]): DesignRow => {
 const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null): string | null => {
   const trimmedId = String(modelId || '').trim();
   if (!trimmedId) return null;
+  if (/^https?:\/\//i.test(trimmedId)) {
+    return trimmedId;
+  }
   const trimmedBase = String(baseName || '').trim() || 'drive';
+  if (trimmedBase.includes('.')) {
+    return `https://${trimmedBase}/drive/files/${trimmedId}/embedded`;
+  }
   return `https://${trimmedBase}.ijewel3d.com/${trimmedBase}/files/${trimmedId}/embedded`;
 };
 
@@ -2918,6 +2924,8 @@ const createDefaultVendorRow = (): VendorRow => ({
         drawerLocation: '',
         designDescription: '',
         remarks: row.remarks,
+        ijewelModelId: row.ijewelModelId ? String(row.ijewelModelId) : '',
+        ijewelBaseName: row.ijewelBaseName ? String(row.ijewelBaseName) : '',
       };
       setSourceDesignNo(getBaseDesignNo(row.designNo));
       setForm({ ...fallbackForm, ...(overrides || {}) });
@@ -4922,31 +4930,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                       iJewel 3D Embed
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Paste the iJewel model ID to embed the public 3D viewer in design details.
+                      Paste the iJewel embed URL (the iframe src) to show the 3D viewer in design details.
                     </p>
-                    <div className="mt-3 grid gap-2 md:grid-cols-3">
-                      <div className="md:col-span-2">
-                        <label className="mb-1 block text-xs font-semibold text-slate-700">Model ID</label>
-                        <input
-                          className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
-                          value={form.ijewelModelId}
-                          onChange={(event) =>
-                            setForm((prev) => ({ ...prev, ijewelModelId: event.target.value }))
-                          }
-                          placeholder="Paste iJewel model ID"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold text-slate-700">Base Name</label>
-                        <input
-                          className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
-                          value={form.ijewelBaseName}
-                          onChange={(event) =>
-                            setForm((prev) => ({ ...prev, ijewelBaseName: event.target.value }))
-                          }
-                          placeholder="drive"
-                        />
-                      </div>
+                    <div className="mt-3">
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">Embed URL</label>
+                      <input
+                        className="w-full rounded border border-slate-300 px-2 py-2 text-sm"
+                        value={form.ijewelModelId}
+                        onChange={(event) =>
+                          setForm((prev) => ({ ...prev, ijewelModelId: event.target.value }))
+                        }
+                        placeholder="https://ijewel.design/embedded?slug=..."
+                      />
                     </div>
                     {form.ijewelModelId.trim() ? (
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
@@ -6198,15 +6193,16 @@ const createDefaultVendorRow = (): VendorRow => ({
                             title={`iJewel ${detailInfo.designNo}`}
                             src={ijewelPreviewUrl}
                             className="h-72 w-full"
-                            allow="autoplay; fullscreen; xr-spatial-tracking; web-share"
+                            frameBorder={0}
                             allowFullScreen
+                            allow="autoplay; fullscreen; xr-spatial-tracking; web-share"
                           />
                         </div>
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-800">
-                              Model ID: {detailInfo.ijewelModelId}
-                            </p>
+                          <p className="truncate text-sm font-semibold text-slate-800">
+                            Embed URL: {detailInfo.ijewelModelId}
+                          </p>
                             <p className="text-xs text-slate-500">
                               Embedded iJewel viewer for this design.
                             </p>

@@ -73,7 +73,13 @@ const parseVersion = (version?: string | null) => {
 const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null) => {
   const trimmedId = String(modelId || '').trim();
   if (!trimmedId) return null;
+  if (/^https?:\/\//i.test(trimmedId)) {
+    return trimmedId;
+  }
   const trimmedBase = String(baseName || '').trim() || 'drive';
+  if (trimmedBase.includes('.')) {
+    return `https://${trimmedBase}/drive/files/${trimmedId}/embedded`;
+  }
   return `https://${trimmedBase}.ijewel3d.com/${trimmedBase}/files/${trimmedId}/embedded`;
 };
 
