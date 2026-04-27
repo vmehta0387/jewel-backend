@@ -42,7 +42,6 @@ type WalletSummary = {
 
 @Injectable()
 export class SpiffService {
-  private readonly unlockedOrderStatuses: OrderStatus[] = [OrderStatus.SHIPPED, OrderStatus.COMPLETED];
   private static readonly SETTINGS_KEY_POINTS_PER_DOLLAR = 'POINTS_PER_DOLLAR';
 
   constructor(
@@ -788,17 +787,6 @@ export class SpiffService {
       .andWhere('ledger.points > 0')
       .getRawOne();
 
-    const unlockedRaw = await this.ledgerRepo
-      .createQueryBuilder('ledger')
-      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
-      .select('COALESCE(SUM(ledger.points), 0)', 'points')
-      .where('ledger.userId = :userId', { userId })
-      .andWhere('ledger.points > 0')
-      .andWhere('(ledger.orderId IS NULL OR ord.status IN (:...statuses))', {
-        statuses: this.unlockedOrderStatuses,
-      })
-      .getRawOne();
-
     const committedRaw = await this.claimRepo
       .createQueryBuilder('claim')
       .select('COALESCE(SUM(claim.requestedPoints), 0)', 'points')
@@ -821,10 +809,10 @@ export class SpiffService {
       .getRawOne();
 
     const totalEarnedPoints = this.toNumber(totalEarnedRaw?.points);
-    const unlockedPoints = this.toNumber(unlockedRaw?.points);
-    const lockedPoints = Math.max(totalEarnedPoints - unlockedPoints, 0);
+    const unlockedPoints = totalEarnedPoints;
+    const lockedPoints = 0;
     const committedPoints = this.toNumber(committedRaw?.points);
-    const availablePoints = Math.max(unlockedPoints - committedPoints, 0);
+    const availablePoints = Math.max(totalEarnedPoints - committedPoints, 0);
     const fulfilledClaimedPoints = this.toNumber(fulfilledRaw?.points);
 
     return {

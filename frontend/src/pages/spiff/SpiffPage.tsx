@@ -179,6 +179,15 @@ export default function SpiffPage() {
 
   const canCreateClaim = user?.role === 'SALES_REP';
   const scopeOptions = useMemo(() => getScopeOptionsForRole(user?.role), [user?.role]);
+  const parsedPointsPerDollarInput = Math.max(1, Math.floor(Number(pointsPerDollarInput || 0)));
+  const conversionPreviewPoints = Math.max(
+    0,
+    Number(summary?.wallet?.availablePoints || summary?.wallet?.totalEarnedPoints || 0),
+  );
+  const conversionPreviewAmount =
+    Number.isFinite(parsedPointsPerDollarInput) && parsedPointsPerDollarInput > 0
+      ? conversionPreviewPoints / parsedPointsPerDollarInput
+      : 0;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -356,45 +365,59 @@ export default function SpiffPage() {
       </div>
 
       {scope === 'GLOBAL' && (user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN') ? (
-        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-900">Global Rep Ranking</p>
-            <p className="text-xs text-slate-500">Opt-in ranking for individual reps across companies.</p>
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Global Rep Ranking</p>
+              <p className="text-xs text-slate-500">Opt-in ranking for individual reps across companies.</p>
+            </div>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={includeGlobalReps}
+                onChange={(event) => setIncludeGlobalReps(event.target.checked)}
+              />
+              Show reps
+            </label>
           </div>
-          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={includeGlobalReps}
-              onChange={(event) => setIncludeGlobalReps(event.target.checked)}
-            />
-            Show reps
-          </label>
         </div>
       ) : null}
 
       {isSuperAdmin ? (
         <Card title="SPIFF Conversion Settings">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Points Per $1.00
-              </label>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                value={pointsPerDollarInput}
-                onChange={(event) => setPointsPerDollarInput(event.target.value)}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Current conversion: {config?.conversionDisplay || '100 points = $1'}
-              </p>
+          <div className="rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 px-4 py-4">
+            <label className="mb-1 block text-sm font-semibold text-slate-700">
+              Points Per $1.00
+            </label>
+
+            <div className="flex max-w-[620px] flex-nowrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900"
+                  value={pointsPerDollarInput}
+                  onChange={(event) => setPointsPerDollarInput(event.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Current conversion: {config?.conversionDisplay || '100 points = $1'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={savePointsPerDollar}
+                disabled={savingConfig || loading}
+                className="inline-flex h-11 min-w-[132px] shrink-0 items-center justify-center rounded-xl bg-[#1F1A16] px-4 text-sm font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingConfig ? 'Saving...' : 'Update Rate'}
+              </button>
             </div>
 
-            <Button type="button" onClick={savePointsPerDollar} disabled={savingConfig || loading}>
-              {savingConfig ? 'Saving...' : 'Update Rate'}
-            </Button>
+            <div className="mt-3 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+              Preview: {formatNumber(conversionPreviewPoints)} pts ≈ {formatMoney(conversionPreviewAmount)}
+            </div>
           </div>
         </Card>
       ) : null}
