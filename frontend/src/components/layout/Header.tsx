@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
@@ -14,6 +14,47 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+
+  const refreshCurrentUser = useCallback(async () => {
+    const token = getToken();
+    if (!token) return;
+
+    try {
+      const response = await api.get('/auth/me');
+      const nextUser = response.data;
+      setUser(nextUser);
+      saveAuthSession(token, nextUser);
+    } catch (error) {
+      console.error('Failed to refresh current user profile', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCurrentUser();
+
+    const onFocus = () => {
+      void refreshCurrentUser();
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'auth_user') {
+        setUser(getStoredUser());
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshCurrentUser();
+    }, 120000);
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [refreshCurrentUser]);
 
   const handleLogout = () => {
     clearAuthSession();

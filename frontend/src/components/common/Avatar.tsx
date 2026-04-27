@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 interface AvatarProps {
   name: string | null | undefined;
   src?: string;
@@ -13,6 +15,12 @@ const sizeClasses = {
 };
 
 export default function Avatar({ name, src, size = 'sm', className = '' }: AvatarProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [src]);
+
   const getInitials = (raw: string | null | undefined) => {
     const n = typeof raw === 'string' ? raw.trim() : '';
     if (!n) {
@@ -37,8 +45,13 @@ export default function Avatar({ name, src, size = 'sm', className = '' }: Avata
       className={`avatar-ring ${sizeClasses[size]} ${className}`.trim()}
       title={safeName}
     >
-      {src ? (
-        <img src={src} alt={safeName} className="h-full w-full object-cover" />
+      {src && !imageFailed ? (
+        <img
+          src={src}
+          alt={safeName}
+          className="h-full w-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
       ) : (
         <span className="avatar-text">{getInitials(name)}</span>
       )}

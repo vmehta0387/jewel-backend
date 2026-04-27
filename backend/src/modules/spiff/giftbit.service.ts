@@ -39,7 +39,7 @@ export class GiftbitService {
       price_in_cents: Math.max(1, Math.floor(input.amountCents)),
     };
 
-    const brandCodes = this.parseCsvEnv(process.env.GIFTBIT_BRAND_CODES);
+    const brandCodes = this.resolveBrandCodesByGiftCardType(input.giftCardType);
     const region = this.optionalText(process.env.GIFTBIT_REGION) || 'US';
     if (brandCodes.length > 0) {
       payload.brand_codes = brandCodes;
@@ -71,21 +71,29 @@ export class GiftbitService {
 
     const response = await this.request('POST', '/direct_links', payload);
     let rewardLink = this.extractRewardLink(response);
+    let followUps: Record<string, unknown>[] = [];
 
     if (!rewardLink) {
-      const followUp = await this.request('GET', `/links/${encodeURIComponent(requestId)}`);
-      rewardLink = this.extractRewardLink(followUp);
-      return {
-        requestId,
-        response: {
-          createResponse: response,
-          followUp,
-        },
-        rewardLink,
-      };
+      for (let attempt = 0; attempt < 3 && !rewardLink; attempt += 1) {
+        if (attempt > 0) {
+          await this.sleep(700);
+        }
+        const followUp = await this.request('GET', `/links/${encodeURIComponent(requestId)}`);
+        followUps.push(followUp);
+        rewardLink = this.extractRewardLink(followUp);
+      }
     }
 
-    return { requestId, response, rewardLink };
+    return {
+      requestId,
+      response: followUps.length
+        ? {
+            createResponse: response,
+            followUps,
+          }
+        : response,
+      rewardLink,
+    };
   }
 
   private async request(
@@ -190,6 +198,98 @@ export class GiftbitService {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private resolveBrandCodesByGiftCardType(giftCardType: string): string[] {
+    const selectedType = this.normalizeKey(giftCardType);
+    const byTypeRaw = this.optionalText(process.env.GIFTBIT_GIFTCARD_BRAND_CODES);
+
+    // Supports either:
+    // 1) JSON map:
+    //    {"Amazon":["amazon_us"],"Visa Prepaid":["visa_us"]}
+    // 2) Delimited map:
+    //    Amazon=amazon_us|amazon_ca;Visa Prepaid=visa_us
+    if (byTypeRaw) {
+      const fromJson = this.parseGiftCardBrandCodeJson(byTypeRaw, selectedType);
+      if (fromJson.length > 0) {
+        return fromJson;
+      }
+
+      const fromDelimited = this.parseGiftCardBrandCodeDelimited(byTypeRaw, selectedType);
+      if (fromDelimited.length > 0) {
+        return fromDelimited;
+      }
+    }
+
+    // Fallback global brand codes (single basket for all gift card options)
+    return this.parseCsvEnv(process.env.GIFTBIT_BRAND_CODES);
+  }
+
+  private parseGiftCardBrandCodeJson(raw: string, selectedType: string): string[] {
+    if (!raw.trim().startsWith('{')) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(parsed || {})) {
+        if (this.normalizeKey(key) !== selectedType) {
+          continue;
+        }
+
+        if (Array.isArray(value)) {
+          return value
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+        }
+
+        if (typeof value === 'string') {
+          return value
+            .split(/[|,]/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
+      }
+    } catch {
+      return [];
+    }
+
+    return [];
+  }
+
+  private parseGiftCardBrandCodeDelimited(raw: string, selectedType: string): string[] {
+    const rows = raw
+      .split(';')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    for (const row of rows) {
+      const idx = row.indexOf('=');
+      if (idx <= 0) continue;
+
+      const typePart = row.slice(0, idx).trim();
+      const codesPart = row.slice(idx + 1).trim();
+      if (!typePart || !codesPart) continue;
+      if (this.normalizeKey(typePart) !== selectedType) continue;
+
+      return codesPart
+        .split(/[|,]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    return [];
+  }
+
+  private normalizeKey(value: string | null | undefined): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private optionalText(value: unknown): string | null {

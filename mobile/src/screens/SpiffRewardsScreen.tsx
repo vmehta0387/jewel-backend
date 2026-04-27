@@ -75,6 +75,7 @@ const SpiffRewardsScreen = () => {
   const [summary, setSummary] = useState<any>(null);
   const [config, setConfig] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<any>(null);
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<any>(null);
   const [claims, setClaims] = useState<SpiffClaim[]>([]);
 
   const [requestedPoints, setRequestedPoints] = useState('');
@@ -104,10 +105,23 @@ const SpiffRewardsScreen = () => {
         }),
         fetchSpiffClaims(token, 1, 20),
       ]);
+      let globalBoardRes: any = null;
+      if (user?.role === 'SALES_REP') {
+        try {
+          globalBoardRes = await fetchSpiffLeaderboard(token, {
+            scope: 'GLOBAL',
+            period: 'MONTHLY',
+            limit: 10,
+          });
+        } catch {
+          globalBoardRes = null;
+        }
+      }
 
       setConfig(configRes);
       setSummary(summaryRes);
       setLeaderboard(leaderboardRes);
+      setGlobalLeaderboard(globalBoardRes);
       setClaims(claimsRes.data || []);
       setGiftCardType((current) => current || configRes.giftCardOptions?.[0] || 'Amazon');
     } catch (error: any) {
@@ -195,13 +209,10 @@ const SpiffRewardsScreen = () => {
   const tierCode = String(summary?.tier?.code || '').toUpperCase();
   const tierLabel = summary?.tier?.label || 'Closer';
   const tierBadge = summary?.tier?.badge || '🥉';
+  const hasGlobalBoardRows = (globalLeaderboard?.entries || []).length > 0;
+  const globalBoardScope = String(globalLeaderboard?.scope || '').toUpperCase();
 
   if (isSalesRep) {
-    const promoBandCount = Math.max(0, Math.min(5, Math.floor(totalPoints / 400)));
-    const promoBandProgress = Math.max(0.06, promoBandCount / 5);
-    const promoBraceletEarned = Math.max(0, Math.min(150, Math.round((totalPoints / 1200) * 150)));
-    const promoBraceletProgress = Math.max(0.06, promoBraceletEarned / 150);
-
     return (
       <View style={styles.screen}>
         <SafeAreaView style={styles.safe} edges={['top']}>
@@ -330,13 +341,30 @@ const SpiffRewardsScreen = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.srQuickCard, styles.srQuickCardDark, salesRepPanel === 'REDEEM' ? styles.srQuickCardDarkActive : null]}
+                  style={[
+                    styles.srQuickCard,
+                    salesRepPanel === 'REDEEM' ? styles.srQuickCardDark : null,
+                    salesRepPanel === 'REDEEM' ? styles.srQuickCardDarkActive : null,
+                  ]}
                   activeOpacity={0.9}
                   onPress={() => setSalesRepPanel('REDEEM')}
                 >
-                  <Ionicons name="card-outline" size={18} color="#D3A84D" />
-                  <Text style={[styles.srQuickTitle, styles.srQuickTitleGold]}>Redeem Points</Text>
-                  <Text style={styles.srQuickSubDark}>{`${formatMoney(redeemableAmount)} available`}</Text>
+                  <Ionicons
+                    name="card-outline"
+                    size={18}
+                    color={salesRepPanel === 'REDEEM' ? '#D3A84D' : '#5E8CC8'}
+                  />
+                  <Text
+                    style={[
+                      styles.srQuickTitle,
+                      salesRepPanel === 'REDEEM' ? styles.srQuickTitleGold : null,
+                    ]}
+                  >
+                    Redeem Points
+                  </Text>
+                  <Text style={salesRepPanel === 'REDEEM' ? styles.srQuickSubDark : styles.srQuickSub}>
+                    {`${formatMoney(redeemableAmount)} available`}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -350,37 +378,6 @@ const SpiffRewardsScreen = () => {
                     {`${formatPoints(summary?.stats?.totalClaims || 0)} claims total`}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            </View>
-
-            <View>
-              <Text style={styles.srSectionTitle}>Active promotions</Text>
-              <View style={styles.srPromoCard}>
-                <View style={styles.srPromoTopRow}>
-                  <Text style={styles.srPromoTitle}>5-Band April Bonus ⚡</Text>
-                  <View style={styles.srPromoBadge}>
-                    <Text style={styles.srPromoBadgeText}>Active</Text>
-                  </View>
-                </View>
-                <Text style={styles.srPromoSub}>Sell 5 eternity bands this month - earn $200 bonus. You're close!</Text>
-                <View style={styles.srPromoProgressTrack}>
-                  <View style={[styles.srPromoProgressFill, { width: `${promoBandProgress * 100}%` }]} />
-                </View>
-                <Text style={styles.srPromoProgressText}>{`${promoBandCount} of 5 bands ✓`}</Text>
-              </View>
-
-              <View style={styles.srPromoCard}>
-                <View style={styles.srPromoTopRow}>
-                  <Text style={styles.srPromoTitle}>Spring Bracelet Blitz</Text>
-                  <View style={styles.srPromoBadge}>
-                    <Text style={styles.srPromoBadgeText}>Active</Text>
-                  </View>
-                </View>
-                <Text style={styles.srPromoSub}>$75 per tennis bracelet sold until Apr 30. Premium clients only.</Text>
-                <View style={styles.srPromoProgressTrack}>
-                  <View style={[styles.srPromoProgressFillGold, { width: `${promoBraceletProgress * 100}%` }]} />
-                </View>
-                <Text style={styles.srPromoProgressText}>{`${formatMoney(promoBraceletEarned)} (2 bracelets)`}</Text>
               </View>
             </View>
 
@@ -456,9 +453,26 @@ const SpiffRewardsScreen = () => {
               ) : null}
 
               {salesRepPanel === 'GLOBAL_BOARD' ? (
-                <Text style={styles.emptyText}>
-                  Global board rankings are shared anonymously for reps. Detailed global view is available to admins.
-                </Text>
+                hasGlobalBoardRows ? (
+                  <>
+                    {(globalLeaderboard.entries || []).map((entry: any) => (
+                      <View key={`global-${entry.entityId}`} style={styles.boardRow}>
+                        <View>
+                          <Text style={styles.boardName}>#{entry.rank} {entry.name}</Text>
+                          <Text style={styles.boardMeta}>{entry.subtitle || '-'}</Text>
+                        </View>
+                        <Text style={styles.boardPoints}>{formatPoints(entry.points)} pts</Text>
+                      </View>
+                    ))}
+                    {globalBoardScope !== 'GLOBAL' ? (
+                      <Text style={styles.emptyText}>
+                        Global scope is restricted for this role. Showing your allowed board scope.
+                      </Text>
+                    ) : null}
+                  </>
+                ) : (
+                  <Text style={styles.emptyText}>No global board data available right now.</Text>
+                )
               ) : null}
 
               {salesRepPanel === 'ACTIVITY' ? (
@@ -984,69 +998,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8E8173',
     fontWeight: '600',
-  },
-  srPromoCard: {
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: '#E7DED4',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-    marginBottom: 9,
-  },
-  srPromoTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  srPromoTitle: {
-    fontSize: 16,
-    color: '#2A231C',
-    fontWeight: '700',
-  },
-  srPromoBadge: {
-    borderRadius: 11,
-    backgroundColor: '#E4F4EA',
-    borderWidth: 1,
-    borderColor: '#B9DFC7',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  srPromoBadgeText: {
-    fontSize: 11,
-    color: '#2E7A4B',
-    fontWeight: '700',
-  },
-  srPromoSub: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 17,
-    color: '#81776C',
-    fontWeight: '500',
-  },
-  srPromoProgressTrack: {
-    marginTop: 9,
-    height: 6,
-    borderRadius: 4,
-    backgroundColor: '#E8E0D5',
-    overflow: 'hidden',
-  },
-  srPromoProgressFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: '#2E8F67',
-  },
-  srPromoProgressFillGold: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: '#BD9042',
-  },
-  srPromoProgressText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: '#97753D',
-    fontWeight: '700',
-    textAlign: 'right',
   },
   header: {
     paddingHorizontal: 14,
