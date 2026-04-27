@@ -47,12 +47,26 @@ type LeaderboardEntry = {
   name: string;
   subtitle?: string | null;
   points: number;
+  totalOrders?: number;
+  totalGmv?: number;
+  topRepName?: string | null;
+  topRepPoints?: number;
+};
+
+type GlobalRepEntry = {
+  rank: number;
+  userId: string;
+  name: string;
+  companyName: string | null;
+  role: string | null;
+  points: number;
 };
 
 type LeaderboardResponse = {
   scope: 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL';
   period: 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ALL_TIME';
   entries: LeaderboardEntry[];
+  globalRepEntries?: GlobalRepEntry[];
   myRank?: {
     rank: number;
     points: number;
@@ -150,6 +164,7 @@ export default function SpiffPage() {
   const [scope, setScope] = useState<'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL'>(() =>
     getDefaultScopeForRole(user?.role),
   );
+  const [includeGlobalReps, setIncludeGlobalReps] = useState(false);
 
   const [claimPoints, setClaimPoints] = useState('');
   const [giftCardType, setGiftCardType] = useState('');
@@ -172,7 +187,13 @@ export default function SpiffPage() {
         api.get('/spiff/config'),
         api.get('/spiff/summary'),
         api.get('/spiff/leaderboard', {
-          params: { period, scope, limit: 10 },
+          params: {
+            period,
+            scope,
+            limit: 10,
+            includeGlobalReps: scope === 'GLOBAL' ? includeGlobalReps : undefined,
+            repLimit: scope === 'GLOBAL' ? 20 : undefined,
+          },
         }),
         api.get('/spiff/claims', {
           params: { page: 1, limit: 50 },
@@ -194,7 +215,7 @@ export default function SpiffPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, scope]);
+  }, [period, scope, includeGlobalReps]);
 
   useEffect(() => {
     void loadData();
@@ -307,6 +328,23 @@ export default function SpiffPage() {
         </div>
       </div>
 
+      {scope === 'GLOBAL' && (user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN') ? (
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Global Rep Ranking</p>
+            <p className="text-xs text-slate-500">Opt-in ranking for individual reps across companies.</p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={includeGlobalReps}
+              onChange={(event) => setIncludeGlobalReps(event.target.checked)}
+            />
+            Show reps
+          </label>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
           {error}
@@ -418,17 +456,33 @@ export default function SpiffPage() {
           <div className="space-y-3">
             {leaderboard?.entries?.length ? (
               leaderboard.entries.map((entry) => (
-                <div
-                  key={entry.entityId}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      #{entry.rank} {entry.name}
-                    </p>
-                    <p className="text-xs text-slate-500">{entry.subtitle || '-'}</p>
+                <div key={entry.entityId} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        #{entry.rank} {entry.name}
+                      </p>
+                      <p className="text-xs text-slate-500">{entry.subtitle || '-'}</p>
+                    </div>
+                    <p className="text-lg font-bold text-slate-900">{formatNumber(entry.points)} pts</p>
                   </div>
-                  <p className="text-lg font-bold text-slate-900">{formatNumber(entry.points)} pts</p>
+
+                  {scope === 'GLOBAL' ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-700">
+                      <p>
+                        Orders: <strong>{formatNumber(entry.totalOrders)}</strong>
+                      </p>
+                      <p>
+                        GMV: <strong>{formatMoney(entry.totalGmv)}</strong>
+                      </p>
+                      <p className="col-span-2">
+                        Top rep: <strong>{entry.topRepName || '-'}</strong>{' '}
+                        <span className="text-slate-500">
+                          ({formatNumber(entry.topRepPoints)} pts)
+                        </span>
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ))
             ) : (
@@ -438,6 +492,34 @@ export default function SpiffPage() {
             {leaderboard?.myRank ? (
               <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
                 Your rank: #{leaderboard.myRank.rank} ({formatNumber(leaderboard.myRank.points)} pts)
+              </div>
+            ) : null}
+
+            {scope === 'GLOBAL' && includeGlobalReps ? (
+              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <p className="mb-2 text-sm font-semibold text-slate-900">Global Rep Ranking</p>
+                <div className="space-y-2">
+                  {(leaderboard?.globalRepEntries || []).length ? (
+                    (leaderboard?.globalRepEntries || []).map((rep) => (
+                      <div
+                        key={rep.userId}
+                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-xs font-semibold text-slate-900">
+                            #{rep.rank} {rep.name}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            {rep.companyName || '-'} {rep.role ? `• ${rep.role}` : ''}
+                          </p>
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">{formatNumber(rep.points)} pts</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500">No global rep ranking data yet.</p>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>

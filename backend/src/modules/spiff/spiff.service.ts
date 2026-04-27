@@ -113,23 +113,25 @@ export class SpiffService {
     const period = query.period || SpiffLeaderboardPeriod.MONTHLY;
     const scope = this.resolveLeaderboardScope(query.scope, requester);
     const limit = Math.max(1, Math.min(Number(query.limit || 10), 100));
+    const repLimit = Math.max(1, Math.min(Number(query.repLimit || 25), 100));
+    const includeGlobalReps = Boolean(query.includeGlobalReps);
     const periodRange = this.resolvePeriodRange(period);
 
     if (scope === SpiffLeaderboardScope.GLOBAL) {
       this.assertGlobalLeaderboardAccess(requester);
-      const qb = this.ledgerRepo
+      const companyPointsQb = this.ledgerRepo
         .createQueryBuilder('ledger')
         .select('ledger.companyId', 'companyId')
         .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
         .where('ledger.companyId IS NOT NULL');
 
       if (periodRange.startDate) {
-        qb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
+        companyPointsQb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
       }
 
-      qb.groupBy('ledger.companyId').orderBy('points', 'DESC');
-      const rows = await qb.getRawMany();
-      const companyIds = rows
+      companyPointsQb.groupBy('ledger.companyId').orderBy('points', 'DESC');
+      const companyPointRows = await companyPointsQb.getRawMany();
+      const companyIds = companyPointRows
         .map((row) => String(row.companyId || '').trim())
         .filter((id) => id.length > 0);
 
@@ -138,22 +140,155 @@ export class SpiffService {
         : [];
       const companyById = new Map(companies.map((company) => [company.id, company]));
 
-      const entries = rows.slice(0, limit).map((row, index) => {
+      const companyOrdersAgg = new Map<string, { totalOrders: number; totalGmv: number }>();
+      if (companyIds.length > 0) {
+        const companyOrdersQb = this.orderRepo
+          .createQueryBuilder('ord')
+          .select('ord.companyId', 'companyId')
+          .addSelect('COUNT(*)', 'totalOrders')
+          .addSelect('COALESCE(SUM(ord.price), 0)', 'totalGmv')
+          .where('ord.companyId IN (:...companyIds)', { companyIds })
+          .andWhere('ord.isActive = :isActive', { isActive: true });
+
+        if (periodRange.startDate) {
+          companyOrdersQb.andWhere('ord.createdAt >= :startDate', { startDate: periodRange.startDate });
+        }
+
+        companyOrdersQb.groupBy('ord.companyId');
+        const companyOrderRows = await companyOrdersQb.getRawMany();
+        companyOrderRows.forEach((row) => {
+          const companyId = String(row.companyId || '').trim();
+          if (!companyId) return;
+          companyOrdersAgg.set(companyId, {
+            totalOrders: this.toNumber(row.totalOrders),
+            totalGmv: this.roundMoney(this.toNumber(row.totalGmv)),
+          });
+        });
+      }
+
+      const topRepByCompany = new Map<string, { userId: string; points: number }>();
+      if (companyIds.length > 0) {
+        const topRepQb = this.ledgerRepo
+          .createQueryBuilder('ledger')
+          .select('ledger.companyId', 'companyId')
+          .addSelect('ledger.userId', 'userId')
+          .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .where('ledger.companyId IN (:...companyIds)', { companyIds })
+          .andWhere('ledger.userId IS NOT NULL')
+          .groupBy('ledger.companyId')
+          .addGroupBy('ledger.userId')
+          .orderBy('ledger.companyId', 'ASC')
+          .addOrderBy('points', 'DESC');
+
+        if (periodRange.startDate) {
+          topRepQb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
+        }
+
+        const topRepRows = await topRepQb.getRawMany();
+        for (const row of topRepRows) {
+          const companyId = String(row.companyId || '').trim();
+          const userId = String(row.userId || '').trim();
+          if (!companyId || !userId || topRepByCompany.has(companyId)) {
+            continue;
+          }
+          topRepByCompany.set(companyId, {
+            userId,
+            points: this.toNumber(row.points),
+          });
+        }
+      }
+
+      const topRepUserIds = Array.from(
+        new Set(Array.from(topRepByCompany.values()).map((item) => item.userId)),
+      );
+      const topRepUsers = topRepUserIds.length
+        ? await this.userRepo.find({ where: { id: In(topRepUserIds) } })
+        : [];
+      const topRepUserById = new Map(topRepUsers.map((user) => [user.id, user]));
+
+      const entries = companyPointRows.slice(0, limit).map((row, index) => {
         const companyId = String(row.companyId || '').trim();
         const company = companyById.get(companyId);
+        const orderAgg = companyOrdersAgg.get(companyId) || { totalOrders: 0, totalGmv: 0 };
+        const topRepInfo = topRepByCompany.get(companyId);
+        const topRepUser = topRepInfo ? topRepUserById.get(topRepInfo.userId) : null;
+        const topRepName = [topRepUser?.firstName, topRepUser?.lastName].filter(Boolean).join(' ').trim();
+
         return {
           rank: index + 1,
           entityId: companyId,
           name: company?.companyName || 'Unknown company',
           subtitle: company?.companyCode || null,
           points: this.toNumber(row.points),
+          totalOrders: orderAgg.totalOrders,
+          totalGmv: orderAgg.totalGmv,
+          topRepName: topRepName || topRepUser?.email || null,
+          topRepPoints: topRepInfo?.points || 0,
         };
       });
+
+      let globalRepEntries: Array<{
+        rank: number;
+        userId: string;
+        name: string;
+        companyName: string | null;
+        role: string | null;
+        points: number;
+      }> = [];
+
+      if (includeGlobalReps) {
+        const globalRepQb = this.ledgerRepo
+          .createQueryBuilder('ledger')
+          .select('ledger.userId', 'userId')
+          .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .where('ledger.userId IS NOT NULL')
+          .groupBy('ledger.userId')
+          .orderBy('points', 'DESC');
+
+        if (periodRange.startDate) {
+          globalRepQb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
+        }
+
+        const globalRepRows = await globalRepQb.getRawMany();
+        const repUserIds = globalRepRows
+          .slice(0, repLimit)
+          .map((row) => String(row.userId || '').trim())
+          .filter((id) => id.length > 0);
+        const repUsers = repUserIds.length
+          ? await this.userRepo.find({ where: { id: In(repUserIds) } })
+          : [];
+        const repUserById = new Map(repUsers.map((user) => [user.id, user]));
+
+        const repCompanyIds = Array.from(
+          new Set(repUsers.map((user) => String(user.companyId || '').trim()).filter(Boolean)),
+        );
+        const repCompanies = repCompanyIds.length
+          ? await this.companyRepo.find({ where: { id: In(repCompanyIds) } })
+          : [];
+        const repCompanyById = new Map(repCompanies.map((company) => [company.id, company]));
+
+        globalRepEntries = globalRepRows.slice(0, repLimit).map((row, index) => {
+          const userId = String(row.userId || '').trim();
+          const repUser = repUserById.get(userId);
+          const repName = [repUser?.firstName, repUser?.lastName].filter(Boolean).join(' ').trim();
+          const repCompany = repUser?.companyId ? repCompanyById.get(repUser.companyId) : null;
+
+          return {
+            rank: index + 1,
+            userId,
+            name: repName || repUser?.email || 'Unknown rep',
+            companyName: repCompany?.companyName || null,
+            role: repUser?.role || null,
+            points: this.toNumber(row.points),
+          };
+        });
+      }
 
       return {
         scope,
         period,
         entries,
+        globalRepEntries,
       };
     }
 

@@ -1,5 +1,6 @@
-﻿import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -43,6 +44,24 @@ export class SpiffLeaderboardQueryDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  repLimit?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === true || value === 1 || value === '1') return true;
+    if (typeof value === 'string') {
+      return value.trim().toLowerCase() === 'true';
+    }
+    return false;
+  })
+  @IsBoolean()
+  includeGlobalReps?: boolean;
 }
 
 export class FindSpiffClaimsQueryDto {
