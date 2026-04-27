@@ -1,36 +1,32 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = () => {
-  const {
-    signIn,
-    biometricAvailable,
-    biometricEnabled,
-    biometricPrompted,
-    setBiometricPreference,
-    biometricSignIn,
-  } = useAuth();
+  const { signIn, biometricAvailable, biometricEnabled, biometricSignIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
   const handleLogin = async () => {
+    if (!email.trim() || !password) {
+      setError('Enter email and password to continue');
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -53,65 +49,62 @@ const LoginScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Premium Gradient Background echoing the warm "champagne" look */}
-      <LinearGradient 
-        colors={['#FBF9F6', '#F5EEE6', '#EAD6C3']} 
-        style={StyleSheet.absoluteFillObject} 
-      />
-
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
         <View style={styles.content}>
-          
-          {/* Brand Header */}
           <View style={styles.brandRow}>
-             {/* Gold Lightning Bolt */}
-             <Ionicons name="flash-sharp" size={42} color="#C59A39" style={styles.brandIcon} />
-            
+            <Ionicons name="flash-sharp" size={42} color="#B78A46" style={styles.brandIcon} />
             <Text style={styles.brandTitle}>BLITZ</Text>
             <Text style={styles.brandSubtitle}>NEW YORK CITY</Text>
             <View style={styles.tinyLine} />
           </View>
 
-          {/* Floating Neumorphic Card */}
           <View style={styles.cardContainer}>
-            <View style={styles.formContainer}>
-              
-              <View style={styles.inputWrapper}>
-                <Text style={styles.label}>EMAIL</Text>
-                <TextInput
+              <View style={styles.formContainer}>
+                <View style={styles.formHeader}>
+                  <Text style={styles.formTitle}>Sign in to continue</Text>
+                  <Text style={styles.formSubtitle}>Use your assigned work credentials</Text>
+                </View>
+
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.label}>EMAIL</Text>
+                  <TextInput
                   style={styles.input}
                   placeholder="Enter your email"
                   placeholderTextColor="#A8A29A"
                   value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                />
-              </View>
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                  />
+                </View>
 
               <View style={[styles.inputWrapper, { marginBottom: 12 }]}>
                 <Text style={styles.label}>PASSWORD</Text>
                 <View style={styles.inputGroup}>
                   <TextInput
-                    style={[styles.input, styles.inputWithIcon, styles.passwordInputFocus]}
-                    placeholder="••••••••••"
+                    style={[styles.input, styles.inputWithIcon, styles.passwordInputBorder]}
+                    placeholder="**********"
                     placeholderTextColor="#A8A29A"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
                   />
                   <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
-                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#A8A29A" />
+                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#8D8780" />
                   </TouchableOpacity>
                 </View>
 
                 {biometricAvailable && biometricEnabled ? (
                   <TouchableOpacity style={styles.forgotBtn} onPress={handleBiometricLogin}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Ionicons name="finger-print" size={14} color="#A48252" style={{ marginRight: 4 }} />
+                    <View style={styles.biometricRow}>
+                      <Ionicons name="finger-print" size={14} color="#9E7A45" style={{ marginRight: 4 }} />
                       <Text style={styles.forgotText}>Unlock with biometrics</Text>
                     </View>
                   </TouchableOpacity>
@@ -124,37 +117,32 @@ const LoginScreen = () => {
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
-              {/* Gradient Gold Sign In Button */}
-              <TouchableOpacity 
-                style={[styles.signInTouch, loading && styles.signInDisabled]} 
+              <TouchableOpacity
+                style={styles.signInTouch}
                 onPress={handleLogin}
-                disabled={loading}
-                activeOpacity={0.8}
+                disabled={!canSubmit}
+                activeOpacity={0.85}
               >
-                <LinearGradient
-                  colors={['#D8AB52', '#C6973F', '#A37728']}
-                  start={{ x: 0, y: 0.2 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.gradientBtn}
-                >
+                <View style={styles.signInBtn}>
                   {loading ? (
-                     <ActivityIndicator size="small" color="#FFF" />
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
                     <View style={styles.btnContent}>
-                      <Ionicons name="flash-sharp" size={16} color="#FFF" style={styles.btnFlashIcon} />
+                      <Ionicons name="flash-sharp" size={16} color="#D2A85B" style={styles.btnFlashIcon} />
                       <Text style={styles.signInButtonText}>Sign in instantly</Text>
                     </View>
                   )}
-                </LinearGradient>
+                </View>
               </TouchableOpacity>
-              
-              <View style={styles.bottomLinkContainer}>
-                <Text style={styles.bottomLinkText}>Need access? Contact your admin</Text>
-              </View>
 
+              <View style={styles.bottomLinkContainer}>
+                <Text style={styles.bottomLinkText}>
+                  <Text style={styles.bottomLinkMuted}>Need access? </Text>
+                  Contact your admin
+                </Text>
+              </View>
             </View>
           </View>
-          
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -164,7 +152,7 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FBF9F6', 
+    backgroundColor: '#FFFFFF',
   },
   keyboardView: {
     flex: 1,
@@ -182,79 +170,90 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 44,
   },
-  iconGradientWrapper: {
-    // optional gradient wrapper for the icon background if needed, here just transparent
-    backgroundColor: 'transparent',
-  },
   brandIcon: {
     marginBottom: 4,
-    textShadowColor: 'rgba(197, 154, 57, 0.4)',
+    textShadowColor: 'rgba(183, 138, 70, 0.25)',
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    textShadowRadius: 5,
   },
   brandTitle: {
     fontSize: 34,
     fontWeight: '800',
-    color: '#1A1816',
+    color: '#111111',
     letterSpacing: 4.5,
     marginBottom: 8,
   },
   brandSubtitle: {
     fontSize: 10,
     fontWeight: '500',
-    color: '#A98858',
+    color: '#BE9150',
     letterSpacing: 3,
     marginBottom: 16,
   },
   tinyLine: {
     width: 24,
     height: 1.5,
-    backgroundColor: '#A98858',
+    backgroundColor: '#BE9150',
     opacity: 0.6,
   },
   cardContainer: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#FAF7F3', // Light Ivory Card
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
+    marginTop: -10,
     paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 28,
-    // Neumorphic floating shadow
-    shadowColor: '#AFA191',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.35,
-    shadowRadius: 32,
-    elevation: 12,
-    // Inner light border wrapper for 3D effect
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    paddingTop: 28,
+    paddingBottom: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 22,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E9E6E0',
   },
   formContainer: {
     width: '100%',
   },
+  formHeader: {
+    marginBottom: 18,
+  },
+  formTitle: {
+    fontSize: 21,
+    lineHeight: 24,
+    color: '#171717',
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  formSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#8E877F',
+    fontWeight: '500',
+  },
   inputWrapper: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   label: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#A0978C',
-    marginBottom: 10,
+    color: '#8E877F',
+    marginBottom: 8,
     letterSpacing: 1.2,
   },
   input: {
-    backgroundColor: '#FCFCFB',
+    backgroundColor: '#FCFBF9',
     borderWidth: 1,
-    borderColor: '#E8E1D7',
+    borderColor: '#D9D5CF',
     borderRadius: 14,
     height: 54,
     paddingHorizontal: 16,
-    color: '#1C1916',
+    color: '#111111',
     fontSize: 15,
   },
-  passwordInputFocus: {
-    borderColor: '#D4B886', // Giving password input a slight golden warmth border similar to image
+  passwordInputBorder: {
+    borderColor: '#D9D5CF',
   },
   inputGroup: {
     position: 'relative',
@@ -273,29 +272,31 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     marginTop: 12,
   },
+  biometricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   forgotText: {
-    color: '#A48252',
+    color: '#97723F',
     fontSize: 13,
     fontWeight: '500',
   },
   signInTouch: {
-    marginTop: 20,
-    shadowColor: '#B88B35',
+    marginTop: 18,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.18,
     shadowRadius: 14,
-    elevation: 8,
+    elevation: 7,
   },
-  signInDisabled: {
-    opacity: 0.7,
-  },
-  gradientBtn: {
+  signInBtn: {
     height: 56,
     borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+    backgroundColor: '#111111',
   },
   btnContent: {
     flexDirection: 'row',
@@ -316,13 +317,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bottomLinkContainer: {
-    marginTop: 24,
+    marginTop: 20,
     alignItems: 'center',
   },
   bottomLinkText: {
-    color: '#B6AB9F',
+    color: '#97723F',
     fontSize: 13,
     fontWeight: '400',
+  },
+  bottomLinkMuted: {
+    color: '#111111',
   },
 });
 

@@ -463,6 +463,8 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     isPrimary: design.isPrimary === true,
     imageUrls,
     imageKeys,
+    ijewelModelId: design.ijewelModelId ?? null,
+    ijewelBaseName: design.ijewelBaseName ?? null,
     createdAt: normalizeDateTimeValue(design.createdAt) || '',
     modifiedAt: normalizeDateTimeValue(design.updatedAt) || '',
     updatedByName: design.updatedByName || '',
@@ -1080,6 +1082,19 @@ export default function ProductsPage() {
     () => buildIjewelEmbedUrl(detailInfo?.ijewelModelId, detailInfo?.ijewelBaseName),
     [detailInfo?.ijewelModelId, detailInfo?.ijewelBaseName],
   );
+  const ijewelIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    const frame = ijewelIframeRef.current;
+    if (!frame || !ijewelPreviewUrl) return;
+    frame.setAttribute('allow', 'autoplay; fullscreen; xr-spatial-tracking; web-share');
+    frame.setAttribute('xr-spatial-tracking', '');
+    frame.setAttribute('execution-while-out-of-viewport', '');
+    frame.setAttribute('execution-while-not-rendered', '');
+    frame.setAttribute('web-share', '');
+    frame.style.width = '100%';
+    frame.style.height = '340px';
+  }, [ijewelPreviewUrl]);
   const detailMetals = useMemo(
     () => (Array.isArray(detailDesign?.metals) ? detailDesign.metals : []),
     [detailDesign],
@@ -3204,6 +3219,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             const saved = mapApiDesignToRow(response.data as ApiDesignRow);
             setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
             setSelectedId(saved.id);
+            setDetailDesign(response.data);
           } catch (error: any) {
             const message = String(error?.response?.data?.message || '');
             const isNotFound =
@@ -3215,6 +3231,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             const saved = mapApiDesignToRow(response.data as ApiDesignRow);
             setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
             setSelectedId(saved.id);
+            setDetailDesign(response.data);
             if (options?.selectAfterCreate) {
               setEditingId(saved.id);
               setIsDesignNoManual(true);
@@ -3226,6 +3243,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           const saved = mapApiDesignToRow(response.data as ApiDesignRow);
           setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
           setSelectedId(saved.id);
+          setDetailDesign(response.data);
           if (options?.selectAfterCreate) {
             setEditingId(saved.id);
             setIsDesignNoManual(true);
@@ -3237,6 +3255,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         const saved = mapApiDesignToRow(response.data as ApiDesignRow);
         setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
         setSelectedId(saved.id);
+        setDetailDesign(response.data);
         if (options?.selectAfterCreate) {
           setEditingId(saved.id);
           setIsDesignNoManual(true);
@@ -6192,10 +6211,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <iframe
                             title={`iJewel ${detailInfo.designNo}`}
                             src={ijewelPreviewUrl}
-                            className="h-72 w-full"
+                            className="w-full"
                             frameBorder={0}
                             allowFullScreen
                             allow="autoplay; fullscreen; xr-spatial-tracking; web-share"
+                            ref={ijewelIframeRef}
                           />
                         </div>
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">

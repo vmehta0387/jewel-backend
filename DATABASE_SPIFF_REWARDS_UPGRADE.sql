@@ -1,0 +1,52 @@
+-- SPIFF rewards and gift-card redemption flow
+
+CREATE TABLE IF NOT EXISTS spiff_point_ledger (
+  id VARCHAR(36) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  company_id VARCHAR(36) NULL,
+  branch_id VARCHAR(36) NULL,
+  order_id VARCHAR(36) NULL,
+  event_type ENUM('QUOTE_CREATED','ORDER_PLACED','ORDER_VALUE_BONUS','FAST_CLOSE_BONUS','MANUAL_ADJUSTMENT') NOT NULL,
+  event_key VARCHAR(150) NULL,
+  points INT NOT NULL,
+  note VARCHAR(255) NULL,
+  metadata JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_spiff_point_ledger_event_key (event_key),
+  KEY idx_spiff_point_ledger_user (user_id),
+  KEY idx_spiff_point_ledger_company (company_id),
+  KEY idx_spiff_point_ledger_branch (branch_id),
+  KEY idx_spiff_point_ledger_order (order_id),
+  KEY idx_spiff_point_ledger_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
+  id VARCHAR(36) NOT NULL,
+  claim_number VARCHAR(30) NOT NULL,
+  user_id VARCHAR(36) NOT NULL,
+  company_id VARCHAR(36) NULL,
+  branch_id VARCHAR(36) NULL,
+  requested_points INT NOT NULL,
+  requested_amount_cents INT NOT NULL,
+  conversion_rate_points_per_dollar INT NOT NULL,
+  gift_card_type VARCHAR(120) NOT NULL,
+  status ENUM('PENDING_REVIEW','HOLD','APPROVED','REJECTED','FULFILLED') NOT NULL DEFAULT 'PENDING_REVIEW',
+  note TEXT NULL,
+  review_reason TEXT NULL,
+  giftbit_request_id VARCHAR(150) NULL,
+  giftbit_link_url TEXT NULL,
+  giftbit_response JSON NULL,
+  approved_by_id VARCHAR(36) NULL,
+  approved_at DATETIME NULL,
+  fulfilled_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_spiff_redemption_claims_claim_number (claim_number),
+  KEY idx_spiff_redemption_claims_user (user_id),
+  KEY idx_spiff_redemption_claims_company (company_id),
+  KEY idx_spiff_redemption_claims_branch (branch_id),
+  KEY idx_spiff_redemption_claims_status (status),
+  KEY idx_spiff_redemption_claims_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  FlatList,
   Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
-  Linking,
   ScrollView,
   Share,
   StyleSheet,
@@ -20,14 +21,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { useCart } from '../context/CartContext';
 import { fetchDesign, fetchDesigns } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatNumber } from '../utils/format';
 
-type OptionVariant = 'default' | 'shape' | 'color';
+type OptionVariant = 'default' | 'metal';
 
 type VersionFilters = {
   diamondType: string;
@@ -40,11 +40,6 @@ type VersionFilters = {
 };
 
 type FilterKey = keyof VersionFilters;
-
-const GLASS_CARD_BG = Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)';
-const GLASS_SOFT_BG = Platform.OS === 'android' ? 'rgba(255, 252, 245, 0.42)' : 'rgba(255, 252, 245, 0.72)';
-const GLASS_CHIP_BG = Platform.OS === 'android' ? 'rgba(255, 252, 245, 0.34)' : 'rgba(255, 252, 245, 0.76)';
-const GLASS_BUTTON_BG = Platform.OS === 'android' ? 'rgba(255, 252, 245, 0.38)' : 'rgba(255, 252, 245, 0.82)';
 
 const formatDetailPrice = (value: number | null | undefined) => {
   const numeric = Number(value);
@@ -70,19 +65,6 @@ const parseVersion = (version?: string | null) => {
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
 };
 
-const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null) => {
-  const trimmedId = String(modelId || '').trim();
-  if (!trimmedId) return null;
-  if (/^https?:\/\//i.test(trimmedId)) {
-    return trimmedId;
-  }
-  const trimmedBase = String(baseName || '').trim() || 'drive';
-  if (trimmedBase.includes('.')) {
-    return `https://${trimmedBase}/drive/files/${trimmedId}/embedded`;
-  }
-  return `https://${trimmedBase}.ijewel3d.com/${trimmedBase}/files/${trimmedId}/embedded`;
-};
-
 const toCaratLabel = (value?: string | number | null) => {
   const clean = compact(value);
   if (!clean) return '';
@@ -91,39 +73,66 @@ const toCaratLabel = (value?: string | number | null) => {
   return Number.isFinite(num) ? `${formatNumber(num, 2)} ct` : clean;
 };
 
-const canonicalMetalColor = (value?: string | null) => {
-  const normalized = String(value || '').toLowerCase();
-  if (!normalized) return '';
-  if (normalized.includes('rose')) return 'Rose Gold';
-  if (normalized.includes('yellow')) return 'Yellow Gold';
-  if (normalized.includes('white')) return 'White Gold';
-  if (normalized.includes('silver')) return 'Silver';
-  if (normalized.includes('green')) return 'Green Gold';
-  return compact(value);
-};
-
-const shapeIconByValue = (value: string): keyof typeof Ionicons.glyphMap => {
-  const normalized = value.toLowerCase();
-  if (normalized.includes('oval')) return 'ellipse-outline';
-  if (normalized.includes('round')) return 'radio-button-on-outline';
-  if (normalized.includes('princess')) return 'square-outline';
-  if (normalized.includes('emerald')) return 'stop-outline';
-  if (normalized.includes('pear')) return 'triangle-outline';
-  if (normalized.includes('heart')) return 'heart-outline';
-  if (normalized.includes('marquise')) return 'diamond-outline';
-  return 'diamond-outline';
+const toCtwLabel = (value?: string | number | null) => {
+  const clean = compact(value);
+  if (!clean) return '';
+  const normalized = clean
+    .replace(/\bcarats?\b/gi, 'ctw')
+    .replace(/\bcts?\b/gi, 'ctw')
+    .replace(/\bct\b/gi, 'ctw');
+  if (/ctw/i.test(normalized)) return normalized;
+  return `${normalized} ctw`;
 };
 
 const metalSwatchByValue = (value: string) => {
   const normalized = value.toLowerCase();
-  if (normalized.includes('yellow')) return '#CBAA6A';
-  if (normalized.includes('rose') || normalized.includes('pink')) return '#CBA284';
-  if (normalized.includes('white')) return '#D9D9D9';
-  if (normalized.includes('silver')) return '#C0C0C0';
+  const karatMatch = normalized.match(/(\d{1,2})\s*k/i);
+  const karat = karatMatch ? Number.parseInt(karatMatch[1], 10) : null;
+
+  if (normalized.includes('yellow') || normalized.includes('yg')) {
+    if (karat && karat >= 18) return '#C79C3E';
+    if (karat && karat >= 14) return '#D9B657';
+    return '#E2C672';
+  }
+  if (normalized.includes('rose') || normalized.includes('pink') || normalized.includes('rg')) {
+    if (karat && karat >= 18) return '#C78673';
+    if (karat && karat >= 14) return '#D89D89';
+    return '#E4B2A0';
+  }
+  if (normalized.includes('white') || normalized.includes('wg')) {
+    if (karat && karat >= 18) return '#CED1D8';
+    if (karat && karat >= 14) return '#DEE1E8';
+    return '#E8EBF1';
+  }
+  if (normalized.includes('platinum') || normalized.includes('pt')) return '#CFCEDA';
+  if (normalized.includes('silver')) return '#C7C6D2';
   if (normalized.includes('green')) return '#95B79C';
   if (normalized.includes('red')) return '#C08B85';
   if (normalized.includes('brown')) return '#B79A7E';
   return '#BFB7AF';
+};
+
+const toMetalShortCode = (value?: string | null) => {
+  const text = compact(value);
+  const lower = text.toLowerCase();
+  const karatMatch = lower.match(/\b(\d{1,2}\s*k)\b/i);
+  const karat = karatMatch ? karatMatch[1].toUpperCase().replace(/\s+/g, '') : '';
+
+  let code = '';
+  if (/\bwg\b|white/.test(lower)) code = 'WG';
+  else if (/\brg\b|rose|pink/.test(lower)) code = 'RG';
+  else if (/\byg\b|yellow/.test(lower)) code = 'YG';
+  else if (/\bpt\b|platinum/.test(lower)) code = 'PT';
+  else if (/\bsv\b|silver/.test(lower)) code = 'SV';
+
+  if (karat && code) return `${karat} ${code}`;
+  if (karat) return karat;
+  if (code) return code;
+
+  const compacted = text.replace(/\s+/g, ' ').trim();
+  if (!compacted) return '-';
+  if (compacted.length <= 10) return compacted.toUpperCase();
+  return compacted;
 };
 
 const getVersionAttributes = (design: Design) => ({
@@ -154,14 +163,6 @@ const getFilterValuesFromDesign = (design: Design): VersionFilters => {
     quality: attrs.qualities[0] || '',
     ringSize: attrs.ringSizes[0] || '',
   };
-};
-
-const getMetalColorDisplayFromCaratage = (design: Design) => {
-  const fullCaratageValues = uniqueValues(
-    (design.metals || []).map((metal) => metal.metalCaratage),
-  );
-  if (fullCaratageValues.length) return fullCaratageValues.join(', ');
-  return canonicalMetalColor(design.goldColour) || '-';
 };
 
 const pickPrimaryFromFamily = (family: Design[]) => {
@@ -267,39 +268,20 @@ const OptionSection = ({
   <View style={styles.sectionBlock}>
     <Text style={styles.sectionLabel}>{title}</Text>
     {options.length ? (
-      <View
-        style={[
-          styles.optionWrap,
-          variant === 'shape' ? styles.shapeWrap : null,
-          variant === 'color' ? styles.colorWrap : null,
-        ]}
-      >
+      <View style={[styles.optionWrap, variant === 'metal' ? styles.metalWrap : null]}>
         {options.map((option) => {
           const active = selected === option;
-          if (variant === 'shape') {
+          if (variant === 'metal') {
             return (
               <TouchableOpacity
                 key={`${title}-${option}`}
-                style={[styles.shapeOption, active ? styles.shapeOptionActive : null]}
+                style={[styles.metalChip, active ? styles.metalChipActive : null]}
                 onPress={() => onSelect(option)}
                 activeOpacity={0.9}
               >
-                <Ionicons name={shapeIconByValue(option)} size={24} color={active ? '#C6973F' : '#7E736A'} />
-              </TouchableOpacity>
-            );
-          }
-
-          if (variant === 'color') {
-            return (
-              <TouchableOpacity
-                key={`${title}-${option}`}
-                style={[styles.colorBox, active ? styles.colorBoxActive : null]}
-                onPress={() => onSelect(option)}
-                activeOpacity={0.9}
-              >
-                <View style={[styles.colorSwatch, { backgroundColor: metalSwatchByValue(option), width: 18, height: 18, borderRadius: 9, marginBottom: 4 }]} />
-                <Text style={[styles.colorBoxText, active ? styles.colorBoxTextActive : null]} numberOfLines={2}>
-                  {canonicalMetalColor(option).split(' ').join('\n')}
+                <View style={[styles.metalDot, { backgroundColor: metalSwatchByValue(option) }]} />
+                <Text style={[styles.metalChipText, active ? styles.metalChipTextActive : null]} numberOfLines={1}>
+                  {toMetalShortCode(option)}
                 </Text>
               </TouchableOpacity>
             );
@@ -325,12 +307,12 @@ const OptionSection = ({
 
 const DesignDetailScreen = () => {
   const { token, user } = useAuth();
-  const { addItem, itemCount } = useCart();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width } = useWindowDimensions();
-  const compactLayout = width < 390;
-  const heroHeight = Math.min(340, Math.max(220, width * 0.7));
+  const mediaHeight = Math.min(178, Math.max(136, width * 0.38));
+  const mediaFrameWidth = Math.max(220, width - 28);
+  const mediaListRef = useRef<FlatList<string> | null>(null);
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -345,6 +327,10 @@ const DesignDetailScreen = () => {
   const [selectedWeight, setSelectedWeight] = useState('');
   const [selectedQuality, setSelectedQuality] = useState('');
   const [selectedRingSize, setSelectedRingSize] = useState('');
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
+  const [dropdownSelected, setDropdownSelected] = useState('');
+  const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
 
   const handleBackToDesigns = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -450,19 +436,34 @@ const DesignDetailScreen = () => {
 
   const gallery = useMemo(() => activeDesign?.imageUrls?.filter(Boolean) || [], [activeDesign?.imageUrls]);
   const activeImage = gallery[selectedImageIndex] || gallery[0];
-  const ijewelViewerUrl = useMemo(
-    () => buildIjewelEmbedUrl(activeDesign?.ijewelModelId, activeDesign?.ijewelBaseName),
-    [activeDesign?.ijewelModelId, activeDesign?.ijewelBaseName],
+
+  const handleMediaSwipeEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (!gallery.length || mediaFrameWidth <= 0) return;
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const nextIndex = Math.round(offsetX / mediaFrameWidth);
+      const boundedIndex = Math.max(0, Math.min(gallery.length - 1, nextIndex));
+      if (boundedIndex !== selectedImageIndex) {
+        setSelectedImageIndex(boundedIndex);
+      }
+    },
+    [gallery.length, mediaFrameWidth, selectedImageIndex],
   );
+
+  useEffect(() => {
+    if (!gallery.length || selectedImageIndex < 0 || selectedImageIndex >= gallery.length) return;
+    mediaListRef.current?.scrollToIndex({
+      index: selectedImageIndex,
+      animated: true,
+      viewPosition: 0,
+    });
+  }, [gallery.length, selectedImageIndex]);
+
   const displayPrice = useMemo(
     () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.totalValue ?? 0 : 0),
     [activeDesign, priceByDesignId],
   );
 
-  const shapeOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).shapes)),
-    [familyDesigns],
-  );
   const diamondTypeOptions = useMemo(
     () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).diamondTypes)),
     [familyDesigns],
@@ -532,13 +533,74 @@ const DesignDetailScreen = () => {
 
   const handleShare = useCallback(async () => {
     if (!activeDesign) return;
-    await Share.share({
-      message: `${activeDesign.designNo}\n${formatDetailPrice(displayPrice)}\n${selectedMetalColor || 'Metal N/A'}`,
-      title: activeDesign.designNo,
-    });
-  }, [activeDesign, displayPrice, selectedMetalColor]);
+    const shareImageUrl = activeImage || '';
 
-  const handleAddToCart = useCallback(() => {
+    const shortenUrl = async (url: string) => {
+      if (!url || url.length < 40) return url;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2800);
+        const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!response.ok) return url;
+        const shortened = (await response.text()).trim();
+        if (/^https?:\/\//i.test(shortened)) return shortened;
+      } catch {
+        // Fallback: keep original URL when shortener fails or times out.
+      }
+      return url;
+    };
+
+    const finalImageUrl = shareImageUrl ? await shortenUrl(shareImageUrl) : '';
+    const detailLines = [
+      `Design: ${activeDesign.designNo || '-'}`,
+      activeDesign.designName ? `Name: ${activeDesign.designName}` : null,
+      `Price: ${formatDetailPrice(displayPrice)}`,
+      `Metal: ${toMetalShortCode(selectedMetalColor)}`,
+      `Coverage: ${selectedStyle || '-'}`,
+      `Diamond Quality: ${selectedQuality || '-'}`,
+      `Carat Weight: ${toCtwLabel(selectedWeight) || '-'}`,
+      `Ring Size: ${selectedRingSize || '-'}`,
+      `Stone: ${selectedDiamondType || '-'}`,
+      `Shape: ${selectedShape || '-'}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const shareMessage = finalImageUrl
+      ? `${detailLines}\n\nImage: ${finalImageUrl}`
+      : detailLines;
+
+    await Share.share(
+      Platform.select({
+        ios: {
+          title: activeDesign.designNo,
+          message: detailLines,
+          url: finalImageUrl || undefined,
+        },
+        default: {
+          title: activeDesign.designNo,
+          message: shareMessage,
+        },
+      })!,
+    );
+  }, [
+    activeDesign,
+    activeImage,
+    displayPrice,
+    selectedMetalColor,
+    selectedStyle,
+    selectedQuality,
+    selectedWeight,
+    selectedRingSize,
+    selectedDiamondType,
+    selectedShape,
+  ]);
+
+  const handleOpenQuoteBuilder = useCallback(() => {
     if (!activeDesign) return;
     const shortDescription = [
       selectedDiamondType ? `Type: ${selectedDiamondType}` : null,
@@ -551,32 +613,32 @@ const DesignDetailScreen = () => {
       .filter(Boolean)
       .join(' | ');
 
-    addItem({
-      designId: activeDesign.id,
-      designNo: activeDesign.designNo,
-      designName: activeDesign.designName,
-      imageUrl: activeImage || null,
-      unitPrice: Math.round(Number(displayPrice || 0)),
-      shortDescription,
-      selection: {
-        diamondType: selectedDiamondType,
-        shape: selectedShape,
-        style: selectedStyle,
-        metalColor: selectedMetalColor,
-        weight: selectedWeight,
-        quality: selectedQuality,
-        ringSize: selectedRingSize,
+    navigation.navigate('QuoteBuilder', {
+      draft: {
+        designId: activeDesign.id,
+        designNo: activeDesign.designNo,
+        designName: activeDesign.designName,
+        imageUrl: activeImage || null,
+        unitPrice: Math.round(Number(displayPrice || 0)),
+        shortDescription,
+        selection: {
+          diamondType: selectedDiamondType,
+          shape: selectedShape,
+          style: selectedStyle,
+          metalColor: selectedMetalColor,
+          weight: selectedWeight,
+          quality: selectedQuality,
+          ringSize: selectedRingSize,
+        },
       },
     });
-
-    Alert.alert('Added to quote', `${activeDesign.designNo} has been added to quote.`);
   }, [
     activeDesign,
     activeImage,
-    addItem,
     displayPrice,
-    selectedMetalColor,
+    navigation,
     selectedDiamondType,
+    selectedMetalColor,
     selectedQuality,
     selectedRingSize,
     selectedShape,
@@ -584,53 +646,143 @@ const DesignDetailScreen = () => {
     selectedWeight,
   ]);
 
-  const handleOpenIjewelViewer = useCallback(async () => {
-    if (!ijewelViewerUrl) return;
-    try {
-      await Linking.openURL(ijewelViewerUrl);
-    } catch {
-      Alert.alert('Unable to open viewer', 'Please try again.');
-    }
-  }, [ijewelViewerUrl]);
+  const handleProcessOrder = useCallback(() => {
+    if (!activeDesign) return;
+    handleOpenQuoteBuilder();
+  }, [activeDesign, handleOpenQuoteBuilder]);
 
-  const generalInfoRows = useMemo(
-    () =>
-      [
-        { label: 'Category', value: activeDesign?.jewelryGroup || '-' },
-        { label: 'Sub Category', value: activeDesign?.collection || '-' },
-        { label: 'Size', value: activeDesign?.jewelrySize || '-' },
-        {
-          label: 'Metal Color',
-          value: activeDesign ? getMetalColorDisplayFromCaratage(activeDesign) : '-',
-        },
-      ].filter((row) => compact(row.value)),
-    [activeDesign],
+  const openDropdown = useCallback(
+    (key: FilterKey, options: string[], selected: string) => {
+      if (!options.length) return;
+      if (dropdownVisible && dropdownKey === key) {
+        setDropdownVisible(false);
+        return;
+      }
+      setDropdownKey(key);
+      setDropdownOptions(options);
+      setDropdownSelected(selected);
+      setDropdownVisible(true);
+    },
+    [dropdownKey, dropdownVisible],
+  );
+
+  const handleDropdownSelect = useCallback(
+    (value: string) => {
+      if (!dropdownKey) return;
+      resolveVersionSelection(dropdownKey, value);
+      setDropdownVisible(false);
+    },
+    [dropdownKey, resolveVersionSelection],
+  );
+
+  const renderInlineDropdown = useCallback(
+    (ownerKey: FilterKey) => {
+      if (!dropdownVisible || dropdownKey !== ownerKey) return null;
+
+      return (
+        <View style={styles.inlineDropdownMenu}>
+          <ScrollView style={styles.inlineDropdownScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {dropdownOptions.map((item, index) => {
+              const active = item === dropdownSelected;
+              const isLast = index === dropdownOptions.length - 1;
+              return (
+                <TouchableOpacity
+                  key={`inline-dd-${ownerKey}-${item}`}
+                  style={[
+                    styles.inlineDropdownOption,
+                    isLast ? styles.inlineDropdownOptionLast : null,
+                    active ? styles.inlineDropdownOptionActive : null,
+                  ]}
+                  onPress={() => handleDropdownSelect(item)}
+                  activeOpacity={0.88}
+                >
+                  <Text style={[styles.inlineDropdownOptionText, active ? styles.inlineDropdownOptionTextActive : null]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      );
+    },
+    [dropdownVisible, dropdownKey, dropdownOptions, dropdownSelected, handleDropdownSelect],
   );
 
   const totalGemWt = useMemo(
     () => (activeDesign?.gemstones || []).reduce((sum, gem) => sum + Number(gem.wtInCts || 0), 0),
     [activeDesign?.gemstones],
   );
+  const totalStonePieces = useMemo(
+    () =>
+      (activeDesign?.gemstones || []).reduce((sum, gem) => {
+        const row = gem as { pcs?: number | string; Pcs?: number | string };
+        const pieces = Number(row.pcs ?? row.Pcs ?? 0);
+        return sum + (Number.isFinite(pieces) ? Math.max(0, pieces) : 0);
+      }, 0),
+    [activeDesign?.gemstones],
+  );
+  const hasStonePieces = useMemo(
+    () =>
+      (activeDesign?.gemstones || []).some((gem) => {
+        const row = gem as { pcs?: number | string; Pcs?: number | string };
+        return row.pcs !== undefined || row.Pcs !== undefined;
+      }),
+    [activeDesign?.gemstones],
+  );
+  const firstGem = activeDesign?.gemstones?.[0];
+  const heroCaption = useMemo(
+    () =>
+      [
+        selectedShape || firstGem?.shape || 'Oval',
+        activeDesign?.designNo || '',
+        '* Best Seller',
+      ]
+        .filter(Boolean)
+        .join(' - ')
+        .toUpperCase(),
+    [activeDesign?.designNo, firstGem?.shape, selectedShape],
+  );
 
-  const gemstoneInfoRows = useMemo(() => {
-    const firstGem = activeDesign?.gemstones?.[0];
-    return [
-      { label: 'Stone', value: firstGem?.stone || activeDesign?.diamondType || '-' },
-      { label: 'Shape', value: firstGem?.shape || selectedShape || '-' },
-      { label: 'Size', value: firstGem?.size || '-' },
-      { label: 'Quality', value: firstGem?.quality || selectedQuality || '-' },
+  const specRows = useMemo(
+    () => [
+      { label: 'Stone', value: firstGem?.stone || selectedDiamondType || 'Diamond (Lab Grown)' },
+      { label: 'Stone Shape', value: selectedShape || firstGem?.shape || '-' },
+      { label: 'Ring Size', value: selectedRingSize || activeDesign?.jewelrySize || '-' },
+      { label: 'Quality', value: selectedQuality || firstGem?.quality || activeDesign?.diamondQuality || '-' },
       { label: 'Color', value: firstGem?.color || '-' },
       {
-        label: 'Weight',
-        value: totalGemWt > 0 ? `${formatNumber(totalGemWt, 3)} cts` : '-',
+        label: 'Approx. Total Carat Wt.',
+        value: toCtwLabel(selectedWeight) || (totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : '-'),
+        highlight: true,
       },
-    ];
-  }, [activeDesign?.gemstones, activeDesign?.diamondType, selectedShape, selectedQuality, totalGemWt]);
+      {
+        label: 'Total No. of Stones',
+        value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '-',
+      },
+    ],
+    [
+      firstGem?.stone,
+      firstGem?.shape,
+      firstGem?.quality,
+      firstGem?.color,
+      selectedDiamondType,
+      selectedShape,
+      selectedRingSize,
+      selectedQuality,
+      selectedWeight,
+      totalGemWt,
+      totalStonePieces,
+      hasStonePieces,
+      activeDesign?.jewelrySize,
+      activeDesign?.diamondQuality,
+    ],
+  );
 
   if (!activeDesign && !error) {
     return (
       <View style={{flex: 1}}>
-        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <SafeAreaView style={styles.stateScreen} edges={['top']}>
           <ActivityIndicator size="large" color="#8a6b55" />
           <Text style={styles.stateText}>Loading design...</Text>
@@ -642,7 +794,7 @@ const DesignDetailScreen = () => {
   if (!activeDesign) {
     return (
       <View style={{flex: 1}}>
-        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <SafeAreaView style={styles.stateScreen} edges={['top']}>
           <View style={styles.stateCard}>
             <Text style={styles.stateTitle}>Unable to load design</Text>
@@ -657,295 +809,688 @@ const DesignDetailScreen = () => {
   }
 
   return (
-    <View style={{flex: 1}}>
-      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
-      <SafeAreaView style={{flex: 1}} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopBar}>
-            <TouchableOpacity style={styles.iconButton} onPress={handleBackToDesigns} activeOpacity={0.88}>
-              <Ionicons name="arrow-back" size={18} color="#2f2119" />
+    <View style={styles.root}>
+      <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
+      <SafeAreaView style={styles.screenShell} edges={['top']}>
+        <View style={styles.fixedTopSection}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity style={styles.headerIconBtn} onPress={handleBackToDesigns} activeOpacity={0.88}>
+              <Ionicons name="chevron-back" size={18} color="#7A6E61" />
             </TouchableOpacity>
+            <Text style={styles.headerTitle}>Ring Configurator</Text>
             <TouchableOpacity
-              style={styles.iconButton}
-              onPress={() => navigation.navigate('CartTab' as never)}
+              style={styles.headerBellBtn}
+              onPress={() => (navigation as any).navigate('OrdersTab')}
               activeOpacity={0.88}
             >
-              <Ionicons name="cart-outline" size={18} color="#2f2119" />
-              {itemCount > 0 ? (
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>{itemCount > 99 ? '99+' : itemCount}</Text>
-                </View>
-              ) : null}
+              <Ionicons name="notifications-outline" size={17} color="#7A6E61" />
+              <View style={styles.headerBellBadge}>
+                <Text style={styles.headerBellBadgeText}>3</Text>
+              </View>
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.heroImageShell, { height: heroHeight }]}>
-            {activeImage ? (
-              <Image source={{ uri: activeImage, cache: 'force-cache' }} style={styles.heroImage} resizeMode="cover" />
-            ) : (
-              <View style={styles.placeholderHero}>
-                <Ionicons name="diamond-outline" size={42} color="#c5a890" />
-                <Text style={styles.placeholderText}>Image coming soon</Text>
+          <View style={[styles.fixedMediaCard, { height: mediaHeight + 70 }]}>
+            <View style={[styles.fixedMediaImageShell, { height: mediaHeight }]}>
+              {gallery.length ? (
+                <FlatList
+                  ref={mediaListRef}
+                  data={gallery}
+                  horizontal
+                  pagingEnabled
+                  bounces={false}
+                  scrollEventThrottle={16}
+                  keyExtractor={(item, index) => `${item}-${index}`}
+                  showsHorizontalScrollIndicator={false}
+                  initialScrollIndex={Math.min(selectedImageIndex, Math.max(0, gallery.length - 1))}
+                  onMomentumScrollEnd={handleMediaSwipeEnd}
+                  onScrollToIndexFailed={(info) => {
+                    mediaListRef.current?.scrollToOffset({
+                      offset: info.averageItemLength * info.index,
+                      animated: false,
+                    });
+                  }}
+                  getItemLayout={(_, index) => ({
+                    length: mediaFrameWidth,
+                    offset: mediaFrameWidth * index,
+                    index,
+                  })}
+                  renderItem={({ item }) => (
+                    <View style={[styles.mediaSlide, { width: mediaFrameWidth, height: mediaHeight }]}>
+                      <Image source={{ uri: item, cache: 'force-cache' }} style={styles.fixedMediaImage} resizeMode="cover" />
+                    </View>
+                  )}
+                />
+              ) : (
+                <View style={styles.placeholderHero}>
+                  <Ionicons name="diamond-outline" size={42} color="#c5a890" />
+                  <Text style={styles.placeholderText}>Image coming soon</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.mediaCaption} numberOfLines={1}>
+              {heroCaption}
+            </Text>
+
+            {gallery.length > 1 ? (
+              <View style={styles.imagePagerRow}>
+                {gallery.slice(0, 6).map((_, index) => (
+                  <TouchableOpacity
+                    key={`gallery-chip-${index}`}
+                    style={[styles.imagePagerChip, selectedImageIndex === index ? styles.imagePagerChipActive : null]}
+                    onPress={() => {
+                      setSelectedImageIndex(index);
+                    }}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={[styles.imagePagerText, selectedImageIndex === index ? styles.imagePagerTextActive : null]}>
+                      {index + 1}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
+            ) : null}
           </View>
         </View>
 
-        {gallery.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.thumbnailRow}
-            style={styles.thumbnailScroller}
-          >
-            {gallery.map((imageUrl, index) => (
-              <TouchableOpacity
-                key={`${imageUrl}-${index}`}
-                onPress={() => setSelectedImageIndex(index)}
-                activeOpacity={0.88}
-                style={[
-                  styles.thumbnailFrame,
-                  index === selectedImageIndex ? styles.thumbnailFrameActive : null,
-                ]}
-              >
-                <Image source={{ uri: imageUrl, cache: 'force-cache' }} style={styles.thumbnailImage} resizeMode="cover" />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
+        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.configPanel}>
+            <OptionSection
+              title="METAL"
+              options={metalColorOptions}
+              selected={selectedMetalColor}
+              onSelect={(value) => {
+                resolveVersionSelection('metalColor', value);
+              }}
+              variant="metal"
+            />
 
-        <View style={[styles.detailCard, compactLayout ? styles.detailCardCompact : null]}>
-          <Text
-            style={[
-              styles.designName,
-              Platform.OS === 'android' ? styles.designNameAndroid : null,
-              compactLayout ? styles.designNameCompact : null,
-            ]}
-          >
-            {activeDesign.designName || activeDesign.designNo}
-          </Text>
-
-          <OptionSection
-            title={`Shape: ${selectedShape || '-'}`}
-            options={shapeOptions}
-            selected={selectedShape}
-            onSelect={(value) => {
-              resolveVersionSelection('shape', value);
-            }}
-            variant="shape"
-          />
-
-          <OptionSection
-            title={`Metal Color: ${selectedMetalColor || '-'}`}
-            options={metalColorOptions}
-            selected={selectedMetalColor}
-            onSelect={(value) => {
-              resolveVersionSelection('metalColor', value);
-            }}
-            variant="color"
-          />
-
-          <OptionSection
-            title={`Diamond Type: ${selectedDiamondType || '-'}`}
-            options={diamondTypeOptions}
-            selected={selectedDiamondType}
-            onSelect={(value) => {
-              resolveVersionSelection('diamondType', value);
-            }}
-          />
-
-          <OptionSection
-            title="Diamond Spread"
-            options={styleOptions}
-            selected={selectedStyle}
-            onSelect={(value) => {
-              resolveVersionSelection('style', value);
-            }}
-          />
-
-          <OptionSection
-            title="Diamond Weight"
-            options={weightOptions}
-            selected={selectedWeight}
-            onSelect={(value) => {
-              resolveVersionSelection('weight', value);
-            }}
-          />
-
-          <OptionSection
-            title="Diamond Quality"
-            options={qualityOptions}
-            selected={selectedQuality}
-            onSelect={(value) => {
-              resolveVersionSelection('quality', value);
-            }}
-          />
-
-          <OptionSection
-            title="Ring Size"
-            options={ringSizeOptions}
-            selected={selectedRingSize}
-            onSelect={(value) => {
-              resolveVersionSelection('ringSize', value);
-            }}
-          />
-
-          <View style={styles.descriptionBlock}>
-            <Text style={styles.descriptionTitle}>Product Description</Text>
-            <Text style={styles.descriptionIntro}>
-              Refined showroom-ready jewelry profile with selected specifications below.
-            </Text>
-            {ijewelViewerUrl ? (
-              <TouchableOpacity style={styles.ijewelButton} activeOpacity={0.9} onPress={handleOpenIjewelViewer}>
-                <Ionicons name="cube-outline" size={16} color="#2C1E16" />
-                <Text style={styles.ijewelButtonText}>Open 3D Viewer</Text>
-              </TouchableOpacity>
-            ) : null}
-
-            <View style={styles.infoPanels}>
-              <View style={styles.infoPanel}>
-                <View style={styles.infoPanelHeader}>
-                  <Ionicons name="layers-outline" size={14} color="#7A6551" />
-                  <Text style={styles.infoPanelTitle}>General Information</Text>
-                </View>
-                {generalInfoRows.map((row) => (
-                  <View key={`general-${row.label}`} style={[styles.infoRow, compactLayout ? styles.infoRowStack : null]}>
-                    <Text style={styles.infoLabel}>{row.label}</Text>
-                    <Text style={[styles.infoValue, compactLayout ? styles.infoValueStack : null]}>{row.value}</Text>
+            <View style={styles.dualRow}>
+              <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === 'style' ? styles.dropdownFieldWrapActive : null]}>
+                <Text style={styles.sectionLabel}>COVERAGE</Text>
+                <TouchableOpacity
+                  style={styles.dualFieldCard}
+                  activeOpacity={0.9}
+                onPress={() => openDropdown('style', styleOptions, selectedStyle)}
+                >
+                  <View style={styles.dropdownValueRow}>
+                    <Text style={styles.dualFieldValue} numberOfLines={1}>
+                      {selectedStyle || '-'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#7D746A" />
                   </View>
-                ))}
+                </TouchableOpacity>
+                {renderInlineDropdown('style')}
               </View>
 
-              <View style={styles.infoPanel}>
-                <View style={styles.infoPanelHeader}>
-                  <Ionicons name="diamond-outline" size={14} color="#7A6551" />
-                  <Text style={styles.infoPanelTitle}>Gemstone Information</Text>
-                </View>
-                {gemstoneInfoRows.map((row) => (
-                  <View key={`gem-${row.label}`} style={[styles.infoRow, compactLayout ? styles.infoRowStack : null]}>
-                    <Text style={styles.infoLabel}>{row.label}</Text>
-                    <Text style={[styles.infoValue, compactLayout ? styles.infoValueStack : null]}>{row.value}</Text>
+              <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === 'quality' ? styles.dropdownFieldWrapActive : null]}>
+                <Text style={styles.sectionLabel}>DIAMOND QUALITY</Text>
+                <TouchableOpacity
+                  style={styles.dualFieldCard}
+                  activeOpacity={0.9}
+                onPress={() => openDropdown('quality', qualityOptions, selectedQuality)}
+                >
+                  <View style={styles.dropdownValueRow}>
+                    <Text style={styles.dualFieldValue} numberOfLines={1}>
+                      {selectedQuality || '-'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#7D746A" />
                   </View>
-                ))}
+                </TouchableOpacity>
+                {renderInlineDropdown('quality')}
               </View>
             </View>
-          </View>
-        </View>
-      </ScrollView>
 
-      <View style={styles.stickyFooterCard}>
-        <View style={styles.stickyTopRow}>
-          <View style={styles.stickyPriceBlock}>
-             <Text style={styles.stickySummarySubtitle}>Your retail price</Text>
-             <View style={{flexDirection: 'row', alignItems: 'center'}}>
-               <Text style={styles.stickySummaryPrice}>{formatDetailPrice(displayPrice)}</Text>
-               <Ionicons name="flash-sharp" size={18} color="#D8AB52" style={{ marginLeft: 6 }} />
-             </View>
-          </View>
-          <View style={styles.stickySummaryBlock}>
-             <Text style={styles.stickySummaryDetails} numberOfLines={2}>
-                {[
-                  selectedMetalColor ? canonicalMetalColor(selectedMetalColor) : null,
-                  selectedStyle,
-                ].filter(Boolean).join(' - ')}
-                {'\n'}
-                {[
-                  selectedDiamondType,
-                  selectedRingSize ? `Size ${selectedRingSize}` : null
-                ].filter(Boolean).join(' - ')}
-             </Text>
-          </View>
-        </View>
+            <OptionSection
+              title="CARAT WEIGHT"
+              options={weightOptions}
+              selected={selectedWeight}
+              onSelect={(value) => {
+                resolveVersionSelection('weight', value);
+              }}
+            />
 
-        <View style={styles.actionRowSticky}>
-          <TouchableOpacity
-            style={[styles.primaryActionSticky, { elevation: 8, shadowColor: '#B88B35', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 }]}
-            activeOpacity={0.8}
-            onPress={handleAddToCart}
-          >
-            <LinearGradient
-              colors={['#D8AB52', '#C6973F', '#A37728']}
-              start={{ x: 0, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryGradientBtn}
-            >
-              <Ionicons name="flash-sharp" size={16} color="#FFF" style={styles.btnFlashIcon} />
-              <Text style={styles.primaryActionTextSticky}>Add to quote</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryActionSticky}
-            activeOpacity={0.92}
-            onPress={handleShare}
-          >
-            <Ionicons name="arrow-redo-outline" size={18} color="#A37728" />
-          </TouchableOpacity>
+            {ringSizeOptions.length ? (
+              <View style={styles.sectionBlock}>
+                <Text style={styles.sectionLabel}>RING SIZE</Text>
+                <View style={[styles.singleDropdownWrap, dropdownVisible && dropdownKey === 'ringSize' ? styles.dropdownFieldWrapActive : null]}>
+                  <TouchableOpacity
+                    style={styles.singleDropdownCard}
+                    activeOpacity={0.9}
+                    onPress={() => openDropdown('ringSize', ringSizeOptions, selectedRingSize)}
+                  >
+                    <Text style={styles.singleDropdownValue} numberOfLines={1}>
+                      {selectedRingSize || '-'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color="#7D746A" />
+                  </TouchableOpacity>
+                  {renderInlineDropdown('ringSize')}
+                </View>
+              </View>
+            ) : null}
+
+            {diamondTypeOptions.length > 1 ? (
+              <OptionSection
+                title="STONE"
+                options={diamondTypeOptions}
+                selected={selectedDiamondType}
+                onSelect={(value) => {
+                  resolveVersionSelection('diamondType', value);
+                }}
+              />
+            ) : null}
+          </View>
+
+          <View style={styles.specCard}>
+            <Text style={styles.specTitle}>PRODUCT SPECIFICATIONS</Text>
+            {specRows.map((row, index) => (
+              <View key={`spec-${row.label}`} style={[styles.specRow, index === specRows.length - 1 ? styles.specRowLast : null]}>
+                <Text style={styles.specLabel}>{row.label}</Text>
+                <Text style={[styles.specValue, row.highlight ? styles.specValueHighlight : null]}>{row.value}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+
+        <View style={styles.bottomSummary}>
+          <View style={styles.bottomTopRow}>
+            <View style={styles.retailBlock}>
+              <Text style={styles.retailLabel}>RETAIL PRICE</Text>
+              <Text style={styles.retailValue}>{formatDetailPrice(displayPrice)}</Text>
+            </View>
+            <View style={styles.orderSummaryCard}>
+              <Text style={styles.orderSummaryTitle}>ORDER SUMMARY</Text>
+              <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalColor)}</Text>
+              <Text style={styles.orderSummaryLine}>{toCtwLabel(selectedWeight) || '-'}</Text>
+              <Text style={styles.orderSummaryLine}>{selectedRingSize || '-'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.bottomActionsRow}>
+            <TouchableOpacity style={styles.ghostActionBtn} onPress={handleOpenQuoteBuilder} activeOpacity={0.9}>
+              <Text style={styles.ghostActionText}>Save Quote</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.ghostActionBtn} onPress={handleShare} activeOpacity={0.9}>
+              <Text style={styles.ghostActionText}>Share</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.processActionBtn} onPress={handleProcessOrder} activeOpacity={0.9}>
+              <Text style={styles.processActionText}>Process Order</Text>
+              <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
       </SafeAreaView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: 'transparent',
+  root: {
+    flex: 1,
   },
-  container: {
+  screenShell: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  fixedTopSection: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECE7DE',
+  },
+  headerRow: {
+    height: 52,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    marginLeft: 4,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#4B433A',
+  },
+  headerBellBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DCCFC0',
+    backgroundColor: '#FBF9F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerBellBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#DE5858',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  headerBellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  fixedMediaCard: {
+    position: 'relative',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#ECE7DE',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 14,
     paddingTop: 10,
-    paddingBottom: 24,
+    paddingBottom: 8,
   },
-  heroCard: {
-    position: 'relative',
-  },
-  heroTopBar: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    right: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 2,
-  },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  fixedMediaImageShell: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 252, 245, 0.5)' : 'rgba(255, 252, 245, 0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
   },
-  cartBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#A67F3F',
-  },
-  cartBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  heroImageShell: {
-    height: 300,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#F2EAE1',
-  },
-  heroImage: {
+  fixedMediaImage: {
     width: '100%',
     height: '100%',
+  },
+  mediaSlide: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaCaption: {
+    marginTop: 6,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: '#80786F',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  imagePagerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  imagePagerChip: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    marginHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F7F4EE',
+    borderWidth: 1,
+    borderColor: '#CFC6B9',
+  },
+  imagePagerChipActive: {
+    backgroundColor: '#201D19',
+    borderColor: '#201D19',
+  },
+  imagePagerText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#7B7369',
+  },
+  imagePagerTextActive: {
+    color: '#FFFFFF',
+  },
+  detailScroll: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  detailScrollContent: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  configPanel: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 0,
+    borderColor: 'transparent',
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+  },
+  sectionBlock: {
+    marginTop: 7,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    letterSpacing: 1.2,
+    fontWeight: '700',
+    color: '#81786E',
+    marginBottom: 7,
+  },
+  optionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  metalWrap: {
+    marginBottom: 2,
+  },
+  metalChip: {
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D6CEC2',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+  metalChipActive: {
+    borderColor: '#1D1A17',
+    backgroundColor: '#FAF8F5',
+  },
+  metalDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 102, 80, 0.22)',
+  },
+  metalChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#4A3E35',
+  },
+  metalChipTextActive: {
+    color: '#1D1A17',
+  },
+  optionChip: {
+    minHeight: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D6CEC2',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  optionChipActive: {
+    borderColor: '#1D1A17',
+    backgroundColor: '#F6F3EF',
+  },
+  optionChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5A5148',
+  },
+  optionChipTextActive: {
+    color: '#1D1A17',
+  },
+  dualRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 30,
+  },
+  dropdownFieldWrap: {
+    width: '48.5%',
+    position: 'relative',
+  },
+  dropdownFieldWrapActive: {
+    zIndex: 380,
+  },
+  dualFieldCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#D8D0C4',
+    backgroundColor: '#FBFAF8',
+    borderRadius: 11,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  dualFieldValue: {
+    fontSize: 12,
+    color: '#2C2620',
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  dropdownValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dualFieldHint: {
+    marginTop: 3,
+    fontSize: 9,
+    color: '#A0968B',
+    fontWeight: '600',
+  },
+  singleDropdownWrap: {
+    position: 'relative',
+    zIndex: 40,
+  },
+  singleDropdownCard: {
+    minHeight: 34,
+    borderWidth: 1,
+    borderColor: '#D8D0C4',
+    borderRadius: 11,
+    backgroundColor: '#FBFAF8',
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  singleDropdownValue: {
+    fontSize: 12,
+    color: '#2C2620',
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  inlineDropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9CDBD',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#201810',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 10,
+    zIndex: 420,
+  },
+  inlineDropdownScroll: {
+    maxHeight: 176,
+  },
+  inlineDropdownOption: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE5DA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  inlineDropdownOptionLast: {
+    borderBottomWidth: 0,
+  },
+  inlineDropdownOptionActive: {
+    backgroundColor: '#1D6ED4',
+    borderBottomColor: '#1D6ED4',
+  },
+  inlineDropdownOptionText: {
+    width: '100%',
+    fontSize: 12,
+    color: '#38312A',
+    fontWeight: '600',
+    textAlign: 'left',
+  },
+  inlineDropdownOptionTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  specCard: {
+    marginTop: 10,
+    backgroundColor: '#F9F7F3',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  specTitle: {
+    fontSize: 11,
+    letterSpacing: 1,
+    fontWeight: '800',
+    color: '#7E6F5C',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DED7CD',
+  },
+  specRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5DDD2',
+  },
+  specRowLast: {
+    borderBottomWidth: 0,
+  },
+  specLabel: {
+    fontSize: 12,
+    color: '#6D665D',
+  },
+  specValue: {
+    fontSize: 12,
+    color: '#2A241F',
+    fontWeight: '700',
+  },
+  specValueHighlight: {
+    color: '#B2874A',
+  },
+  bottomSummary: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8E1D7',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 18 : 12,
+    shadowColor: '#AFA191',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 14,
+  },
+  bottomTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 10,
+  },
+  retailBlock: {
+    flex: 1,
+  },
+  retailLabel: {
+    fontSize: 10,
+    letterSpacing: 1.1,
+    color: '#8E867D',
+    fontWeight: '700',
+    marginBottom: 1,
+  },
+  retailValue: {
+    fontSize: 31,
+    lineHeight: 33,
+    fontWeight: '800',
+    color: '#1F1A15',
+  },
+  orderSummaryCard: {
+    width: 122,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 10,
+    backgroundColor: '#FBF9F6',
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  orderSummaryTitle: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: '#A1968A',
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  orderSummaryLine: {
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#5D554C',
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  bottomActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ghostActionBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D9D0C4',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  ghostActionText: {
+    fontSize: 12,
+    color: '#7B736A',
+    fontWeight: '700',
+  },
+  processActionBtn: {
+    flex: 1.45,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#BE9851',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginLeft: 2,
+  },
+  processActionText: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    marginRight: 6,
   },
   placeholderHero: {
     flex: 1,
@@ -956,297 +1501,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#8a786a',
   },
-  thumbnailRow: {
-    paddingTop: 12,
-    paddingHorizontal: 6,
-  },
-  thumbnailScroller: {
-    marginTop: 2,
-  },
-  thumbnailFrame: {
-    width: 68,
-    height: 68,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#eadfd2',
-    backgroundColor: '#f3e9dd',
-    marginRight: 10,
-  },
-  thumbnailFrameActive: {
-    borderColor: '#3c2b20',
-    borderWidth: 2,
-  },
-  thumbnailImage: {
-    width: '100%',
-    height: '100%',
-  },
-  detailCard: {
-    marginTop: 12,
-    backgroundColor: GLASS_CARD_BG,
-    borderWidth: 1.3,
-    borderColor: '#7C6650',
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: '#6E533D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: Platform.OS === 'android' ? 0 : 2,
-  },
-  detailCardCompact: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  designName: {
-    fontFamily: 'serif',
-    fontSize: 31,
-    lineHeight: 36,
-    fontWeight: '700',
-    letterSpacing: 0.55,
-    color: '#2C1E16',
-  },
-  designNameAndroid: {
-    fontSize: 27,
-    lineHeight: 32,
-  },
-  designNameCompact: {
-    fontSize: 24,
-    lineHeight: 29,
-  },
-  designPrice: {
-    marginTop: 4,
-    fontFamily: 'serif',
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#2C1E16',
-    marginBottom: 8,
-  },
-  designPriceCompact: {
-    fontSize: 20,
-    marginBottom: 6,
-  },
-  sectionBlock: {
-    marginTop: 10,
-  },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4A3E35',
-    marginBottom: 8,
-  },
-  optionWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  shapeWrap: {
-    alignItems: 'center',
-  },
-  shapeOption: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    marginRight: 12,
-    marginBottom: 6,
-  },
-  shapeOptionActive: {
-    borderBottomColor: '#C6973F',
-  },
-  colorWrap: {
-    alignItems: 'center',
-  },
-  colorOption: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    backgroundColor: GLASS_SOFT_BG,
-    marginRight: 10,
-    marginBottom: 6,
-  },
-  colorOptionActive: {
-    borderColor: '#2C1E16',
-  },
-  colorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 102, 80, 0.22)',
-  },
-  optionChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BCA48B',
-    backgroundColor: GLASS_CHIP_BG,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  optionChipActive: {
-    backgroundColor: '#D8AB52',
-    borderColor: '#C6973F',
-  },
-  optionChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4A3E35',
-  },
-  optionChipTextActive: {
-    color: '#FFFFFF',
-  },
   emptyOption: {
     fontSize: 12,
     color: '#8E8E93',
-  },
-  actionRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-  },
-  primaryAction: {
-    flex: 1.15,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: '#2C1E16',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  primaryActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: 'rgba(255, 252, 245, 0.92)',
-  },
-  secondaryAction: {
-    flex: 0.85,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: GLASS_BUTTON_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  secondaryActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#2C1E16',
-  },
-  descriptionBlock: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(124, 102, 80, 0.25)',
-  },
-  descriptionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#4A3E35',
-    marginBottom: 6,
-    letterSpacing: 0.25,
-  },
-  descriptionIntro: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#6E635B',
-    marginBottom: 10,
-  },
-  ijewelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: GLASS_BUTTON_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
-    marginBottom: 12,
-  },
-  ijewelButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#2C1E16',
-  },
-  infoPanels: {
-    marginTop: 4,
-  },
-  infoPanel: {
-    backgroundColor: GLASS_SOFT_BG,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 102, 80, 0.2)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    marginBottom: 10,
-  },
-  infoPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 2,
-    marginBottom: 6,
-  },
-  infoPanelTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#5C4A3C',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(124, 102, 80, 0.12)',
-  },
-  infoRowStack: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: '#7A6551',
-    fontWeight: '600',
-  },
-  infoValue: {
-    flex: 1,
-    textAlign: 'right',
-    fontSize: 12,
-    color: '#4A3E35',
-    fontWeight: '700',
-  },
-  infoValueStack: {
-    textAlign: 'left',
-    width: '100%',
-    marginTop: 2,
   },
   stateScreen: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    backgroundColor: 'transparent',
+    backgroundColor: '#FFFFFF',
   },
   stateCard: {
     width: '100%',
     maxWidth: 360,
     padding: 24,
     borderRadius: 14,
-    backgroundColor: GLASS_CARD_BG,
-    borderWidth: 1.3,
-    borderColor: '#7C6650',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
     alignItems: 'center',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   stateTitle: {
     fontSize: 20,
@@ -1275,116 +1554,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  stickyFooterCard: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
-    backgroundColor: '#FAF7F3',
-    borderTopWidth: 1,
-    borderTopColor: '#E8E1D7',
-    shadowColor: '#AFA191',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 20,
-  },
-  stickyTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  stickyPriceBlock: {
-    flex: 1,
-  },
-  stickySummarySubtitle: {
-    fontSize: 11,
-    color: '#A0978C',
-    fontWeight: '600',
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  stickySummaryPrice: {
-    fontSize: 26,
-    fontFamily: 'serif',
-    fontWeight: '800',
-    color: '#D8AB52', 
-  },
-  stickySummaryBlock: {
-    flex: 1.2,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#E8E1D7',
-    borderRadius: 8,
-    backgroundColor: '#FBF9F6',
-    justifyContent: 'center',
-  },
-  stickySummaryDetails: {
-    fontSize: 10,
-    color: '#A0978C',
-    textAlign: 'center',
-    lineHeight: 14,
-    fontWeight: '500',
-  },
-  actionRowSticky: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  primaryActionSticky: {
-    flex: 1,
-  },
-  primaryGradientBtn: {
-    height: 52,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnFlashIcon: {
-    marginRight: 6,
-  },
-  primaryActionTextSticky: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryActionSticky: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#FBF9F6',
-    borderWidth: 1,
-    borderColor: '#E8E1D7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  colorBox: {
-    width: 66,
-    height: 66,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#BCA48B',
-    backgroundColor: GLASS_CHIP_BG,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  colorBoxActive: {
-    backgroundColor: '#FDF7EE',
-    borderColor: '#C6973F',
-  },
-  colorBoxText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#4A3E35',
-    textAlign: 'center',
-  },
-  colorBoxTextActive: {
-    color: '#9C7127',
-  },
 });
 
 export default DesignDetailScreen;
+
+
+

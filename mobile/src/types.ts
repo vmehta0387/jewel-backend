@@ -64,6 +64,7 @@ export type DesignListResponse = {
 export type Order = {
   id: string;
   orderNumber: string;
+  isActive?: boolean;
   designId?: string | null;
   designNo?: string | null;
   designVersion?: string | null;

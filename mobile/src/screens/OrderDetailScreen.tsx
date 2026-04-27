@@ -207,7 +207,7 @@ const OrderDetailScreen = () => {
   if (loading && !order) {
     return (
       <View style={styles.center}>
-        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <ActivityIndicator color="#D8AB52" />
         <Text style={styles.muted}>Loading detail...</Text>
       </View>
@@ -217,7 +217,7 @@ const OrderDetailScreen = () => {
   if (!order) {
     return (
       <View style={styles.center}>
-        <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+        <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <Text style={styles.errorText}>{error || 'Order not found.'}</Text>
       </View>
     );
@@ -234,7 +234,7 @@ const OrderDetailScreen = () => {
 
   return (
     <View style={styles.screenView}>
-      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
       
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerArea}>
@@ -816,3 +816,4 @@ const styles = StyleSheet.create({
 });
 
 export default OrderDetailScreen;
+

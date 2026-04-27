@@ -1190,12 +1190,26 @@ export class ProductsService {
     }
 
     const [data, total] = await qb.getManyAndCount();
+    const designIds = data.map((design) => design.id);
+    const gemstones = designIds.length
+      ? await this.gemstoneRepo.find({
+          where: { designId: In(designIds) },
+          order: { sortOrder: 'ASC' },
+        })
+      : [];
+    const gemstonesByDesign = new Map<string, DesignGemstone[]>();
+    for (const gemstone of gemstones) {
+      const group = gemstonesByDesign.get(gemstone.designId) || [];
+      group.push(gemstone);
+      gemstonesByDesign.set(gemstone.designId, group);
+    }
     const updatedByMap = await this.resolveUserNames(
       data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
     );
     const enrichedData = await Promise.all(
       data.map(async (design) => ({
         ...design,
+        gemstones: gemstonesByDesign.get(design.id) || [],
         imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),

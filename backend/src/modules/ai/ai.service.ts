@@ -82,13 +82,33 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
       },
     ];
 
+    const createCompletion = async (messagesPayload: any[], includeTools: boolean) => {
+      const basePayload: any = includeTools
+        ? { model, messages: messagesPayload, tools, tool_choice: 'auto' }
+        : { model, messages: messagesPayload };
+
+      try {
+        return await this.openai.chat.completions.create(basePayload);
+      } catch (err: any) {
+        const rawMessage = String(err?.message || '');
+        const isFallbackCandidate =
+          model !== defaultModel &&
+          [400, 404].includes(Number(err?.status || 0)) &&
+          /(non-serverless model|dedicated endpoint|model|not found|invalid)/i.test(rawMessage);
+
+        if (!isFallbackCandidate) throw err;
+
+        this.logger.warn(
+          `Model "${model}" unavailable for current Together endpoint. Falling back to "${defaultModel}".`,
+        );
+
+        const fallbackPayload = { ...basePayload, model: defaultModel };
+        return await this.openai.chat.completions.create(fallbackPayload);
+      }
+    };
+
     try {
-      let response = await this.openai.chat.completions.create({
-        model,
-        messages,
-        tools,
-        tool_choice: 'auto',
-      });
+      let response = await createCompletion(messages, true);
 
       let toolCalls = response.choices[0].message.tool_calls;
       let finalDesignsPayload: any[] = [];
@@ -181,10 +201,7 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
         }
 
         // Fire to LLM again to synthesize the actual user-facing reply
-        response = await this.openai.chat.completions.create({
-          model,
-          messages,
-        });
+        response = await createCompletion(messages, false);
       }
 
       const finalReply = response.choices[0].message.content || "I couldn't process that request at this time.";
@@ -236,7 +253,7 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
     } catch (err: any) {
       this.logger.error('Error with LLM agent inference: ' + err.message);
       return {
-        reply: 'Sorry, I encounted an communication error. Be right back!',
+        reply: 'Sorry, I encountered a communication error. Be right back!',
         designs: [],
       };
     }

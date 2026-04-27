@@ -7,9 +7,10 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Design } from '../products/entities/design.entity';
 import { AuthModule } from '../auth/auth.module';
+import { SpiffModule } from '../spiff/spiff.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order, Company, Branch, Design]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Order, Company, Branch, Design]), AuthModule, SpiffModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

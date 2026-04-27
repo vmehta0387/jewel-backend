@@ -85,3 +85,9 @@ export const updateOrder = (token: string, id: string, payload: Partial<CreateOr
     method: 'PUT',
     body: JSON.stringify(payload),
   }, token);
+
+export const updateOrderActiveStatus = (token: string, id: string, isActive: boolean) =>
+  apiRequest<Order>(`/orders/${id}/active`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive }),
+  }, token);

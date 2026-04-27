@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -11,9 +11,11 @@ import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.dto';
+import { SpiffService } from '../spiff/spiff.service';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
@@ -23,6 +25,7 @@ export class OrdersService {
     @InjectRepository(Company) private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
+    private readonly spiffService: SpiffService,
   ) {}
 
   async getNextOrderNumber(): Promise<{ orderNumber: string }> {
@@ -214,7 +217,9 @@ export class OrdersService {
       });
 
       try {
-        return await this.orderRepo.save(order);
+        const saved = await this.orderRepo.save(order);
+        await this.safeTrackOrderCreated(saved);
+        return saved;
       } catch (error: any) {
         const isDuplicate =
           error?.code === 'ER_DUP_ENTRY' ||
@@ -231,7 +236,7 @@ export class OrdersService {
 
   private resolveCreateStatus(requestedStatus: OrderStatus | undefined, role: UserRole): OrderStatus {
     if (role === UserRole.SALES_REP) {
-      return OrderStatus.PENDING_APPROVAL;
+      return requestedStatus ?? OrderStatus.PENDING_APPROVAL;
     }
 
     if (role === UserRole.BRANCH_MANAGER) {
@@ -243,6 +248,7 @@ export class OrdersService {
 
   async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {
     const order = await this.findOne(id, requester);
+    const previousStatus = order.status;
     const scope = this.resolveScope(requester, dto.companyId ?? order.companyId ?? undefined, dto.branchId ?? order.branchId ?? undefined);
 
     if (dto.companyId !== undefined && scope.companyId) {
@@ -314,7 +320,9 @@ export class OrdersService {
       order.status = dto.status;
     }
 
-    return this.orderRepo.save(order);
+    const saved = await this.orderRepo.save(order);
+    await this.safeTrackOrderTransition(saved, previousStatus);
+    return saved;
   }
 
   async getPricePreview(params: { designId: string; companyId: string; branchId: string }) {
@@ -888,6 +896,29 @@ export class OrdersService {
       return await this.createSignedUrl(client, bucket, key);
     } catch {
       return null;
+    }
+  }
+
+  private async safeTrackOrderCreated(order: Order): Promise<void> {
+    try {
+      await this.spiffService.handleOrderCreated(order);
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF tracking skipped for new order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async safeTrackOrderTransition(
+    order: Order,
+    previousStatus: OrderStatus | string | undefined,
+  ): Promise<void> {
+    try {
+      await this.spiffService.handleOrderStatusTransition(order, previousStatus);
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF transition tracking skipped for order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
     }
   }
 }

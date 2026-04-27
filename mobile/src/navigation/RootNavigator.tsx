@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
@@ -7,17 +7,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { useCart } from '../context/CartContext';
 import { fetchOrders } from '../api/orders';
 import LoginScreen from '../screens/LoginScreen';
+import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
 import DesignsScreen from '../screens/DesignsScreen';
 import DesignDetailScreen from '../screens/DesignDetailScreen';
-import CartScreen from '../screens/CartScreen';
+import QuoteBuilderScreen from '../screens/QuoteBuilderScreen';
+import QuoteSummaryScreen from '../screens/QuoteSummaryScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
 import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
+import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import type { UserRole } from '../types';
 import { buildOrderNotifications } from '../utils/orderNotifications';
@@ -28,14 +30,79 @@ export type RootStackParamList = {
   App: undefined;
 };
 
+export type CatalogPresetCategory = 'rings' | 'bracelets' | 'studs' | 'necklaces';
+
+export type QuoteBuilderDraft = {
+  orderId?: string;
+  orderNumber?: string;
+  createdAt?: string;
+  status?: string;
+  designId: string;
+  designNo: string;
+  designName?: string | null;
+  imageUrl?: string | null;
+  unitPrice: number;
+  shortDescription?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  purchaseOrderNumber?: string;
+  notes?: string;
+  selection?: {
+    diamondType?: string;
+    shape?: string;
+    style?: string;
+    metalColor?: string;
+    weight?: string;
+    quality?: string;
+    ringSize?: string;
+  };
+};
+
+export type QuoteSummaryPayload = {
+  orderId?: string;
+  orderNumber?: string;
+  createdAt?: string;
+  status?: string;
+  shortDescription?: string;
+  designId: string;
+  designNo: string;
+  designName?: string | null;
+  imageUrl?: string | null;
+  price: number;
+  selection: {
+    shape?: string;
+    metalColor?: string;
+    style?: string;
+    weight?: string;
+    quality?: string;
+    ringSize?: string;
+  };
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  purchaseOrderNumber?: string;
+  branchName?: string;
+  notes?: string;
+};
+
 export type DesignsStackParamList = {
-  Designs: undefined;
+  CatalogCategories: undefined;
+  Designs: { presetCategory?: CatalogPresetCategory; prefillSearch?: string } | undefined;
   DesignDetail: { designId: string };
+  QuoteBuilder: { draft: QuoteBuilderDraft };
+  QuoteSummary: { summary: QuoteSummaryPayload };
 };
 
 export type OrdersStackParamList = {
   Orders: undefined;
   OrderDetail: { orderId: string };
+  QuoteSummary: { summary: QuoteSummaryPayload };
+};
+
+export type DashboardStackParamList = {
+  DashboardHome: undefined;
+  SpiffRewards: undefined;
 };
 
 export type TeamStackParamList = {
@@ -45,6 +112,7 @@ export type TeamStackParamList = {
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator();
+const DashboardStack = createNativeStackNavigator<DashboardStackParamList>();
 const DesignsStack = createNativeStackNavigator<DesignsStackParamList>();
 const OrdersStack = createNativeStackNavigator<OrdersStackParamList>();
 const TeamStack = createNativeStackNavigator<TeamStackParamList>();
@@ -54,7 +122,7 @@ const navigationTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: 'transparent',
+    background: '#FFFFFF',
     primary: colors.primary,
     card: colors.card,
     text: colors.text,
@@ -70,8 +138,11 @@ const AuthNavigator = () => (
 
 const DesignsNavigator = () => (
   <DesignsStack.Navigator screenOptions={{ headerShown: false }}>
+    <DesignsStack.Screen name="CatalogCategories" component={CatalogCategoryScreen} options={{ title: 'Catalog' }} />
     <DesignsStack.Screen name="Designs" component={DesignsScreen} options={{ title: 'Designs' }} />
     <DesignsStack.Screen name="DesignDetail" component={DesignDetailScreen} options={{ title: 'Design Detail' }} />
+    <DesignsStack.Screen name="QuoteBuilder" component={QuoteBuilderScreen} options={{ title: 'Quote Builder' }} />
+    <DesignsStack.Screen name="QuoteSummary" component={QuoteSummaryScreen} options={{ title: 'Order Summary' }} />
   </DesignsStack.Navigator>
 );
 
@@ -79,7 +150,15 @@ const OrdersNavigator = () => (
   <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
     <OrdersStack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Orders' }} />
     <OrdersStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Detail' }} />
+    <OrdersStack.Screen name="QuoteSummary" component={QuoteSummaryScreen} options={{ title: 'Order Summary' }} />
   </OrdersStack.Navigator>
+);
+
+const DashboardNavigator = () => (
+  <DashboardStack.Navigator screenOptions={{ headerShown: false }}>
+    <DashboardStack.Screen name="DashboardHome" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
+    <DashboardStack.Screen name="SpiffRewards" component={SpiffRewardsScreen} options={{ title: 'Spiff Rewards' }} />
+  </DashboardStack.Navigator>
 );
 
 const TeamNavigator = () => (
@@ -93,7 +172,6 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
-  const { itemCount } = useCart();
   const { token, user } = useAuth();
   const [ordersBadgeCount, setOrdersBadgeCount] = useState(0);
 
@@ -126,8 +204,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: '#F8F1E8',
-          borderTopColor: 'rgba(139, 115, 85, 0.24)',
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E9E5DF',
           borderTopWidth: 1,
           elevation: 12,
           shadowColor: '#000',
@@ -162,10 +240,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
                 return focused ? 'search' : 'search-outline';
               case 'OrdersTab':
                 return focused ? 'receipt' : 'receipt-outline';
-              case 'CartTab':
-                return focused ? 'cart' : 'cart-outline';
               case 'AiTab':
-                return focused ? 'sparkles' : 'sparkles-outline';
+                return focused ? 'flash-sharp' : 'flash-outline';
               case 'TeamTab':
                 return focused ? 'people' : 'people-outline';
               default:
@@ -178,11 +254,6 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
               <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
                 <Ionicons name={name} size={iconSize} color={focused ? '#2C1E16' : '#8B7355'} />
               </View>
-              {route.name === 'CartTab' && itemCount > 0 ? (
-                <View style={styles.badgePill}>
-                  <Text style={styles.badgePillText}>{itemCount > 99 ? '99+' : String(itemCount)}</Text>
-                </View>
-              ) : null}
               {route.name === 'OrdersTab' && ordersBadgeCount > 0 ? (
                 <View style={styles.badgePill}>
                   <Text style={styles.badgePillText}>
@@ -196,12 +267,32 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
       })}
     >
       {role === 'BRANCH_MANAGER' || role === 'SALES_REP' ? (
-        <Tabs.Screen name="DashboardTab" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
+        <Tabs.Screen name="DashboardTab" component={DashboardNavigator} options={{ title: 'Dashboard' }} />
       ) : null}
-      <Tabs.Screen name="DesignsTab" component={DesignsNavigator} options={{ title: 'Catalog' }} />
+      <Tabs.Screen
+        name="DesignsTab"
+        component={DesignsNavigator}
+        options={{ title: 'Catalog', popToTopOnBlur: true }}
+        listeners={({ navigation, route }) => ({
+          tabPress: (event) => {
+            event.preventDefault();
+
+            const state = (route as any).state;
+            if (state?.type === 'stack' && state.key && state.index > 0) {
+              navigation.dispatch({
+                ...StackActions.popToTop(),
+                target: state.key,
+              });
+            }
+
+            (navigation as any).navigate('DesignsTab', {
+              screen: 'CatalogCategories',
+            });
+          },
+        })}
+      />
       <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
-      <Tabs.Screen name="CartTab" component={CartScreen} options={{ title: 'Cart' }} />
-      <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI' }} />
+      <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} />
       {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
         <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />
       ) : null}

@@ -1,0 +1,7 @@
+﻿export enum SpiffClaimStatus {
+  PENDING_REVIEW = 'PENDING_REVIEW',
+  HOLD = 'HOLD',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  FULFILLED = 'FULFILLED',
+}

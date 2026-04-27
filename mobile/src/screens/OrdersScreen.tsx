@@ -1,9 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -16,84 +16,103 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
-import { fetchOrders } from '../api/orders';
+import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders';
 import type { Order } from '../types';
-import type { OrdersStackParamList } from '../navigation/RootNavigator';
+import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
 
-type FilterKey = 'ALL' | 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'COMPLETED' | 'CANCELLED';
-
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: 'ALL', label: 'All' },
-  { key: 'QUOTE', label: 'Quote' },
-  { key: 'PENDING_APPROVAL', label: 'In Review' },
-  { key: 'APPROVED', label: 'Approved' },
-  { key: 'IN_PRODUCTION', label: 'In Production' },
-  { key: 'SHIPPED', label: 'Ready to Ship' },
-  { key: 'COMPLETED', label: 'Completed' },
-  { key: 'CANCELLED', label: 'Cancelled' },
-];
-
-const STATUS_META: Record<
-  string,
-  {
-    label: string;
-    backgroundColor: string;
-    textColor: string;
-  }
-> = {
-  QUOTE: {
-    label: 'Quote',
-    backgroundColor: '#F3E8D6',
-    textColor: '#8E6840',
-  },
-  PENDING_APPROVAL: {
-    label: 'In Review',
-    backgroundColor: '#ece9f9',
-    textColor: '#5f5aa9',
-  },
-  APPROVED: {
-    label: 'Approved',
-    backgroundColor: '#ddeee1',
-    textColor: '#2f7a4c',
-  },
-  IN_PRODUCTION: {
-    label: 'In Production',
-    backgroundColor: '#dff0fb',
-    textColor: '#2b6f99',
-  },
-  SHIPPED: {
-    label: 'Ready to Ship',
-    backgroundColor: '#dcf1e4',
-    textColor: '#2d885b',
-  },
-  COMPLETED: {
-    label: 'Completed',
-    backgroundColor: '#e3f4e7',
-    textColor: '#31754d',
-  },
-  CANCELLED: {
-    label: 'Cancelled',
-    backgroundColor: '#f4dddd',
-    textColor: '#9d4f4f',
-  },
+type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED';
+type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
+type NotificationEntry = {
+  id: string;
+  orderId: string;
+  title: string;
+  subtitle: string;
+  time: string;
+  tone: NotificationTone;
 };
 
-const THUMB_COLORS = [
-  { background: '#F6EFE9', accent: '#A67F3F' },
-  { background: '#F5EBE1', accent: '#cc8c57' },
-  { background: '#FBF9F6', accent: '#c88373' },
-  { background: '#FAF5ED', accent: '#b7a08a' },
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: 'QUOTE', label: 'Quotes' },
+  { key: 'PENDING_APPROVAL', label: 'Pending' },
+  { key: 'APPROVED', label: 'Approved' },
+  { key: 'IN_PRODUCTION', label: 'In Prod.' },
+  { key: 'SHIPPED', label: 'Shipped' },
 ];
+
+const normalizeStatus = (value?: string | null) => String(value || '').trim().toUpperCase();
+
+const statusLabel = (status?: string | null) => {
+  const key = normalizeStatus(status);
+  switch (key) {
+    case 'QUOTE':
+      return 'Quote';
+    case 'PENDING_APPROVAL':
+      return 'Pending';
+    case 'APPROVED':
+      return 'Approved';
+    case 'IN_PRODUCTION':
+      return 'In Prod.';
+    case 'SHIPPED':
+      return 'Shipped';
+    case 'COMPLETED':
+      return 'Shipped';
+    case 'CANCELLED':
+      return 'Cancelled';
+    default:
+      return key || 'Pending';
+  }
+};
+
+const statusPillStyle = (status?: string | null) => {
+  const key = normalizeStatus(status);
+  if (key === 'QUOTE') {
+    return {
+      backgroundColor: '#F8F2E8',
+      borderColor: '#DCC8A9',
+      textColor: '#8C7048',
+    };
+  }
+  if (key === 'PENDING_APPROVAL') {
+    return {
+      backgroundColor: '#F8F5F0',
+      borderColor: '#DCCFC0',
+      textColor: '#2A221C',
+    };
+  }
+  if (key === 'APPROVED') {
+    return {
+      backgroundColor: '#E7F2EA',
+      borderColor: '#BFD9C8',
+      textColor: '#2C7B4D',
+    };
+  }
+  if (key === 'IN_PRODUCTION') {
+    return {
+      backgroundColor: '#EAF1FD',
+      borderColor: '#BFD2F1',
+      textColor: '#3D6CAF',
+    };
+  }
+  if (key === 'SHIPPED' || key === 'COMPLETED') {
+    return {
+      backgroundColor: '#E8EFFC',
+      borderColor: '#C4D4F4',
+      textColor: '#3D63A3',
+    };
+  }
+  return {
+    backgroundColor: '#F4E8E8',
+    borderColor: '#E1C4C4',
+    textColor: '#9B5555',
+  };
+};
 
 const formatMoney = (value: number | null | undefined) => {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return '$0';
-  }
-
+  if (!Number.isFinite(numeric)) return '$0';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -102,26 +121,82 @@ const formatMoney = (value: number | null | undefined) => {
   }).format(numeric);
 };
 
-const formatOrderDate = (value?: string | null) => {
-  if (!value) return 'No due date';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'No due date';
-
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+const statusTimelineIndex = (status?: string | null) => {
+  const key = normalizeStatus(status);
+  if (key === 'QUOTE') return 1;
+  if (key === 'PENDING_APPROVAL') return 1;
+  if (key === 'APPROVED') return 2;
+  if (key === 'IN_PRODUCTION') return 3;
+  if (key === 'SHIPPED' || key === 'COMPLETED') return 4;
+  return 0;
 };
 
-const getStatusMeta = (status?: string | null) =>
-  STATUS_META[status || ''] || {
-    label: status || 'Pending',
-    backgroundColor: '#eee7dd',
-    textColor: '#75675c',
-  };
+const matchesFilter = (order: Order, filter: FilterKey) => {
+  const key = normalizeStatus(order.status);
+  if (filter === 'SHIPPED') return key === 'SHIPPED' || key === 'COMPLETED';
+  return key === filter;
+};
 
-const formatOrderHeading = (orderNumber: string) => orderNumber;
+const safeText = (value?: string | null, fallback = '-') => {
+  const trimmed = String(value || '').trim();
+  return trimmed || fallback;
+};
+
+const formatRelativeTime = (date?: string | null) => {
+  if (!date) return 'Just now';
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return 'Just now';
+  const diffMs = Date.now() - parsed.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return parsed.toLocaleDateString();
+};
+
+const stripSelectionLabel = (value?: string | null) =>
+  String(value || '').replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|shape)\s*[:\-]\s*/i, '').trim();
+
+const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPayload['selection'] => {
+  const text = String(value || '').trim();
+  if (!text) return {};
+
+  const tokens = text
+    .replace(/[|•]/g, ' - ')
+    .replace(/\s*-\s*/g, ' - ')
+    .split(' - ')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const next: QuoteSummaryPayload['selection'] = {};
+  for (const item of tokens) {
+    const cleaned = stripSelectionLabel(item);
+    const lower = cleaned.toLowerCase();
+    if (!next.weight && /(ctw|carat|carats|\bct\b)/i.test(lower)) {
+      next.weight = cleaned;
+      continue;
+    }
+    if (!next.ringSize && /^(?:\d+(?:\.\d+)?|size\s*\d+(?:\.\d+)?|ring size\s*\d+(?:\.\d+)?)$/i.test(lower)) {
+      next.ringSize = cleaned.replace(/^ring size\s*[:\-]?\s*/i, '').replace(/^size\s*[:\-]?\s*/i, '');
+      continue;
+    }
+    if (!next.quality && /(vvs|vs|si|if|fl|lab|ef|gh|ij)/i.test(lower)) {
+      next.quality = cleaned;
+      continue;
+    }
+    if (!next.metalColor && /(wg|yg|rg|pt|white|yellow|rose|gold|platinum|\b\d{1,2}\s*k\b)/i.test(lower)) {
+      next.metalColor = cleaned;
+      continue;
+    }
+    if (!next.style && /(eternity|full|half|3\/4|quarter|stone|pav|halo|solitaire)/i.test(lower)) {
+      next.style = cleaned;
+    }
+  }
+
+  return next;
+};
 
 const OrdersScreen = () => {
   const { token, user } = useAuth();
@@ -130,20 +205,28 @@ const OrdersScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<FilterKey>('ALL');
-  const [filterVisible, setFilterVisible] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<FilterKey>('PENDING_APPROVAL');
+  const [actingOrderId, setActingOrderId] = useState<string | null>(null);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
-
     setLoading(true);
     setError(null);
-
     try {
       const fullAccess =
         user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
-      const response = await fetchOrders(token, 1, 25, fullAccess ? 'ALL' : 'ACTIVE');
-      setOrders(response.data || []);
+      const response = await fetchOrders(token, 1, 100, fullAccess ? 'ALL' : 'ACTIVE');
+      const rows = (response.data || []).filter(
+        (order) => order.isActive !== false && normalizeStatus(order.status) !== 'CANCELLED',
+      );
+      rows.sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
+      setOrders(rows);
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
@@ -157,497 +240,1111 @@ const OrdersScreen = () => {
     }, [loadOrders]),
   );
 
+  const countsByFilter = useMemo(() => {
+    const initial: Record<FilterKey, number> = {
+      QUOTE: 0,
+      PENDING_APPROVAL: 0,
+      APPROVED: 0,
+      IN_PRODUCTION: 0,
+      SHIPPED: 0,
+    };
+
+    orders.forEach((order) => {
+      const key = normalizeStatus(order.status);
+      if (key === 'QUOTE') initial.QUOTE += 1;
+      else if (key === 'PENDING_APPROVAL') initial.PENDING_APPROVAL += 1;
+      else if (key === 'APPROVED') initial.APPROVED += 1;
+      else if (key === 'IN_PRODUCTION') initial.IN_PRODUCTION += 1;
+      else if (key === 'SHIPPED' || key === 'COMPLETED') initial.SHIPPED += 1;
+    });
+
+    return initial;
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
-
     return orders.filter((order) => {
-      const matchesSearch =
-        !term ||
-        [order.orderNumber, order.designNo, order.companyName, order.branchName, order.customerName]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(term));
+      const searchable = [
+        order.orderNumber,
+        order.designNo,
+        order.purchaseOrderNumber,
+        order.customerName,
+        order.customerEmail,
+        order.shortDescription,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
-      const matchesFilter =
-        selectedFilter === 'ALL' || order.status === selectedFilter;
-
-      return matchesSearch && matchesFilter;
+      const matchesSearch = !term || searchable.includes(term);
+      return matchesSearch && matchesFilter(order, selectedFilter);
     });
   }, [orders, search, selectedFilter]);
 
-  const renderOrder = ({ item, index }: { item: Order; index: number }) => {
-    const statusMeta = getStatusMeta(item.status);
-    const thumbPalette = THUMB_COLORS[index % THUMB_COLORS.length];
+  const notificationEntries = useMemo<NotificationEntry[]>(() => {
+    const rows = [...orders].sort((a, b) => {
+      const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+
+    return rows.slice(0, 24).map((order) => {
+      const status = normalizeStatus(order.status);
+      const orderLabel = order.orderNumber || order.id;
+      const detail = safeText(order.designNo, 'Order update');
+      const customer = safeText(order.customerName, 'Customer');
+      const subtitle = `${detail} - ${customer}`;
+
+      if (status === 'PENDING_APPROVAL') {
+        return {
+          id: `notify-${order.id}-pending`,
+          orderId: order.id,
+          title: `Approval needed: ${orderLabel}`,
+          subtitle,
+          time: formatRelativeTime(order.updatedAt || order.createdAt),
+          tone: 'alertGold',
+        };
+      }
+
+      if (status === 'CANCELLED') {
+        return {
+          id: `notify-${order.id}-cancelled`,
+          orderId: order.id,
+          title: `Cancelled: ${orderLabel}`,
+          subtitle,
+          time: formatRelativeTime(order.updatedAt || order.createdAt),
+          tone: 'alertRed',
+        };
+      }
+
+      if (status === 'SHIPPED' || status === 'COMPLETED') {
+        return {
+          id: `notify-${order.id}-shipped`,
+          orderId: order.id,
+          title: `Shipped: ${orderLabel}`,
+          subtitle,
+          time: formatRelativeTime(order.updatedAt || order.createdAt),
+          tone: 'info',
+        };
+      }
+
+      if (status === 'QUOTE') {
+        return {
+          id: `notify-${order.id}-quote`,
+          orderId: order.id,
+          title: `Quote draft: ${orderLabel}`,
+          subtitle,
+          time: formatRelativeTime(order.updatedAt || order.createdAt),
+          tone: 'promo',
+        };
+      }
+
+      return {
+        id: `notify-${order.id}-activity`,
+        orderId: order.id,
+        title: `${statusLabel(status)}: ${orderLabel}`,
+        subtitle,
+        time: formatRelativeTime(order.updatedAt || order.createdAt),
+        tone: 'neutral',
+      };
+    });
+  }, [orders]);
+
+  const alerts = useMemo(
+    () => notificationEntries.filter((entry) => entry.tone === 'alertGold' || entry.tone === 'alertRed').slice(0, 5),
+    [notificationEntries],
+  );
+  const recentActivity = useMemo(
+    () => notificationEntries.filter((entry) => entry.tone === 'neutral').slice(0, 6),
+    [notificationEntries],
+  );
+  const updates = useMemo(
+    () => notificationEntries.filter((entry) => entry.tone === 'info' || entry.tone === 'promo').slice(0, 6),
+    [notificationEntries],
+  );
+  const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
+
+  useEffect(() => {
+    if (!notificationsVisible) {
+      setNotificationCount(notificationEntries.length);
+    }
+  }, [notificationEntries.length, notificationsVisible]);
+
+  const openOrderSummary = useCallback(
+    (order: Order) => {
+      const summary: QuoteSummaryPayload = {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        createdAt: order.createdAt,
+        status: order.status,
+        shortDescription: order.shortDescription || undefined,
+        designId: order.designId || '',
+        designNo: safeText(order.designNo, order.orderNumber),
+        designName: order.designNo || null,
+        imageUrl: order.designImageUrl || null,
+        price: Number(order.price || 0),
+        selection: parseSelectionFromSummaryText(order.shortDescription),
+        customerName: order.customerName || undefined,
+        customerPhone: order.customerPhone || undefined,
+        customerEmail: order.customerEmail || undefined,
+        purchaseOrderNumber: order.purchaseOrderNumber || undefined,
+        branchName: order.branchName || undefined,
+        notes: order.notes || undefined,
+      };
+      navigation.navigate('QuoteSummary', { summary });
+    },
+    [navigation],
+  );
+
+  const handleContinueEditing = useCallback(
+    (order: Order) => {
+      if (order.designId) {
+        (navigation as any).navigate('DesignsTab', {
+          screen: 'QuoteBuilder',
+          params: {
+            draft: {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              createdAt: order.createdAt,
+              status: order.status,
+              designId: order.designId,
+              designNo: safeText(order.designNo, order.orderNumber),
+              designName: order.designNo || null,
+              imageUrl: order.designImageUrl || null,
+              unitPrice: Number(order.price || 0),
+              shortDescription: order.shortDescription || undefined,
+              selection: parseSelectionFromSummaryText(order.shortDescription),
+              purchaseOrderNumber: order.purchaseOrderNumber || undefined,
+              customerName: order.customerName || undefined,
+              customerPhone: order.customerPhone || undefined,
+              customerEmail: order.customerEmail || undefined,
+              notes: order.notes || undefined,
+            },
+          },
+        });
+        return;
+      }
+      openOrderSummary(order);
+    },
+    [navigation, openOrderSummary],
+  );
+
+  const suspendDraft = useCallback(
+    async (order: Order) => {
+      if (!token) return;
+      setActingOrderId(order.id);
+      try {
+        await updateOrderActiveStatus(token, order.id, false);
+        setOrders((prev) => prev.filter((row) => row.id !== order.id));
+      } catch (err: any) {
+        setError(err?.message || 'Unable to suspend draft');
+      } finally {
+        setActingOrderId(null);
+      }
+    },
+    [token],
+  );
+
+  const markCancelled = useCallback(
+    async (order: Order) => {
+      if (!token) return;
+      setActingOrderId(order.id);
+      try {
+        await updateOrder(token, order.id, { status: 'CANCELLED' });
+        setOrders((prev) => prev.filter((row) => row.id !== order.id));
+      } catch (err: any) {
+        setError(err?.message || 'Unable to update order');
+      } finally {
+        setActingOrderId(null);
+      }
+    },
+    [token],
+  );
+
+  const renderTimeline = (status?: string | null) => {
+    const activeIndex = statusTimelineIndex(status);
+    const labels = ['Order\nCreated', 'Pending\nApproval', 'Approved', 'In\nProd.', 'Shipped'];
+    return (
+      <View style={styles.timelineWrap}>
+        <Text style={styles.timelineTitle}>ORDER TIMELINE</Text>
+        <View style={styles.timelineTrackRow}>
+          {labels.map((label, index) => {
+            const done = index <= activeIndex;
+            const dotStyle =
+              index === 0 && done
+                ? styles.timelineDotGreen
+                : done
+                  ? styles.timelineDotGold
+                  : styles.timelineDotIdle;
+            const textStyle =
+              index === 0 && done
+                ? styles.timelineLabelGreen
+                : done
+                  ? styles.timelineLabelActive
+                  : styles.timelineLabelIdle;
+            return (
+              <React.Fragment key={`timeline-${label}`}>
+                <View style={styles.timelineStep}>
+                  <View style={[styles.timelineDot, dotStyle]}>
+                    {done ? <Ionicons name="checkmark" size={10} color="#FFFFFF" /> : null}
+                  </View>
+                  <Text style={[styles.timelineLabel, textStyle]}>{label}</Text>
+                </View>
+                {index < labels.length - 1 ? (
+                  <View style={[styles.timelineLine, index < activeIndex ? styles.timelineLineActive : null]} />
+                ) : null}
+              </React.Fragment>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderActions = (order: Order) => {
+    const status = normalizeStatus(order.status);
+    if (status === 'QUOTE') {
+      return (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnGhostRed]}
+            onPress={() => suspendDraft(order)}
+            activeOpacity={0.9}
+            disabled={actingOrderId === order.id}
+          >
+            <Text style={styles.actionBtnGhostRedText}>{actingOrderId === order.id ? 'Deleting...' : 'Delete Draft'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnBlack]} onPress={() => handleContinueEditing(order)} activeOpacity={0.9}>
+            <Text style={styles.actionBtnBlackText}>Continue Editing -&gt;</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (status === 'PENDING_APPROVAL') {
+      return (
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnGhostRed]}
+            onPress={() => markCancelled(order)}
+            activeOpacity={0.9}
+            disabled={actingOrderId === order.id}
+          >
+            <Text style={styles.actionBtnGhostRedText}>{actingOrderId === order.id ? 'Canceling...' : 'Cancel Order'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnGhost]} onPress={() => openOrderSummary(order)} activeOpacity={0.9}>
+            <Text style={styles.actionBtnGhostText}>View Details -&gt;</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (status === 'APPROVED' || status === 'IN_PRODUCTION') {
+      return (
+        <>
+          {renderTimeline(status)}
+          <TouchableOpacity style={styles.requestBtn} onPress={() => openOrderSummary(order)} activeOpacity={0.9}>
+            <Ionicons name="ellipse-outline" size={11} color="#B2874A" />
+            <Text style={styles.requestBtnText}>Request Cancellation / Modification</Text>
+          </TouchableOpacity>
+        </>
+      );
+    }
+
+    return null;
+  };
+
+  const renderOrderCard = ({ item }: { item: Order }) => {
+    const pill = statusPillStyle(item.status);
+    const price = formatMoney(item.price);
+    const title = safeText(item.designNo, item.orderNumber);
+    const subtitle =
+      item.shortDescription?.replace(/\s*\|\s*/g, ' - ') ||
+      [item.customerName, item.purchaseOrderNumber ? `PO: ${item.purchaseOrderNumber}` : null].filter(Boolean).join(' - ');
+
+    const thumbRingColor =
+      normalizeStatus(item.status) === 'SHIPPED' || normalizeStatus(item.status) === 'COMPLETED'
+        ? '#4A8ADA'
+        : normalizeStatus(item.status) === 'APPROVED'
+          ? '#B2874A'
+          : normalizeStatus(item.status) === 'PENDING_APPROVAL'
+            ? '#C4826C'
+            : '#B4A692';
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.92}
-        style={styles.orderCard}
-        onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
-      >
-        <View style={styles.thumbnailWrap}>
-          {item.designImageUrl ? (
-            <Image source={{ uri: item.designImageUrl, cache: 'force-cache' }} style={styles.thumbnailImage} />
-          ) : (
-            <View style={[styles.thumbnailPlaceholder, { backgroundColor: thumbPalette.background }]}>
-              <Ionicons name="diamond-outline" size={28} color={thumbPalette.accent} />
+      <TouchableOpacity style={styles.card} activeOpacity={0.92} onPress={() => openOrderSummary(item)}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.thumbWrap}>
+            {item.designImageUrl ? (
+              <Image source={{ uri: item.designImageUrl, cache: 'force-cache' }} style={styles.thumbImage} />
+            ) : (
+              <View style={styles.thumbPlaceholder}>
+                <View style={[styles.thumbRing, { borderColor: thumbRingColor }]} />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cardBody}>
+            <View style={styles.cardHeadRow}>
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {title}
+              </Text>
+              <View style={[styles.statusPill, { backgroundColor: pill.backgroundColor, borderColor: pill.borderColor }]}>
+                <Text style={[styles.statusPillText, { color: pill.textColor }]}>{statusLabel(item.status)}</Text>
+              </View>
             </View>
-          )}
+
+            <View style={styles.cardMetaRow}>
+              <Text style={styles.cardMeta} numberOfLines={3}>
+                {safeText(subtitle, 'No details')}
+              </Text>
+              <Text style={styles.cardPrice}>{price}</Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.orderBody}>
-          <View style={styles.topRow}>
-            <Text style={styles.orderNumber} numberOfLines={1}>
-              {formatOrderHeading(item.orderNumber)}
-            </Text>
-            <View style={[styles.statusChip, { backgroundColor: statusMeta.backgroundColor }]}>
-              <Text style={[styles.statusChipText, { color: statusMeta.textColor }]} numberOfLines={1}>
-                {statusMeta.label}
-              </Text>
-            </View>
-          </View>
+        {renderActions(item)}
+      </TouchableOpacity>
+    );
+  };
 
-          <Text style={styles.designName} numberOfLines={1}>
-            {item.designNo || 'Jewelry design'}
-          </Text>
-
-          <View style={styles.bottomRow}>
-            <Text style={styles.orderMeta} numberOfLines={1}>
-              Due {formatOrderDate(item.deliveryDate)}
-            </Text>
-            <Text style={styles.orderPrice}>{formatMoney(item.price)}</Text>
-          </View>
+  const renderFilterChip = (filter: { key: FilterKey; label: string }) => {
+    const selected = selectedFilter === filter.key;
+    const count = countsByFilter[filter.key] || 0;
+    return (
+      <TouchableOpacity
+        key={filter.key}
+        style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+        onPress={() => setSelectedFilter(filter.key)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.filterChipLine}>
+          <Text style={[styles.filterChipLabel, selected ? styles.filterChipLabelActive : null]}>{filter.label}</Text>
+          <Text style={[styles.filterChipCount, selected ? styles.filterChipCountActive : null]}>{count}</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const renderEmpty = () => (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIcon}>
-        <Ionicons name="receipt-outline" size={26} color="#A67F3F" />
-      </View>
-      <Text style={styles.emptyTitle}>No orders found</Text>
-      <Text style={styles.emptyText}>Try a different search or switch filters to explore more logs.</Text>
-    </View>
+  const openNotifications = useCallback(() => {
+    setNotificationsVisible(true);
+    setNotificationCount(0);
+  }, []);
+
+  const closeNotifications = useCallback(() => {
+    setNotificationsVisible(false);
+  }, []);
+
+  const openFromNotification = useCallback(
+    (entry: NotificationEntry) => {
+      setNotificationsVisible(false);
+      const targetOrder = orders.find((order) => order.id === entry.orderId);
+      if (targetOrder) {
+        openOrderSummary(targetOrder);
+      }
+    },
+    [orders, openOrderSummary],
   );
 
-  return (
-    <View style={styles.screen}>
-      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
-      
-      <View style={styles.fixedHeader}>
-        <Text style={styles.pageTitle}>Orders History</Text>
+  const getNotificationCardStyle = useCallback((tone: NotificationTone) => {
+    if (tone === 'alertGold') return [styles.notificationCardBase, styles.notificationCardGold];
+    if (tone === 'alertRed') return [styles.notificationCardBase, styles.notificationCardRed];
+    if (tone === 'info') return [styles.notificationCardBase, styles.notificationCardInfo];
+    if (tone === 'promo') return [styles.notificationCardBase, styles.notificationCardPromo];
+    return [styles.notificationCardBase, styles.notificationCardNeutral];
+  }, []);
 
-        <View style={styles.searchAndFilterRow}>
-          <View style={styles.searchShell}>
-            <Ionicons name="search-outline" size={18} color="#a79687" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search order #, customer..."
-              placeholderTextColor="#A59D96"
-              value={search}
-              onChangeText={setSearch}
-            />
-            {search ? (
-              <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="close-circle" size={18} color="#b2a294" />
-              </TouchableOpacity>
-            ) : null}
+  const getNotificationDotStyle = useCallback((tone: NotificationTone) => {
+    if (tone === 'alertGold') return [styles.notificationDot, styles.notificationDotGold];
+    if (tone === 'alertRed') return [styles.notificationDot, styles.notificationDotRed];
+    if (tone === 'info') return [styles.notificationDot, styles.notificationDotInfo];
+    if (tone === 'promo') return [styles.notificationDot, styles.notificationDotPromo];
+    return [styles.notificationDot, styles.notificationDotNeutral];
+  }, []);
+
+  return (
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <View style={styles.brandHeader}>
+        <View style={styles.brandLeft}>
+          <Ionicons name="flash-sharp" size={23} color="#C89D5A" style={styles.brandBoltIcon} />
+          <View>
+            <Text style={styles.brandTitle}>BLITZ NYC</Text>
+            <Text style={styles.brandSub}>Built for closers</Text>
           </View>
-          
-          <TouchableOpacity 
-            style={styles.filterIconBtn} 
-            onPress={() => setFilterVisible(true)} 
-            activeOpacity={0.8}
-          >
-            <Ionicons name="options-outline" size={20} color="#6A5F56" />
-            {selectedFilter !== 'ALL' && <View style={styles.filterActiveDot} />}
-          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.bellBtn} activeOpacity={0.9} onPress={openNotifications}>
+          <Ionicons name="notifications-outline" size={16} color="#7A6E61" />
+          {notificationCount > 0 ? (
+            <View style={styles.bellBadge}>
+              <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.topPanel}>
+        <Text style={styles.pageTitle}>My Orders</Text>
+
+        <View style={styles.searchBox}>
+          <Ionicons name="search-outline" size={16} color="#B0A79E" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search PO# or customer name..."
+            placeholderTextColor="#A59D96"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color="#b2a294" />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <View style={styles.filterRow}>{FILTERS.map((item) => renderFilterChip(item))}</View>
       </View>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <FlatList
         data={filteredOrders}
         keyExtractor={(item) => item.id}
-        renderItem={renderOrder}
-        showsVerticalScrollIndicator={false}
+        renderItem={renderOrderCard}
         contentContainerStyle={styles.listContent}
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={loadOrders}
-            tintColor="#8a6b55"
-            colors={['#8a6b55']}
-          />
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadOrders} tintColor="#8a6b55" colors={['#8a6b55']} />}
+        ListEmptyComponent={
+          loading ? (
+            <View style={styles.emptyWrap}>
+              <ActivityIndicator size="small" color="#8a6b55" />
+              <Text style={styles.emptyText}>Loading orders...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyWrap}>
+              <Ionicons name="receipt-outline" size={24} color="#A67F3F" />
+              <Text style={styles.emptyTitle}>No orders found</Text>
+              <Text style={styles.emptyText}>Try another filter or search keyword.</Text>
+            </View>
+          )
         }
       />
 
-      <Modal visible={filterVisible} transparent animationType="fade" onRequestClose={() => setFilterVisible(false)}>
-        <TouchableWithoutFeedback onPress={() => setFilterVisible(false)}>
-          <View style={styles.modalOverlay}>
+      <Modal visible={notificationsVisible} transparent animationType="fade" onRequestClose={closeNotifications}>
+        <TouchableWithoutFeedback onPress={closeNotifications}>
+          <View style={styles.modalOverlayLock}>
             <TouchableWithoutFeedback>
-              <View style={styles.modalSheet}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Filter Orders</Text>
-                  <TouchableOpacity onPress={() => setFilterVisible(false)} hitSlop={{top:10, bottom:10, left:10, right:10}}>
-                    <Ionicons name="close" size={24} color="#2C1E16" />
+              <View style={styles.notificationsWindow}>
+                <View style={styles.notificationsHeaderRow}>
+                  <Text style={styles.notificationsTitle}>Notifications</Text>
+                  <TouchableOpacity onPress={() => setNotificationCount(0)}>
+                    <Text style={styles.markReadText}>Mark all read</Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.filterSectionTitle}>Order Status</Text>
-                <View style={styles.modalChipGrid}>
-                  {FILTERS.map((filter) => {
-                    const selected = filter.key === selectedFilter;
-                    return (
-                      <TouchableOpacity
-                        key={filter.key}
-                        activeOpacity={0.85}
-                        onPress={() => setSelectedFilter(filter.key)}
-                        style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                      >
-                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>
-                          {filter.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {hasAnyNotifications ? (
+                  <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+                    {alerts.length ? (
+                      <View style={styles.notificationSection}>
+                        <Text style={styles.notificationSectionLabel}>ALERTS</Text>
+                        {alerts.map((entry) => (
+                          <TouchableOpacity
+                            key={entry.id}
+                            style={getNotificationCardStyle(entry.tone)}
+                            onPress={() => openFromNotification(entry)}
+                            activeOpacity={0.88}
+                          >
+                            <View style={styles.notificationCardTopRow}>
+                              <View style={getNotificationDotStyle(entry.tone)} />
+                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                {entry.title}
+                              </Text>
+                            </View>
+                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
 
-                <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    style={styles.modalResetBtn} 
-                    onPress={() => setSelectedFilter('ALL')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.modalResetText}>Reset</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.modalApplyBtn} 
-                    onPress={() => setFilterVisible(false)}
-                    activeOpacity={0.88}
-                  >
-                    <LinearGradient colors={['#D8AB52', '#C6973F', '#A37728']} style={styles.modalApplyGradient}>
-                      <Text style={styles.modalApplyText}>Show Results</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                    {recentActivity.length ? (
+                      <View style={styles.notificationSection}>
+                        <Text style={styles.notificationSectionLabel}>RECENT ACTIVITY</Text>
+                        {recentActivity.map((entry) => (
+                          <TouchableOpacity
+                            key={entry.id}
+                            style={getNotificationCardStyle(entry.tone)}
+                            onPress={() => openFromNotification(entry)}
+                            activeOpacity={0.88}
+                          >
+                            <View style={styles.notificationCardTopRow}>
+                              <View style={getNotificationDotStyle(entry.tone)} />
+                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                {entry.title}
+                              </Text>
+                            </View>
+                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {updates.length ? (
+                      <View style={styles.notificationSection}>
+                        <Text style={styles.notificationSectionLabel}>UPDATES</Text>
+                        {updates.map((entry) => (
+                          <TouchableOpacity
+                            key={entry.id}
+                            style={getNotificationCardStyle(entry.tone)}
+                            onPress={() => openFromNotification(entry)}
+                            activeOpacity={0.88}
+                          >
+                            <View style={styles.notificationCardTopRow}>
+                              <View style={getNotificationDotStyle(entry.tone)} />
+                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                {entry.title}
+                              </Text>
+                            </View>
+                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+                  </ScrollView>
+                ) : (
+                  <View style={styles.emptyNotifBox}>
+                    <Text style={styles.emptyNotifString}>No recent activity</Text>
+                  </View>
+                )}
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#FAF5ED',
+    backgroundColor: '#FFFFFF',
   },
-  fixedHeader: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 10 : 20,
-    paddingBottom: 4,
-    zIndex: 5,
+  brandHeader: {
+    height: 66,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E1D7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+  },
+  brandLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandBoltIcon: {
+    marginRight: 9,
+    marginTop: -2,
+  },
+  brandTitle: {
+    fontSize: 16,
+    letterSpacing: 2.4,
+    color: '#1E1E1E',
+    fontWeight: '800',
+  },
+  brandSub: {
+    marginTop: 1,
+    fontSize: 10,
+    fontStyle: 'italic',
+    color: '#B18441',
+    fontWeight: '500',
+  },
+  bellBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DED4C8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FDFBF8',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D84141',
+  },
+  bellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  modalOverlayLock: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  notificationsWindow: {
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EEE6DB',
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
+    maxHeight: '82%',
+  },
+  notificationsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  notificationsTitle: {
+    fontSize: 30,
+    lineHeight: 33,
+    color: '#211A14',
+    fontWeight: '800',
+  },
+  markReadText: {
+    color: '#B2874A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  notificationSection: {
+    marginBottom: 11,
+  },
+  notificationSectionLabel: {
+    fontSize: 11,
+    letterSpacing: 1.1,
+    color: '#9B9185',
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  notificationCardBase: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  notificationCardGold: {
+    backgroundColor: '#FAF4E8',
+    borderColor: '#E6D3B2',
+  },
+  notificationCardRed: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#ECCACA',
+  },
+  notificationCardNeutral: {
+    backgroundColor: '#FBF9F6',
+    borderColor: '#E4DBD0',
+  },
+  notificationCardInfo: {
+    backgroundColor: '#EDF3FE',
+    borderColor: '#CBDBF6',
+  },
+  notificationCardPromo: {
+    backgroundColor: '#FBF4E8',
+    borderColor: '#E7D4B7',
+  },
+  notificationCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  notificationDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    marginRight: 7,
+  },
+  notificationDotGold: {
+    backgroundColor: '#C9A45F',
+  },
+  notificationDotRed: {
+    backgroundColor: '#DE5F5F',
+  },
+  notificationDotNeutral: {
+    backgroundColor: '#B8AAA0',
+  },
+  notificationDotInfo: {
+    backgroundColor: '#6C8FCB',
+  },
+  notificationDotPromo: {
+    backgroundColor: '#C48E3C',
+  },
+  notificationCardTitle: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 16,
+    color: '#2D261F',
+    fontWeight: '700',
+  },
+  notificationCardSubtitle: {
+    fontSize: 12,
+    lineHeight: 15,
+    color: '#685E54',
+    fontWeight: '500',
+  },
+  notificationCardTime: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#938779',
+    fontWeight: '500',
+  },
+  emptyNotifBox: {
+    borderWidth: 1,
+    borderColor: '#E8DFD3',
+    borderRadius: 12,
+    backgroundColor: '#FAF8F5',
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyNotifString: {
+    fontSize: 13,
+    color: '#85796C',
+    fontWeight: '600',
+  },
+  topPanel: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
   },
   pageTitle: {
-    fontFamily: 'serif',
     fontSize: 28,
-    fontWeight: '700',
-    color: '#2C1E16',
-    marginBottom: 16,
-    marginTop: 24,
+    lineHeight: 32,
+    color: '#1F1A15',
+    fontWeight: '800',
+    marginBottom: 8,
   },
-  searchAndFilterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  searchShell: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
+  searchBox: {
+    minHeight: 40,
+    borderRadius: 11,
     borderWidth: 1,
-    borderColor: '#DCC8B2',
-    shadowColor: '#8B7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: Platform.OS === 'android' ? 0 : 1,
+    borderColor: '#DCCFC0',
+    backgroundColor: '#FAF8F5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 11,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
-    fontSize: 14,
+    fontSize: 13,
     color: '#2C1E16',
-    height: 42,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    paddingVertical: 0,
+    height: 38,
     includeFontPadding: false,
     fontWeight: '500',
   },
-  filterIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#FDFBF9',
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#8B7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    paddingTop: 8,
+    paddingBottom: 2,
   },
-  filterActiveDot: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#C6973F',
+  filterChip: {
+    minWidth: 66,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
-    borderColor: '#FDFBF9',
+    borderColor: '#DCCFC0',
+    backgroundColor: '#FAF8F5',
+    marginRight: 8,
+    marginBottom: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
   },
-  error: {
-    marginTop: 12,
-    color: '#b14b42',
-    fontSize: 13,
+  filterChipActive: {
+    backgroundColor: '#1E1A17',
+    borderColor: '#1E1A17',
   },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 12 : 16,
-    paddingBottom: Platform.OS === 'android' ? 20 : 12,
-    flexGrow: 1,
-  },
-  orderCard: {
+  filterChipLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FDFBF9',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
-    shadowColor: '#8B7355',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: Platform.OS === 'android' ? 0 : 1,
-    marginBottom: 12,
   },
-  thumbnailWrap: {
-    width: 68,
-    height: 68,
+  filterChipLabel: {
+    fontSize: 10,
+    color: '#7A7168',
+    fontWeight: '600',
+  },
+  filterChipLabelActive: {
+    color: '#FFFFFF',
+  },
+  filterChipCount: {
+    fontSize: 10,
+    color: '#7A7168',
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  filterChipCountActive: {
+    color: '#FFFFFF',
+  },
+  errorText: {
+    marginHorizontal: 12,
+    marginTop: 2,
+    marginBottom: 4,
+    color: '#b14b42',
+    fontSize: 12,
+  },
+  listContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 18,
+    paddingTop: 2,
+    flexGrow: 1,
+  },
+  card: {
+    borderWidth: 1.2,
+    borderColor: '#E8DED2',
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    marginBottom: 10,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 9,
+    elevation: 3,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  thumbWrap: {
+    width: 50,
+    height: 50,
     borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 14,
+    marginRight: 10,
     borderWidth: 1,
-    borderColor: '#E8DFD5',
+    borderColor: '#FFFFFF',
+    backgroundColor: '#F3ECE2',
   },
-  thumbnailPlaceholder: {
+  thumbPlaceholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  thumbnailImage: {
+  thumbRing: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 3,
+    backgroundColor: 'transparent',
+  },
+  thumbImage: {
     width: '100%',
     height: '100%',
   },
-  orderBody: {
+  cardBody: {
     flex: 1,
-    minHeight: 68,
-    justifyContent: 'space-between',
   },
-  topRow: {
+  cardHeadRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    marginBottom: 2,
   },
-  orderNumber: {
-    fontFamily: 'serif',
+  cardTitle: {
     flex: 1,
-    fontSize: 15,
+    marginRight: 8,
+    fontSize: 17,
+    lineHeight: 20,
+    color: '#1F1A15',
     fontWeight: '700',
-    color: '#2C1E16',
   },
-  statusChip: {
-    maxWidth: 108,
-    borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+  statusPill: {
+    minHeight: 22,
+    borderRadius: 11,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)',
+    justifyContent: 'center',
   },
-  statusChipText: {
-    fontSize: 10,
+  statusPillText: {
+    fontSize: 11,
     fontWeight: '700',
   },
-  designName: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6A5F56',
-  },
-  bottomRow: {
+  cardMetaRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    gap: 12,
-    marginTop: 8,
   },
-  orderMeta: {
+  cardMeta: {
     flex: 1,
+    marginRight: 8,
     fontSize: 11,
-    color: '#A0978C',
+    lineHeight: 14,
+    color: '#7C746A',
     fontWeight: '500',
   },
-  orderPrice: {
-    fontFamily: 'serif',
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2C1E16',
+  cardPrice: {
+    fontSize: 18,
+    color: '#B2874A',
+    fontWeight: '800',
   },
-  emptyState: {
-    alignItems: 'center',
-    backgroundColor: '#FDFBF9',
-    borderRadius: 16,
-    paddingHorizontal: 22,
-    paddingVertical: 34,
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
-    marginTop: 16,
+  actionRow: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 8,
   },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FAF5F0',
+  actionBtn: {
+    height: 38,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 12,
+  },
+  actionBtnBlack: {
+    flex: 1.35,
+    backgroundColor: '#1A1715',
+  },
+  actionBtnBlackText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  actionBtnGhost: {
+    flex: 1,
     borderWidth: 1,
-    borderColor: '#E8DFD5',
+    borderColor: '#D3CBC0',
+    backgroundColor: '#F7F4F0',
+  },
+  actionBtnGhostText: {
+    color: '#7B7268',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  actionBtnGhostRed: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E7C2C2',
+    backgroundColor: '#FDF1F1',
+  },
+  actionBtnGhostRedText: {
+    color: '#CC5757',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  requestBtn: {
+    marginTop: 10,
+    height: 36,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#E0CBA6',
+    backgroundColor: '#FAF5E9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestBtnText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#B2874A',
+    fontWeight: '700',
+  },
+  timelineWrap: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 10,
+    backgroundColor: '#FAF8F5',
+    padding: 8,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  timelineTitle: {
+    fontSize: 10,
+    letterSpacing: 1,
+    color: '#8A8178',
+    fontWeight: '700',
+    marginBottom: 7,
+  },
+  timelineTrackRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  timelineStep: {
+    width: 46,
+    alignItems: 'center',
+  },
+  timelineDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timelineDotGreen: {
+    backgroundColor: '#2F8A58',
+  },
+  timelineDotGold: {
+    backgroundColor: '#B2874A',
+  },
+  timelineDotIdle: {
+    backgroundColor: '#DFD8CF',
+  },
+  timelineLine: {
+    flex: 1,
+    marginTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: '#D8D1C6',
+  },
+  timelineLineActive: {
+    borderTopColor: '#4E9A6D',
+    borderTopWidth: 2,
+  },
+  timelineLabel: {
+    marginTop: 4,
+    textAlign: 'center',
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '600',
+  },
+  timelineLabelGreen: {
+    color: '#2F8A58',
+  },
+  timelineLabelActive: {
+    color: '#7C746A',
+  },
+  timelineLabelIdle: {
+    color: '#B2A99E',
+  },
+  emptyWrap: {
+    marginTop: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
   },
   emptyTitle: {
-    fontFamily: 'serif',
-    fontSize: 18,
+    marginTop: 8,
+    fontSize: 16,
+    color: '#3A322A',
     fontWeight: '700',
-    color: '#2C1E16',
-    marginBottom: 6,
   },
   emptyText: {
-    textAlign: 'center',
-    color: '#8E8276',
-    lineHeight: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: '#FAF5ED',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 20,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    paddingHorizontal: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontFamily: 'serif',
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#2C1E16',
-  },
-  filterSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#A0978C',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  modalChipGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 32,
-  },
-  modalChip: {
-    backgroundColor: '#FDFBF9',
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  modalChipActive: {
-    backgroundColor: '#2C1E16',
-    borderColor: '#2C1E16',
-  },
-  modalChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6A5F56',
-  },
-  modalChipTextActive: {
-    color: '#FFF',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalResetBtn: {
-    flex: 1,
-    height: 48,
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
-    backgroundColor: '#FDFBF9',
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalResetText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#6A5F56',
-  },
-  modalApplyBtn: {
-    flex: 1.5,
-    height: 48,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  modalApplyGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalApplyText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFF',
+    marginTop: 3,
+    fontSize: 12,
+    color: '#8A8178',
+    fontWeight: '500',
   },
 });
 

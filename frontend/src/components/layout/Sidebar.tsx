@@ -10,7 +10,8 @@ type MenuIconName =
   | 'users'
   | 'designs'
   | 'masters'
-  | 'orders';
+  | 'orders'
+  | 'spiff';
 
 interface NavigationItem {
   name: string;
@@ -53,6 +54,7 @@ const navigation: NavigationItem[] = [
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES' },
   { name: 'Orders', path: '/orders', icon: 'orders', permission: 'ORDER_ENTRIES' },
+  { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES' },
 ];
 
 function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean }) {
@@ -122,6 +124,12 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
       <>
         <rect x="6" y="4" width="12" height="16" rx="2" />
         <path d="M9 8h6M9 12h6M9 16h4" />
+      </>
+    );
+  } else if (name === 'spiff') {
+    iconBody = (
+      <>
+        <path d="M12 3l2.6 5.2L20 9l-4 4 .9 5.6L12 16l-4.9 2.6L8 13 4 9l5.4-.8L12 3z" />
       </>
     );
   }

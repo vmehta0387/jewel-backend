@@ -141,7 +141,7 @@ const CartScreen = () => {
 
   return (
     <View style={styles.screenView}>
-      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
       
       <ScrollView
         contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.md, paddingBottom: Math.max(160, insets.bottom + 140) }]}
@@ -212,7 +212,11 @@ const CartScreen = () => {
         </View>
 
         {items.length > 0 && (
-          <TouchableOpacity style={styles.addAnotherBtn} onPress={() => navigation.navigate('DesignsTab' as never)} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.addAnotherBtn}
+            onPress={() => (navigation as any).navigate('DesignsTab', { screen: 'CatalogCategories' })}
+            activeOpacity={0.8}
+          >
             <Text style={styles.addAnotherText}>+ Add another item</Text>
           </TouchableOpacity>
         )}
@@ -694,3 +698,4 @@ const styles = StyleSheet.create({
 });
 
 export default CartScreen;
+

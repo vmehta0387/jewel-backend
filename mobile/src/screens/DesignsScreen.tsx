@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,27 +14,44 @@ import {
   View,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { fetchDesigns } from '../api/designs';
-import { fetchPricePreview } from '../api/orders';
+import { fetchOrders, fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
-import type { DesignsStackParamList } from '../navigation/RootNavigator';
-import { formatCurrency } from '../utils/format';
+import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
 
-type BadgeTone = 'champagne' | 'mint' | 'rose';
+type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
+type ActivityItem = {
+  id: string;
+  title: string;
+  subtitle: string;
+  time: string;
+  sortDate: Date;
+};
+type NotificationEntry = {
+  id: string;
+  title: string;
+  subtitle: string;
+  time: string;
+  tone: NotificationTone;
+};
 
-const BADGE_PRESETS: Array<{ label: string; tone: BadgeTone }> = [
-  { label: 'Bestseller', tone: 'champagne' },
-  { label: 'New', tone: 'mint' },
-  { label: 'Editor Pick', tone: 'rose' },
-];
-
-const getBadge = (index: number) => BADGE_PRESETS[index % BADGE_PRESETS.length];
+const formatRelativeTime = (date: Date): string => {
+  const diffMs = Date.now() - date.getTime();
+  const diffH = Math.floor(diffMs / (1000 * 60 * 60));
+  if (diffH < 1) return 'Just now';
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD === 1) return 'Yesterday';
+  if (diffD < 7) return `${diffD}d ago`;
+  return date.toLocaleDateString();
+};
 
 const getDisplayPrice = (design: Design, role?: string) =>
   role === 'BRANCH_MANAGER' || role === 'SALES_REP'
@@ -95,6 +112,55 @@ const toLower = (value?: string | null) => normalizeText(value).toLowerCase();
 const uniqueNonEmpty = (values: Array<string | null | undefined>) =>
   Array.from(new Set(values.map((v) => normalizeText(v)).filter(Boolean)));
 
+const SHAPE_LABELS = [
+  'Round',
+  'Oval',
+  'Emerald',
+  'Radiant',
+  'Cushion',
+  'Princess',
+  'Pear',
+  'Marquise',
+  'Heart',
+  'Asscher',
+  'Baguette',
+  'Trillion',
+];
+
+const SHAPE_LOOKUP = new Map(SHAPE_LABELS.map((shape) => [shape.toLowerCase(), shape]));
+const SHAPE_PATTERNS = SHAPE_LABELS.map((shape) => ({
+  label: shape,
+  pattern: new RegExp(`\\b${shape.toLowerCase()}\\b`, 'i'),
+}));
+
+const normalizeShapeLabel = (value?: string | null) => {
+  const cleaned = normalizeText(value);
+  if (!cleaned) return '';
+
+  const mapped = SHAPE_LOOKUP.get(cleaned.toLowerCase());
+  if (mapped) return mapped;
+
+  return cleaned
+    .split(/[\s-]+/)
+    .map((part) => (part ? `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}` : ''))
+    .join(' ');
+};
+
+const extractKnownShapes = (values: Array<string | null | undefined>) => {
+  const found: string[] = [];
+  const joined = values.map((value) => toLower(value)).filter(Boolean);
+
+  for (const text of joined) {
+    for (const entry of SHAPE_PATTERNS) {
+      if (entry.pattern.test(text)) {
+        found.push(entry.label);
+      }
+    }
+  }
+
+  return uniqueNonEmpty(found);
+};
+
 const isActiveDesign = (design: Design) => {
   const row = design as Design & { status?: string; isActive?: boolean };
   if (typeof row.isActive === 'boolean') return row.isActive;
@@ -131,8 +197,23 @@ const keepPrimaryDesignsOnly = (rows: Design[]) => {
   return primaryByBase.size > 0 ? Array.from(primaryByBase.values()) : rows;
 };
 
-const getDesignShapes = (design: Design) =>
-  uniqueNonEmpty((design.gemstones || []).map((gem) => gem.shape));
+const getDesignShapes = (design: Design) => {
+  const row = design as Design & { shape?: string | null; Shape?: string | null; stoneInfo?: string | null };
+  const explicitShapes = uniqueNonEmpty([
+    ...(design.gemstones || []).map((gem) => gem.shape),
+    row.shape,
+    row.Shape,
+  ]).map((shape) => normalizeShapeLabel(shape));
+
+  const inferredShapes = extractKnownShapes([
+    design.diamondSpread,
+    row.stoneInfo,
+    design.designName,
+    design.designNo,
+  ]);
+
+  return uniqueNonEmpty([...explicitShapes, ...inferredShapes]);
+};
 
 const getDesignDiamondTypes = (design: Design) =>
   uniqueNonEmpty([design.diamondType, ...(design.gemstones || []).map((gem) => gem.stone)]);
@@ -145,9 +226,33 @@ const getDesignMetals = (design: Design) =>
     ...(design.metals || []).flatMap((metal) => [metal.goldColour, metal.metalCaratage]),
   ]);
 
+const PRESET_CATEGORY_MATCH: Record<CatalogPresetCategory, string[]> = {
+  rings: ['ring'],
+  bracelets: ['bracelet', 'bangle'],
+  studs: ['stud', 'earring'],
+  necklaces: ['necklace', 'pendant', 'chain'],
+};
+
+const PRESET_CATEGORY_TITLES: Record<CatalogPresetCategory, string> = {
+  rings: 'Eternity Rings',
+  bracelets: 'Bracelets',
+  studs: 'Studs',
+  necklaces: 'Necklaces',
+};
+
+// Keep helper at module scope so stale fast-refresh closures always find it.
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+
 const DesignsScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
+  const route = useRoute<RouteProp<DesignsStackParamList, 'Designs'>>();
   const numColumns = 2;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
@@ -160,6 +265,11 @@ const DesignsScreen = () => {
   const [selectedPriceBand, setSelectedPriceBand] = useState<PriceBand>('ALL');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const appliedSearchPresetRef = useRef('');
+  const appliedCategoryPresetRef = useRef('');
 
   const loadDesigns = useCallback(async () => {
     if (!token) return;
@@ -205,10 +315,87 @@ const DesignsScreen = () => {
     }
   }, [token, user?.role, user?.companyId, user?.branchId]);
 
+  const loadNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const ordersRes = await fetchOrders(token, 1, 100, 'ALL');
+      const orderRows = ordersRes.data || [];
+      const items: ActivityItem[] = [];
+      const activityRows =
+        user?.role === 'BRANCH_MANAGER'
+          ? orderRows.filter((order) =>
+              ['PENDING_APPROVAL', 'APPROVED', 'CANCELLED'].includes(String(order.status || '').toUpperCase()),
+            )
+          : orderRows.filter((order) => (user?.id ? order.salesRepId === user.id : false));
+
+      for (const order of activityRows.slice(0, 15)) {
+        const date = order.createdAt ? new Date(order.createdAt) : new Date();
+        const salesPerson = order.salesRepName || order.salesRepEmail || 'Sales rep';
+        const managerName =
+          order.branchManagerName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Manager';
+        const normalizedStatus = String(order.status || '').toUpperCase();
+
+        let title = '';
+        let subtitle = order.designNo || 'No design';
+
+        if (user?.role === 'BRANCH_MANAGER') {
+          if (normalizedStatus === 'PENDING_APPROVAL') {
+            title = `Order #${order.orderNumber} came for approval`;
+            subtitle = `From sales rep ${salesPerson}`;
+          } else if (normalizedStatus === 'APPROVED') {
+            title = `Order #${order.orderNumber} approved`;
+            subtitle = `For sales rep ${salesPerson}`;
+          } else if (normalizedStatus === 'CANCELLED') {
+            title = `Order #${order.orderNumber} cancelled`;
+            subtitle = `For sales rep ${salesPerson}`;
+          } else {
+            title = `Order #${order.orderNumber} updated`;
+            subtitle = `${order.designNo || 'No design'} - ${salesPerson}`;
+          }
+        } else {
+          if (normalizedStatus === 'PENDING_APPROVAL') {
+            title = `Order #${order.orderNumber} sent for approval`;
+            subtitle = `To manager ${managerName}`;
+          } else if (normalizedStatus === 'APPROVED') {
+            title = `Order #${order.orderNumber} approved`;
+            subtitle = `By manager ${managerName}`;
+          } else if (normalizedStatus === 'CANCELLED') {
+            title = `Order #${order.orderNumber} cancelled`;
+            subtitle = `By manager ${managerName}`;
+          } else {
+            title = `Order #${order.orderNumber} updated`;
+            subtitle = order.designNo || 'No design';
+          }
+        }
+
+        items.push({
+          id: `order-${order.id}-${normalizedStatus}`,
+          title,
+          subtitle,
+          time: formatRelativeTime(date),
+          sortDate: date,
+        });
+      }
+
+      items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
+      setActivity(items);
+      setNotificationCount(items.length);
+    } catch {
+      setActivity([]);
+      setNotificationCount(0);
+    }
+  }, [token, user?.id, user?.role, user?.firstName, user?.lastName]);
+
+  const handleOpenNotifications = useCallback(() => {
+    setNotificationsVisible(true);
+    setNotificationCount(0);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadDesigns();
-    }, [loadDesigns]),
+      loadNotifications();
+    }, [loadDesigns, loadNotifications]),
   );
 
   const categories = useMemo(() => {
@@ -223,6 +410,34 @@ const DesignsScreen = () => {
     return ['All', ...orderedGroups];
   }, [designs]);
 
+  useEffect(() => {
+    const presetSearch = String(route.params?.prefillSearch || '').trim();
+    if (!presetSearch || appliedSearchPresetRef.current === presetSearch) return;
+    setSearch(presetSearch);
+    appliedSearchPresetRef.current = presetSearch;
+  }, [route.params?.prefillSearch]);
+
+  useEffect(() => {
+    const presetCategory = route.params?.presetCategory;
+    if (!presetCategory || categories.length <= 1) return;
+
+    const signature = `${presetCategory}|${categories.join('|')}`;
+    if (appliedCategoryPresetRef.current === signature) return;
+
+    const hints = PRESET_CATEGORY_MATCH[presetCategory] || [];
+    const matchedCategory =
+      categories
+        .filter((item) => item !== 'All')
+        .find((item) => hints.some((hint) => item.toLowerCase().includes(hint))) || 'All';
+
+    setSelectedCategory(matchedCategory);
+    setSelectedCollection('All');
+    setSelectedShape('All');
+    setSelectedDiamondType('All');
+    setSelectedPriceBand('ALL');
+    appliedCategoryPresetRef.current = signature;
+  }, [route.params?.presetCategory, categories]);
+
   const collections = useMemo(() => {
     const source =
       selectedCategory === 'All'
@@ -233,7 +448,7 @@ const DesignsScreen = () => {
   }, [designs, selectedCategory]);
 
   const shapeOptions = useMemo(
-    () => ['All', ...uniqueNonEmpty(designs.flatMap((design) => getDesignShapes(design)))],
+    () => uniqueNonEmpty(designs.flatMap((design) => getDesignShapes(design))),
     [designs],
   );
 
@@ -301,8 +516,100 @@ const DesignsScreen = () => {
     user?.role,
   ]);
 
-  const renderDesignCard = ({ item, index }: { item: Design; index: number }) => {
-    const badge = getBadge(index);
+  const useCollectionRibbon = useMemo(
+    () => collections.some((item) => toLower(item) !== 'all'),
+    [collections],
+  );
+
+  const ribbonTabs = useMemo(
+    () =>
+      useCollectionRibbon
+        ? ['All', ...collections.filter((item) => toLower(item) !== 'all')]
+        : ['All', ...categories.filter((item) => toLower(item) !== 'all')],
+    [useCollectionRibbon, collections, categories],
+  );
+
+  const catalogTitle = useMemo(() => {
+    const preset = route.params?.presetCategory;
+    if (preset && PRESET_CATEGORY_TITLES[preset]) return PRESET_CATEGORY_TITLES[preset];
+    if (selectedCategory !== 'All') return selectedCategory;
+    return 'Browse Catalog';
+  }, [route.params?.presetCategory, selectedCategory]);
+
+  const searchPlaceholder = useMemo(() => {
+    const preset = route.params?.presetCategory;
+    if (preset === 'rings') return 'Search rings...';
+    if (preset === 'bracelets') return 'Search bracelets...';
+    if (preset === 'studs') return 'Search studs...';
+    if (preset === 'necklaces') return 'Search necklaces...';
+    return 'Search products...';
+  }, [route.params?.presetCategory]);
+
+  const activityEntries: NotificationEntry[] = useMemo(
+    () =>
+      activity.slice(0, 10).map((item) => {
+        const text = `${item.title} ${item.subtitle}`.toLowerCase();
+        const isApproval = text.includes('approval') || text.includes('approve');
+        const isCritical = text.includes('cancelled') || text.includes('rejected') || text.includes('failed');
+        const tone: NotificationTone = isCritical ? 'alertRed' : isApproval ? 'alertGold' : 'neutral';
+        return {
+          id: item.id,
+          title: item.title,
+          subtitle: item.subtitle,
+          time: item.time,
+          tone,
+        };
+      }),
+    [activity],
+  );
+
+  const alerts = useMemo(
+    () => activityEntries.filter((entry) => entry.tone === 'alertGold' || entry.tone === 'alertRed').slice(0, 3),
+    [activityEntries],
+  );
+  const recentActivity = useMemo(
+    () => activityEntries.filter((entry) => entry.tone === 'neutral').slice(0, 4),
+    [activityEntries],
+  );
+  const updates: NotificationEntry[] = useMemo(
+    () => [
+      {
+        id: 'update-catalog-sync',
+        title: 'Catalog sync completed',
+        subtitle: 'Latest designs are available for browsing',
+        time: 'Available now',
+        tone: 'info',
+      },
+      {
+        id: 'update-catalog-count',
+        title: `${filteredDesigns.length} designs in ${catalogTitle}`,
+        subtitle: 'Use filters to narrow or expand your results',
+        time: 'Now',
+        tone: 'promo',
+      },
+    ],
+    [filteredDesigns.length, catalogTitle],
+  );
+
+  const getNotificationCardStyle = (tone: NotificationTone) => {
+    if (tone === 'alertGold') return [styles.notificationCardBase, styles.notificationCardGold];
+    if (tone === 'alertRed') return [styles.notificationCardBase, styles.notificationCardRed];
+    if (tone === 'info') return [styles.notificationCardBase, styles.notificationCardInfo];
+    if (tone === 'promo') return [styles.notificationCardBase, styles.notificationCardPromo];
+    return [styles.notificationCardBase, styles.notificationCardNeutral];
+  };
+
+  const getNotificationDotStyle = (tone: NotificationTone) => {
+    if (tone === 'alertGold') return [styles.notificationDot, styles.notificationDotGold];
+    if (tone === 'alertRed') return [styles.notificationDot, styles.notificationDotRed];
+    if (tone === 'info') return [styles.notificationDot, styles.notificationDotInfo];
+    if (tone === 'promo') return [styles.notificationDot, styles.notificationDotPromo];
+    return [styles.notificationDot, styles.notificationDotNeutral];
+  };
+
+  const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
+
+  const renderDesignCard = ({ item }: { item: Design; index: number }) => {
     const imageUrl = item.imageUrls?.[0];
 
     return (
@@ -312,26 +619,6 @@ const DesignsScreen = () => {
         onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
       >
         <View style={styles.designCard}>
-          <View style={styles.badgeRow}>
-            <View
-              style={[
-                styles.badge,
-                badge.tone === 'mint' ? styles.badgeMint : null,
-                badge.tone === 'rose' ? styles.badgeRose : null,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  badge.tone === 'mint' ? styles.badgeTextMint : null,
-                  badge.tone === 'rose' ? styles.badgeTextRose : null,
-                ]}
-              >
-                {badge.label}
-              </Text>
-            </View>
-          </View>
-
           <View style={styles.imageShell}>
             {imageUrl ? (
               <Image
@@ -348,13 +635,15 @@ const DesignsScreen = () => {
             )}
           </View>
 
-          <Text style={styles.designName} numberOfLines={2}>
-            {item.designNo}
-          </Text>
-          <Text style={styles.designMeta} numberOfLines={1}>
-            {getDesignMeta(item)}
-          </Text>
-          <Text style={styles.designPrice}>{formatCurrency(getDisplayPrice(item, user?.role))}</Text>
+          <View style={styles.cardBody}>
+            <Text style={styles.designName} numberOfLines={1}>
+              {item.designName || item.designNo}
+            </Text>
+            <Text style={styles.designMeta} numberOfLines={1}>
+              {getDesignMeta(item)}
+            </Text>
+            <Text style={styles.designPrice}>{formatCurrency(getDisplayPrice(item, user?.role))}</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -393,227 +682,367 @@ const DesignsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#FCFAF8', '#F5EBE1', '#E8D5C4']} style={StyleSheet.absoluteFillObject} />
+      <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
-      <View style={styles.fixedHeader}>
-        <View style={styles.searchShell}>
-          <Ionicons name="search-outline" size={18} color="#a79687" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search designs, styles, groups..."
-            placeholderTextColor="#a79687"
-            value={search}
-            onChangeText={setSearch}
-            underlineColorAndroid="transparent"
-            cursorColor="#8B7355"
-            selectionColor="#8B7355"
-            autoCorrect={false}
-            autoCapitalize="none"
-            textAlignVertical="center"
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={18} color="#b2a294" />
+        <View style={styles.fixedHeader}>
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                  return;
+                }
+                navigation.navigate('CatalogCategories');
+              }}
+            >
+              <Ionicons name="chevron-back" size={18} color="#7A6E61" />
             </TouchableOpacity>
-          ) : null}
+
+            <Text style={styles.pageTitle} numberOfLines={1}>
+              {catalogTitle}
+            </Text>
+
+            <TouchableOpacity style={styles.bellBtn} activeOpacity={0.85} onPress={handleOpenNotifications}>
+              <Ionicons name="notifications-outline" size={18} color="#7A6E61" />
+              {notificationCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.searchShell}>
+            <Ionicons name="search-outline" size={16} color="#A59686" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={searchPlaceholder}
+              placeholderTextColor="#A59686"
+              value={search}
+              onChangeText={setSearch}
+              underlineColorAndroid="transparent"
+              cursorColor="#8B7355"
+              selectionColor="#8B7355"
+              autoCorrect={false}
+              autoCapitalize="none"
+              textAlignVertical="center"
+            />
+
+            <TouchableOpacity
+              style={styles.searchActionBtn}
+              onPress={() => navigation.navigate('CatalogCategories')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="grid-outline" size={14} color="#8D8276" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.searchActionBtn} onPress={() => setSortMenuVisible(true)} activeOpacity={0.85}>
+              <Ionicons name="camera-outline" size={14} color="#8D8276" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.filterRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipList}>
+              {ribbonTabs.map((item) => {
+                const selected = useCollectionRibbon ? item === selectedCollection : item === selectedCategory;
+                return (
+                  <TouchableOpacity
+                    key={`collection-ribbon-${item}`}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      if (useCollectionRibbon) {
+                        setSelectedCollection(item);
+                        return;
+                      }
+
+                      setSelectedCategory(item);
+                      setSelectedCollection('All');
+                    }}
+                    style={[styles.chip, styles.chipSpacing, selected ? styles.chipActive : null]}
+                  >
+                    <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{item}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.filterButton} onPress={() => setSortMenuVisible(true)} activeOpacity={0.85}>
+              <Ionicons name="options-outline" size={16} color="#6f6257" />
+              {activeFilterCount > 0 ? (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          </View>
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
 
-        <View style={styles.filterRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipList}
-          >
-            {collections.map((item) => {
-              const selected = item === selectedCollection;
+        <Modal
+          visible={notificationsVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNotificationsVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
+            <View style={styles.modalOverlayLock}>
+              <TouchableWithoutFeedback>
+                <View style={styles.notificationsWindow}>
+                  <View style={styles.notificationsHeaderRow}>
+                    <Text style={styles.notificationsTitle}>Notifications</Text>
+                    <TouchableOpacity onPress={() => setNotificationCount(0)}>
+                      <Text style={styles.markReadText}>Mark all read</Text>
+                    </TouchableOpacity>
+                  </View>
 
-              return (
-                <TouchableOpacity
-                  key={`collection-${item}`}
-                  activeOpacity={0.9}
-                  onPress={() => setSelectedCollection(item)}
-                  style={[styles.chip, styles.chipSpacing, selected ? styles.chipActive : null]}
-                >
-                  <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{item}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                  {hasAnyNotifications ? (
+                    <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+                      {alerts.length ? (
+                        <View style={styles.notificationSection}>
+                          <Text style={styles.notificationSectionLabel}>ALERTS</Text>
+                          {alerts.map((entry) => (
+                            <TouchableOpacity
+                              key={entry.id}
+                              style={getNotificationCardStyle(entry.tone)}
+                              onPress={() => {
+                                setNotificationsVisible(false);
+                                (navigation as any).navigate('OrdersTab');
+                              }}
+                              activeOpacity={0.88}
+                            >
+                              <View style={styles.notificationCardTopRow}>
+                                <View style={getNotificationDotStyle(entry.tone)} />
+                                <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                  {entry.title}
+                                </Text>
+                              </View>
+                              <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                              <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
 
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setSortMenuVisible(true)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="options-outline" size={16} color="#6f6257" />
-            {activeFilterCount > 0 ? (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
-            ) : null}
-          </TouchableOpacity>
-        </View>
+                      {recentActivity.length ? (
+                        <View style={styles.notificationSection}>
+                          <Text style={styles.notificationSectionLabel}>RECENT ACTIVITY</Text>
+                          {recentActivity.map((entry) => (
+                            <TouchableOpacity
+                              key={entry.id}
+                              style={getNotificationCardStyle(entry.tone)}
+                              onPress={() => {
+                                setNotificationsVisible(false);
+                                (navigation as any).navigate('OrdersTab');
+                              }}
+                              activeOpacity={0.88}
+                            >
+                              <View style={styles.notificationCardTopRow}>
+                                <View style={getNotificationDotStyle(entry.tone)} />
+                                <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                  {entry.title}
+                                </Text>
+                              </View>
+                              <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                              <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-      </View>
+                      <View style={styles.notificationSection}>
+                        <Text style={styles.notificationSectionLabel}>UPDATES</Text>
+                        {updates.map((entry) => (
+                          <TouchableOpacity
+                            key={entry.id}
+                            style={getNotificationCardStyle(entry.tone)}
+                            onPress={() => {
+                              setNotificationsVisible(false);
+                              navigation.navigate('CatalogCategories');
+                            }}
+                            activeOpacity={0.88}
+                          >
+                            <View style={styles.notificationCardTopRow}>
+                              <View style={getNotificationDotStyle(entry.tone)} />
+                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
+                                {entry.title}
+                              </Text>
+                            </View>
+                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
+                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.emptyNotifBox}>
+                      <Text style={styles.emptyNotifString}>No recent activity</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
-      <Modal
-        visible={sortMenuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSortMenuVisible(false)}
-      >
-        <TouchableWithoutFeedback onPress={() => setSortMenuVisible(false)}>
-          <View style={styles.sortOverlay}>
-            <TouchableWithoutFeedback>
-              <View style={styles.sortCard}>
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <Text style={styles.sortTitle}>Sort & Filters</Text>
-                  {SORT_OPTIONS.map((option) => {
-                    const selected = sortOption === option.key;
-                    return (
+        <Modal
+          visible={sortMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSortMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setSortMenuVisible(false)}>
+            <View style={styles.sortOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.sortCard}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <Text style={styles.sortTitle}>Sort & Filters</Text>
+                    {SORT_OPTIONS.map((option) => {
+                      const selected = sortOption === option.key;
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
+                          onPress={() => {
+                            setSortOption(option.key);
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
+                            {option.label}
+                          </Text>
+                          {selected ? <Ionicons name="checkmark-circle" size={18} color="#9C7127" /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    <Text style={styles.filterSectionTitle}>Collection</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {collections.map((item) => {
+                        const selected = item === selectedCollection;
+                        return (
+                          <TouchableOpacity
+                            key={`m-col-${item}`}
+                            style={[styles.modalChip, selected ? styles.modalChipActive : null]}
+                            onPress={() => setSelectedCollection(item)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <Text style={styles.filterSectionTitle}>Diamond Type</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {diamondTypeOptions.map((item) => {
+                        const selected = item === selectedDiamondType;
+                        return (
+                          <TouchableOpacity
+                            key={`m-type-${item}`}
+                            style={[styles.modalChip, selected ? styles.modalChipActive : null]}
+                            onPress={() => setSelectedDiamondType(item)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <Text style={styles.filterSectionTitle}>Price</Text>
+                    <View style={styles.priceBandGrid}>
+                      {PRICE_BAND_OPTIONS.map((option) => {
+                        const selected = option.key === selectedPriceBand;
+                        return (
+                          <TouchableOpacity
+                            key={option.key}
+                            style={[styles.modalChip, styles.priceBandChip, selected ? styles.modalChipActive : null]}
+                            onPress={() => setSelectedPriceBand(option.key)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>
+                              {option.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <View style={styles.sortActionsRow}>
                       <TouchableOpacity
-                        key={option.key}
-                        style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
+                        style={styles.sortActionButton}
                         onPress={() => {
-                          setSortOption(option.key);
+                          setSearch('');
                         }}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
-                          {option.label}
-                        </Text>
-                        {selected ? <Ionicons name="checkmark-circle" size={18} color="#9C7127" /> : null}
+                        <Text style={styles.sortActionText}>Reset Search</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-
-                <Text style={styles.filterSectionTitle}>Collection</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                  {collections.map((item) => {
-                    const selected = item === selectedCollection;
-                    return (
                       <TouchableOpacity
-                        key={`m-col-${item}`}
-                        style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                        onPress={() => setSelectedCollection(item)}
+                        style={styles.sortActionButton}
+                        onPress={() => {
+                          setSortOption('recent');
+                        }}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                        <Text style={styles.sortActionText}>Reset Sort</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                <Text style={styles.filterSectionTitle}>Diamond Type</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                  {diamondTypeOptions.map((item) => {
-                    const selected = item === selectedDiamondType;
-                    return (
+                    </View>
+                    <View style={styles.sortActionsRow}>
                       <TouchableOpacity
-                        key={`m-type-${item}`}
-                        style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                        onPress={() => setSelectedDiamondType(item)}
+                        style={styles.sortActionButton}
+                        onPress={() => {
+                          setSelectedCategory('All');
+                          setSelectedCollection('All');
+                          setSelectedShape('All');
+                          setSelectedDiamondType('All');
+                          setSelectedPriceBand('ALL');
+                        }}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                        <Text style={styles.sortActionText}>Reset Filters</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                <Text style={styles.filterSectionTitle}>Price</Text>
-                <View style={styles.priceBandGrid}>
-                  {PRICE_BAND_OPTIONS.map((option) => {
-                    const selected = option.key === selectedPriceBand;
-                    return (
                       <TouchableOpacity
-                        key={option.key}
-                        style={[styles.modalChip, styles.priceBandChip, selected ? styles.modalChipActive : null]}
-                        onPress={() => setSelectedPriceBand(option.key)}
+                        style={[styles.sortActionButton, styles.sortApplyButton]}
+                        onPress={() => setSortMenuVisible(false)}
                         activeOpacity={0.85}
                       >
-                        <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>
-                          {option.label}
-                        </Text>
+                        <Text style={[styles.sortActionText, styles.sortApplyText]}>Apply</Text>
                       </TouchableOpacity>
-                    );
-                  })}
+                    </View>
+                  </ScrollView>
                 </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
-                  <View style={styles.sortActionsRow}>
-                  <TouchableOpacity
-                    style={styles.sortActionButton}
-                    onPress={() => {
-                      setSearch('');
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.sortActionText}>Reset Search</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.sortActionButton}
-                    onPress={() => {
-                      setSortOption('recent');
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.sortActionText}>Reset Sort</Text>
-                  </TouchableOpacity>
-                  </View>
-                  <View style={styles.sortActionsRow}>
-                  <TouchableOpacity
-                    style={styles.sortActionButton}
-                    onPress={() => {
-                      setSelectedCategory('All');
-                      setSelectedCollection('All');
-                      setSelectedShape('All');
-                      setSelectedDiamondType('All');
-                      setSelectedPriceBand('ALL');
-                    }}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.sortActionText}>Reset Filters</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.sortActionButton, styles.sortApplyButton]}
-                    onPress={() => setSortMenuVisible(false)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.sortActionText, styles.sortApplyText]}>Apply</Text>
-                  </TouchableOpacity>
-                  </View>
-                </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      <FlatList
-        data={filteredDesigns}
-        key={`design-grid-${numColumns}`}
-        keyExtractor={(item) => item.id}
-        numColumns={numColumns}
-        renderItem={renderDesignCard}
-        columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        initialNumToRender={6}
-        maxToRenderPerBatch={8}
-        windowSize={7}
-        updateCellsBatchingPeriod={30}
-        removeClippedSubviews
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={loadDesigns}
-            tintColor="#8a6b55"
-            colors={['#8a6b55']}
-          />
-        }
-      />
+        <FlatList
+          data={filteredDesigns}
+          key={`design-grid-${numColumns}`}
+          keyExtractor={(item) => item.id}
+          numColumns={numColumns}
+          renderItem={renderDesignCard}
+          columnWrapperStyle={numColumns > 1 ? styles.gridRow : undefined}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={6}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          updateCellsBatchingPeriod={30}
+          removeClippedSubviews
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadDesigns}
+              tintColor="#8a6b55"
+              colors={['#8a6b55']}
+            />
+          }
+        />
       </SafeAreaView>
     </View>
   );
@@ -625,46 +1054,99 @@ const styles = StyleSheet.create({
   },
   screen: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#FFFFFF',
   },
   fixedHeader: {
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? 10 : 18,
-    paddingBottom: Platform.OS === 'android' ? 8 : 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    paddingTop: Platform.OS === 'android' ? 10 : 8,
+    paddingBottom: Platform.OS === 'android' ? 8 : 8,
+    backgroundColor: '#FFFFFF',
     zIndex: 5,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  backBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: {
+    flex: 1,
+    fontSize: 18,
+    color: '#443D35',
+    fontWeight: '700',
+  },
+  bellBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DCCFC0',
+    backgroundColor: '#FBF9F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#DE5858',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  bellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
   },
   searchShell: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
+    backgroundColor: '#F7F4F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
     borderWidth: 1,
-    borderColor: '#8B7355',
-    shadowColor: '#9c7f64',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: Platform.OS === 'android' ? 0 : 1,
-    overflow: 'hidden',
+    borderColor: '#DCCFC0',
   },
   searchInput: {
     flex: 1,
-    marginLeft: 8,
+    marginLeft: 7,
     fontSize: 14,
-    color: '#2d221c',
+    color: '#2F2923',
     height: 40,
     backgroundColor: 'transparent',
     borderWidth: 0,
     paddingVertical: 0,
     includeFontPadding: false,
   },
+  searchActionBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DDD4C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    backgroundColor: '#FFFFFF',
+  },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: Platform.OS === 'android' ? 10 : 14,
+    marginTop: 10,
   },
   chipList: {
     paddingRight: 12,
@@ -677,21 +1159,21 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   chip: {
-    height: Platform.OS === 'android' ? 30 : 34,
-    borderRadius: 12,
-    paddingHorizontal: Platform.OS === 'android' ? 12 : 14,
+    height: 29,
+    borderRadius: 14,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
+    borderColor: '#DCCFC0',
   },
   chipActive: {
-    backgroundColor: '#D8AB52',
-    borderColor: '#C6973F',
+    backgroundColor: '#1D1A17',
+    borderColor: '#1D1A17',
   },
   chipText: {
-    fontSize: Platform.OS === 'android' ? 11 : 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#6A5F56',
   },
@@ -704,9 +1186,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
+    borderColor: '#DCCFC0',
     marginLeft: 10,
     position: 'relative',
   },
@@ -752,6 +1234,131 @@ const styles = StyleSheet.create({
   subChipTextActive: {
     color: '#9C7127',
   },
+  modalOverlayLock: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  notificationsWindow: {
+    position: 'absolute',
+    top: 80,
+    right: 10,
+    width: 338,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingTop: 14,
+    paddingBottom: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  notificationsTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1F1C18',
+  },
+  notificationsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  markReadText: {
+    fontSize: 11,
+    color: '#B2874A',
+    fontWeight: '700',
+  },
+  notificationSection: {
+    marginBottom: 12,
+  },
+  notificationSectionLabel: {
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: '#8F877E',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  notificationCardBase: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginBottom: 8,
+  },
+  notificationCardGold: {
+    backgroundColor: '#FCF7EC',
+    borderColor: '#FFFFFF',
+  },
+  notificationCardRed: {
+    backgroundColor: '#FDF2F3',
+    borderColor: '#FFFFFF',
+  },
+  notificationCardNeutral: {
+    backgroundColor: '#F8F8F8',
+    borderColor: '#FFFFFF',
+  },
+  notificationCardInfo: {
+    backgroundColor: '#ECF3FF',
+    borderColor: '#FFFFFF',
+  },
+  notificationCardPromo: {
+    backgroundColor: '#F8F4EC',
+    borderColor: '#FFFFFF',
+  },
+  notificationCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  notificationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  notificationDotGold: {
+    backgroundColor: '#C59A44',
+  },
+  notificationDotRed: {
+    backgroundColor: '#DE5858',
+  },
+  notificationDotNeutral: {
+    backgroundColor: '#9A9188',
+  },
+  notificationDotInfo: {
+    backgroundColor: '#5D86C7',
+  },
+  notificationDotPromo: {
+    backgroundColor: '#C49B52',
+  },
+  notificationCardTitle: {
+    flex: 1,
+    fontSize: 11,
+    color: '#2D2823',
+    fontWeight: '700',
+  },
+  notificationCardSubtitle: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: '#6C645B',
+  },
+  notificationCardTime: {
+    fontSize: 11,
+    color: '#8E867D',
+    marginTop: 2,
+  },
+  emptyNotifBox: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyNotifString: {
+    fontSize: 13,
+    color: '#9E968D',
+  },
   sortOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.22)',
@@ -767,7 +1374,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: '#FFF8F1',
     borderWidth: 1,
-    borderColor: '#D8C4AF',
+    borderColor: '#FFFFFF',
     paddingHorizontal: 12,
     paddingVertical: 12,
     shadowColor: '#2C1E16',
@@ -883,7 +1490,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 18,
-    paddingTop: Platform.OS === 'android' ? 4 : 6,
+    paddingTop: 8,
     paddingBottom: Platform.OS === 'android' ? 20 : 28,
     flexGrow: 1,
   },
@@ -900,52 +1507,29 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   designCard: {
-    backgroundColor: Platform.OS === 'android' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.22)',
-    borderWidth: 1,
-    borderColor: '#DCC8B2',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.2,
+    borderColor: '#E8DED2',
     borderRadius: 14,
-    padding: Platform.OS === 'android' ? 10 : 12,
-    shadowColor: '#6E533D',
+    overflow: 'hidden',
+    shadowColor: '#3D342A',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: Platform.OS === 'android' ? 0 : 2,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  badge: {
-    backgroundColor: '#f5dfb6',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-  },
-  badgeMint: {
-    backgroundColor: '#daf0e4',
-  },
-  badgeRose: {
-    backgroundColor: '#f3dedd',
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#966c26',
-  },
-  badgeTextMint: {
-    color: '#36775a',
-  },
-  badgeTextRose: {
-    color: '#8a4a4a',
+    shadowOpacity: 0.09,
+    shadowRadius: 9,
+    elevation: 3,
   },
   imageShell: {
-    height: Platform.OS === 'android' ? 146 : 186,
-    borderRadius: 18,
-    backgroundColor: '#f6efe7',
+    height: 118,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 0.6,
+    borderBottomColor: '#F1EAE1',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Platform.OS === 'android' ? 8 : 12,
+  },
+  cardBody: {
+    paddingHorizontal: 9,
+    paddingVertical: 8,
   },
   designImage: {
     width: '100%',
@@ -958,24 +1542,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   designName: {
-    fontFamily: 'serif',
-    fontSize: Platform.OS === 'android' ? 13 : 14,
-    lineHeight: Platform.OS === 'android' ? 17 : 18,
+    fontSize: 14,
+    lineHeight: 17,
     fontWeight: '700',
-    color: '#4A3E35',
-    minHeight: Platform.OS === 'android' ? 28 : 36,
+    color: '#2B251F',
+    minHeight: 18,
   },
   designMeta: {
-    fontSize: Platform.OS === 'android' ? 10 : 11,
-    color: '#8E8E93',
-    marginTop: Platform.OS === 'android' ? 2 : 4,
+    fontSize: 10,
+    color: '#8A8178',
+    marginTop: 1,
   },
   designPrice: {
-    fontFamily: 'serif',
-    fontSize: Platform.OS === 'android' ? 15 : 16,
+    fontSize: 17,
+    lineHeight: 19,
     fontWeight: '800',
-    color: '#4A3E35',
-    marginTop: Platform.OS === 'android' ? 6 : 10,
+    color: '#B2874A',
+    marginTop: 3,
   },
   loadingState: {
     alignItems: 'center',
@@ -993,7 +1576,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 34,
     borderWidth: 1,
-    borderColor: '#8B7355',
+    borderColor: '#FFFFFF',
     marginTop: 20,
   },
   emptyIcon: {
@@ -1019,3 +1602,4 @@ const styles = StyleSheet.create({
 });
 
 export default DesignsScreen;
+
