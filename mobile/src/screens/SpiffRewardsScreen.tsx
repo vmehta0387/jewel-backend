@@ -80,7 +80,12 @@ const SpiffRewardsScreen = () => {
         fetchSpiffConfig(token),
         fetchSpiffSummary(token),
         fetchSpiffLeaderboard(token, {
-          scope: user?.role === 'COMPANY_ADMIN' ? 'MY_COMPANY' : 'MY_BRANCH',
+          scope:
+            user?.role === 'SUPER_ADMIN'
+              ? 'GLOBAL'
+              : user?.role === 'COMPANY_ADMIN'
+                ? 'MY_COMPANY'
+                : 'MY_BRANCH',
           period: 'MONTHLY',
           limit: 10,
         }),

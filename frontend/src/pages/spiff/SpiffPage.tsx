@@ -105,8 +105,38 @@ const formatDate = (value: string | null | undefined) => {
   return parsed.toLocaleString();
 };
 
+const getDefaultScopeForRole = (
+  role: string | null | undefined,
+): 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL' => {
+  if (role === 'SUPER_ADMIN') return 'GLOBAL';
+  if (role === 'COMPANY_ADMIN') return 'MY_COMPANY';
+  return 'MY_BRANCH';
+};
+
+const getScopeOptionsForRole = (
+  role: string | null | undefined,
+): Array<{ value: 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL'; label: string }> => {
+  if (role === 'SUPER_ADMIN') {
+    return [{ value: 'GLOBAL', label: 'Global' }];
+  }
+  if (role === 'COMPANY_ADMIN') {
+    return [
+      { value: 'MY_COMPANY', label: 'My Company' },
+      { value: 'GLOBAL', label: 'Global' },
+    ];
+  }
+  if (role === 'BRANCH_MANAGER') {
+    return [
+      { value: 'MY_BRANCH', label: 'My Branch' },
+      { value: 'MY_COMPANY', label: 'My Company' },
+    ];
+  }
+  return [{ value: 'MY_BRANCH', label: 'My Branch' }];
+};
+
 export default function SpiffPage() {
   const user = useMemo(() => getStoredUser(), []);
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [loading, setLoading] = useState(true);
   const [savingClaim, setSavingClaim] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +147,9 @@ export default function SpiffPage() {
   const [claims, setClaims] = useState<ClaimRow[]>([]);
 
   const [period, setPeriod] = useState<'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ALL_TIME'>('MONTHLY');
-  const [scope, setScope] = useState<'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL'>('MY_BRANCH');
+  const [scope, setScope] = useState<'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL'>(() =>
+    getDefaultScopeForRole(user?.role),
+  );
 
   const [claimPoints, setClaimPoints] = useState('');
   const [giftCardType, setGiftCardType] = useState('');
@@ -129,6 +161,7 @@ export default function SpiffPage() {
     user?.role === 'BRANCH_MANAGER';
 
   const canCreateClaim = user?.role === 'SALES_REP';
+  const scopeOptions = useMemo(() => getScopeOptionsForRole(user?.role), [user?.role]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -162,16 +195,6 @@ export default function SpiffPage() {
       setLoading(false);
     }
   }, [period, scope]);
-
-  useEffect(() => {
-    if (user?.role === 'COMPANY_ADMIN') {
-      setScope('MY_COMPANY');
-    } else if (user?.role === 'SUPER_ADMIN') {
-      setScope('GLOBAL');
-    } else {
-      setScope('MY_BRANCH');
-    }
-  }, [user?.role]);
 
   useEffect(() => {
     void loadData();
@@ -243,7 +266,9 @@ export default function SpiffPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">SPIFF Rewards</h1>
           <p className="text-sm text-slate-600">
-            Redemption, leaderboard, and reward workflow in one place.
+            {isSuperAdmin
+              ? 'Global platform leaderboard and redemption control center.'
+              : 'Redemption, leaderboard, and reward workflow in one place.'}
           </p>
         </div>
 
@@ -267,13 +292,13 @@ export default function SpiffPage() {
             onChange={(event) =>
               setScope(event.target.value as 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL')
             }
-            disabled={user?.role === 'SALES_REP'}
+            disabled={scopeOptions.length === 1}
           >
-            <option value="MY_BRANCH">My Branch</option>
-            <option value="MY_COMPANY">My Company</option>
-            {(user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN') && (
-              <option value="GLOBAL">Global</option>
-            )}
+            {scopeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
           <Button type="button" variant="secondary" onClick={() => void loadData()}>
@@ -285,6 +310,12 @@ export default function SpiffPage() {
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
           {error}
+        </div>
+      ) : null}
+
+      {isSuperAdmin ? (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 px-4 py-4 text-sm text-indigo-900">
+          Super Admin View: global rankings are shown by default, and claim queue includes all companies.
         </div>
       ) : null}
 

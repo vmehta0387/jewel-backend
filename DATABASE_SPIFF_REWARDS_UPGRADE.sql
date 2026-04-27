@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS spiff_point_ledger (
   KEY idx_spiff_point_ledger_branch (branch_id),
   KEY idx_spiff_point_ledger_order (order_id),
   KEY idx_spiff_point_ledger_created_at (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
   id VARCHAR(36) NOT NULL,
@@ -49,4 +49,4 @@ CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
   KEY idx_spiff_redemption_claims_branch (branch_id),
   KEY idx_spiff_redemption_claims_status (status),
   KEY idx_spiff_redemption_claims_created_at (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

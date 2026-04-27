@@ -759,8 +759,34 @@ export class SpiffService {
     requested: SpiffLeaderboardScope | undefined,
     requester: AuthUser,
   ): SpiffLeaderboardScope {
-    if (requested) {
-      return requested;
+    if (requested === SpiffLeaderboardScope.MY_BRANCH) {
+      if (requester.branchId) {
+        return SpiffLeaderboardScope.MY_BRANCH;
+      }
+      if (requester.companyId) {
+        return SpiffLeaderboardScope.MY_COMPANY;
+      }
+      return SpiffLeaderboardScope.GLOBAL;
+    }
+
+    if (requested === SpiffLeaderboardScope.MY_COMPANY) {
+      if (requester.companyId) {
+        return SpiffLeaderboardScope.MY_COMPANY;
+      }
+      if (requester.branchId) {
+        return SpiffLeaderboardScope.MY_BRANCH;
+      }
+      return SpiffLeaderboardScope.GLOBAL;
+    }
+
+    if (requested === SpiffLeaderboardScope.GLOBAL) {
+      if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.COMPANY_ADMIN) {
+        return SpiffLeaderboardScope.GLOBAL;
+      }
+      if (requester.branchId) {
+        return SpiffLeaderboardScope.MY_BRANCH;
+      }
+      return SpiffLeaderboardScope.MY_COMPANY;
     }
 
     if (requester.role === UserRole.SUPER_ADMIN) {

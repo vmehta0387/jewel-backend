@@ -48,6 +48,7 @@ function resolveSqlFiles(args) {
     path.resolve(repoRoot, 'DATABASE_GEMSTONE_PACKET_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
+    path.resolve(repoRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
   ];
 }
 
