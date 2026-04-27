@@ -414,6 +414,10 @@ export default function SpiffPage() {
                 <p className="mt-1 text-xs text-slate-500">
                   Current conversion: {config?.conversionDisplay || '100 points = $1'}
                 </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Giftbit: {config?.giftbitConfigured ? 'Connected' : 'Not connected'} · Auto-fulfill:{' '}
+                  {config?.autoFulfill ? 'On' : 'Off'}
+                </p>
               </div>
 
               <button
@@ -615,6 +619,7 @@ export default function SpiffPage() {
               claims.map((claim) => {
                 const statusStyle = STATUS_STYLES[claim.status] || 'bg-slate-100 text-slate-700 border border-slate-200';
                 const actionable = canManageClaims && ['PENDING_REVIEW', 'HOLD', 'APPROVED'].includes(claim.status);
+                const canRetryGiftbit = claim.status === 'APPROVED' && !claim.giftbitLinkUrl;
 
                 return (
                   <div key={claim.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
@@ -661,6 +666,10 @@ export default function SpiffPage() {
                         {claim.status !== 'APPROVED' ? (
                           <Button size="sm" onClick={() => void reviewClaim(claim.id, 'APPROVE')}>
                             Approve
+                          </Button>
+                        ) : canRetryGiftbit ? (
+                          <Button size="sm" onClick={() => void reviewClaim(claim.id, 'APPROVE')}>
+                            Retry Giftbit
                           </Button>
                         ) : null}
                         <Button size="sm" variant="secondary" onClick={() => void reviewClaim(claim.id, 'HOLD')}>

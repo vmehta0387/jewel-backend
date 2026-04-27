@@ -40,11 +40,11 @@ export class GiftbitService {
     };
 
     const brandCodes = this.resolveBrandCodesByGiftCardType(input.giftCardType);
-    const region = this.optionalText(process.env.GIFTBIT_REGION) || 'US';
+    const region = this.optionalText(process.env.GIFTBIT_REGION) || 'USA';
     if (brandCodes.length > 0) {
       payload.brand_codes = brandCodes;
     } else {
-      payload.marketplace = region;
+      payload.region = region;
     }
 
     const locale = this.optionalText(process.env.GIFTBIT_LOCALE);
