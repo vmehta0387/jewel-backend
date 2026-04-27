@@ -522,13 +522,18 @@ export class SpiffService {
 
     this.assertClaimScope(claim, requester);
 
-    if ([SpiffClaimStatus.REJECTED, SpiffClaimStatus.FULFILLED].includes(claim.status)) {
-      throw new BadRequestException(`Claim is already ${claim.status.toLowerCase()}`);
+    if (claim.status === SpiffClaimStatus.REJECTED) {
+      throw new BadRequestException('Claim is already rejected');
     }
 
     const reason = this.optionalText(dto.reason);
 
     if (dto.action === ClaimReviewAction.REJECT) {
+      if (claim.status === SpiffClaimStatus.FULFILLED) {
+        throw new BadRequestException(
+          'Claim is already fulfilled and cannot be rejected from this screen.',
+        );
+      }
       claim.status = SpiffClaimStatus.REJECTED;
       claim.reviewReason = reason || 'Rejected by reviewer';
       claim.approvedById = requester.id;
@@ -538,12 +543,21 @@ export class SpiffService {
     }
 
     if (dto.action === ClaimReviewAction.HOLD) {
+      if (claim.status === SpiffClaimStatus.FULFILLED) {
+        throw new BadRequestException(
+          'Claim is already fulfilled and cannot be moved to hold.',
+        );
+      }
       claim.status = SpiffClaimStatus.HOLD;
       claim.reviewReason = reason || 'On hold';
       claim.approvedById = requester.id;
       claim.approvedAt = new Date();
       const saved = await this.claimRepo.save(claim);
       return this.serializeClaim(saved);
+    }
+
+    if (claim.status === SpiffClaimStatus.FULFILLED) {
+      throw new BadRequestException('Claim is already fulfilled');
     }
 
     claim.status = SpiffClaimStatus.APPROVED;
