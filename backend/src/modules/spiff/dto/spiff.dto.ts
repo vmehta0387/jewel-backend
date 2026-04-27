@@ -114,3 +114,11 @@ export class FulfillSpiffClaimDto {
   @IsString()
   note?: string;
 }
+
+export class UpdateSpiffConfigDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  pointsPerDollar: number;
+}

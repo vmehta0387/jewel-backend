@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
+import { fetchSpiffSummary } from '../api/spiff';
 import { fetchDesigns } from '../api/designs';
 import { uploadMyPhoto } from '../api/auth';
 import type { Design, Order } from '../types';
@@ -114,15 +115,17 @@ const BranchDashboardScreen = () => {
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>([]);
+  const [spiffEarned, setSpiffEarned] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     if (!token) return;
 
-    const [summaryRes, trendsRes, ordersRes, designsRes] = await Promise.allSettled([
+    const [summaryRes, trendsRes, ordersRes, designsRes, spiffRes] = await Promise.allSettled([
       fetchOrderSummary(token),
       fetchOrderTrends(token),
       fetchOrders(token, 1, 100, 'ALL'),
       fetchDesigns(token, 1, 40),
+      fetchSpiffSummary(token),
     ]);
 
     if (summaryRes.status === 'fulfilled') {
@@ -155,6 +158,15 @@ const BranchDashboardScreen = () => {
 
     if (trendsRes.status === 'fulfilled' && summaryRes.status !== 'fulfilled') {
       setSummary(trendsRes.value as any);
+    }
+
+    if (spiffRes.status === 'fulfilled') {
+      const pointsPerDollar = Number(spiffRes.value?.config?.pointsPerDollar || 100);
+      const unlockedPoints = Number(spiffRes.value?.wallet?.unlockedPoints || 0);
+      const amount = pointsPerDollar > 0 ? unlockedPoints / pointsPerDollar : 0;
+      setSpiffEarned(Number.isFinite(amount) ? amount : 0);
+    } else {
+      setSpiffEarned(0);
     }
 
     if (designsRes.status === 'fulfilled') {
@@ -296,7 +308,6 @@ const BranchDashboardScreen = () => {
 
   const repName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Sales Rep';
   const companyBranch = [user?.companyName, user?.branchName].filter(Boolean).join(' - ') || 'No branch assigned';
-  const spiffEarned = 340;
 
   const formatMoney = (value: number | undefined) => {
     if (!value) return '$0';

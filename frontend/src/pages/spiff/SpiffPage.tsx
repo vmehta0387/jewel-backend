@@ -153,6 +153,7 @@ export default function SpiffPage() {
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const [loading, setLoading] = useState(true);
   const [savingClaim, setSavingClaim] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<SpiffConfig | null>(null);
@@ -169,6 +170,7 @@ export default function SpiffPage() {
   const [claimPoints, setClaimPoints] = useState('');
   const [giftCardType, setGiftCardType] = useState('');
   const [claimNote, setClaimNote] = useState('');
+  const [pointsPerDollarInput, setPointsPerDollarInput] = useState('');
 
   const canManageClaims =
     user?.role === 'SUPER_ADMIN' ||
@@ -202,6 +204,7 @@ export default function SpiffPage() {
 
       const nextConfig = configRes.data as SpiffConfig;
       setConfig(nextConfig);
+      setPointsPerDollarInput(String(nextConfig.pointsPerDollar || 100));
       setSummary(summaryRes.data as SpiffSummary);
       setLeaderboard(leaderboardRes.data as LeaderboardResponse);
       setClaims((claimsRes.data?.data || []) as ClaimRow[]);
@@ -247,6 +250,30 @@ export default function SpiffPage() {
       window.alert(err?.response?.data?.message || 'Failed to create redemption claim');
     } finally {
       setSavingClaim(false);
+    }
+  };
+
+  const savePointsPerDollar = async () => {
+    const nextValue = Math.floor(Number(pointsPerDollarInput || 0));
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      window.alert('Enter a valid positive integer for points per $1.');
+      return;
+    }
+
+    setSavingConfig(true);
+    try {
+      const response = await api.patch('/spiff/config', {
+        pointsPerDollar: nextValue,
+      });
+      const nextConfig = response.data as SpiffConfig;
+      setConfig(nextConfig);
+      setPointsPerDollarInput(String(nextConfig.pointsPerDollar || nextValue));
+      window.alert('SPIFF conversion rate updated successfully.');
+      await loadData();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || 'Failed to update conversion rate');
+    } finally {
+      setSavingConfig(false);
     }
   };
 
@@ -345,57 +372,80 @@ export default function SpiffPage() {
         </div>
       ) : null}
 
+      {isSuperAdmin ? (
+        <Card title="SPIFF Conversion Settings">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Points Per $1.00
+              </label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                value={pointsPerDollarInput}
+                onChange={(event) => setPointsPerDollarInput(event.target.value)}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Current conversion: {config?.conversionDisplay || '100 points = $1'}
+              </p>
+            </div>
+
+            <Button type="button" onClick={savePointsPerDollar} disabled={savingConfig || loading}>
+              {savingConfig ? 'Saving...' : 'Update Rate'}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
           {error}
         </div>
       ) : null}
 
-      {isSuperAdmin ? (
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 px-4 py-4 text-sm text-indigo-900">
-          Super Admin View: global rankings are shown by default, and claim queue includes all companies.
+      {!isSuperAdmin ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Available</p>
+              <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.availablePoints)}</p>
+              <p className="text-xs text-slate-500">Ready to redeem</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Locked</p>
+              <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.lockedPoints)}</p>
+              <p className="text-xs text-slate-500">Unlocks when orders ship</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Lifetime Earned</p>
+              <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.totalEarnedPoints)}</p>
+              <p className="text-xs text-slate-500">SPIFF points earned</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current Tier</p>
+              <p className="text-2xl font-bold text-slate-900">
+                {summary?.tier.badge || '-'} {summary?.tier.label || '--'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {summary?.tier.nextTierAt
+                  ? `${formatNumber(summary.tier.nextTierAt - (summary.wallet.totalEarnedPoints || 0))} pts to next tier`
+                  : 'Top tier unlocked'}
+              </p>
+            </div>
+          </Card>
         </div>
       ) : null}
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Available</p>
-            <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.availablePoints)}</p>
-            <p className="text-xs text-slate-500">Ready to redeem</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Locked</p>
-            <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.lockedPoints)}</p>
-            <p className="text-xs text-slate-500">Unlocks when orders ship</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Lifetime Earned</p>
-            <p className="text-3xl font-bold text-slate-900">{loading ? '--' : formatNumber(summary?.wallet.totalEarnedPoints)}</p>
-            <p className="text-xs text-slate-500">SPIFF points earned</p>
-          </div>
-        </Card>
-
-        <Card>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Current Tier</p>
-            <p className="text-2xl font-bold text-slate-900">
-              {summary?.tier.badge || '-'} {summary?.tier.label || '--'}
-            </p>
-            <p className="text-xs text-slate-500">
-              {summary?.tier.nextTierAt
-                ? `${formatNumber(summary.tier.nextTierAt - (summary.wallet.totalEarnedPoints || 0))} pts to next tier`
-                : 'Top tier unlocked'}
-            </p>
-          </div>
-        </Card>
-      </div>
 
       {canCreateClaim ? (
         <Card title="Redeem Points">

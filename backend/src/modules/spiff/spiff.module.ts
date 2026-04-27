@@ -10,12 +10,14 @@ import { SpiffService } from './spiff.service';
 import { GiftbitService } from './giftbit.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
+import { SpiffSetting } from './entities/spiff-setting.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       SpiffPointLedger,
       SpiffRedemptionClaim,
+      SpiffSetting,
       Order,
       User,
       Company,

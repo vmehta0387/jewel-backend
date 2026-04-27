@@ -16,6 +16,7 @@ import { OrderStatus } from '../../common/enums/order-status.enum';
 import { GiftbitService } from './giftbit.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
+import { SpiffSetting } from './entities/spiff-setting.entity';
 import { SpiffClaimStatus } from './enums/spiff-claim-status.enum';
 import { SpiffLedgerEvent } from './enums/spiff-ledger-event.enum';
 import {
@@ -27,6 +28,7 @@ import {
   SpiffLeaderboardPeriod,
   SpiffLeaderboardQueryDto,
   SpiffLeaderboardScope,
+  UpdateSpiffConfigDto,
 } from './dto/spiff.dto';
 
 type WalletSummary = {
@@ -41,12 +43,15 @@ type WalletSummary = {
 @Injectable()
 export class SpiffService {
   private readonly unlockedOrderStatuses: OrderStatus[] = [OrderStatus.SHIPPED, OrderStatus.COMPLETED];
+  private static readonly SETTINGS_KEY_POINTS_PER_DOLLAR = 'POINTS_PER_DOLLAR';
 
   constructor(
     @InjectRepository(SpiffPointLedger)
     private readonly ledgerRepo: Repository<SpiffPointLedger>,
     @InjectRepository(SpiffRedemptionClaim)
     private readonly claimRepo: Repository<SpiffRedemptionClaim>,
+    @InjectRepository(SpiffSetting)
+    private readonly settingRepo: Repository<SpiffSetting>,
     @InjectRepository(Order)
     private readonly orderRepo: Repository<Order>,
     @InjectRepository(User)
@@ -58,8 +63,8 @@ export class SpiffService {
     private readonly giftbitService: GiftbitService,
   ) {}
 
-  getConfig() {
-    const pointsPerDollar = this.getPointsPerDollar();
+  async getConfig() {
+    const pointsPerDollar = await this.getPointsPerDollar();
     return {
       minRedeemPoints: this.getMinRedeemPoints(),
       pointsPerDollar,
@@ -68,6 +73,25 @@ export class SpiffService {
       giftbitConfigured: this.giftbitService.isConfigured(),
       autoFulfill: this.isAutoFulfillEnabled(),
     };
+  }
+
+  async updateConfig(dto: UpdateSpiffConfigDto, requester: AuthUser) {
+    if (requester.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only super admin can update SPIFF configuration');
+    }
+
+    const normalizedPointsPerDollar = Math.max(1, Math.floor(Number(dto.pointsPerDollar || 0)));
+    if (!Number.isFinite(normalizedPointsPerDollar)) {
+      throw new BadRequestException('pointsPerDollar must be a valid positive integer');
+    }
+
+    await this.upsertSetting(
+      SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
+      String(normalizedPointsPerDollar),
+      requester.id,
+    );
+
+    return this.getConfig();
   }
 
   async getMySummary(requester: AuthUser) {
@@ -105,7 +129,7 @@ export class SpiffService {
         fulfilledClaims: this.toNumber(claimStats?.fulfilledClaims),
         lastClaimAt: claimStats?.lastClaimAt || null,
       },
-      config: this.getConfig(),
+      config: await this.getConfig(),
     };
   }
 
@@ -440,7 +464,7 @@ export class SpiffService {
       );
     }
 
-    const pointsPerDollar = this.getPointsPerDollar();
+    const pointsPerDollar = await this.getPointsPerDollar();
     const requestedAmountCents = Math.floor((requestedPoints * 100) / pointsPerDollar);
     if (requestedAmountCents <= 0) {
       throw new BadRequestException('Requested points are too low for redemption');
@@ -1073,12 +1097,68 @@ export class SpiffService {
     return this.toIntEnv(process.env.SPIFF_FAST_CLOSE_BONUS_POINTS, 30);
   }
 
-  private getPointsPerDollar(): number {
-    return this.toIntEnv(process.env.SPIFF_POINTS_PER_DOLLAR, 100);
+  private async getPointsPerDollar(): Promise<number> {
+    return this.getSettingInt(
+      SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
+      this.toIntEnv(process.env.SPIFF_POINTS_PER_DOLLAR, 100),
+    );
   }
 
   private getMinRedeemPoints(): number {
     return this.toIntEnv(process.env.SPIFF_MIN_REDEEM_POINTS, 500);
+  }
+
+  private async getSettingInt(settingKey: string, fallback: number): Promise<number> {
+    let row: SpiffSetting | null = null;
+    try {
+      row = await this.settingRepo.findOne({ where: { settingKey } });
+    } catch (error: any) {
+      if (this.isMissingSettingsTableError(error)) {
+        return fallback;
+      }
+      throw error;
+    }
+
+    if (!row) {
+      return fallback;
+    }
+
+    const parsed = Number.parseInt(String(row.settingValue || '').trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private async upsertSetting(settingKey: string, settingValue: string, updatedById: string | null) {
+    let existing: SpiffSetting | null = null;
+    try {
+      existing = await this.settingRepo.findOne({ where: { settingKey } });
+    } catch (error: any) {
+      if (this.isMissingSettingsTableError(error)) {
+        throw new BadRequestException(
+          'SPIFF settings table is missing. Run DATABASE_SPIFF_SETTINGS_UPGRADE.sql first.',
+        );
+      }
+      throw error;
+    }
+
+    if (!existing) {
+      const created = this.settingRepo.create({
+        settingKey,
+        settingValue,
+        updatedById,
+      });
+      await this.settingRepo.save(created);
+      return;
+    }
+
+    existing.settingValue = settingValue;
+    existing.updatedById = updatedById;
+    await this.settingRepo.save(existing);
+  }
+
+  private isMissingSettingsTableError(error: any): boolean {
+    const code = String(error?.code || '').toUpperCase();
+    const message = String(error?.message || '').toLowerCase();
+    return code === 'ER_NO_SUCH_TABLE' || message.includes('spiff_system_settings') && message.includes('doesn\'t exist');
   }
 
   private getGiftCardOptions(): string[] {
