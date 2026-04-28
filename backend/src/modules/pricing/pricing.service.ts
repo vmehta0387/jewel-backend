@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PricingRule } from './entities/pricing-rule.entity';
@@ -18,6 +18,16 @@ import { Design } from '../products/entities/design.entity';
 import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
 import { DesignMaster, DesignMasterType } from '../products/entities/design-master.entity';
+import { UserRole } from '../../common/enums/user-role.enum';
+import { Company } from '../companies/entities/company.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
+import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.entity';
+import {
+  CompanyAdminPricingSlabDto,
+  UpdateCompanyAdminBranchPricingDto,
+  UpdateCompanyAdminCompanyPricingDto,
+} from './dto/company-admin-pricing.dto';
 
 interface GlobalRateMaps {
   metalRates: Map<string, number>;
@@ -40,7 +50,131 @@ export class PricingService {
     private readonly gemstoneRepo: Repository<DesignGemstone>,
     @InjectRepository(DesignMaster)
     private readonly designMasterRepo: Repository<DesignMaster>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(CompanyPricingSlab)
+    private readonly companySlabRepo: Repository<CompanyPricingSlab>,
+    @InjectRepository(BranchPricingSlab)
+    private readonly branchSlabRepo: Repository<BranchPricingSlab>,
   ) {}
+
+  async getCompanyAdminPricingSettings(requester: AuthUser) {
+    const companyId = this.assertCompanyAdminScope(requester);
+
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId },
+      relations: ['pricingSlabs'],
+    });
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
+
+    const branches = await this.branchRepo.find({
+      where: { companyId, isActive: true },
+      relations: ['pricingSlabs'],
+      order: { name: 'ASC' },
+    });
+
+    return {
+      company: {
+        id: company.id,
+        name: company.companyName,
+        defaultMultiplier: this.toNumber(company.defaultMultiplier),
+        enableSlabPricing: Boolean(company.enableSlabPricing),
+        pricingSlabs: this.serializeSlabs(company.pricingSlabs || []),
+      },
+      branches: branches.map((branch) => ({
+        id: branch.id,
+        name: branch.name,
+        code: branch.code,
+        branchMultiplier: this.toNumber(branch.branchMultiplier),
+        enableSlabPricing: Boolean(branch.enableSlabPricing),
+        pricingSlabs: this.serializeSlabs(branch.pricingSlabs || []),
+      })),
+    };
+  }
+
+  async updateCompanyAdminCompanyPricing(
+    requester: AuthUser,
+    dto: UpdateCompanyAdminCompanyPricingDto,
+  ) {
+    const companyId = this.assertCompanyAdminScope(requester);
+
+    const company = await this.companyRepo.findOne({ where: { id: companyId } });
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
+
+    const normalizedMultiplier = this.roundMultiplier(dto.defaultMultiplier);
+    company.defaultMultiplier = normalizedMultiplier;
+    if (dto.enableSlabPricing !== undefined) {
+      company.enableSlabPricing = Boolean(dto.enableSlabPricing);
+    }
+    await this.companyRepo.save(company);
+
+    if (dto.pricingSlabs !== undefined) {
+      this.validateCompanyAdminSlabs(dto.pricingSlabs);
+      await this.companySlabRepo.delete({ companyId });
+      if (dto.pricingSlabs.length) {
+        const slabs = dto.pricingSlabs.map((slab) =>
+          this.companySlabRepo.create({
+            companyId,
+            minCost: this.roundMoney(this.toNumber(slab.minCost)),
+            maxCost: this.roundMoney(this.toNumber(slab.maxCost)),
+            multiplier: this.roundMultiplier(slab.multiplier),
+            isActive: true,
+          }),
+        );
+        await this.companySlabRepo.save(slabs);
+      }
+    }
+
+    return this.getCompanyAdminPricingSettings(requester);
+  }
+
+  async updateCompanyAdminBranchPricing(
+    requester: AuthUser,
+    branchId: string,
+    dto: UpdateCompanyAdminBranchPricingDto,
+  ) {
+    const companyId = this.assertCompanyAdminScope(requester);
+    const normalizedBranchId = String(branchId || '').trim();
+    if (!normalizedBranchId) {
+      throw new BadRequestException('branchId is required');
+    }
+
+    const branch = await this.branchRepo.findOne({ where: { id: normalizedBranchId, companyId } });
+    if (!branch) {
+      throw new NotFoundException('Branch not found in your company');
+    }
+
+    branch.branchMultiplier = this.roundMultiplier(dto.branchMultiplier);
+    if (dto.enableSlabPricing !== undefined) {
+      branch.enableSlabPricing = Boolean(dto.enableSlabPricing);
+    }
+    await this.branchRepo.save(branch);
+
+    if (dto.pricingSlabs !== undefined) {
+      this.validateCompanyAdminSlabs(dto.pricingSlabs);
+      await this.branchSlabRepo.delete({ branchId: branch.id });
+      if (dto.pricingSlabs.length) {
+        const slabs = dto.pricingSlabs.map((slab) =>
+          this.branchSlabRepo.create({
+            branchId: branch.id,
+            minCost: this.roundMoney(this.toNumber(slab.minCost)),
+            maxCost: this.roundMoney(this.toNumber(slab.maxCost)),
+            multiplier: this.roundMultiplier(slab.multiplier),
+            isActive: true,
+          }),
+        );
+        await this.branchSlabRepo.save(slabs);
+      }
+    }
+
+    return this.getCompanyAdminPricingSettings(requester);
+  }
 
   async findGlobalBasePrices(query: FindGlobalBasePricesQueryDto): Promise<any> {
     const page = query.page || 1;
@@ -569,6 +703,77 @@ export class PricingService {
       return [DesignMasterType.METAL_CARATAGE, DesignMasterType.GOLD_COLOUR];
     }
     return [DesignMasterType.DIAMOND_TYPE];
+  }
+
+  private assertCompanyAdminScope(requester: AuthUser): string {
+    if (requester.role !== UserRole.COMPANY_ADMIN) {
+      throw new ForbiddenException('Only company admin can access pricing settings');
+    }
+    const companyId = String(requester.companyId || '').trim();
+    if (!companyId) {
+      throw new ForbiddenException('Company admin must be assigned to a company');
+    }
+    return companyId;
+  }
+
+  private validateCompanyAdminSlabs(slabs: CompanyAdminPricingSlabDto[]): void {
+    if (!slabs?.length) {
+      return;
+    }
+
+    const sorted = [...slabs].sort((a, b) => this.toNumber(a.minCost) - this.toNumber(b.minCost));
+    for (let index = 0; index < sorted.length; index += 1) {
+      const slab = sorted[index];
+      const minCost = this.toNumber(slab.minCost);
+      const maxCost = this.toNumber(slab.maxCost);
+      const multiplier = this.toNumber(slab.multiplier);
+
+      if (!Number.isFinite(minCost) || !Number.isFinite(maxCost) || !Number.isFinite(multiplier)) {
+        throw new BadRequestException('Pricing slabs contain invalid numeric values');
+      }
+
+      if (minCost < 0 || maxCost < 0) {
+        throw new BadRequestException('Pricing slab values cannot be negative');
+      }
+
+      if (maxCost < minCost) {
+        throw new BadRequestException('Pricing slab maxCost must be greater than or equal to minCost');
+      }
+
+      if (multiplier < 1 || multiplier > 10) {
+        throw new BadRequestException('Pricing slab multiplier must be between 1 and 10');
+      }
+
+      if (index > 0) {
+        const previous = sorted[index - 1];
+        const previousMax = this.toNumber(previous.maxCost);
+        if (minCost <= previousMax) {
+          throw new BadRequestException('Pricing slab ranges cannot overlap');
+        }
+      }
+    }
+  }
+
+  private serializeSlabs(
+    slabs: Array<Pick<CompanyPricingSlab, 'id' | 'minCost' | 'maxCost' | 'multiplier' | 'isActive'> | Pick<BranchPricingSlab, 'id' | 'minCost' | 'maxCost' | 'multiplier' | 'isActive'>>,
+  ) {
+    return slabs
+      .filter((slab) => slab.isActive !== false)
+      .map((slab) => ({
+        id: slab.id,
+        minCost: this.toNumber(slab.minCost),
+        maxCost: this.toNumber(slab.maxCost),
+        multiplier: this.toNumber(slab.multiplier),
+      }))
+      .sort((a, b) => a.minCost - b.minCost);
+  }
+
+  private roundMultiplier(value: number): number {
+    const normalized = this.toNumber(value);
+    if (normalized < 1 || normalized > 10) {
+      throw new BadRequestException('Multiplier must be between 1 and 10');
+    }
+    return Number(normalized.toFixed(2));
   }
 
   private roundMoney(value: number): number {

@@ -23,6 +23,7 @@ import BranchRepProfileScreen from '../screens/BranchRepProfileScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
+import PricingScreen from '../screens/PricingScreen';
 import type { BranchEmployee, UserRole } from '../types';
 import { buildOrderNotifications } from '../utils/orderNotifications';
 import { loadSeenNotificationIds } from '../utils/notificationReadState';
@@ -257,6 +258,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
                 return focused ? 'search' : 'search-outline';
               case 'OrdersTab':
                 return focused ? 'receipt' : 'receipt-outline';
+              case 'PricingTab':
+                return focused ? 'cash' : 'cash-outline';
               case 'AiTab':
                 return focused ? 'flash-sharp' : 'flash-outline';
               case 'TeamTab':
@@ -314,6 +317,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         />
       )}
       <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
+      {isCompanyAdmin ? <Tabs.Screen name="PricingTab" component={PricingScreen} options={{ title: 'Pricing' }} /> : null}
       {!isCompanyAdmin ? <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} /> : null}
       {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
         <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />

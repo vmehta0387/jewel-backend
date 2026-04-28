@@ -370,13 +370,14 @@ const OrdersScreen = () => {
   const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
   const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
   const headerTitle = isSalesRepOrBranchManager ? 'Branch Orders' : 'My Orders';
   const visibleFilters = useMemo(() => {
-    if (isBranchManager) {
+    if (isBranchManager || isCompanyAdmin) {
       return FILTERS.filter((filter) => filter.key !== 'QUOTE');
     }
     return FILTERS;
-  }, [isBranchManager]);
+  }, [isBranchManager, isCompanyAdmin]);
 
   useEffect(() => {
     if (!notificationsVisible) {
@@ -385,10 +386,10 @@ const OrdersScreen = () => {
   }, [notificationEntries.length, notificationsVisible]);
 
   useEffect(() => {
-    if (isBranchManager && selectedFilter === 'QUOTE') {
+    if ((isBranchManager || isCompanyAdmin) && selectedFilter === 'QUOTE') {
       setSelectedFilter('PENDING_APPROVAL');
     }
-  }, [isBranchManager, selectedFilter]);
+  }, [isBranchManager, isCompanyAdmin, selectedFilter]);
 
   const openOrderSummary = useCallback(
     (order: Order) => {

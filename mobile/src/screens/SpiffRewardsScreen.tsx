@@ -1058,36 +1058,36 @@ const styles = StyleSheet.create({
   },
   caHeroClock: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
   caHeroDots: {
     color: '#B99341',
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 3,
   },
   caHeroEyebrow: {
     marginTop: 14,
     color: '#B48A40',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
   caHeroTitle: {
     marginTop: 2,
     color: '#FFFFFF',
-    fontSize: 35,
-    lineHeight: 39,
-    fontWeight: '900',
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '800',
     letterSpacing: -0.3,
   },
   caHeroSub: {
     marginTop: 2,
     color: '#AEA394',
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: '600',
   },
   caHeroStatsRow: {
@@ -1104,15 +1104,15 @@ const styles = StyleSheet.create({
   },
   caHeroStatValue: {
     color: '#D8AA4B',
-    fontSize: 33,
-    lineHeight: 36,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
   caHeroStatLabel: {
     marginTop: 2,
     color: '#A99A89',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   caFilterRow: {
@@ -1135,7 +1135,7 @@ const styles = StyleSheet.create({
   },
   caFilterChipText: {
     color: '#7D7266',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   caFilterChipTextActive: {
@@ -1178,15 +1178,15 @@ const styles = StyleSheet.create({
   },
   caClaimName: {
     color: '#1E1A16',
-    fontSize: 20,
-    lineHeight: 23,
+    fontSize: 13,
+    lineHeight: 17,
     fontWeight: '800',
   },
   caClaimMeta: {
     marginTop: 1,
     color: '#8D8174',
-    fontSize: 14,
-    lineHeight: 17,
+    fontSize: 10,
+    lineHeight: 13,
     fontWeight: '500',
   },
   caGiftTag: {
@@ -1199,7 +1199,7 @@ const styles = StyleSheet.create({
   },
   caGiftTagText: {
     color: '#A57C2E',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '700',
   },
   caStatusBadge: {
@@ -1209,7 +1209,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   caStatusBadgeText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800',
   },
   caMetricsRow: {
@@ -1228,20 +1228,20 @@ const styles = StyleSheet.create({
   },
   caMetricValue: {
     color: '#151310',
-    fontSize: 28,
-    lineHeight: 31,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
   },
   caMetricValueGold: {
     color: '#B68433',
-    fontSize: 28,
-    lineHeight: 31,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
   },
   caMetricLabel: {
     marginTop: 2,
     color: '#9A8D7D',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   caActionsRow: {
@@ -1261,7 +1261,7 @@ const styles = StyleSheet.create({
   },
   caApproveBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
   },
   caSecondaryBtn: {
@@ -1271,7 +1271,7 @@ const styles = StyleSheet.create({
   },
   caSecondaryBtnText: {
     color: '#3A322B',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
   },
   caRejectText: {
@@ -1287,7 +1287,7 @@ const styles = StyleSheet.create({
   },
   caFulfillBtnText: {
     color: '#2F7B55',
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
   },
   caBtnDisabled: {
@@ -1299,7 +1299,7 @@ const styles = StyleSheet.create({
   },
   caRewardLinkText: {
     color: '#3C5F9D',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textDecorationLine: 'underline',
   },
@@ -1313,7 +1313,7 @@ const styles = StyleSheet.create({
   },
   caEmptyText: {
     color: '#8B7D6D',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   caBottomSpace: {

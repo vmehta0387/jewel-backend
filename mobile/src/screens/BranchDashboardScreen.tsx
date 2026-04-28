@@ -762,7 +762,7 @@ const BranchDashboardScreen = () => {
 
               <TouchableOpacity
                 style={[styles.companyAdminActionCard, styles.companyAdminActionCardHighlight]}
-                onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
+                onPress={() => navigation.navigate('PricingTab')}
                 activeOpacity={0.9}
               >
                 <Ionicons name="cash-outline" size={18} color="#A27A3D" style={styles.companyAdminActionIcon} />
