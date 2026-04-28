@@ -89,6 +89,16 @@ type ClaimRow = {
   updatedAt: string;
 };
 
+type ClaimsResponse = {
+  data: ClaimRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+};
+
+type ClaimStatusFilter = 'ALL' | 'PENDING_REVIEW' | 'HOLD' | 'APPROVED' | 'FULFILLED' | 'REJECTED';
+type LeaderboardEntityFilter = 'COMPANIES' | 'REPS';
+
 const STATUS_STYLES: Record<string, string> = {
   PENDING_REVIEW: 'bg-amber-100 text-amber-800 border border-amber-200',
   HOLD: 'bg-orange-100 text-orange-800 border border-orange-200',
@@ -162,6 +172,7 @@ const getScopeOptionsForRole = (
 export default function SpiffPage() {
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
   const [loading, setLoading] = useState(true);
   const [savingClaim, setSavingClaim] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -171,15 +182,24 @@ export default function SpiffPage() {
   const [summary, setSummary] = useState<SpiffSummary | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
   const [claims, setClaims] = useState<ClaimRow[]>([]);
+  const [claimsTotal, setClaimsTotal] = useState(0);
+  const [claimsTotalPages, setClaimsTotalPages] = useState(1);
 
   const [period, setPeriod] = useState<'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ALL_TIME'>('MONTHLY');
   const [scope, setScope] = useState<'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL'>(() =>
     getDefaultScopeForRole(user?.role),
   );
-  const [includeGlobalReps, setIncludeGlobalReps] = useState(false);
+  const [leaderboardEntity, setLeaderboardEntity] = useState<LeaderboardEntityFilter>('COMPANIES');
+  const [leaderboardLimit, setLeaderboardLimit] = useState(10);
+  const [globalRepLimit, setGlobalRepLimit] = useState(20);
+
+  const [claimStatus, setClaimStatus] = useState<ClaimStatusFilter>('ALL');
+  const [claimSearchInput, setClaimSearchInput] = useState('');
+  const [claimSearch, setClaimSearch] = useState('');
+  const [claimPage, setClaimPage] = useState(1);
+  const [claimLimit, setClaimLimit] = useState(20);
 
   const [claimPoints, setClaimPoints] = useState('');
-  const [giftCardType, setGiftCardType] = useState('');
   const [claimNote, setClaimNote] = useState('');
   const [pointsPerDollarInput, setPointsPerDollarInput] = useState('');
 
@@ -190,6 +210,10 @@ export default function SpiffPage() {
 
   const canCreateClaim = user?.role === 'SALES_REP';
   const scopeOptions = useMemo(() => getScopeOptionsForRole(user?.role), [user?.role]);
+  const canViewGlobalRepLeaderboard =
+    scope === 'GLOBAL' && (isSuperAdmin || isCompanyAdmin);
+  const showGlobalRepEntries = canViewGlobalRepLeaderboard && leaderboardEntity === 'REPS';
+
   const parsedPointsPerDollarInput = Math.max(1, Math.floor(Number(pointsPerDollarInput || 0)));
   const conversionPreviewPoints = Math.max(
     0,
@@ -212,13 +236,18 @@ export default function SpiffPage() {
           params: {
             period,
             scope,
-            limit: 10,
-            includeGlobalReps: scope === 'GLOBAL' ? includeGlobalReps : undefined,
-            repLimit: scope === 'GLOBAL' ? 20 : undefined,
+            limit: leaderboardLimit,
+            includeGlobalReps: showGlobalRepEntries ? true : undefined,
+            repLimit: showGlobalRepEntries ? globalRepLimit : undefined,
           },
         }),
         api.get('/spiff/claims', {
-          params: { page: 1, limit: 50 },
+          params: {
+            page: claimPage,
+            limit: claimLimit,
+            status: claimStatus === 'ALL' ? undefined : claimStatus,
+            q: claimSearch || undefined,
+          },
         }),
       ]);
 
@@ -227,22 +256,43 @@ export default function SpiffPage() {
       setPointsPerDollarInput(String(nextConfig.pointsPerDollar || 100));
       setSummary(summaryRes.data as SpiffSummary);
       setLeaderboard(leaderboardRes.data as LeaderboardResponse);
-      setClaims((claimsRes.data?.data || []) as ClaimRow[]);
+      const claimsPayload = claimsRes.data as ClaimsResponse;
+      setClaims((claimsPayload?.data || []) as ClaimRow[]);
+      setClaimsTotal(Number(claimsPayload?.total || 0));
+      setClaimsTotalPages(Math.max(1, Number(claimsPayload?.totalPages || 1)));
 
-      setGiftCardType((current) => {
-        if (current) return current;
-        return nextConfig.giftCardOptions?.[0] || 'Amazon';
-      });
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Unable to load SPIFF data');
     } finally {
       setLoading(false);
     }
-  }, [period, scope, includeGlobalReps]);
+  }, [
+    claimLimit,
+    claimPage,
+    claimSearch,
+    claimStatus,
+    globalRepLimit,
+    leaderboardLimit,
+    period,
+    scope,
+    showGlobalRepEntries,
+  ]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!canViewGlobalRepLeaderboard && leaderboardEntity === 'REPS') {
+      setLeaderboardEntity('COMPANIES');
+    }
+  }, [canViewGlobalRepLeaderboard, leaderboardEntity]);
+
+  useEffect(() => {
+    if (claimPage > claimsTotalPages) {
+      setClaimPage(claimsTotalPages);
+    }
+  }, [claimPage, claimsTotalPages]);
 
   const submitClaim = async () => {
     const requestedPoints = Math.floor(Number(claimPoints || 0));
@@ -251,16 +301,10 @@ export default function SpiffPage() {
       return;
     }
 
-    if (!giftCardType.trim()) {
-      window.alert('Please select a gift card type.');
-      return;
-    }
-
     setSavingClaim(true);
     try {
       await api.post('/spiff/claims', {
         requestedPoints,
-        giftCardType,
         note: claimNote.trim() || undefined,
       });
       setClaimPoints('');
@@ -344,9 +388,10 @@ export default function SpiffPage() {
           <select
             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
             value={period}
-            onChange={(event) =>
-              setPeriod(event.target.value as 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ALL_TIME')
-            }
+            onChange={(event) => {
+              setPeriod(event.target.value as 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'ALL_TIME');
+              setClaimPage(1);
+            }}
           >
             <option value="WEEKLY">Weekly</option>
             <option value="MONTHLY">Monthly</option>
@@ -357,9 +402,14 @@ export default function SpiffPage() {
           <select
             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
             value={scope}
-            onChange={(event) =>
-              setScope(event.target.value as 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL')
-            }
+            onChange={(event) => {
+              const nextScope = event.target.value as 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL';
+              setScope(nextScope);
+              setClaimPage(1);
+              if (nextScope !== 'GLOBAL') {
+                setLeaderboardEntity('COMPANIES');
+              }
+            }}
             disabled={scopeOptions.length === 1}
           >
             {scopeOptions.map((option) => (
@@ -374,25 +424,6 @@ export default function SpiffPage() {
           </Button>
         </div>
       </div>
-
-      {scope === 'GLOBAL' && (user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN') ? (
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Global Rep Ranking</p>
-              <p className="text-xs text-slate-500">Opt-in ranking for individual reps across companies.</p>
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={includeGlobalReps}
-                onChange={(event) => setIncludeGlobalReps(event.target.checked)}
-              />
-              Show reps
-            </label>
-          </div>
-        </div>
-      ) : null}
 
       {isSuperAdmin ? (
         <Card title="SPIFF Conversion Settings">
@@ -487,7 +518,7 @@ export default function SpiffPage() {
 
       {canCreateClaim ? (
         <Card title="Redeem Points">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_1.4fr_auto] lg:items-end">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr_auto] lg:items-end">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Points to Redeem</label>
               <input
@@ -501,21 +532,6 @@ export default function SpiffPage() {
               <p className="mt-1 text-xs text-slate-500">
                 Minimum {formatNumber(config?.minRedeemPoints)} points
               </p>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Gift Card</label>
-              <select
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                value={giftCardType}
-                onChange={(event) => setGiftCardType(event.target.value)}
-              >
-                {(config?.giftCardOptions || ['Amazon']).map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div>
@@ -542,8 +558,61 @@ export default function SpiffPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card title="Leaderboard">
           <div className="space-y-3">
-            {leaderboard?.entries?.length ? (
-              leaderboard.entries.map((entry) => (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">View</span>
+              <select
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium"
+                value={canViewGlobalRepLeaderboard ? leaderboardEntity : 'COMPANIES'}
+                onChange={(event) => {
+                  setLeaderboardEntity(event.target.value as LeaderboardEntityFilter);
+                }}
+                disabled={!canViewGlobalRepLeaderboard}
+              >
+                <option value="COMPANIES">{scope === 'GLOBAL' ? 'Companies' : 'Sales Reps'}</option>
+                {canViewGlobalRepLeaderboard ? <option value="REPS">Sales Reps</option> : null}
+              </select>
+
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Top</span>
+              <select
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium"
+                value={showGlobalRepEntries ? globalRepLimit : leaderboardLimit}
+                onChange={(event) => {
+                  const nextLimit = Number(event.target.value);
+                  if (showGlobalRepEntries) {
+                    setGlobalRepLimit(nextLimit);
+                  } else {
+                    setLeaderboardLimit(nextLimit);
+                  }
+                }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+
+            {showGlobalRepEntries ? (
+              (leaderboard?.globalRepEntries || []).length ? (
+                (leaderboard?.globalRepEntries || []).map((rep) => (
+                  <div key={rep.userId} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          #{rep.rank} {rep.name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {rep.companyName || '-'} {rep.role ? `• ${rep.role}` : ''}
+                        </p>
+                      </div>
+                      <p className="text-base font-bold text-slate-900">{formatNumber(rep.points)} pts</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">No sales rep ranking data yet.</p>
+              )
+            ) : (leaderboard?.entries || []).length ? (
+              (leaderboard?.entries || []).map((entry) => (
                 <div key={entry.entityId} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -582,39 +651,69 @@ export default function SpiffPage() {
                 Your rank: #{leaderboard.myRank.rank} ({formatNumber(leaderboard.myRank.points)} pts)
               </div>
             ) : null}
-
-            {scope === 'GLOBAL' && includeGlobalReps ? (
-              <div className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-                <p className="mb-2 text-sm font-semibold text-slate-900">Global Rep Ranking</p>
-                <div className="space-y-2">
-                  {(leaderboard?.globalRepEntries || []).length ? (
-                    (leaderboard?.globalRepEntries || []).map((rep) => (
-                      <div
-                        key={rep.userId}
-                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
-                      >
-                        <div>
-                          <p className="text-xs font-semibold text-slate-900">
-                            #{rep.rank} {rep.name}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {rep.companyName || '-'} {rep.role ? `• ${rep.role}` : ''}
-                          </p>
-                        </div>
-                        <p className="text-sm font-bold text-slate-900">{formatNumber(rep.points)} pts</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-xs text-slate-500">No global rep ranking data yet.</p>
-                  )}
-                </div>
-              </div>
-            ) : null}
           </div>
         </Card>
 
         <Card title={canManageClaims ? 'Claim Queue' : 'My Claims'}>
           <div className="space-y-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[auto_1fr_auto_auto] md:items-center">
+                <select
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium"
+                  value={claimStatus}
+                  onChange={(event) => {
+                    setClaimStatus(event.target.value as ClaimStatusFilter);
+                    setClaimPage(1);
+                  }}
+                >
+                  <option value="ALL">All statuses</option>
+                  <option value="PENDING_REVIEW">Pending review</option>
+                  <option value="HOLD">On hold</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="FULFILLED">Fulfilled</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+
+                <input
+                  type="text"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs"
+                  placeholder="Search claim #, rep, company, branch..."
+                  value={claimSearchInput}
+                  onChange={(event) => setClaimSearchInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      setClaimPage(1);
+                      setClaimSearch(claimSearchInput.trim());
+                    }
+                  }}
+                />
+
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    setClaimPage(1);
+                    setClaimSearch(claimSearchInput.trim());
+                  }}
+                >
+                  Search
+                </Button>
+
+                <select
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium"
+                  value={claimLimit}
+                  onChange={(event) => {
+                    setClaimLimit(Number(event.target.value));
+                    setClaimPage(1);
+                  }}
+                >
+                  <option value={10}>10 / page</option>
+                  <option value={20}>20 / page</option>
+                  <option value={50}>50 / page</option>
+                </select>
+              </div>
+            </div>
+
             {claims.length ? (
               claims.map((claim) => {
                 const statusStyle = STATUS_STYLES[claim.status] || 'bg-slate-100 text-slate-700 border border-slate-200';
@@ -689,6 +788,33 @@ export default function SpiffPage() {
             ) : (
               <p className="text-sm text-slate-500">No claims found yet.</p>
             )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <p>
+                Showing {claims.length} of {formatNumber(claimsTotal)} claims
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setClaimPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={claimPage <= 1 || loading}
+                >
+                  Prev
+                </Button>
+                <span className="min-w-[92px] text-center font-semibold text-slate-700">
+                  Page {claimPage} / {claimsTotalPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setClaimPage((prev) => Math.min(prev + 1, claimsTotalPages))}
+                  disabled={claimPage >= claimsTotalPages || loading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
           </div>
         </Card>
       </div>

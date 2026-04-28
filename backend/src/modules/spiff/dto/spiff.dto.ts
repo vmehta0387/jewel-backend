@@ -81,6 +81,10 @@ export class FindSpiffClaimsQueryDto {
   @IsOptional()
   @IsEnum(SpiffClaimStatus)
   status?: SpiffClaimStatus;
+
+  @IsOptional()
+  @IsString()
+  q?: string;
 }
 
 export class CreateSpiffClaimDto {
@@ -89,8 +93,9 @@ export class CreateSpiffClaimDto {
   @Min(1)
   requestedPoints: number;
 
+  @IsOptional()
   @IsString()
-  giftCardType: string;
+  giftCardType?: string;
 
   @IsOptional()
   @IsString()

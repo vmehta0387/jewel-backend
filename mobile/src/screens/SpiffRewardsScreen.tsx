@@ -80,7 +80,6 @@ const SpiffRewardsScreen = () => {
 
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
-  const [giftCardType, setGiftCardType] = useState('');
   const [salesRepPanel, setSalesRepPanel] = useState<SalesRepPanel>('REDEEM');
 
   const load = useCallback(async (silent = false) => {
@@ -123,7 +122,6 @@ const SpiffRewardsScreen = () => {
       setLeaderboard(leaderboardRes);
       setGlobalLeaderboard(globalBoardRes);
       setClaims(claimsRes.data || []);
-      setGiftCardType((current) => current || configRes.giftCardOptions?.[0] || 'Amazon');
     } catch (error: any) {
       Alert.alert('SPIFF', error?.message || 'Unable to load SPIFF data right now.');
     } finally {
@@ -152,16 +150,10 @@ const SpiffRewardsScreen = () => {
       return;
     }
 
-    if (!giftCardType.trim()) {
-      Alert.alert('SPIFF', 'Select a gift card type.');
-      return;
-    }
-
     setSubmitting(true);
     try {
       await createSpiffClaim(token, {
         requestedPoints: points,
-        giftCardType,
         note: note.trim() || undefined,
       });
       setRequestedPoints('');
@@ -173,7 +165,7 @@ const SpiffRewardsScreen = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [token, requestedPoints, giftCardType, note, load]);
+  }, [token, requestedPoints, note, load]);
 
   const nextTierHint = useMemo(() => {
     const nextTierAt = Number(summary?.tier?.nextTierAt || 0);
@@ -402,21 +394,6 @@ const SpiffRewardsScreen = () => {
                     value={requestedPoints}
                     onChangeText={setRequestedPoints}
                   />
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.giftOptionsRow}>
-                    {(config?.giftCardOptions || ['Amazon']).map((option: string) => {
-                      const active = giftCardType === option;
-                      return (
-                        <TouchableOpacity
-                          key={option}
-                          style={[styles.giftChip, active ? styles.giftChipActive : null]}
-                          onPress={() => setGiftCardType(option)}
-                          activeOpacity={0.9}
-                        >
-                          <Text style={[styles.giftChipText, active ? styles.giftChipTextActive : null]}>{option}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
                   <TextInput
                     style={styles.input}
                     placeholder="Notes (optional)"
@@ -579,22 +556,6 @@ const SpiffRewardsScreen = () => {
               value={requestedPoints}
               onChangeText={setRequestedPoints}
             />
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.giftOptionsRow}>
-              {(config?.giftCardOptions || ['Amazon']).map((option: string) => {
-                const active = giftCardType === option;
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    style={[styles.giftChip, active ? styles.giftChipActive : null]}
-                    onPress={() => setGiftCardType(option)}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={[styles.giftChipText, active ? styles.giftChipTextActive : null]}>{option}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
 
             <TextInput
               style={styles.input}
@@ -1131,33 +1092,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1F1A16',
     backgroundColor: '#FFFFFF',
-  },
-  giftOptionsRow: {
-    paddingTop: 8,
-    paddingBottom: 2,
-    gap: 8,
-  },
-  giftChip: {
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: '#DDD3C8',
-    paddingHorizontal: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  giftChipActive: {
-    backgroundColor: '#1F1A16',
-    borderColor: '#1F1A16',
-  },
-  giftChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#5E554D',
-  },
-  giftChipTextActive: {
-    color: '#FFFFFF',
   },
   conversionText: {
     marginTop: 7,

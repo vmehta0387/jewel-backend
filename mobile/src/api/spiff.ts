@@ -82,7 +82,7 @@ export const fetchSpiffClaims = (token: string, page = 1, limit = 20) =>
 
 export const createSpiffClaim = (
   token: string,
-  payload: { requestedPoints: number; giftCardType: string; note?: string },
+  payload: { requestedPoints: number; giftCardType?: string; note?: string },
 ) =>
   apiRequest<{ claim: SpiffClaim }>('/spiff/claims', {
     method: 'POST',

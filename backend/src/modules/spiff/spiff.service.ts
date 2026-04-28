@@ -5,7 +5,7 @@
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { Order } from '../orders/entities/order.entity';
 import { User } from '../users/entities/user.entity';
 import { Company } from '../companies/entities/company.entity';
@@ -385,6 +385,7 @@ export class SpiffService {
     const page = Math.max(1, Number(query.page || 1));
     const limit = Math.max(1, Math.min(Number(query.limit || 20), 100));
     const skip = (page - 1) * limit;
+    const search = this.optionalText(query.q);
 
     const qb = this.claimRepo
       .createQueryBuilder('claim')
@@ -398,6 +399,22 @@ export class SpiffService {
 
     if (query.status) {
       qb.andWhere('claim.status = :status', { status: query.status });
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      qb.andWhere(
+        new Brackets((subQb) => {
+          subQb
+            .where('claim.claimNumber LIKE :like', { like })
+            .orWhere('claim.giftCardType LIKE :like', { like })
+            .orWhere('user.firstName LIKE :like', { like })
+            .orWhere('user.lastName LIKE :like', { like })
+            .orWhere('user.email LIKE :like', { like })
+            .orWhere('company.companyName LIKE :like', { like })
+            .orWhere('branch.name LIKE :like', { like });
+        }),
+      );
     }
 
     if (this.canManageClaims(requester)) {
@@ -469,10 +486,7 @@ export class SpiffService {
       throw new BadRequestException('Requested points are too low for redemption');
     }
 
-    const giftCardType = String(dto.giftCardType || '').trim();
-    if (!giftCardType) {
-      throw new BadRequestException('Gift card type is required');
-    }
+    const giftCardType = String(dto.giftCardType || '').trim() || this.getDefaultGiftCardLabel();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const claimNumber = await this.getNextClaimNumber();
@@ -1170,6 +1184,10 @@ export class SpiffService {
       .filter(Boolean);
 
     return parsed.length > 0 ? parsed : ['Amazon'];
+  }
+
+  private getDefaultGiftCardLabel(): string {
+    return this.optionalText(process.env.SPIFF_DEFAULT_GIFTCARD_LABEL) || 'Open Choice';
   }
 
   private isAutoFulfillEnabled(): boolean {

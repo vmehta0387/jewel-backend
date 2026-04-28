@@ -39,7 +39,9 @@ export class GiftbitService {
       price_in_cents: Math.max(1, Math.floor(input.amountCents)),
     };
 
-    const brandCodes = this.resolveBrandCodesByGiftCardType(input.giftCardType);
+    const brandCodes = this.shouldEnforceBrandCodes()
+      ? this.resolveBrandCodesByGiftCardType(input.giftCardType)
+      : [];
     const region = this.optionalText(process.env.GIFTBIT_REGION) || 'USA';
     if (brandCodes.length > 0) {
       payload.brand_codes = brandCodes;
@@ -198,6 +200,10 @@ export class GiftbitService {
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private shouldEnforceBrandCodes(): boolean {
+    return /^true$/i.test(String(process.env.GIFTBIT_ENFORCE_BRAND_CODES || 'false').trim());
   }
 
   private resolveBrandCodesByGiftCardType(giftCardType: string): string[] {
