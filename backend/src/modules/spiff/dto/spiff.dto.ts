@@ -112,6 +112,7 @@ export class ReviewSpiffClaimDto {
 }
 
 export class FulfillSpiffClaimDto {
+  @IsOptional()
   @IsString()
   rewardLink: string;
 

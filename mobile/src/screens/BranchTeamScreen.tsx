@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -32,6 +32,21 @@ type RepRow = {
   employee: BranchEmployee;
 };
 
+const toSafeEmailLocal = (fullName: string) =>
+  fullName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 40) || 'manager';
+
+const splitName = (fullName: string) => {
+  const clean = fullName.trim().replace(/\s+/g, ' ');
+  if (!clean) return { firstName: 'Manager', lastName: 'Profile' };
+  const parts = clean.split(' ');
+  if (parts.length === 1) return { firstName: parts[0], lastName: parts[0] };
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
+};
+
 const toMonthKey = (value?: string | null) => {
   if (!value) return '';
   const date = new Date(value);
@@ -45,6 +60,8 @@ const formatCompactMoney = (value: number) => {
   if (amount >= 1000) return `$${Math.round(amount / 1000)}k`;
   return `$${Math.round(amount)}`;
 };
+
+const normalizeName = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const BranchTeamScreen = () => {
   const { token, user } = useAuth();
@@ -105,9 +122,11 @@ const BranchTeamScreen = () => {
   const managers = useMemo<ManagerRow[]>(() => {
     const currentMonth = toMonthKey(new Date().toISOString());
     const managerMap = new Map<string, ManagerRow>();
-
-    const managerEmployees = scopedEmployees.filter((row) => row.role === 'BRANCH_MANAGER');
+    const managerEmployees = employees.filter((row) => row.role === 'BRANCH_MANAGER');
     managerEmployees.forEach((employee) => {
+      if (selectedBranchId && String(employee.branch?.id || '').trim() !== selectedBranchId) {
+        return;
+      }
       const managerName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.email;
       const branchName = String(employee.branch?.name || selectedBranchName || 'Branch').trim();
       managerMap.set(employee.id, {
@@ -127,17 +146,53 @@ const BranchTeamScreen = () => {
 
       const managerName = String(order.branchManagerName || '').trim();
       if (!managerName) return;
+      const branchName = String(order.branchName || selectedBranchName || 'Branch').trim();
+      const orderBranchId = String(order.branchId || '').trim();
+
+      let matched = false;
       for (const [key, rowValue] of managerMap.entries()) {
-        if (rowValue.name.trim().toLowerCase() === managerName.toLowerCase()) {
+        const rowEmployeeBranchId = String(rowValue.employee?.branch?.id || '').trim();
+        const sameBranch = !orderBranchId || !rowEmployeeBranchId || orderBranchId === rowEmployeeBranchId;
+        const sameName = normalizeName(rowValue.name) === normalizeName(managerName);
+        if (sameName && sameBranch) {
           rowValue.sales += Number(order.price || 0);
           managerMap.set(key, rowValue);
+          matched = true;
           break;
         }
+      }
+
+      // Fallback: show manager from order stream even when user-role sync is missing.
+      if (!matched) {
+        const fallbackEmployee =
+          managerEmployees.find((manager) => {
+            const managerFull = normalizeName(`${manager.firstName || ''} ${manager.lastName || ''}`.trim());
+            const managerBranch = String(manager.branch?.name || '').trim().toLowerCase();
+            const managerBranchId = String(manager.branch?.id || '').trim();
+            const sameBranchId = !orderBranchId || !managerBranchId || managerBranchId === orderBranchId;
+            const sameName = managerFull === normalizeName(managerName);
+            return (
+              sameName &&
+              sameBranchId &&
+              (!branchName || !managerBranch || managerBranch === branchName.toLowerCase())
+            );
+          }) || undefined;
+        const fallbackKey = `fallback:${managerName.toLowerCase()}|${branchName.toLowerCase()}`;
+        const existing = managerMap.get(fallbackKey) || {
+          id: fallbackKey,
+          name: managerName,
+          subtitle: `${branchName} - Manager`,
+          sales: 0,
+          status: 'Active' as const,
+          employee: fallbackEmployee,
+        };
+        existing.sales += Number(order.price || 0);
+        managerMap.set(fallbackKey, existing);
       }
     });
 
     return Array.from(managerMap.values()).sort((a, b) => b.sales - a.sales);
-  }, [orders, scopedEmployees, selectedBranchId, selectedBranchName]);
+  }, [employees, orders, selectedBranchId, selectedBranchName]);
 
   const reps = useMemo<RepRow[]>(() => {
     return [...scopedEmployees]
@@ -175,6 +230,21 @@ const BranchTeamScreen = () => {
     }
     navigation.goBack();
   }, [navigation, selectedBranchId, user?.role]);
+
+  const resolveManagerEmployee = useCallback(
+    (item: ManagerRow): BranchEmployee | undefined => {
+      if (item.employee) return item.employee;
+      const subtitleBranch = item.subtitle.split('-')[0]?.trim().toLowerCase() || '';
+      const target = normalizeName(item.name);
+      return employees.find((employee) => {
+        if (employee.role !== 'BRANCH_MANAGER') return false;
+        const full = normalizeName(`${employee.firstName || ''} ${employee.lastName || ''}`.trim());
+        const branchName = String(employee.branch?.name || '').trim().toLowerCase();
+        return full === target && (!subtitleBranch || !branchName || branchName === subtitleBranch);
+      });
+    },
+    [employees],
+  );
 
   const renderStatusPill = (status: string) => (
     <View
@@ -327,9 +397,30 @@ const BranchTeamScreen = () => {
                   style={styles.teamCard}
                   activeOpacity={0.92}
                   onPress={() => {
-                    if (item.employee) {
-                      navigation.navigate('BranchRepProfile', { employee: item.employee });
+                    const managerEmployee = resolveManagerEmployee(item);
+                    if (managerEmployee) {
+                      navigation.navigate('BranchRepProfile', { employee: managerEmployee });
+                      return;
                     }
+                    const branchName = item.subtitle.split('-')[0]?.trim() || selectedBranchName || 'Branch';
+                    const names = splitName(item.name);
+                    navigation.navigate('BranchRepProfile', {
+                      employee: {
+                        id: `virtual-manager-${toSafeEmailLocal(item.name)}-${String(selectedBranchId || branchName).toLowerCase()}`,
+                        email: `${toSafeEmailLocal(item.name)}@manager.local`,
+                        firstName: names.firstName,
+                        lastName: names.lastName,
+                        role: 'BRANCH_MANAGER',
+                        phone: null,
+                        isActive: true,
+                        isOnline: item.status === 'Active',
+                        branch: {
+                          id: selectedBranchId || `virtual-branch-${toSafeEmailLocal(branchName)}`,
+                          name: branchName,
+                          code: '',
+                        },
+                      },
+                    });
                   }}
                 >
                   <View style={styles.leftAvatarWrap}>

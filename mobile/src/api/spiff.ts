@@ -37,11 +37,16 @@ export type SpiffSummary = {
 
 export type SpiffClaim = {
   id: string;
+  userId?: string;
   claimNumber: string;
   status: string;
   giftCardType: string;
   requestedPoints: number;
   requestedAmount: number;
+  requestorName?: string | null;
+  companyName?: string | null;
+  branchName?: string | null;
+  fulfilledAt?: string | null;
   reviewReason?: string | null;
   giftbitLinkUrl?: string | null;
   createdAt: string;
@@ -87,4 +92,24 @@ export const createSpiffClaim = (
   apiRequest<{ claim: SpiffClaim }>('/spiff/claims', {
     method: 'POST',
     body: JSON.stringify(payload),
+  }, token);
+
+export const reviewSpiffClaim = (
+  token: string,
+  id: string,
+  payload: { action: 'APPROVE' | 'HOLD' | 'REJECT'; reason?: string },
+) =>
+  apiRequest<SpiffClaim>(`/spiff/claims/${id}/review`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, token);
+
+export const fulfillSpiffClaim = (
+  token: string,
+  id: string,
+  payload?: { rewardLink?: string; note?: string },
+) =>
+  apiRequest<SpiffClaim>(`/spiff/claims/${id}/fulfill`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload || {}),
   }, token);

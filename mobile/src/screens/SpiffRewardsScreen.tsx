@@ -16,10 +16,12 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
   createSpiffClaim,
+  fulfillSpiffClaim,
   fetchSpiffClaims,
   fetchSpiffConfig,
   fetchSpiffLeaderboard,
   fetchSpiffSummary,
+  reviewSpiffClaim,
   type SpiffClaim,
 } from '../api/spiff';
 
@@ -63,12 +65,45 @@ const TIER_RATES = [
 
 type SalesRepPanel = 'COMPANY_BOARD' | 'GLOBAL_BOARD' | 'REDEEM' | 'ACTIVITY';
 type BranchManagerPanel = 'BRANCH_BOARD' | 'COMPANY_BOARD';
+type CompanyAdminClaimFilter = 'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'FULFILLED';
+
+const COMPANY_FILTER_STATUS: Record<CompanyAdminClaimFilter, string[] | null> = {
+  ALL: null,
+  PENDING_REVIEW: ['PENDING_REVIEW', 'HOLD'],
+  APPROVED: ['APPROVED'],
+  FULFILLED: ['FULFILLED'],
+};
+
+const formatClaimStatusLabel = (status: string) => {
+  if (status === 'PENDING_REVIEW') return 'Pending';
+  if (status === 'HOLD') return 'Hold';
+  if (status === 'APPROVED') return 'Approved';
+  if (status === 'FULFILLED') return 'Fulfilled';
+  if (status === 'REJECTED') return 'Rejected';
+  return status.replace(/_/g, ' ');
+};
+
+const formatClaimAge = (value: string | null | undefined) => {
+  if (!value) return 'Just now';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return 'Just now';
+  const diffMs = Date.now() - dt.getTime();
+  const mins = Math.max(0, Math.floor(diffMs / 60000));
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr${hrs > 1 ? 's' : ''} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
 
 const SpiffRewardsScreen = () => {
   const navigation = useNavigation<any>();
   const { token, user } = useAuth();
   const isSalesRep = user?.role === 'SALES_REP';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
 
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -84,6 +119,8 @@ const SpiffRewardsScreen = () => {
   const [note, setNote] = useState('');
   const [salesRepPanel, setSalesRepPanel] = useState<SalesRepPanel>('REDEEM');
   const [branchManagerPanel, setBranchManagerPanel] = useState<BranchManagerPanel>('BRANCH_BOARD');
+  const [companyFilter, setCompanyFilter] = useState<CompanyAdminClaimFilter>('ALL');
+  const [claimActionId, setClaimActionId] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!token) return;
@@ -217,6 +254,71 @@ const SpiffRewardsScreen = () => {
   const tierBadge = summary?.tier?.badge || '🥉';
   const hasGlobalBoardRows = (globalLeaderboard?.entries || []).length > 0;
   const globalBoardScope = String(globalLeaderboard?.scope || '').toUpperCase();
+  const filteredCompanyClaims = useMemo(() => {
+    const allowed = COMPANY_FILTER_STATUS[companyFilter];
+    if (!allowed) return claims;
+    return claims.filter((claim) => allowed.includes(String(claim.status || '').toUpperCase()));
+  }, [claims, companyFilter]);
+  const companyPendingClaims = useMemo(
+    () => claims.filter((claim) => ['PENDING_REVIEW', 'HOLD'].includes(String(claim.status || '').toUpperCase())),
+    [claims],
+  );
+  const companyApprovedClaims = useMemo(
+    () => claims.filter((claim) => String(claim.status || '').toUpperCase() === 'APPROVED'),
+    [claims],
+  );
+  const companyApprovedThisMonth = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    return claims.filter((claim) => {
+      const status = String(claim.status || '').toUpperCase();
+      if (!['APPROVED', 'FULFILLED'].includes(status)) return false;
+      const dt = new Date(claim.updatedAt || claim.createdAt);
+      return !Number.isNaN(dt.getTime()) && dt.getFullYear() === y && dt.getMonth() === m;
+    }).length;
+  }, [claims]);
+  const companyPendingValue = useMemo(
+    () => companyPendingClaims.reduce((sum, claim) => sum + Number(claim.requestedAmount || 0), 0),
+    [companyPendingClaims],
+  );
+  const repPointsByUserId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of leaderboard?.entries || []) {
+      const key = String(row?.entityId || '').trim();
+      if (!key) continue;
+      map.set(key, Number(row?.points || 0));
+    }
+    return map;
+  }, [leaderboard?.entries]);
+
+  const runClaimReviewAction = useCallback(async (claimId: string, action: 'APPROVE' | 'HOLD' | 'REJECT') => {
+    if (!token) return;
+    try {
+      setClaimActionId(claimId);
+      await reviewSpiffClaim(token, claimId, { action });
+      await load(true);
+    } catch (error: any) {
+      Alert.alert('SPIFF', error?.message || 'Unable to update claim right now.');
+    } finally {
+      setClaimActionId(null);
+    }
+  }, [token, load]);
+
+  const runClaimFulfillAction = useCallback(async (claim: SpiffClaim) => {
+    if (!token) return;
+    try {
+      setClaimActionId(claim.id);
+      await fulfillSpiffClaim(token, claim.id, {
+        rewardLink: claim.giftbitLinkUrl || undefined,
+      });
+      await load(true);
+    } catch (error: any) {
+      Alert.alert('SPIFF', error?.message || 'Unable to mark claim as fulfilled right now.');
+    } finally {
+      setClaimActionId(null);
+    }
+  }, [token, load]);
 
   if (isSalesRep) {
     return (
@@ -597,6 +699,185 @@ const SpiffRewardsScreen = () => {
     );
   }
 
+  if (isCompanyAdmin) {
+    return (
+      <View style={styles.caScreen}>
+        <SafeAreaView style={styles.caSafe} edges={['top']}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.caContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#B58A3E" />}
+          >
+            <View style={styles.caHero}>
+              <View style={styles.caHeroTopRow}>
+                <Text allowFontScaling={false} style={styles.caHeroClock}>9:41</Text>
+                <Text allowFontScaling={false} style={styles.caHeroDots}>•••</Text>
+              </View>
+              <Text allowFontScaling={false} style={styles.caHeroEyebrow}>SPIFF REDEMPTIONS</Text>
+              <Text allowFontScaling={false} style={styles.caHeroTitle}>Approval Queue</Text>
+              <Text allowFontScaling={false} style={styles.caHeroSub}>
+                {user?.companyName || 'Company'} · {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </Text>
+
+              <View style={styles.caHeroStatsRow}>
+                <View style={styles.caHeroStatCard}>
+                  <Text allowFontScaling={false} style={styles.caHeroStatValue}>{formatPoints(companyPendingClaims.length)}</Text>
+                  <Text allowFontScaling={false} style={styles.caHeroStatLabel}>Pending</Text>
+                </View>
+                <View style={styles.caHeroStatCard}>
+                  <Text allowFontScaling={false} style={styles.caHeroStatValue}>{formatMoney(companyPendingValue)}</Text>
+                  <Text allowFontScaling={false} style={styles.caHeroStatLabel}>Total Value</Text>
+                </View>
+                <View style={styles.caHeroStatCard}>
+                  <Text allowFontScaling={false} style={styles.caHeroStatValue}>{formatPoints(companyApprovedThisMonth)}</Text>
+                  <Text allowFontScaling={false} style={styles.caHeroStatLabel}>Approved Mo.</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.caFilterRow}>
+              {([
+                ['ALL', 'All'],
+                ['PENDING_REVIEW', 'Pending'],
+                ['APPROVED', 'Approved'],
+                ['FULFILLED', 'Fulfilled'],
+              ] as Array<[CompanyAdminClaimFilter, string]>).map(([key, label]) => (
+                <TouchableOpacity
+                  key={key}
+                  activeOpacity={0.88}
+                  onPress={() => setCompanyFilter(key)}
+                  style={[styles.caFilterChip, companyFilter === key ? styles.caFilterChipActive : null]}
+                >
+                  <Text allowFontScaling={false} style={[styles.caFilterChipText, companyFilter === key ? styles.caFilterChipTextActive : null]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {filteredCompanyClaims.length ? (
+              filteredCompanyClaims.map((claim) => {
+                const status = String(claim.status || '').toUpperCase();
+                const claimBusy = claimActionId === claim.id;
+                const canReview = ['PENDING_REVIEW', 'HOLD'].includes(status);
+                const canFulfill = status === 'APPROVED';
+                const repPoints = repPointsByUserId.get(String(claim.userId || '').trim()) || claim.requestedPoints || 0;
+
+                return (
+                  <View key={claim.id} style={[styles.caClaimCard, canReview ? styles.caClaimCardPending : null]}>
+                    <View style={styles.caClaimTopRow}>
+                      <View style={styles.caClaimAvatar}>
+                        <Text allowFontScaling={false} style={styles.caClaimAvatarText}>
+                          {String(claim.requestorName || 'U')
+                            .split(' ')
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((v) => v[0])
+                            .join('')
+                            .toUpperCase() || 'U'}
+                        </Text>
+                      </View>
+                      <View style={styles.caClaimTitleWrap}>
+                        <Text allowFontScaling={false} numberOfLines={1} style={styles.caClaimName}>
+                          {claim.requestorName || claim.claimNumber}
+                        </Text>
+                        <Text allowFontScaling={false} numberOfLines={1} style={styles.caClaimMeta}>
+                          {claim.branchName || user?.branchName || '-'} · {formatClaimAge(claim.createdAt)}
+                        </Text>
+                        <View style={styles.caGiftTag}>
+                          <Text allowFontScaling={false} style={styles.caGiftTagText}>{claim.giftCardType || 'Gift Card'}</Text>
+                        </View>
+                      </View>
+                      <View style={[styles.caStatusBadge, { backgroundColor: STATUS_BG[status] || '#F2F2F2' }]}>
+                        <Text allowFontScaling={false} style={[styles.caStatusBadgeText, { color: STATUS_TEXT[status] || '#6F6F6F' }]}>
+                          {formatClaimStatusLabel(status)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.caMetricsRow}>
+                      <View style={styles.caMetricCard}>
+                        <Text allowFontScaling={false} style={styles.caMetricValueGold}>{formatMoney(claim.requestedAmount)}</Text>
+                        <Text allowFontScaling={false} style={styles.caMetricLabel}>Value</Text>
+                      </View>
+                      <View style={styles.caMetricCard}>
+                        <Text allowFontScaling={false} style={styles.caMetricValue}>{formatPoints(claim.requestedPoints)}</Text>
+                        <Text allowFontScaling={false} style={styles.caMetricLabel}>Points</Text>
+                      </View>
+                      <View style={styles.caMetricCard}>
+                        <Text allowFontScaling={false} style={styles.caMetricValue}>{formatPoints(repPoints)}</Text>
+                        <Text allowFontScaling={false} style={styles.caMetricLabel}>Total Pts</Text>
+                      </View>
+                    </View>
+
+                    {canReview ? (
+                      <View style={styles.caActionsRow}>
+                        <TouchableOpacity
+                          style={[styles.caBtn, styles.caApproveBtn, claimBusy ? styles.caBtnDisabled : null]}
+                          activeOpacity={0.9}
+                          disabled={claimBusy}
+                          onPress={() => runClaimReviewAction(claim.id, 'APPROVE')}
+                        >
+                          <Text allowFontScaling={false} style={styles.caApproveBtnText}>{claimBusy ? 'Updating...' : 'Approve'}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.caBtn, styles.caSecondaryBtn, claimBusy ? styles.caBtnDisabled : null]}
+                          activeOpacity={0.9}
+                          disabled={claimBusy}
+                          onPress={() => runClaimReviewAction(claim.id, 'HOLD')}
+                        >
+                          <Text allowFontScaling={false} style={styles.caSecondaryBtnText}>Hold</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.caBtn, styles.caSecondaryBtn, claimBusy ? styles.caBtnDisabled : null]}
+                          activeOpacity={0.9}
+                          disabled={claimBusy}
+                          onPress={() => runClaimReviewAction(claim.id, 'REJECT')}
+                        >
+                          <Text allowFontScaling={false} style={[styles.caSecondaryBtnText, styles.caRejectText]}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+
+                    {canFulfill ? (
+                      <TouchableOpacity
+                        style={[styles.caFulfillBtn, claimBusy ? styles.caBtnDisabled : null]}
+                        activeOpacity={0.9}
+                        disabled={claimBusy}
+                        onPress={() => runClaimFulfillAction(claim)}
+                      >
+                        <Text allowFontScaling={false} style={styles.caFulfillBtnText}>
+                          {claimBusy ? 'Updating...' : 'Mark as Fulfilled'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {status === 'FULFILLED' && claim.giftbitLinkUrl ? (
+                      <TouchableOpacity
+                        style={styles.caRewardLinkWrap}
+                        onPress={() => Linking.openURL(claim.giftbitLinkUrl as string)}
+                        activeOpacity={0.85}
+                      >
+                        <Text allowFontScaling={false} style={styles.caRewardLinkText}>Open reward link</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                );
+              })
+            ) : (
+              <View style={styles.caEmptyCard}>
+                <Text allowFontScaling={false} style={styles.caEmptyText}>No claims found for this filter.</Text>
+              </View>
+            )}
+
+            {companyApprovedClaims.length > 0 ? <View style={styles.caBottomSpace} /> : null}
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -747,6 +1028,296 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  caScreen: {
+    flex: 1,
+    backgroundColor: '#F1ECE2',
+  },
+  caSafe: {
+    flex: 1,
+    backgroundColor: '#F1ECE2',
+  },
+  caContent: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 20,
+    gap: 10,
+  },
+  caHero: {
+    backgroundColor: '#171311',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2E251E',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  caHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  caHeroClock: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  caHeroDots: {
+    color: '#B99341',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 3,
+  },
+  caHeroEyebrow: {
+    marginTop: 14,
+    color: '#B48A40',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  caHeroTitle: {
+    marginTop: 2,
+    color: '#FFFFFF',
+    fontSize: 35,
+    lineHeight: 39,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+  caHeroSub: {
+    marginTop: 2,
+    color: '#AEA394',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '600',
+  },
+  caHeroStatsRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  caHeroStatCard: {
+    flex: 1,
+    backgroundColor: '#2B2622',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  caHeroStatValue: {
+    color: '#D8AA4B',
+    fontSize: 33,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  caHeroStatLabel: {
+    marginTop: 2,
+    color: '#A99A89',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  caFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  caFilterChip: {
+    backgroundColor: '#F8F5EF',
+    borderWidth: 1,
+    borderColor: '#DCCFBF',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caFilterChipActive: {
+    backgroundColor: '#1D1917',
+    borderColor: '#1D1917',
+  },
+  caFilterChipText: {
+    color: '#7D7266',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  caFilterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  caClaimCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9DED0',
+    paddingHorizontal: 11,
+    paddingVertical: 11,
+  },
+  caClaimCardPending: {
+    borderLeftColor: '#BE9446',
+    borderLeftWidth: 2,
+    paddingLeft: 10,
+  },
+  caClaimTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  caClaimAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#E4EFEA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caClaimAvatarText: {
+    color: '#4F7C6A',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  caClaimTitleWrap: {
+    flex: 1,
+    marginLeft: 9,
+    marginRight: 7,
+  },
+  caClaimName: {
+    color: '#1E1A16',
+    fontSize: 20,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  caClaimMeta: {
+    marginTop: 1,
+    color: '#8D8174',
+    fontSize: 14,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  caGiftTag: {
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    borderRadius: 10,
+    backgroundColor: '#F7ECD5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  caGiftTagText: {
+    color: '#A57C2E',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  caStatusBadge: {
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 2,
+  },
+  caStatusBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  caMetricsRow: {
+    marginTop: 9,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  caMetricCard: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: '#F6F4F1',
+    borderWidth: 1,
+    borderColor: '#ECE5DA',
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+  },
+  caMetricValue: {
+    color: '#151310',
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: '900',
+  },
+  caMetricValueGold: {
+    color: '#B68433',
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: '900',
+  },
+  caMetricLabel: {
+    marginTop: 2,
+    color: '#9A8D7D',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  caActionsRow: {
+    marginTop: 9,
+    flexDirection: 'row',
+    gap: 7,
+  },
+  caBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caApproveBtn: {
+    backgroundColor: '#BF9446',
+  },
+  caApproveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  caSecondaryBtn: {
+    backgroundColor: '#F7F5F2',
+    borderWidth: 1,
+    borderColor: '#D8CDC0',
+  },
+  caSecondaryBtnText: {
+    color: '#3A322B',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  caRejectText: {
+    color: '#6A5142',
+  },
+  caFulfillBtn: {
+    marginTop: 9,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#E4F1EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caFulfillBtnText: {
+    color: '#2F7B55',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  caBtnDisabled: {
+    opacity: 0.6,
+  },
+  caRewardLinkWrap: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  caRewardLinkText: {
+    color: '#3C5F9D',
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  caEmptyCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5DACB',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+  },
+  caEmptyText: {
+    color: '#8B7D6D',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  caBottomSpace: {
+    height: 6,
   },
   srHeader: {
     paddingHorizontal: 16,

@@ -642,10 +642,7 @@ export class SpiffService {
       return this.serializeClaim(claim);
     }
 
-    const rewardLink = this.optionalText(dto.rewardLink);
-    if (!rewardLink) {
-      throw new BadRequestException('Reward link is required');
-    }
+    const rewardLink = this.optionalText(dto.rewardLink) || claim.giftbitLinkUrl || null;
 
     claim.status = SpiffClaimStatus.FULFILLED;
     claim.fulfilledAt = new Date();

@@ -244,6 +244,7 @@ const BranchRepProfileScreen = () => {
   }, [branches, employee.branch?.name, form.branchId]);
 
   const isOnline = Boolean(employee.isActive && employee.isOnline);
+  const canManageProfile = employee.role === 'SALES_REP';
   const initial = (employee.firstName?.[0] || employee.email?.[0] || 'R').toUpperCase();
   const subtitle = `Sales Associate \u2022 ${selectedBranchName || 'Branch'}`;
 
@@ -321,9 +322,11 @@ const BranchRepProfileScreen = () => {
           <Ionicons name="chevron-back" size={18} color="#8A8178" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Rep Profile</Text>
-        <TouchableOpacity style={styles.editBtn} activeOpacity={0.9} onPress={handleEditMode}>
-          <Text style={styles.editBtnText}>Edit</Text>
-        </TouchableOpacity>
+        {canManageProfile ? (
+          <TouchableOpacity style={styles.editBtn} activeOpacity={0.9} onPress={handleEditMode}>
+            <Text style={styles.editBtnText}>Edit</Text>
+          </TouchableOpacity>
+        ) : <View style={styles.editBtnGhost} />}
       </View>
 
       {editNotice ? <Text style={styles.noticeText}>{editNotice}</Text> : null}
@@ -483,24 +486,26 @@ const BranchRepProfileScreen = () => {
         </View>
       </ScrollView>
 
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={[styles.suspendBtn, saving ? styles.btnDisabled : null]}
-          onPress={toggleSuspend}
-          activeOpacity={0.9}
-          disabled={saving}
-        >
-          <Text style={styles.suspendText}>{employee.isActive ? 'Suspend' : 'Enable'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.saveBtn, (!editMode || saving) ? styles.btnDisabled : null]}
-          onPress={handleSaveChanges}
-          activeOpacity={0.9}
-          disabled={!editMode || saving}
-        >
-          <Text style={styles.saveText}>Save Changes -&gt;</Text>
-        </TouchableOpacity>
-      </View>
+      {canManageProfile ? (
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={[styles.suspendBtn, saving ? styles.btnDisabled : null]}
+            onPress={toggleSuspend}
+            activeOpacity={0.9}
+            disabled={saving}
+          >
+            <Text style={styles.suspendText}>{employee.isActive ? 'Suspend' : 'Enable'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveBtn, (!editMode || saving) ? styles.btnDisabled : null]}
+            onPress={handleSaveChanges}
+            activeOpacity={0.9}
+            disabled={!editMode || saving}
+          >
+            <Text style={styles.saveText}>Save Changes -&gt;</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <Modal visible={branchPickerVisible} transparent animationType="fade" onRequestClose={() => setBranchPickerVisible(false)}>
         <TouchableWithoutFeedback onPress={() => setBranchPickerVisible(false)}>
@@ -559,6 +564,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   editBtnText: { fontSize: 13, fontWeight: '700', color: '#8A7C6B' },
+  editBtnGhost: { minWidth: 52, height: 32 },
   noticeText: {
     marginHorizontal: 14,
     marginTop: 6,
