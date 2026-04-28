@@ -121,6 +121,11 @@ const formatMoney = (value: number | null | undefined) => {
   }).format(numeric);
 };
 
+const formatCount = (value: number) =>
+  new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+
 const statusTimelineIndex = (status?: string | null) => {
   const key = normalizeStatus(status);
   if (key === 'QUOTE') return 1;
@@ -363,12 +368,27 @@ const OrdersScreen = () => {
     [notificationEntries],
   );
   const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
+  const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
+  const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const headerTitle = isSalesRepOrBranchManager ? 'Branch Orders' : 'My Orders';
+  const visibleFilters = useMemo(() => {
+    if (isBranchManager) {
+      return FILTERS.filter((filter) => filter.key !== 'QUOTE');
+    }
+    return FILTERS;
+  }, [isBranchManager]);
 
   useEffect(() => {
     if (!notificationsVisible) {
       setNotificationCount(notificationEntries.length);
     }
   }, [notificationEntries.length, notificationsVisible]);
+
+  useEffect(() => {
+    if (isBranchManager && selectedFilter === 'QUOTE') {
+      setSelectedFilter('PENDING_APPROVAL');
+    }
+  }, [isBranchManager, selectedFilter]);
 
   const openOrderSummary = useCallback(
     (order: Order) => {
@@ -461,6 +481,24 @@ const OrdersScreen = () => {
     [token],
   );
 
+  const approvePending = useCallback(
+    async (order: Order) => {
+      if (!token) return;
+      setActingOrderId(order.id);
+      try {
+        await updateOrder(token, order.id, { status: 'APPROVED' });
+        setOrders((prev) =>
+          prev.map((row) => (row.id === order.id ? { ...row, status: 'APPROVED' } : row)),
+        );
+      } catch (err: any) {
+        setError(err?.message || 'Unable to approve order');
+      } finally {
+        setActingOrderId(null);
+      }
+    },
+    [token],
+  );
+
   const renderTimeline = (status?: string | null) => {
     const activeIndex = statusTimelineIndex(status);
     const labels = ['Order\nCreated', 'Pending\nApproval', 'Approved', 'In\nProd.', 'Shipped'];
@@ -522,6 +560,45 @@ const OrdersScreen = () => {
     }
 
     if (status === 'PENDING_APPROVAL') {
+      if (isBranchManager) {
+        return (
+          <View style={styles.actionRowThree}>
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnGhostRedCompact]}
+              onPress={() => markCancelled(order)}
+              activeOpacity={0.9}
+              disabled={actingOrderId === order.id}
+            >
+              <Ionicons name="close" size={13} color="#CC5757" />
+              <Text style={styles.actionBtnGhostRedTextCompact}>
+                {actingOrderId === order.id ? 'Rejecting...' : 'Reject'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnGhostCompact]}
+              onPress={() => handleContinueEditing(order)}
+              activeOpacity={0.9}
+            >
+              <Ionicons name="pencil-outline" size={12} color="#7B7268" />
+              <Text style={styles.actionBtnGhostTextCompact}>Edit</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnApproveCompact]}
+              onPress={() => approvePending(order)}
+              activeOpacity={0.9}
+              disabled={actingOrderId === order.id}
+            >
+              <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+              <Text style={styles.actionBtnApproveTextCompact}>
+                {actingOrderId === order.id ? 'Approving...' : 'Approve'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
       return (
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -683,7 +760,24 @@ const OrdersScreen = () => {
       </View>
 
       <View style={styles.topPanel}>
-        <Text style={styles.pageTitle}>My Orders</Text>
+        <View style={styles.pageTitleRow}>
+          <View style={styles.pageTitleLeft}>
+            {isSalesRepOrBranchManager ? (
+              <TouchableOpacity
+                style={styles.pageTitleBackBtn}
+                onPress={() => (navigation as any).navigate('DashboardTab')}
+                activeOpacity={0.8}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="chevron-back" size={17} color="#8C837A" style={styles.pageTitleBackIcon} />
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.pageTitle}>{headerTitle}</Text>
+          </View>
+          {isSalesRepOrBranchManager ? (
+            <Text style={styles.pageTotalText}>{formatCount(orders.length)} total</Text>
+          ) : null}
+        </View>
 
         <View style={styles.searchBox}>
           <Ionicons name="search-outline" size={16} color="#B0A79E" />
@@ -701,7 +795,7 @@ const OrdersScreen = () => {
           ) : null}
         </View>
 
-        <View style={styles.filterRow}>{FILTERS.map((item) => renderFilterChip(item))}</View>
+        <View style={styles.filterRow}>{visibleFilters.map((item) => renderFilterChip(item))}</View>
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -1026,11 +1120,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   pageTitle: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 17,
+    lineHeight: 22,
     color: '#1F1A15',
-    fontWeight: '800',
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+  pageTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  pageTitleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pageTitleBackBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitleBackIcon: {
+    marginRight: 4,
+    marginLeft: -2,
+    marginTop: 1,
+  },
+  pageTotalText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#9A9188',
+    fontWeight: '500',
   },
   searchBox: {
     minHeight: 40,
@@ -1202,12 +1321,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     gap: 8,
   },
+  actionRowThree: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 6,
+  },
   actionBtn: {
     height: 38,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
+    flexDirection: 'row',
+    gap: 4,
   },
   actionBtnBlack: {
     flex: 1.35,
@@ -1235,10 +1361,50 @@ const styles = StyleSheet.create({
     borderColor: '#E7C2C2',
     backgroundColor: '#FDF1F1',
   },
+  actionBtnGhostRedCompact: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#E7C2C2',
+    backgroundColor: '#FDF1F1',
+    borderRadius: 11,
+    height: 36,
+    paddingHorizontal: 8,
+  },
   actionBtnGhostRedText: {
     color: '#CC5757',
     fontSize: 13,
     fontWeight: '700',
+  },
+  actionBtnGhostRedTextCompact: {
+    color: '#CC5757',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionBtnGhostCompact: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D3CBC0',
+    backgroundColor: '#F7F4F0',
+    borderRadius: 11,
+    height: 36,
+    paddingHorizontal: 8,
+  },
+  actionBtnGhostTextCompact: {
+    color: '#7B7268',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionBtnApproveCompact: {
+    flex: 1.25,
+    borderRadius: 11,
+    height: 36,
+    backgroundColor: '#2F8A58',
+    paddingHorizontal: 10,
+  },
+  actionBtnApproveTextCompact: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   requestBtn: {
     marginTop: 10,

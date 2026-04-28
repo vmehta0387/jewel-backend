@@ -190,6 +190,7 @@ const SpiffRewardsScreen = () => {
   }, [user?.firstName, user?.lastName, user?.email]);
 
   const totalPoints = Number(summary?.wallet?.totalEarnedPoints || 0);
+  const lockedPoints = Number(summary?.wallet?.lockedPoints || 0);
   const redeemablePoints = Number(summary?.wallet?.availablePoints || 0);
   const pointsPerDollar = Number(config?.pointsPerDollar || 100);
   const redeemableAmount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
@@ -238,8 +239,8 @@ const SpiffRewardsScreen = () => {
                   <Text allowFontScaling={false} style={styles.srHeroStatLabel}>Total Pts</Text>
                 </View>
                 <View style={styles.srHeroStatBox}>
-                  <Text allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit style={styles.srHeroStatValue}>{currentRank > 0 ? `#${currentRank}` : '-'}</Text>
-                  <Text allowFontScaling={false} style={styles.srHeroStatLabel}>Company Rank</Text>
+                  <Text allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit style={styles.srHeroStatValue}>{formatPoints(lockedPoints)}</Text>
+                  <Text allowFontScaling={false} style={styles.srHeroStatLabel}>Locked Pts</Text>
                 </View>
                 <View style={styles.srHeroStatBox}>
                   <Text allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit style={styles.srHeroStatValue}>{formatMoney(redeemableAmount)}</Text>

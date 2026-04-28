@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -50,18 +51,25 @@ const LoginScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 18 : 0}
         style={styles.keyboardView}
       >
-        <View style={styles.content}>
-          <View style={styles.brandRow}>
-            <Ionicons name="flash-sharp" size={42} color="#B78A46" style={styles.brandIcon} />
-            <Text style={styles.brandTitle}>BLITZ</Text>
-            <Text style={styles.brandSubtitle}>NEW YORK CITY</Text>
-            <View style={styles.tinyLine} />
-          </View>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.content}>
+            <View style={styles.brandRow}>
+              <Ionicons name="flash-sharp" size={42} color="#B78A46" style={styles.brandIcon} />
+              <Text style={styles.brandTitle}>BLITZ</Text>
+              <Text style={styles.brandSubtitle}>NEW YORK CITY</Text>
+              <View style={styles.tinyLine} />
+            </View>
 
-          <View style={styles.cardContainer}>
+            <View style={styles.cardContainer}>
               <View style={styles.formContainer}>
                 <View style={styles.formHeader}>
                   <Text style={styles.formTitle}>Sign in to continue</Text>
@@ -143,7 +151,8 @@ const LoginScreen = () => {
               </View>
             </View>
           </View>
-        </View>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -157,12 +166,18 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  content: {
+  scroll: {
     flex: 1,
-    justifyContent: 'center',
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  content: {
+    justifyContent: 'flex-start',
     alignItems: 'center',
     width: '100%',
     paddingHorizontal: 26,
+    paddingTop: 46,
     paddingBottom: 40,
   },
   brandRow: {

@@ -9,6 +9,9 @@ import { AuthUser, JwtPayload } from '../interfaces/auth-user.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
+  private static readonly LAST_SEEN_WRITE_THROTTLE_MS = 60 * 1000;
+  private static readonly lastSeenWriteByUser = new Map<string, number>();
+
   constructor(
     configService: ConfigService,
     @InjectRepository(User)
@@ -29,6 +32,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user) {
       throw new UnauthorizedException('Invalid token');
+    }
+
+    const now = Date.now();
+    const prevWrite = JwtStrategy.lastSeenWriteByUser.get(user.id) || 0;
+    if (now - prevWrite >= JwtStrategy.LAST_SEEN_WRITE_THROTTLE_MS) {
+      JwtStrategy.lastSeenWriteByUser.set(user.id, now);
+      void this.userRepo.update(user.id, { lastSeenAt: new Date(now) });
     }
 
     return {

@@ -26,6 +26,8 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUser }> {
     const user = await this.validateUser(dto.email, dto.password);
+    user.lastSeenAt = new Date();
+    await this.userRepo.save(user);
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,

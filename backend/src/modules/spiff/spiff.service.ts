@@ -836,11 +836,23 @@ export class SpiffService {
       .andWhere('claim.status = :status', { status: SpiffClaimStatus.FULFILLED })
       .getRawOne();
 
+    const lockedRaw = await this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .select('COALESCE(SUM(ledger.points), 0)', 'points')
+      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
+      .where('ledger.userId = :userId', { userId })
+      .andWhere('ledger.points > 0')
+      .andWhere('ledger.orderId IS NOT NULL')
+      .andWhere('(ord.id IS NULL OR ord.status NOT IN (:...unlockStatuses))', {
+        unlockStatuses: [OrderStatus.SHIPPED, OrderStatus.COMPLETED],
+      })
+      .getRawOne();
+
     const totalEarnedPoints = this.toNumber(totalEarnedRaw?.points);
-    const unlockedPoints = totalEarnedPoints;
-    const lockedPoints = 0;
+    const lockedPoints = Math.max(this.toNumber(lockedRaw?.points), 0);
+    const unlockedPoints = Math.max(totalEarnedPoints - lockedPoints, 0);
     const committedPoints = this.toNumber(committedRaw?.points);
-    const availablePoints = Math.max(totalEarnedPoints - committedPoints, 0);
+    const availablePoints = Math.max(unlockedPoints - committedPoints, 0);
     const fulfilledClaimedPoints = this.toNumber(fulfilledRaw?.points);
 
     return {

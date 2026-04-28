@@ -39,6 +39,13 @@ type TrendingProduct = {
   imageUrl: string | null;
 };
 
+type RepPerformanceRow = {
+  id: string;
+  name: string;
+  initial: string;
+  sales: number;
+};
+
 type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
 
 type NotificationEntry = {
@@ -119,6 +126,7 @@ const BranchDashboardScreen = () => {
   const [notificationCount, setNotificationCount] = useState(0);
   const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>([]);
   const [spiffEarned, setSpiffEarned] = useState(0);
+  const [repPerformance, setRepPerformance] = useState<RepPerformanceRow[]>([]);
 
   const loadDashboard = useCallback(async () => {
     if (!token) return;
@@ -157,6 +165,39 @@ const BranchDashboardScreen = () => {
         });
         setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
       }
+
+      if (user?.role === 'BRANCH_MANAGER') {
+        const repAgg = new Map<string, { name: string; sales: number }>();
+        orderRows
+          .filter((order) => order.isActive !== false)
+          .forEach((order) => {
+            const repId = String(order.salesRepId || '').trim();
+            const repName =
+              String(order.salesRepName || '').trim() ||
+              String(order.salesRepEmail || '').trim() ||
+              'Unknown Rep';
+            const key = repId || repName.toLowerCase();
+            const current = repAgg.get(key) || { name: repName, sales: 0 };
+            current.sales += Number(order.price || 0);
+            repAgg.set(key, current);
+          });
+
+        const ranked = Array.from(repAgg.entries())
+          .map(([id, value]) => ({
+            id,
+            name: value.name,
+            initial: value.name.charAt(0).toUpperCase() || 'R',
+            sales: Number.isFinite(value.sales) ? value.sales : 0,
+          }))
+          .sort((a, b) => b.sales - a.sales)
+          .slice(0, 3);
+
+        setRepPerformance(ranked);
+      } else {
+        setRepPerformance([]);
+      }
+    } else {
+      setRepPerformance([]);
     }
 
     if (trendsRes.status === 'fulfilled' && summaryRes.status !== 'fulfilled') {
@@ -481,8 +522,15 @@ const BranchDashboardScreen = () => {
           <Text style={styles.sectionHeading}>Quick actions</Text>
           <View style={styles.quickRow}>
             <TouchableOpacity style={[styles.quickCard, styles.quickCardDark]} onPress={() => navigation.navigate('OrdersTab')}>
-              <Ionicons name="checkbox-outline" size={20} color="#FFFFFF" style={styles.quickCardIcon} />
-              <Text style={styles.quickCardTextWhite}>My Orders</Text>
+              <Ionicons
+                name={isBranchManager ? 'time-outline' : 'checkbox-outline'}
+                size={20}
+                color="#FFFFFF"
+                style={styles.quickCardIcon}
+              />
+              <Text style={styles.quickCardTextWhite}>
+                {isBranchManager ? 'Pending Approvals' : 'My Orders'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -502,81 +550,105 @@ const BranchDashboardScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.pipelineHeaderSpread}>
-            <Text style={styles.sectionHeading}>Sales pipeline</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
-              <Text style={styles.liveViewLink}>See all -&gt;</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.pipelinePlate}>
-            <View style={styles.pipelineItem}>
-              <View style={styles.pipelineFlexText}>
-                <Text style={styles.pipeStateText}>Pending approval</Text>
-                <Text style={styles.pipeValueGold}>{pipeline.pending}</Text>
-              </View>
-              <View style={styles.pipeTrack}>
-                <View style={[styles.pipeFillGlowGold, { width: pipeline.pending ? '35%' : '2%' }]} />
-              </View>
-            </View>
-
-            <View style={styles.pipelineItem}>
-              <View style={styles.pipelineFlexText}>
-                <Text style={styles.pipeStateText}>Approved</Text>
-                <Text style={styles.pipeValueGreen}>{pipeline.approved}</Text>
-              </View>
-              <View style={styles.pipeTrack}>
-                <View style={[styles.pipeFillGlowGreen, { width: pipeline.approved ? '65%' : '2%' }]} />
-              </View>
-            </View>
-
-            <View style={styles.pipelineItem}>
-              <View style={styles.pipelineFlexText}>
-                <Text style={styles.pipeStateText}>In production</Text>
-                <Text style={styles.pipeValueBlue}>{pipeline.production}</Text>
-              </View>
-              <View style={styles.pipeTrack}>
-                <View style={[styles.pipeFillGlowBlue, { width: pipeline.production ? '45%' : '2%' }]} />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.trendingHeaderRow}>
-            <Text style={[styles.sectionHeading, styles.trendingSectionTitle]}>Trending today</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}>
-              <Text style={styles.seeAllLink}>See all -</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.trendingRow}>
-            {productsToShow.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.trendingCard}
-                activeOpacity={0.9}
-                onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
-              >
-                <View style={styles.trendingImageWrap}>
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.trendingImage} />
-                  ) : (
-                    <View style={styles.trendingImagePlaceholder}>
-                      <Ionicons name="diamond-outline" size={24} color="#B59B7A" />
+          {isBranchManager ? (
+            <View>
+              <Text style={styles.repPerformanceHeading}>Rep Performance</Text>
+              <View style={styles.repCardWrap}>
+                {(repPerformance.length ? repPerformance : []).map((rep, index) => (
+                  <View key={rep.id} style={styles.repRow}>
+                    <View style={[styles.repAvatar, index === 0 ? styles.repAvatarMint : index === 1 ? styles.repAvatarSage : styles.repAvatarRose]}>
+                      <Text style={[styles.repAvatarText, index === 2 ? styles.repAvatarTextRose : null]}>{rep.initial}</Text>
                     </View>
-                  )}
+                    <Text style={styles.repName} numberOfLines={1}>
+                      {rep.name}
+                    </Text>
+                    <Text style={styles.repSales}>{formatMoneyCompact(rep.sales)}</Text>
+                  </View>
+                ))}
+                {!repPerformance.length ? (
+                  <Text style={styles.repEmptyText}>No rep sales yet</Text>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.pipelineHeaderSpread}>
+                <Text style={styles.sectionHeading}>Sales pipeline</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('OrdersTab')}>
+                  <Text style={styles.liveViewLink}>See all -&gt;</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.pipelinePlate}>
+                <View style={styles.pipelineItem}>
+                  <View style={styles.pipelineFlexText}>
+                    <Text style={styles.pipeStateText}>Pending approval</Text>
+                    <Text style={styles.pipeValueGold}>{pipeline.pending}</Text>
+                  </View>
+                  <View style={styles.pipeTrack}>
+                    <View style={[styles.pipeFillGlowGold, { width: pipeline.pending ? '35%' : '2%' }]} />
+                  </View>
                 </View>
-                <View style={styles.trendingBody}>
-                  <Text style={styles.trendingTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  <Text style={styles.trendingMeta} numberOfLines={1}>
-                    {item.subtitle}
-                  </Text>
-                  <Text style={styles.trendingPrice}>{formatPrice(item.price)}</Text>
+
+                <View style={styles.pipelineItem}>
+                  <View style={styles.pipelineFlexText}>
+                    <Text style={styles.pipeStateText}>Approved</Text>
+                    <Text style={styles.pipeValueGreen}>{pipeline.approved}</Text>
+                  </View>
+                  <View style={styles.pipeTrack}>
+                    <View style={[styles.pipeFillGlowGreen, { width: pipeline.approved ? '65%' : '2%' }]} />
+                  </View>
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+
+                <View style={styles.pipelineItem}>
+                  <View style={styles.pipelineFlexText}>
+                    <Text style={styles.pipeStateText}>In production</Text>
+                    <Text style={styles.pipeValueBlue}>{pipeline.production}</Text>
+                  </View>
+                  <View style={styles.pipeTrack}>
+                    <View style={[styles.pipeFillGlowBlue, { width: pipeline.production ? '45%' : '2%' }]} />
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.trendingHeaderRow}>
+                <Text style={[styles.sectionHeading, styles.trendingSectionTitle]}>Trending today</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}>
+                  <Text style={styles.seeAllLink}>See all -</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.trendingRow}>
+                {productsToShow.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.trendingCard}
+                    activeOpacity={0.9}
+                    onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
+                  >
+                    <View style={styles.trendingImageWrap}>
+                      {item.imageUrl ? (
+                        <Image source={{ uri: item.imageUrl }} style={styles.trendingImage} />
+                      ) : (
+                        <View style={styles.trendingImagePlaceholder}>
+                          <Ionicons name="diamond-outline" size={24} color="#B59B7A" />
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.trendingBody}>
+                      <Text style={styles.trendingTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.trendingMeta} numberOfLines={1}>
+                        {item.subtitle}
+                      </Text>
+                      <Text style={styles.trendingPrice}>{formatPrice(item.price)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
           <View style={{ height: 16 }} />
         </ScrollView>
@@ -962,6 +1034,76 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  repCardWrap: {
+    backgroundColor: '#FBFBFB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  repRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ECE9E4',
+  },
+  repAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  repAvatarMint: {
+    backgroundColor: '#E6F2EA',
+  },
+  repAvatarSage: {
+    backgroundColor: '#EAF4EE',
+  },
+  repAvatarRose: {
+    backgroundColor: '#F7E9E9',
+  },
+  repAvatarText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4D7D61',
+  },
+  repAvatarTextRose: {
+    color: '#B26D6D',
+  },
+  repName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2A2520',
+  },
+  repSales: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#A27A3D',
+    lineHeight: 22,
+  },
+  repPerformanceHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 10,
+  },
+  repEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8E877F',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
   pipelineHeaderSpread: {
     flexDirection: 'row',

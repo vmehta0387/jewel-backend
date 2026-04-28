@@ -28,6 +28,7 @@ export type UpdateBranchEmployeePayload = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  branchId?: string;
 };
 
 export const updateBranchEmployee = (token: string, id: string, payload: UpdateBranchEmployeePayload) =>

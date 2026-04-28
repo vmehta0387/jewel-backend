@@ -359,6 +359,7 @@ const QuoteSummaryScreen = () => {
   }, [token, user?.companyId, user?.branchId, summary, retailPrice, orderId, orderNumber, resolvedSelection]);
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
+  const isBranchManager = user?.role === 'BRANCH_MANAGER';
 
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
@@ -410,6 +411,35 @@ const QuoteSummaryScreen = () => {
       Alert.alert('Request queued', 'Cancellation / modification request flow will be connected next.');
     }
   }, [statusKey, handleSendForApproval]);
+
+  const handleManagerPendingDecision = useCallback(
+    async (nextStatus: 'APPROVED' | 'CANCELLED') => {
+      if (!token || !orderId) {
+        setError('Order reference is missing.');
+        return;
+      }
+
+      setSending(true);
+      setError(null);
+      try {
+        await updateOrder(token, orderId, { status: nextStatus });
+        setCurrentStatus(nextStatus);
+        Alert.alert(
+          nextStatus === 'APPROVED' ? 'Approved' : 'Rejected',
+          nextStatus === 'APPROVED'
+            ? 'Order approved successfully.'
+            : 'Order rejected successfully.',
+        );
+      } catch (err: any) {
+        setError(err?.message || 'Unable to update order status.');
+      } finally {
+        setSending(false);
+      }
+    },
+    [orderId, token],
+  );
+
+  const showManagerPendingActions = isBranchManager && statusKey === 'PENDING_APPROVAL';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -517,24 +547,49 @@ const QuoteSummaryScreen = () => {
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <View style={styles.smallActionsRow}>
-          <TouchableOpacity style={styles.smallBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
-            <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
-            <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]}>{actionConfig.leftLabel}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.smallBtn} onPress={handleShare} activeOpacity={0.9}>
-            <Ionicons name="share-social-outline" size={13} color="#A88BC5" />
-            <Text style={[styles.smallBtnText, styles.smallBtnTextShare]}>Share</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity
-          style={[styles.sendBtn, actionConfig.primaryDisabled ? styles.sendBtnDisabled : null]}
-          onPress={handlePrimaryAction}
-          activeOpacity={0.9}
-          disabled={actionConfig.primaryDisabled}
-        >
-          <Text style={styles.sendBtnText}>{actionConfig.primaryLabel}</Text>
-        </TouchableOpacity>
+        {showManagerPendingActions ? (
+          <View style={styles.managerDecisionRow}>
+            <TouchableOpacity
+              style={[styles.managerRejectBtn, sending ? styles.sendBtnDisabled : null]}
+              onPress={() => handleManagerPendingDecision('CANCELLED')}
+              activeOpacity={0.9}
+              disabled={sending}
+            >
+              <Ionicons name="close" size={14} color="#C34F4F" />
+              <Text style={styles.managerRejectText}>{sending ? 'Updating...' : 'Reject'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.managerApproveBtn, sending ? styles.sendBtnDisabled : null]}
+              onPress={() => handleManagerPendingDecision('APPROVED')}
+              activeOpacity={0.9}
+              disabled={sending}
+            >
+              <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+              <Text style={styles.managerApproveText}>Approve</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <View style={styles.smallActionsRow}>
+              <TouchableOpacity style={styles.smallBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
+                <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
+                <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]}>{actionConfig.leftLabel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.smallBtn} onPress={handleShare} activeOpacity={0.9}>
+                <Ionicons name="share-social-outline" size={13} color="#A88BC5" />
+                <Text style={[styles.smallBtnText, styles.smallBtnTextShare]}>Share</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[styles.sendBtn, actionConfig.primaryDisabled ? styles.sendBtnDisabled : null]}
+              onPress={handlePrimaryAction}
+              activeOpacity={0.9}
+              disabled={actionConfig.primaryDisabled}
+            >
+              <Text style={styles.sendBtnText}>{actionConfig.primaryLabel}</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -863,6 +918,42 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   sendBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  managerDecisionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  managerRejectBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E7C2C2',
+    backgroundColor: '#FDF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  managerRejectText: {
+    color: '#C34F4F',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  managerApproveBtn: {
+    flex: 1.35,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#2F8A58',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+  },
+  managerApproveText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',

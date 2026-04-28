@@ -1,36 +1,60 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Screen from '../components/Screen';
-import Card from '../components/Card';
-import Button from '../components/Button';
-import ScreenHeader from '../components/ScreenHeader';
-import StatCard from '../components/StatCard';
-import { colors, radii, spacing } from '../theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { useAuth } from '../context/AuthContext';
-import { fetchBranchEmployees, updateBranchEmployeeStatus } from '../api/branchEmployees';
+import { fetchBranchEmployees } from '../api/branchEmployees';
+import { fetchOrders } from '../api/orders';
 import type { BranchEmployee } from '../types';
 import type { TeamStackParamList } from '../navigation/RootNavigator';
 
+const toMonthKey = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatCompactMoney = (value: number) => {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return '$0';
+  if (amount >= 1000) return `$${Math.round(amount / 1000)}k`;
+  return `$${Math.round(amount)}`;
+};
+
 const BranchTeamScreen = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<TeamStackParamList>>();
   const [employees, setEmployees] = useState<BranchEmployee[]>([]);
+  const [monthlySalesByRep, setMonthlySalesByRep] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
 
-  const loadEmployees = useCallback(async () => {
+  const loadTeam = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchBranchEmployees(token);
-      setEmployees(data || []);
+      const [employeeRows, ordersRes] = await Promise.all([
+        fetchBranchEmployees(token),
+        fetchOrders(token, 1, 100, 'ALL'),
+      ]);
+      setEmployees(employeeRows || []);
+
+      const currentMonth = toMonthKey(new Date().toISOString());
+      const nextSales: Record<string, number> = {};
+      (ordersRes.data || []).forEach((order) => {
+        if (toMonthKey(order.createdAt) !== currentMonth) return;
+        const repId = String(order.salesRepId || '').trim();
+        if (!repId) return;
+        nextSales[repId] = Number(nextSales[repId] || 0) + Number(order.price || 0);
+      });
+      setMonthlySalesByRep(nextSales);
     } catch (err: any) {
-      setError(err?.message || 'Unable to load employees');
+      setError(err?.message || 'Unable to load team');
     } finally {
       setLoading(false);
     }
@@ -38,294 +62,266 @@ const BranchTeamScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      loadEmployees();
-    }, [loadEmployees]),
+      loadTeam();
+    }, [loadTeam]),
   );
 
-  const filteredEmployees = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return employees;
-    return employees.filter((employee) =>
-      [employee.firstName, employee.lastName, employee.email, employee.branch?.name]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
-    );
-  }, [employees, search]);
+  const rows = useMemo(() => {
+    return [...employees].sort((a, b) => {
+      const aOnline = a.isActive && a.isOnline;
+      const bOnline = b.isActive && b.isOnline;
+      if (aOnline !== bOnline) return bOnline ? 1 : -1;
+      const aSales = Number(monthlySalesByRep[a.id] || 0);
+      const bSales = Number(monthlySalesByRep[b.id] || 0);
+      if (aSales !== bSales) return bSales - aSales;
+      return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+    });
+  }, [employees, monthlySalesByRep]);
 
-  const stats = useMemo(() => {
-    const active = employees.filter((employee) => employee.isActive).length;
-    return { total: employees.length, active, inactive: employees.length - active };
-  }, [employees]);
-
-  const handleToggle = async (employee: BranchEmployee) => {
-    if (!token) return;
-    try {
-      await updateBranchEmployeeStatus(token, employee.id, !employee.isActive);
-      await loadEmployees();
-    } catch (err: any) {
-      setError(err?.message || 'Unable to update status');
+  const goBackToDashboard = useCallback(() => {
+    if (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') {
+      (navigation as any).navigate('DashboardTab');
+      return;
     }
-  };
+    navigation.goBack();
+  }, [navigation, user?.role]);
 
   return (
-    <Screen>
-      <ScreenHeader
-        title="Team"
-        subtitle="Manage branch employees and access"
-        rightSlot={
-          <Button
-            title="Add Employee"
-            variant="secondary"
-            onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'create' })}
-            style={styles.addEmployeeBtn}
-          />
-        }
-      />
-
-      <View style={styles.searchWrapper}>
-        <View style={styles.searchShell}>
-          <Ionicons name="search-outline" size={18} color="#a79687" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name or email"
-            placeholderTextColor="#a79687"
-            value={search}
-            onChangeText={setSearch}
-            underlineColorAndroid="transparent"
-            autoCorrect={false}
-            autoCapitalize="none"
-            textAlignVertical="center"
-          />
-          {search ? (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={18} color="#b2a294" />
-            </TouchableOpacity>
-          ) : null}
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <View style={styles.headerRow}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={goBackToDashboard}
+            activeOpacity={0.8}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={18} color="#8A8279" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>My Team ({rows.length} reps)</Text>
         </View>
+        <TouchableOpacity
+          style={styles.inviteBtn}
+          activeOpacity={0.9}
+          onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'create' })}
+        >
+          <Text style={styles.inviteBtnText}>+ Invite</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.statsGrid}>
-        <View style={styles.statsRow}>
-          <StatCard label="Total" value={String(stats.total)} hint="Employees" />
-          <StatCard label="Active" value={String(stats.active)} hint="Enabled" />
-        </View>
-        <View style={styles.statsRow}>
-          <StatCard label="Inactive" value={String(stats.inactive)} hint="Disabled" />
-        </View>
-      </View>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <FlatList
-        data={filteredEmployees}
+        data={rows}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshing={loading}
-        onRefresh={loadEmployees}
-        renderItem={({ item }) => (
-          <Card style={styles.employeeCard}>
-            <View style={styles.employeeHeader}>
-              <View style={styles.employeeIdentity}>
-                <View style={styles.identityRow}>
-                  {item.photoUrl ? (
-                    <Image source={{ uri: item.photoUrl }} style={styles.employeeAvatar} />
-                  ) : (
-                    <View style={styles.employeeAvatarFallback}>
-                      <Text style={styles.employeeAvatarFallbackText}>
-                        {(item.firstName?.[0] || '') + (item.lastName?.[0] || '')}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.identityText}>
-                    <Text style={styles.employeeName}>{item.firstName} {item.lastName}</Text>
-                    <Text style={styles.employeeMeta}>{item.email}</Text>
-                    {item.branch?.name ? (
-                      <Text style={styles.employeeMeta}>{item.branch.name}</Text>
-                    ) : null}
-                  </View>
-                </View>
+        onRefresh={loadTeam}
+        renderItem={({ item }) => {
+          const name = `${item.firstName || ''} ${item.lastName || ''}`.trim() || item.email;
+          const initial = (item.firstName?.[0] || item.email?.[0] || 'R').toUpperCase();
+          const monthlySales = Number(monthlySalesByRep[item.id] || 0);
+          const subtitle =
+            monthlySales > 0
+              ? `${formatCompactMoney(monthlySales)} this month`
+              : 'No sales this month';
+          const isOnline = Boolean(item.isActive && item.isOnline);
+
+          return (
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.92}
+              onPress={() => navigation.navigate('BranchRepProfile', { employee: item })}
+            >
+              <View style={[styles.avatar, isOnline ? styles.avatarOnline : styles.avatarOffline]}>
+                {item.photoUrl ? (
+                  <Image source={{ uri: item.photoUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={[styles.avatarText, isOnline ? styles.avatarTextOnline : styles.avatarTextOffline]}>{initial}</Text>
+                )}
               </View>
-              <View style={[styles.badge, item.isActive ? styles.badgeActive : styles.badgeInactive]}>
-                <Text style={[styles.badgeText, item.isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
-                  {item.isActive ? 'Active' : 'Inactive'}
+              <View style={styles.infoBlock}>
+                <Text style={styles.repName} numberOfLines={1}>
+                  {name}
+                </Text>
+                <Text style={styles.repMeta} numberOfLines={1}>
+                  {subtitle}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Phone</Text>
-              <Text style={styles.metaValue}>{item.phone || '-'}</Text>
-            </View>
-
-            <View style={styles.actionRow}>
-              <Button
-                title="Edit"
-                variant="secondary"
-                onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'edit', employeeId: item.id })}
-                style={[styles.actionButton, styles.actionButtonFirst]}
-              />
-              <Button
-                title={item.isActive ? 'Disable' : 'Enable'}
-                variant={item.isActive ? 'ghost' : 'primary'}
-                onPress={() => handleToggle(item)}
-                style={styles.actionButton}
-              />
-            </View>
-          </Card>
-        )}
+              <View style={[styles.statusPill, isOnline ? styles.statusPillOnline : styles.statusPillOffline]}>
+                <Text style={[styles.statusPillText, isOnline ? styles.statusTextOnline : styles.statusTextOffline]}>
+                  {isOnline ? 'Online' : 'Offline'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <Ionicons name="people-outline" size={24} color="#B9AFA3" />
+            <Text style={styles.emptyText}>No reps found</Text>
+          </View>
+        }
       />
-    </Screen>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  addEmployeeBtn: {
-    minWidth: 124,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+  screen: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  searchWrapper: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  searchShell: {
+  headerRow: {
+    height: 46,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EAE4DC',
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#8B7355',
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#2d221c',
-    height: 40,
-    backgroundColor: 'transparent',
-    includeFontPadding: false,
-    paddingVertical: 0,
-  },
-  statsGrid: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  error: {
-    color: colors.danger,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  list: {
-    padding: spacing.lg,
-    paddingTop: 0,
-    gap: spacing.md,
-  },
-  employeeCard: {
-    marginBottom: spacing.md,
-  },
-  employeeHeader: {
-    flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
   },
-  employeeIdentity: {
-    flex: 1,
-    paddingRight: spacing.sm,
-  },
-  identityRow: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  identityText: {
     flex: 1,
   },
-  employeeAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  employeeAvatarFallback: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#EDE2D4',
+  backBtn: {
+    marginRight: 4,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  employeeAvatarFallbackText: {
-    fontSize: 14,
+  headerTitle: {
+    fontSize: 18,
+    color: '#1F1A15',
     fontWeight: '700',
-    color: colors.text,
-    textTransform: 'uppercase',
   },
-  employeeName: {
-    fontSize: 16,
+  inviteBtn: {
+    height: 28,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#1A1715',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
   },
-  employeeMeta: {
-    color: colors.textMuted,
-  },
-  badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
-    alignSelf: 'flex-start',
-  },
-  badgeText: {
+  errorText: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    color: '#B14B42',
     fontSize: 12,
-    fontWeight: '600',
   },
-  badgeTextActive: {
-    color: colors.success,
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 16,
+    gap: 10,
   },
-  badgeTextInactive: {
-    color: colors.danger,
-  },
-  badgeActive: {
-    backgroundColor: '#E6F4EA',
-  },
-  badgeInactive: {
-    backgroundColor: '#FDE8E8',
-  },
-  metaRow: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  metaLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  metaValue: {
-    marginTop: 2,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  actionRow: {
-    marginTop: spacing.sm,
+  card: {
+    minHeight: 92,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  actionButton: {
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarOnline: {
+    backgroundColor: '#E7F2EA',
+  },
+  avatarOffline: {
+    backgroundColor: '#F4EAEA',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  avatarTextOnline: {
+    color: '#4E7E62',
+  },
+  avatarTextOffline: {
+    color: '#A57272',
+  },
+  infoBlock: {
     flex: 1,
+    marginLeft: 12,
+    marginRight: 10,
   },
-  actionButtonFirst: {
-    marginRight: 0,
+  repName: {
+    fontSize: 16,
+    lineHeight: 19,
+    color: '#221D18',
+    fontWeight: '700',
+  },
+  repMeta: {
+    marginTop: 1,
+    fontSize: 12,
+    color: '#8A8178',
+    fontWeight: '500',
+  },
+  statusPill: {
+    minWidth: 58,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 9,
+  },
+  statusPillOnline: {
+    backgroundColor: '#E9F5EC',
+    borderColor: '#B8D8C0',
+  },
+  statusPillOffline: {
+    backgroundColor: '#F7EFEF',
+    borderColor: '#E4CBCB',
+  },
+  statusPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusTextOnline: {
+    color: '#3C7F55',
+  },
+  statusTextOffline: {
+    color: '#A25E5E',
+  },
+  emptyWrap: {
+    marginTop: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#8A8178',
+    fontWeight: '600',
   },
 });
 

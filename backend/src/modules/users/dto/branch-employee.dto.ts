@@ -44,6 +44,10 @@ export class UpdateBranchEmployeeDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  branchId?: string;
 }
 
 export class UpdateBranchEmployeeStatusDto {

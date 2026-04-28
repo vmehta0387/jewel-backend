@@ -35,6 +35,8 @@ export interface UserResponse {
   photoUrl: string | null;
   photoStoragePath: string | null;
   isActive: boolean;
+  isOnline: boolean;
+  lastSeenAt: Date | null;
   taskPermissions: TaskPermission[];
   company: {
     id: string;
@@ -558,7 +560,27 @@ export class UsersService {
       firstName: dto.firstName,
       lastName: dto.lastName,
       phone: dto.phone,
+      branchId: employee.branchId,
     };
+
+    if (dto.branchId !== undefined) {
+      const nextBranchId = dto.branchId.trim();
+      if (!nextBranchId) {
+        throw new BadRequestException('Branch is required');
+      }
+
+      const branch = await this.branchRepo.findOne({ where: { id: nextBranchId, isActive: true } });
+      if (!branch) {
+        throw new NotFoundException('Branch not found');
+      }
+
+      if (!requester.companyId || branch.companyId !== requester.companyId) {
+        throw new ForbiddenException('Branch does not belong to your company');
+      }
+
+      payload.branchId = branch.id;
+      payload.companyId = branch.companyId;
+    }
 
     return this.update(id, payload);
   }
@@ -824,29 +846,27 @@ export class UsersService {
       phone?: string | null;
     }[]
   > {
-      if (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) {
-        if (!requester.branchId) {
-          throw new ForbiddenException('User must be assigned to a branch');
-        }
-        const branch = await this.branchRepo.findOne({ where: { id: requester.branchId } });
-        if (!branch) {
-          throw new NotFoundException('Branch not found');
-        }
-        return [
-        {
-          id: branch.id,
-          name: branch.name,
-          code: branch.code,
-          streetAddress: branch.streetAddress,
-          streetAddress2: branch.streetAddress2,
-          city: branch.city,
-          stateProvince: branch.stateProvince,
-          postalCode: branch.postalCode,
-          country: branch.country,
-          email: branch.email,
-          phone: branch.phone,
-        },
-      ];
+    if (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) {
+      if (!requester.companyId) {
+        throw new ForbiddenException('User must be assigned to a company');
+      }
+      const branches = await this.branchRepo.find({
+        where: { companyId: requester.companyId, isActive: true },
+        order: { name: 'ASC' },
+      });
+      return branches.map((branch) => ({
+        id: branch.id,
+        name: branch.name,
+        code: branch.code,
+        streetAddress: branch.streetAddress,
+        streetAddress2: branch.streetAddress2,
+        city: branch.city,
+        stateProvince: branch.stateProvince,
+        postalCode: branch.postalCode,
+        country: branch.country,
+        email: branch.email,
+        phone: branch.phone,
+      }));
     }
 
       if (requester.role !== UserRole.COMPANY_ADMIN) {
@@ -986,6 +1006,8 @@ export class UsersService {
       photoUrl: user.photoUrl || null,
       photoStoragePath: user.photoUrl || null,
       isActive: user.isActive,
+      isOnline: this.isUserOnline(user),
+      lastSeenAt: user.lastSeenAt || null,
       taskPermissions: user.taskPermissions || [],
       company: user.company
         ? {
@@ -1016,6 +1038,16 @@ export class UsersService {
       ...response,
       photoUrl: await this.resolveUserPhotoUrl(response.photoStoragePath),
     };
+  }
+
+  private isUserOnline(user: User): boolean {
+    if (!user.isActive || !user.lastSeenAt) {
+      return false;
+    }
+    const onlineWindowMinutes = Number.parseInt(process.env.USER_ONLINE_WINDOW_MINUTES || '10', 10);
+    const safeWindow = Number.isFinite(onlineWindowMinutes) && onlineWindowMinutes > 0 ? onlineWindowMinutes : 10;
+    const diffMs = Date.now() - new Date(user.lastSeenAt).getTime();
+    return diffMs >= 0 && diffMs <= safeWindow * 60 * 1000;
   }
 
   private resolveImageExtension(originalName: string, mimeType: string): string {

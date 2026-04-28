@@ -18,10 +18,11 @@ import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
 import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
+import BranchRepProfileScreen from '../screens/BranchRepProfileScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
-import type { UserRole } from '../types';
+import type { BranchEmployee, UserRole } from '../types';
 import { buildOrderNotifications } from '../utils/orderNotifications';
 import { loadSeenNotificationIds } from '../utils/notificationReadState';
 
@@ -108,6 +109,7 @@ export type DashboardStackParamList = {
 export type TeamStackParamList = {
   TeamList: undefined;
   BranchEmployeeForm: { mode: 'create' } | { mode: 'edit'; employeeId: string };
+  BranchRepProfile: { employee: BranchEmployee };
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -164,6 +166,7 @@ const DashboardNavigator = () => (
 const TeamNavigator = () => (
   <TeamStack.Navigator screenOptions={{ headerShown: false }}>
     <TeamStack.Screen name="TeamList" component={BranchTeamScreen} options={{ title: 'Team' }} />
+    <TeamStack.Screen name="BranchRepProfile" component={BranchRepProfileScreen} options={{ title: 'Rep Profile' }} />
     <TeamStack.Screen name="BranchEmployeeForm" component={BranchEmployeeFormScreen} options={{ title: 'Employee' }} />
   </TeamStack.Navigator>
 );

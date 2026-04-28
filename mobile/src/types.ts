@@ -105,6 +105,8 @@ export type BranchEmployee = {
   role: UserRole;
   phone?: string | null;
   isActive: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
   branch?: {
     id: string;
     name: string;
