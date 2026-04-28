@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as bcrypt from 'bcrypt';
@@ -504,9 +504,14 @@ export class UsersService {
 
   async findBranchEmployees(requester: AuthUser): Promise<UserResponse[]> {
     const scope = await this.resolveBranchEmployeeScope(requester);
+    const roleFilter =
+      requester.role === UserRole.COMPANY_ADMIN
+        ? In([UserRole.SALES_REP, UserRole.BRANCH_MANAGER])
+        : UserRole.SALES_REP;
+
     const users = await this.userRepo.find({
       where: {
-        role: UserRole.SALES_REP,
+        role: roleFilter as any,
         companyId: scope.companyId ?? null,
         ...(scope.branchId ? { branchId: scope.branchId } : {}),
       },

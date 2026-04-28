@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -128,6 +128,11 @@ const BranchRepProfileScreen = () => {
     });
   }, []);
 
+  const editModeRef = useRef(editMode);
+  useEffect(() => {
+    editModeRef.current = editMode;
+  }, [editMode]);
+
   const loadData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -143,9 +148,9 @@ const BranchRepProfileScreen = () => {
 
       setBranches(branchesRes || []);
       const freshEmployee = (employeesRes || []).find((row) => row.id === route.params.employee.id);
-      const nextEmployee = freshEmployee || employee;
+      const nextEmployee = freshEmployee || route.params.employee;
       setEmployee(nextEmployee);
-      if (!editMode) {
+      if (!editModeRef.current) {
         hydrateForm(nextEmployee);
       }
 
@@ -169,7 +174,7 @@ const BranchRepProfileScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [editMode, employee, hydrateForm, route.params.employee.id, token]);
+  }, [hydrateForm, route.params.employee, route.params.employee.id, token]);
 
   useEffect(() => {
     loadData();
@@ -488,10 +493,10 @@ const BranchRepProfileScreen = () => {
           <Text style={styles.suspendText}>{employee.isActive ? 'Suspend' : 'Enable'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.saveBtn, (!editMode || saving || loading) ? styles.btnDisabled : null]}
+          style={[styles.saveBtn, (!editMode || saving) ? styles.btnDisabled : null]}
           onPress={handleSaveChanges}
           activeOpacity={0.9}
-          disabled={!editMode || saving || loading}
+          disabled={!editMode || saving}
         >
           <Text style={styles.saveText}>Save Changes -&gt;</Text>
         </TouchableOpacity>

@@ -62,11 +62,13 @@ const TIER_RATES = [
 ] as const;
 
 type SalesRepPanel = 'COMPANY_BOARD' | 'GLOBAL_BOARD' | 'REDEEM' | 'ACTIVITY';
+type BranchManagerPanel = 'BRANCH_BOARD' | 'COMPANY_BOARD';
 
 const SpiffRewardsScreen = () => {
   const navigation = useNavigation<any>();
   const { token, user } = useAuth();
   const isSalesRep = user?.role === 'SALES_REP';
+  const isBranchManager = user?.role === 'BRANCH_MANAGER';
 
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -81,6 +83,7 @@ const SpiffRewardsScreen = () => {
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
   const [salesRepPanel, setSalesRepPanel] = useState<SalesRepPanel>('REDEEM');
+  const [branchManagerPanel, setBranchManagerPanel] = useState<BranchManagerPanel>('BRANCH_BOARD');
 
   const load = useCallback(async (silent = false) => {
     if (!token) return;
@@ -104,23 +107,33 @@ const SpiffRewardsScreen = () => {
         }),
         fetchSpiffClaims(token, 1, 20),
       ]);
-      let globalBoardRes: any = null;
+      let secondaryBoardRes: any = null;
       if (user?.role === 'SALES_REP') {
         try {
-          globalBoardRes = await fetchSpiffLeaderboard(token, {
+          secondaryBoardRes = await fetchSpiffLeaderboard(token, {
             scope: 'GLOBAL',
             period: 'MONTHLY',
             limit: 10,
           });
         } catch {
-          globalBoardRes = null;
+          secondaryBoardRes = null;
+        }
+      } else if (user?.role === 'BRANCH_MANAGER') {
+        try {
+          secondaryBoardRes = await fetchSpiffLeaderboard(token, {
+            scope: 'MY_COMPANY',
+            period: 'MONTHLY',
+            limit: 10,
+          });
+        } catch {
+          secondaryBoardRes = null;
         }
       }
 
       setConfig(configRes);
       setSummary(summaryRes);
       setLeaderboard(leaderboardRes);
-      setGlobalLeaderboard(globalBoardRes);
+      setGlobalLeaderboard(secondaryBoardRes);
       setClaims(claimsRes.data || []);
     } catch (error: any) {
       Alert.alert('SPIFF', error?.message || 'Unable to load SPIFF data right now.');
@@ -496,6 +509,87 @@ const SpiffRewardsScreen = () => {
                   <Text style={styles.emptyText}>No activity yet.</Text>
                 )
               ) : null}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (isBranchManager) {
+    const selectedTitle = branchManagerPanel === 'BRANCH_BOARD' ? 'Branch Leaderboard' : 'Company Leaderboard';
+    const selectedEntries =
+      branchManagerPanel === 'BRANCH_BOARD'
+        ? (leaderboard?.entries || [])
+        : (globalLeaderboard?.entries || []);
+
+    return (
+      <View style={styles.screen}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.srHeader}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.srBackBtn} activeOpacity={0.85}>
+              <Ionicons name="chevron-back" size={18} color="#8D8276" />
+            </TouchableOpacity>
+            <Text allowFontScaling={false} style={styles.srHeaderTitle}>Spiff Dashboard</Text>
+            <View style={styles.srAvatarChip}>
+              <Text allowFontScaling={false} style={styles.srAvatarChipText}>{initials}</Text>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#A67F3F" />}
+          >
+            <View>
+              <Text style={styles.srSectionTitle}>Quick actions</Text>
+              <View style={styles.srQuickGrid}>
+                <TouchableOpacity
+                  style={[styles.srQuickCard, branchManagerPanel === 'BRANCH_BOARD' ? styles.srQuickCardActive : null]}
+                  activeOpacity={0.9}
+                  onPress={() => setBranchManagerPanel('BRANCH_BOARD')}
+                >
+                  <Ionicons name="git-branch-outline" size={18} color={branchManagerPanel === 'BRANCH_BOARD' ? '#FFFFFF' : '#3A7DCE'} />
+                  <Text style={[styles.srQuickTitle, branchManagerPanel === 'BRANCH_BOARD' ? styles.srQuickTitleActive : null]}>Branch Board</Text>
+                  <Text style={[styles.srQuickSub, branchManagerPanel === 'BRANCH_BOARD' ? styles.srQuickSubActive : null]}>
+                    Your branch reps ranking
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.srQuickCard, branchManagerPanel === 'COMPANY_BOARD' ? styles.srQuickCardActive : null]}
+                  activeOpacity={0.9}
+                  onPress={() => setBranchManagerPanel('COMPANY_BOARD')}
+                >
+                  <Ionicons name="business-outline" size={18} color={branchManagerPanel === 'COMPANY_BOARD' ? '#FFFFFF' : '#3A9DDA'} />
+                  <Text style={[styles.srQuickTitle, branchManagerPanel === 'COMPANY_BOARD' ? styles.srQuickTitleActive : null]}>Company Board</Text>
+                  <Text style={[styles.srQuickSub, branchManagerPanel === 'COMPANY_BOARD' ? styles.srQuickSubActive : null]}>
+                    Company-wide ranking
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>{selectedTitle}</Text>
+              {selectedEntries.length ? (
+                selectedEntries.map((entry: any) => (
+                  <View key={`${branchManagerPanel}-${entry.entityId}`} style={styles.boardRow}>
+                    <View>
+                      <Text style={styles.boardName}>#{entry.rank} {entry.name}</Text>
+                      <Text style={styles.boardMeta}>{entry.subtitle || '-'}</Text>
+                    </View>
+                    <Text style={styles.boardPoints}>{formatPoints(entry.points)} pts</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.emptyText}>
+                  {branchManagerPanel === 'BRANCH_BOARD'
+                    ? 'No branch leaderboard data yet.'
+                    : 'No company leaderboard data yet.'}
+                </Text>
+              )}
             </View>
           </ScrollView>
         </SafeAreaView>

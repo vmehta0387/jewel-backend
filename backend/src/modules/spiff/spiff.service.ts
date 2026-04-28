@@ -146,7 +146,9 @@ export class SpiffService {
         .createQueryBuilder('ledger')
         .select('ledger.companyId', 'companyId')
         .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
-        .where('ledger.companyId IS NOT NULL');
+        .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
+        .where('ledger.companyId IS NOT NULL')
+        .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP });
 
       if (periodRange.startDate) {
         companyPointsQb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
@@ -196,7 +198,9 @@ export class SpiffService {
           .select('ledger.companyId', 'companyId')
           .addSelect('ledger.userId', 'userId')
           .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
           .where('ledger.companyId IN (:...companyIds)', { companyIds })
+          .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
           .andWhere('ledger.userId IS NOT NULL')
           .groupBy('ledger.companyId')
           .addGroupBy('ledger.userId')
@@ -264,7 +268,9 @@ export class SpiffService {
           .createQueryBuilder('ledger')
           .select('ledger.userId', 'userId')
           .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
           .where('ledger.userId IS NOT NULL')
+          .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
           .groupBy('ledger.userId')
           .orderBy('points', 'DESC');
 
@@ -319,7 +325,9 @@ export class SpiffService {
       .createQueryBuilder('ledger')
       .select('ledger.userId', 'userId')
       .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
-      .where('ledger.userId IS NOT NULL');
+      .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
+      .where('ledger.userId IS NOT NULL')
+      .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP });
 
     if (periodRange.startDate) {
       qb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
@@ -444,7 +452,7 @@ export class SpiffService {
   }
 
   async createClaim(dto: CreateSpiffClaimDto, requester: AuthUser) {
-    if (![UserRole.SALES_REP, UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN].includes(requester.role)) {
+    if (![UserRole.SALES_REP, UserRole.COMPANY_ADMIN].includes(requester.role)) {
       throw new ForbiddenException('Only sales users can create redemption claims');
     }
 
@@ -657,6 +665,9 @@ export class SpiffService {
     if (!order?.id || !order.salesRepId) {
       return;
     }
+    if (!(await this.isSpiffEarningEligible(order.salesRepId))) {
+      return;
+    }
 
     const status = this.normalizeOrderStatus(order.status);
     if (status === OrderStatus.QUOTE) {
@@ -670,6 +681,9 @@ export class SpiffService {
 
   async handleOrderStatusTransition(order: Order, previousStatus?: OrderStatus | string): Promise<void> {
     if (!order?.id || !order.salesRepId) {
+      return;
+    }
+    if (!(await this.isSpiffEarningEligible(order.salesRepId))) {
       return;
     }
 
@@ -863,6 +877,14 @@ export class SpiffService {
       availablePoints,
       fulfilledClaimedPoints,
     };
+  }
+
+  private async isSpiffEarningEligible(userId: string): Promise<boolean> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      select: ['id', 'role'],
+    });
+    return user?.role === UserRole.SALES_REP;
   }
 
   private resolveTier(points: number): {

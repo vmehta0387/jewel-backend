@@ -19,7 +19,8 @@ import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders'
 import { fetchSpiffSummary } from '../api/spiff';
 import { fetchDesigns } from '../api/designs';
 import { uploadMyPhoto } from '../api/auth';
-import type { Design, Order } from '../types';
+import { fetchBranchEmployees } from '../api/branchEmployees';
+import type { BranchEmployee, Design, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ActivityItem = {
@@ -44,6 +45,15 @@ type RepPerformanceRow = {
   name: string;
   initial: string;
   sales: number;
+};
+
+type BranchPerformanceRow = {
+  id: string;
+  branchName: string;
+  revenue: number;
+  orders: number;
+  reps: number;
+  trend: number;
 };
 
 type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
@@ -127,16 +137,19 @@ const BranchDashboardScreen = () => {
   const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>([]);
   const [spiffEarned, setSpiffEarned] = useState(0);
   const [repPerformance, setRepPerformance] = useState<RepPerformanceRow[]>([]);
+  const [branchPerformance, setBranchPerformance] = useState<BranchPerformanceRow[]>([]);
+  const [companyActiveReps, setCompanyActiveReps] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     if (!token) return;
 
-    const [summaryRes, trendsRes, ordersRes, designsRes, spiffRes] = await Promise.allSettled([
+    const [summaryRes, trendsRes, ordersRes, designsRes, spiffRes, repsRes] = await Promise.allSettled([
       fetchOrderSummary(token),
       fetchOrderTrends(token),
       fetchOrders(token, 1, 100, 'ALL'),
       fetchDesigns(token, 1, 40),
       fetchSpiffSummary(token),
+      user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
     ]);
 
     if (summaryRes.status === 'fulfilled') {
@@ -166,7 +179,7 @@ const BranchDashboardScreen = () => {
         setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
       }
 
-      if (user?.role === 'BRANCH_MANAGER') {
+      if (user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN') {
         const repAgg = new Map<string, { name: string; sales: number }>();
         orderRows
           .filter((order) => order.isActive !== false)
@@ -196,8 +209,91 @@ const BranchDashboardScreen = () => {
       } else {
         setRepPerformance([]);
       }
+
+      if (user?.role === 'COMPANY_ADMIN') {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
+        const prevYear = prevMonthDate.getFullYear();
+        const prevMonth = prevMonthDate.getMonth();
+
+        const reps = repsRes.status === 'fulfilled' ? (repsRes.value || []) : [];
+        setCompanyActiveReps(reps.filter((rep) => rep.isActive).length);
+
+        const repsByBranchKey = new Map<string, number>();
+        reps.forEach((rep) => {
+          if (!rep.isActive) return;
+          const key = String(rep.branch?.id || rep.branch?.name || '').trim().toLowerCase();
+          if (!key) return;
+          repsByBranchKey.set(key, (repsByBranchKey.get(key) || 0) + 1);
+        });
+
+        const branchAgg = new Map<
+          string,
+          { branchName: string; currentRevenue: number; previousRevenue: number; currentOrders: number; branchKey: string }
+        >();
+
+        orderRows
+          .filter((order) => order.isActive !== false)
+          .forEach((order) => {
+            const branchName = String(order.branchName || 'Unknown Branch').trim() || 'Unknown Branch';
+            const dynamicOrder = order as Order & { branchId?: string | null };
+            const branchKey = String(dynamicOrder.branchId || branchName).trim().toLowerCase();
+            if (!branchKey) return;
+
+            const created = order.createdAt ? new Date(order.createdAt) : null;
+            if (!created || Number.isNaN(created.getTime())) return;
+
+            const bucket = branchAgg.get(branchKey) || {
+              branchName,
+              currentRevenue: 0,
+              previousRevenue: 0,
+              currentOrders: 0,
+              branchKey,
+            };
+
+            const orderYear = created.getFullYear();
+            const orderMonth = created.getMonth();
+            const orderPrice = Number(order.price || 0);
+
+            if (orderYear === currentYear && orderMonth === currentMonth) {
+              bucket.currentRevenue += orderPrice;
+              bucket.currentOrders += 1;
+            } else if (orderYear === prevYear && orderMonth === prevMonth) {
+              bucket.previousRevenue += orderPrice;
+            }
+
+            branchAgg.set(branchKey, bucket);
+          });
+
+        const calcTrend = (current: number, previous: number) => {
+          if (previous <= 0) return current > 0 ? 100 : 0;
+          return Math.round(((current - previous) / previous) * 100);
+        };
+
+        const performanceRows = Array.from(branchAgg.values())
+          .filter((row) => row.currentRevenue > 0 || row.currentOrders > 0)
+          .map((row) => ({
+            id: row.branchKey,
+            branchName: row.branchName,
+            revenue: row.currentRevenue,
+            orders: row.currentOrders,
+            reps: repsByBranchKey.get(row.branchKey) || 0,
+            trend: calcTrend(row.currentRevenue, row.previousRevenue),
+          }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 3);
+
+        setBranchPerformance(performanceRows);
+      } else {
+        setBranchPerformance([]);
+        setCompanyActiveReps(0);
+      }
     } else {
       setRepPerformance([]);
+      setBranchPerformance([]);
+      setCompanyActiveReps(0);
     }
 
     if (trendsRes.status === 'fulfilled' && summaryRes.status !== 'fulfilled') {
@@ -353,6 +449,11 @@ const BranchDashboardScreen = () => {
   const repName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Sales Rep';
   const companyBranch = [user?.companyName, user?.branchName].filter(Boolean).join(' - ') || 'No branch assigned';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+  const isManagerLike = isBranchManager || isCompanyAdmin;
+  const companyMonthlyRevenue = Number(summary?.salesThisMonth || 0);
+  const companyMonthlyOrders = Number(summary?.ordersThisMonth || 0);
+  const companyAvgOrder = companyMonthlyOrders > 0 ? companyMonthlyRevenue / companyMonthlyOrders : 0;
 
   const formatMoney = (value: number | undefined) => {
     if (!value) return '$0';
@@ -491,66 +592,184 @@ const BranchDashboardScreen = () => {
 
           <View style={styles.statsHorizontal}>
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>{isBranchManager ? 'BRANCH REV.' : 'TODAY'}</Text>
+              <Text
+                style={[styles.statLabel, isCompanyAdmin ? styles.statLabelCompact : null]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                {isCompanyAdmin ? 'COMPANY REV' : isBranchManager ? 'BRANCH REV.' : 'TODAY'}
+              </Text>
               <Text style={styles.statNumber}>
-                {isBranchManager ? formatMoneyCompact(summary?.branchRevenueTotal) : formatMoney(summary?.salesToday)}
+                {isCompanyAdmin
+                  ? formatMoneyCompact(companyMonthlyRevenue)
+                  : isBranchManager
+                    ? formatMoneyCompact(summary?.branchRevenueTotal)
+                    : formatMoney(summary?.salesToday)}
               </Text>
               <Text style={styles.statSubTextGreen}>
-                {isBranchManager ? formatTrend(summary?.monthlyTrend) : formatTrend(summary?.todayTrend)}
+                {isCompanyAdmin
+                  ? `${formatTrend(summary?.monthlyTrend)} this month`
+                  : isBranchManager
+                    ? formatTrend(summary?.monthlyTrend)
+                    : formatTrend(summary?.todayTrend)}
               </Text>
             </View>
 
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>{isBranchManager ? 'MY REPS' : 'MONTHLY'}</Text>
+              <Text style={styles.statLabel}>
+                {isCompanyAdmin ? 'ORDERS' : isBranchManager ? 'MY REPS' : 'MONTHLY'}
+              </Text>
               <Text style={styles.statNumber}>
-                {isBranchManager ? formatWhole(summary?.branchSalesRepCount) : formatMoney(summary?.salesThisMonth)}
+                {isCompanyAdmin
+                  ? formatWhole(companyMonthlyOrders)
+                  : isBranchManager
+                    ? formatWhole(summary?.branchSalesRepCount)
+                    : formatMoney(summary?.salesThisMonth)}
               </Text>
               <Text style={styles.statSubTextGreen}>
-                {isBranchManager ? 'all active' : formatTrend(summary?.monthlyTrend)}
+                {isCompanyAdmin ? 'this month' : isBranchManager ? 'all active' : formatTrend(summary?.monthlyTrend)}
               </Text>
             </View>
 
             <View style={[styles.statTile, styles.statTileSpiff]}>
-              <Text style={styles.statLabelSpiff}>{isBranchManager ? 'PENDING' : 'SPIFF'}</Text>
-              <Text style={styles.statNumberSpiff}>
-                {isBranchManager ? formatWhole(summary?.pendingApprovalOrders) : formatMoney(spiffEarned)}
+              <Text style={styles.statLabelSpiff}>
+                {isCompanyAdmin ? 'AVG ORDER' : isBranchManager ? 'PENDING' : 'SPIFF'}
               </Text>
-              <Text style={styles.statSubTextSpiff}>{isBranchManager ? 'needs review' : 'earned'}</Text>
+              <Text style={styles.statNumberSpiff}>
+                {isCompanyAdmin
+                  ? formatMoneyCompact(companyAvgOrder)
+                  : isBranchManager
+                    ? formatWhole(summary?.pendingApprovalOrders)
+                    : formatMoney(spiffEarned)}
+              </Text>
+              <Text style={styles.statSubTextSpiff}>
+                {isCompanyAdmin ? 'monthly avg' : isBranchManager ? 'needs review' : 'earned'}
+              </Text>
             </View>
           </View>
 
-          <Text style={styles.sectionHeading}>Quick actions</Text>
-          <View style={styles.quickRow}>
-            <TouchableOpacity style={[styles.quickCard, styles.quickCardDark]} onPress={() => navigation.navigate('OrdersTab')}>
-              <Ionicons
-                name={isBranchManager ? 'time-outline' : 'checkbox-outline'}
-                size={20}
-                color="#FFFFFF"
-                style={styles.quickCardIcon}
-              />
-              <Text style={styles.quickCardTextWhite}>
-                {isBranchManager ? 'Pending Approvals' : 'My Orders'}
-              </Text>
-            </TouchableOpacity>
+          {isCompanyAdmin ? (
+            <>
+              <Text style={styles.sectionHeading}>Branch Performance</Text>
+              <View style={styles.companyBranchPerformanceWrap}>
+                {(branchPerformance.length ? branchPerformance : []).map((branch, index) => {
+                  const maxRevenue = Math.max(...branchPerformance.map((row) => row.revenue), 1);
+                  const ratio = Math.max(8, (branch.revenue / maxRevenue) * 100);
+                  const trendUp = branch.trend >= 0;
+                  return (
+                    <View key={branch.id} style={styles.companyBranchCard}>
+                      <View style={styles.companyBranchTopRow}>
+                        <Text style={styles.companyBranchName} numberOfLines={1}>{branch.branchName}</Text>
+                        <Text style={styles.companyBranchRevenue}>{formatMoneyCompact(branch.revenue)}</Text>
+                      </View>
+                      <View style={styles.companyBranchBarTrack}>
+                        <View
+                          style={[
+                            styles.companyBranchBarFill,
+                            index === 0
+                              ? styles.companyBranchBarFillGreen
+                              : index === 1
+                                ? styles.companyBranchBarFillBlue
+                                : styles.companyBranchBarFillSand,
+                            { width: `${ratio}%` },
+                          ]}
+                        />
+                      </View>
+                      <View style={styles.companyBranchMetaRow}>
+                        <Text style={styles.companyBranchMetaText}>
+                          {formatWhole(branch.orders)} orders - {formatWhole(branch.reps)} reps
+                        </Text>
+                        <Text style={[styles.companyBranchTrend, trendUp ? styles.companyBranchTrendUp : styles.companyBranchTrendDown]}>
+                          {trendUp ? '↑' : '↓'} {Math.abs(branch.trend)}%
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                {!branchPerformance.length ? (
+                  <Text style={styles.repEmptyText}>No branch performance yet</Text>
+                ) : null}
+              </View>
 
-            <TouchableOpacity
-              style={[styles.quickCard, styles.quickCardSpiff]}
-              onPress={() => navigation.navigate('SpiffRewards')}
-            >
-              <Ionicons name="star-outline" size={20} color="#9C7A43" style={styles.quickCardIcon} />
-              <Text style={styles.quickCardTextDark}>Spiffs & Rewards</Text>
-            </TouchableOpacity>
+              <View style={styles.companyAdminMiniStatsRow}>
+                <View style={styles.companyAdminMiniTile}>
+                  <Text style={styles.companyAdminMiniLabel}>PENDING APPROVAL</Text>
+                  <Text style={styles.companyAdminMiniValue}>{formatWhole(summary?.pendingApprovalOrders)}</Text>
+                  <Text style={styles.companyAdminMiniSub}>needs review</Text>
+                </View>
+                <View style={styles.companyAdminMiniTile}>
+                  <Text style={styles.companyAdminMiniLabel}>ACTIVE REPS</Text>
+                  <Text style={styles.companyAdminMiniValue}>{formatWhole(companyActiveReps)}</Text>
+                  <Text style={[styles.companyAdminMiniSub, styles.companyAdminMiniSubGreen]}>all online</Text>
+                </View>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={styles.sectionHeading}>Quick actions</Text>
+              <View style={styles.quickRow}>
+                <TouchableOpacity style={[styles.quickCard, styles.quickCardDark]} onPress={() => navigation.navigate('OrdersTab')}>
+                  <Ionicons
+                    name={isManagerLike ? 'time-outline' : 'checkbox-outline'}
+                    size={20}
+                    color="#FFFFFF"
+                    style={styles.quickCardIcon}
+                  />
+                  <Text style={styles.quickCardTextWhite}>
+                    {isManagerLike ? 'Pending Approvals' : 'My Orders'}
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.quickCard}
-              onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
-            >
-              <Ionicons name="search-outline" size={20} color="#6A635C" style={styles.quickCardIcon} />
-              <Text style={styles.quickCardTextDark}>Browse Catalog</Text>
-            </TouchableOpacity>
-          </View>
+                <TouchableOpacity
+                  style={[styles.quickCard, styles.quickCardSpiff]}
+                  onPress={() => navigation.navigate('SpiffRewards')}
+                >
+                  <Ionicons name="star-outline" size={20} color="#9C7A43" style={styles.quickCardIcon} />
+                  <Text style={styles.quickCardTextDark}>Spiffs & Rewards</Text>
+                </TouchableOpacity>
 
-          {isBranchManager ? (
+                <TouchableOpacity
+                  style={styles.quickCard}
+                  onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
+                >
+                  <Ionicons name="search-outline" size={20} color="#6A635C" style={styles.quickCardIcon} />
+                  <Text style={styles.quickCardTextDark}>Browse Catalog</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {isCompanyAdmin ? (
+            <View style={styles.companyAdminActionsRow}>
+              <TouchableOpacity
+                style={styles.companyAdminActionCard}
+                onPress={() => navigation.navigate('TeamTab', { screen: 'BranchesHome' })}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="business-outline" size={18} color="#7A746D" style={styles.companyAdminActionIcon} />
+                <Text style={styles.companyAdminActionText}>Branches</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.companyAdminActionCard}
+                onPress={() => navigation.navigate('TeamTab', { screen: 'TeamList' })}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="people-outline" size={18} color="#7A746D" style={styles.companyAdminActionIcon} />
+                <Text style={styles.companyAdminActionText}>Team</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.companyAdminActionCard, styles.companyAdminActionCardHighlight]}
+                onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="cash-outline" size={18} color="#A27A3D" style={styles.companyAdminActionIcon} />
+                <Text style={[styles.companyAdminActionText, styles.companyAdminActionTextHighlight]}>Pricing</Text>
+              </TouchableOpacity>
+            </View>
+          ) : isManagerLike ? (
             <View>
               <Text style={styles.repPerformanceHeading}>Rep Performance</Text>
               <View style={styles.repCardWrap}>
@@ -956,6 +1175,10 @@ const styles = StyleSheet.create({
     color: '#8E877F',
     letterSpacing: 0.9,
   },
+  statLabelCompact: {
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
   statLabelSpiff: {
     fontSize: 10,
     fontWeight: '700',
@@ -995,6 +1218,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 16,
+  },
+  companyAdminActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  companyAdminActionCard: {
+    flex: 1,
+    height: 74,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  companyAdminActionCardHighlight: {
+    backgroundColor: '#F9F4EB',
+    borderColor: '#E7D8C4',
+  },
+  companyAdminActionIcon: {
+    marginBottom: 5,
+  },
+  companyAdminActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4A433D',
+  },
+  companyAdminActionTextHighlight: {
+    color: '#9D773A',
   },
   quickCard: {
     flex: 1,
@@ -1104,6 +1362,128 @@ const styles = StyleSheet.create({
     color: '#8E877F',
     textAlign: 'center',
     paddingVertical: 16,
+  },
+  companyBranchPerformanceWrap: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  companyBranchCard: {
+    backgroundColor: '#FBFBFB',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  companyBranchTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+  companyBranchName: {
+    flex: 1,
+    marginRight: 8,
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '700',
+    color: '#24201A',
+  },
+  companyBranchRevenue: {
+    fontSize: 16,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: '#A57A34',
+  },
+  companyBranchBarTrack: {
+    height: 8,
+    borderRadius: 5,
+    backgroundColor: '#E9E2D9',
+    overflow: 'hidden',
+  },
+  companyBranchBarFill: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  companyBranchBarFillGreen: {
+    backgroundColor: '#2E8B57',
+  },
+  companyBranchBarFillBlue: {
+    backgroundColor: '#3A589A',
+  },
+  companyBranchBarFillSand: {
+    backgroundColor: '#C8BCA8',
+  },
+  companyBranchMetaRow: {
+    marginTop: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  companyBranchMetaText: {
+    fontSize: 11,
+    lineHeight: 13,
+    color: '#8A837A',
+    fontWeight: '500',
+  },
+  companyBranchTrend: {
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
+  },
+  companyBranchTrendUp: {
+    color: '#3A8B59',
+  },
+  companyBranchTrendDown: {
+    color: '#1F1D1A',
+  },
+  companyAdminMiniStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  companyAdminMiniTile: {
+    flex: 1,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  companyAdminMiniLabel: {
+    fontSize: 10,
+    lineHeight: 11,
+    letterSpacing: 0.7,
+    color: '#8E877F',
+    fontWeight: '700',
+  },
+  companyAdminMiniValue: {
+    marginTop: 8,
+    fontSize: 41,
+    lineHeight: 43,
+    fontWeight: '800',
+    color: '#171717',
+  },
+  companyAdminMiniSub: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 13,
+    fontWeight: '600',
+    color: '#837B73',
+  },
+  companyAdminMiniSubGreen: {
+    color: '#3F8D5D',
   },
   pipelineHeaderSpread: {
     flexDirection: 'row',

@@ -17,6 +17,7 @@ import QuoteSummaryScreen from '../screens/QuoteSummaryScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
+import CompanyBranchesScreen from '../screens/CompanyBranchesScreen';
 import BranchEmployeeFormScreen from '../screens/BranchEmployeeFormScreen';
 import BranchRepProfileScreen from '../screens/BranchRepProfileScreen';
 import BranchDashboardScreen from '../screens/BranchDashboardScreen';
@@ -107,7 +108,8 @@ export type DashboardStackParamList = {
 };
 
 export type TeamStackParamList = {
-  TeamList: undefined;
+  BranchesHome: undefined;
+  TeamList: { branchId?: string; branchName?: string } | undefined;
   BranchEmployeeForm: { mode: 'create' } | { mode: 'edit'; employeeId: string };
   BranchRepProfile: { employee: BranchEmployee };
 };
@@ -163,15 +165,25 @@ const DashboardNavigator = () => (
   </DashboardStack.Navigator>
 );
 
-const TeamNavigator = () => (
-  <TeamStack.Navigator screenOptions={{ headerShown: false }}>
-    <TeamStack.Screen name="TeamList" component={BranchTeamScreen} options={{ title: 'Team' }} />
-    <TeamStack.Screen name="BranchRepProfile" component={BranchRepProfileScreen} options={{ title: 'Rep Profile' }} />
-    <TeamStack.Screen name="BranchEmployeeForm" component={BranchEmployeeFormScreen} options={{ title: 'Employee' }} />
-  </TeamStack.Navigator>
-);
+const TeamNavigator = () => {
+  const { user } = useAuth();
+  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+
+  return (
+    <TeamStack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={isCompanyAdmin ? 'BranchesHome' : 'TeamList'}
+    >
+      <TeamStack.Screen name="BranchesHome" component={CompanyBranchesScreen} options={{ title: 'Branches' }} />
+      <TeamStack.Screen name="TeamList" component={BranchTeamScreen} options={{ title: 'Team' }} />
+      <TeamStack.Screen name="BranchRepProfile" component={BranchRepProfileScreen} options={{ title: 'Rep Profile' }} />
+      <TeamStack.Screen name="BranchEmployeeForm" component={BranchEmployeeFormScreen} options={{ title: 'Employee' }} />
+    </TeamStack.Navigator>
+  );
+};
 
 const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
+  const isCompanyAdmin = role === 'COMPANY_ADMIN';
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
@@ -179,7 +191,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const [ordersBadgeCount, setOrdersBadgeCount] = useState(0);
 
   const loadOrdersBadge = useCallback(async () => {
-    if (!token || !user || (role !== 'BRANCH_MANAGER' && role !== 'SALES_REP')) {
+    if (!token || !user || (role !== 'BRANCH_MANAGER' && role !== 'SALES_REP' && role !== 'COMPANY_ADMIN')) {
       setOrdersBadgeCount(0);
       return;
     }
@@ -239,6 +251,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
             switch (route.name) {
               case 'DashboardTab':
                 return focused ? 'grid' : 'grid-outline';
+              case 'SpiffTab':
+                return focused ? 'star' : 'star-outline';
               case 'DesignsTab':
                 return focused ? 'search' : 'search-outline';
               case 'OrdersTab':
@@ -269,33 +283,38 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         },
       })}
     >
-      {role === 'BRANCH_MANAGER' || role === 'SALES_REP' ? (
+      {role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN' ? (
         <Tabs.Screen name="DashboardTab" component={DashboardNavigator} options={{ title: 'Dashboard' }} />
       ) : null}
-      <Tabs.Screen
-        name="DesignsTab"
-        component={DesignsNavigator}
-        options={{ title: 'Catalog', popToTopOnBlur: true }}
-        listeners={({ navigation, route }) => ({
-          tabPress: (event) => {
-            event.preventDefault();
 
-            const state = (route as any).state;
-            if (state?.type === 'stack' && state.key && state.index > 0) {
-              navigation.dispatch({
-                ...StackActions.popToTop(),
-                target: state.key,
+      {isCompanyAdmin ? (
+        <Tabs.Screen name="SpiffTab" component={SpiffRewardsScreen} options={{ title: 'SPIFF' }} />
+      ) : (
+        <Tabs.Screen
+          name="DesignsTab"
+          component={DesignsNavigator}
+          options={{ title: 'Catalog', popToTopOnBlur: true }}
+          listeners={({ navigation, route }) => ({
+            tabPress: (event) => {
+              event.preventDefault();
+
+              const state = (route as any).state;
+              if (state?.type === 'stack' && state.key && state.index > 0) {
+                navigation.dispatch({
+                  ...StackActions.popToTop(),
+                  target: state.key,
+                });
+              }
+
+              (navigation as any).navigate('DesignsTab', {
+                screen: 'CatalogCategories',
               });
-            }
-
-            (navigation as any).navigate('DesignsTab', {
-              screen: 'CatalogCategories',
-            });
-          },
-        })}
-      />
+            },
+          })}
+        />
+      )}
       <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
-      <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} />
+      {!isCompanyAdmin ? <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} /> : null}
       {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
         <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />
       ) : null}

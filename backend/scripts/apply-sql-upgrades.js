@@ -51,7 +51,13 @@ function resolveSqlFiles(args) {
     path.resolve(repoRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
-  ];
+  ].filter((filePath) => {
+    if (fs.existsSync(filePath)) return true;
+    console.warn(
+      `[skip] SQL file not found, skipping: ${path.relative(repoRoot, filePath)}`,
+    );
+    return false;
+  });
 }
 
 async function main() {
@@ -71,10 +77,8 @@ async function main() {
   }
 
   const files = resolveSqlFiles(process.argv.slice(2));
-  for (const filePath of files) {
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`SQL file not found: ${filePath}`);
-    }
+  if (files.length === 0) {
+    throw new Error('No SQL upgrade files found to apply.');
   }
 
   console.log(`Connecting to DB ${database} at ${host}:${port} as ${user}`);
