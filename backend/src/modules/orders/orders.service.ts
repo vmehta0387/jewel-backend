@@ -7,6 +7,7 @@ import { Order } from './entities/order.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Design } from '../products/entities/design.entity';
+import { User } from '../users/entities/user.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
@@ -25,6 +26,7 @@ export class OrdersService {
     @InjectRepository(Company) private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly spiffService: SpiffService,
   ) {}
 
@@ -390,6 +392,11 @@ export class OrdersService {
     const salesLastMonth = this.toNumber(summaryRow?.salesLastMonth ?? 0);
     const ordersToday = this.toNumber(summaryRow?.ordersToday ?? 0);
     const ordersThisMonth = this.toNumber(summaryRow?.ordersThisMonth ?? 0);
+    const branchRevenueTotal = await baseQuery
+      .clone()
+      .select('COALESCE(SUM(order.price), 0)', 'branchRevenueTotal')
+      .getRawOne()
+      .then((row) => this.toNumber(row?.branchRevenueTotal ?? 0));
     const statusRows = await baseQuery
       .clone()
       .select('order.status', 'status')
@@ -412,6 +419,18 @@ export class OrdersService {
       completed: statusCounts.get('COMPLETED') || 0,
       cancelled: statusCounts.get('CANCELLED') || 0,
     };
+    const pendingApprovalOrders = statusCounts.get('PENDING_APPROVAL') || 0;
+
+    let branchSalesRepCount = 0;
+    if (requester.role === UserRole.BRANCH_MANAGER && requester.companyId && requester.branchId) {
+      branchSalesRepCount = await this.userRepo
+        .createQueryBuilder('user')
+        .where('user.companyId = :companyId', { companyId: requester.companyId })
+        .andWhere('user.branchId = :branchId', { branchId: requester.branchId })
+        .andWhere('user.role = :role', { role: UserRole.SALES_REP })
+        .andWhere('user.isActive = :isActive', { isActive: true })
+        .getCount();
+    }
 
     const calcTrend = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
@@ -427,6 +446,9 @@ export class OrdersService {
       ordersToday,
       ordersThisMonth,
       pipeline,
+      branchRevenueTotal,
+      branchSalesRepCount,
+      pendingApprovalOrders,
     };
   }
 

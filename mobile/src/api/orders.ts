@@ -24,6 +24,9 @@ export const fetchOrderSummary = (token: string) =>
     monthlyTrend: number;
     ordersToday: number;
     ordersThisMonth: number;
+    branchRevenueTotal?: number;
+    branchSalesRepCount?: number;
+    pendingApprovalOrders?: number;
     pipeline?: {
       pending: number;
       approved: number;

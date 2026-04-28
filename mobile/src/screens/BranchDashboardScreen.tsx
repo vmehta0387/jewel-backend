@@ -101,6 +101,9 @@ const BranchDashboardScreen = () => {
     monthlyTrend: number;
     ordersToday: number;
     ordersThisMonth: number;
+    branchRevenueTotal?: number;
+    branchSalesRepCount?: number;
+    pendingApprovalOrders?: number;
     pipeline?: {
       pending: number;
       approved: number;
@@ -162,8 +165,8 @@ const BranchDashboardScreen = () => {
 
     if (spiffRes.status === 'fulfilled') {
       const pointsPerDollar = Number(spiffRes.value?.config?.pointsPerDollar || 100);
-      const redeemablePoints = Number(spiffRes.value?.wallet?.availablePoints || 0);
-      const amount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
+      const totalEarnedPoints = Number(spiffRes.value?.wallet?.totalEarnedPoints || 0);
+      const amount = pointsPerDollar > 0 ? totalEarnedPoints / pointsPerDollar : 0;
       setSpiffEarned(Number.isFinite(amount) ? amount : 0);
     } else {
       setSpiffEarned(0);
@@ -308,11 +311,25 @@ const BranchDashboardScreen = () => {
 
   const repName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Sales Rep';
   const companyBranch = [user?.companyName, user?.branchName].filter(Boolean).join(' - ') || 'No branch assigned';
+  const isBranchManager = user?.role === 'BRANCH_MANAGER';
 
   const formatMoney = (value: number | undefined) => {
     if (!value) return '$0';
     if (value >= 1000) return `$${(value / 1000).toFixed(1)}k`;
     return `$${Math.round(value)}`;
+  };
+
+  const formatMoneyCompact = (value: number | undefined) => {
+    const amount = Number(value ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) return '$0';
+    if (amount >= 1000) return `$${Math.round(amount / 1000)}k`;
+    return `$${Math.round(amount)}`;
+  };
+
+  const formatWhole = (value: number | undefined) => {
+    const amount = Number(value ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) return '0';
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(amount));
   };
 
   const formatTrend = (value: number | undefined) => {
@@ -433,21 +450,31 @@ const BranchDashboardScreen = () => {
 
           <View style={styles.statsHorizontal}>
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>TODAY</Text>
-              <Text style={styles.statNumber}>{formatMoney(summary?.salesToday)}</Text>
-              <Text style={styles.statSubTextGreen}>{formatTrend(summary?.todayTrend)}</Text>
+              <Text style={styles.statLabel}>{isBranchManager ? 'BRANCH REV.' : 'TODAY'}</Text>
+              <Text style={styles.statNumber}>
+                {isBranchManager ? formatMoneyCompact(summary?.branchRevenueTotal) : formatMoney(summary?.salesToday)}
+              </Text>
+              <Text style={styles.statSubTextGreen}>
+                {isBranchManager ? formatTrend(summary?.monthlyTrend) : formatTrend(summary?.todayTrend)}
+              </Text>
             </View>
 
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>MONTHLY</Text>
-              <Text style={styles.statNumber}>{formatMoney(summary?.salesThisMonth)}</Text>
-              <Text style={styles.statSubTextGreen}>{formatTrend(summary?.monthlyTrend)}</Text>
+              <Text style={styles.statLabel}>{isBranchManager ? 'MY REPS' : 'MONTHLY'}</Text>
+              <Text style={styles.statNumber}>
+                {isBranchManager ? formatWhole(summary?.branchSalesRepCount) : formatMoney(summary?.salesThisMonth)}
+              </Text>
+              <Text style={styles.statSubTextGreen}>
+                {isBranchManager ? 'all active' : formatTrend(summary?.monthlyTrend)}
+              </Text>
             </View>
 
             <View style={[styles.statTile, styles.statTileSpiff]}>
-              <Text style={styles.statLabelSpiff}>SPIFF</Text>
-              <Text style={styles.statNumberSpiff}>{formatMoney(spiffEarned)}</Text>
-              <Text style={styles.statSubTextSpiff}>earned</Text>
+              <Text style={styles.statLabelSpiff}>{isBranchManager ? 'PENDING' : 'SPIFF'}</Text>
+              <Text style={styles.statNumberSpiff}>
+                {isBranchManager ? formatWhole(summary?.pendingApprovalOrders) : formatMoney(spiffEarned)}
+              </Text>
+              <Text style={styles.statSubTextSpiff}>{isBranchManager ? 'needs review' : 'earned'}</Text>
             </View>
           </View>
 
