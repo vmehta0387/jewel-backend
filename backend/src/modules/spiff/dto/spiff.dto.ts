@@ -3,6 +3,7 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Max,
@@ -89,8 +90,8 @@ export class FindSpiffClaimsQueryDto {
 
 export class CreateSpiffClaimDto {
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
   requestedPoints: number;
 
   @IsOptional()

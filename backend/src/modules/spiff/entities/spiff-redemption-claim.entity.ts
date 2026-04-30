@@ -31,7 +31,7 @@ export class SpiffRedemptionClaim {
   @Column({ name: 'branch_id', nullable: true })
   branchId: string | null;
 
-  @Column({ name: 'requested_points', type: 'int' })
+  @Column({ name: 'requested_points', type: 'decimal', precision: 12, scale: 2 })
   requestedPoints: number;
 
   @Column({ name: 'requested_amount_cents', type: 'int' })

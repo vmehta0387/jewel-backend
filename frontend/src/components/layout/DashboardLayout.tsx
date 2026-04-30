@@ -13,12 +13,12 @@ export default function DashboardLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="dashboard-shell bg-slate-50/50">
+    <div className="dashboard-shell">
       {isMobileSidebarOpen ? (
         <button
           type="button"
           aria-label="Close navigation"
-          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden animate-fade-in"
+          className="fixed inset-0 z-40 bg-[#120f0d]/55 backdrop-blur-sm lg:hidden animate-fade-in"
           onClick={() => setIsMobileSidebarOpen(false)}
         />
       ) : null}

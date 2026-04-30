@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     borderWidth: 2,
-    borderColor: '#B2874A',
+    borderColor: '#E3DBD1',
   },
   avatarFallback: {
     width: 56,

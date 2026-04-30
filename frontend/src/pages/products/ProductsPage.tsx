@@ -697,7 +697,7 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
 };
 
 const inlineMasterAddButtonClass =
-  'inline-flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold leading-none text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex h-9 min-w-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-[#d9ccbc] bg-[#fbf8f3] px-2 text-sm font-semibold leading-none text-[#8f6a2c] transition-colors hover:border-[#cdb58d] hover:bg-[#f6ecda] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e8d3ad] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
 const FINDING_FEATURE_ENABLED = false;
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
@@ -4377,7 +4377,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
       {showAddModal && (
         <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
-          <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400 [&_th]:normal-case [&_th]:tracking-normal">
+          <div className="space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
               <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
@@ -4385,8 +4385,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-              <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
-                <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">General Information</div>
+              <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md">
+                <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">General Information</div>
                 <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 xl:grid-cols-12">
                   <div className="xl:col-span-6">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Name</label>
@@ -4804,20 +4804,20 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
               </div>
               <div className="space-y-4">
-                <div className="h-fit rounded-xl border border-violet-200 bg-white shadow-sm">
-                <div className="border-b border-violet-200/60 bg-violet-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-violet-800 backdrop-blur-sm">Media Gallery</div>
+                <div className="h-fit rounded-xl border border-[#e4d8c9] bg-white shadow-sm">
+                <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Media Gallery</div>
                 <div className="space-y-3 p-3">
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      className="rounded-md bg-slate-700 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                      className="rounded-lg border border-[#171311] bg-[#171311] px-3 py-2 text-xs font-semibold text-white hover:bg-[#241d19]"
                       onClick={() => setShowGalleryPicker(true)}
                     >
                       Choose From Gallery
                     </button>
                     <button
                       type="button"
-                      className="rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg border border-[#d8c5a4] bg-[#f7f2e9] px-3 py-2 text-xs font-semibold text-[#8f6a2c] hover:bg-[#f2e8d6] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => galleryUploadInputRef.current?.click()}
                       disabled={galleryUploading}
                     >
@@ -4825,7 +4825,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </button>
                     <button
                       type="button"
-                      className="rounded-md bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg border border-[#d8c5a4] bg-[#f7f2e9] px-3 py-2 text-xs font-semibold text-[#8f6a2c] hover:bg-[#f2e8d6] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => stlUploadInputRef.current?.click()}
                       disabled={stlUploading}
                     >
@@ -4848,10 +4848,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                     className="hidden"
                     onChange={handleStlUploadChange}
                   />
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2">
+                  <div className="rounded-lg border border-[#dfd0ba] bg-[#f9f3ea] px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">STL File</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">STL File</p>
                         <p className="text-sm text-slate-700">
                           {stlItem ? stlItem.fileName : 'No STL uploaded for this design version yet.'}
                         </p>
@@ -4944,7 +4944,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </div>
                     </div>
                   )}
-                  <div className="rounded-lg border border-slate-200 bg-white/80 px-3 py-3">
+                  <div className="rounded-lg border border-[#e4d8c9] bg-[#fbf8f3] px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                       iJewel 3D Embed
                     </p>
@@ -4978,8 +4978,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
                 </div>
-                <div className="h-fit rounded-xl border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
-                  <div className="mb-3 flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="h-fit rounded-xl border border-[#e4d8c9] bg-gradient-to-b from-white to-[#f8f5f0] p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between border-b border-[#e4d8c9] pb-2">
                     <h3 className="text-sm font-semibold tracking-wide text-slate-800">Summary</h3>
                     <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                       USD
@@ -5007,7 +5007,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     ) : null}
                   </div>
 
-                  <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                  <div className="mt-3 rounded-lg border border-[#d8c5a4] bg-[#f8f2e8] px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-slate-700">Total Value</span>
                       <span className="text-base font-bold text-slate-900">{costTotals.total.toFixed(2)}</span>
@@ -5026,8 +5026,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="overflow-hidden rounded-2xl border border-amber-200/60 bg-white shadow-sm ring-1 ring-amber-900/5 transition-all hover:shadow-md overflow-hidden">
-                  <div className="border-b border-amber-200/60 bg-amber-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-amber-800 backdrop-blur-sm">Metal Information</div>
+                <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md overflow-hidden">
+                  <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Metal Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="w-full min-w-[1020px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -5048,7 +5048,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-2">
                                 <select
-                                  className="w-full rounded border border-gray-300 px-2 py-1"
+                                  className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
                                   value={item.goldColour}
                                   onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
                                 >
@@ -5160,8 +5160,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-cyan-200 shadow-sm overflow-visible">
-                  <div className="flex items-center justify-between border-b border-cyan-200/60 bg-cyan-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan-800 backdrop-blur-sm">
+                <div className="rounded-xl border border-[#e4d8c9] shadow-sm overflow-visible">
+                  <div className="flex items-center justify-between border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">
                     <span>Gemstone Information</span>
                     {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
                   </div>
@@ -5261,8 +5261,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="space-y-4">
-                <div className="overflow-hidden rounded-2xl border border-rose-200/60 bg-white shadow-sm ring-1 ring-rose-900/5 transition-all hover:shadow-md">
-                  <div className="border-b border-rose-200/60 bg-rose-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-rose-800 backdrop-blur-sm">Labor Information</div>
+                <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md">
+                  <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Labor Information</div>
                   <div className="overflow-x-auto scrollbar-top">
                     <table className="min-w-full text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
@@ -5282,7 +5282,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-2">
                                 <select
-                                  className="w-full rounded border border-gray-300 px-2 py-1"
+                                  className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
                                   value={item.laborHead}
                                   onChange={(event) => updateLaborRow(item.id, 'laborHead', event.target.value)}
                                 >
@@ -5357,7 +5357,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <td className="px-2 py-2">
                                 <div className="flex items-center gap-2">
                                   <select
-                                    className="w-full rounded border border-gray-300 px-2 py-1"
+                                    className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
                                     value={item.findingHead}
                                     onChange={(event) => updateFindingRow(item.id, 'findingHead', event.target.value)}
                                   >
@@ -5408,7 +5408,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <div className="hidden xl:block" aria-hidden="true" />
             </div>
 
-            <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 pt-3 shadow-[0_-6px_18px_rgba(15,23,42,0.08)]">
+            <div className="sticky bottom-0 -mx-5 mt-2 flex justify-end gap-2 border-t border-[#dfd0be] bg-[#f7f2e9]/95 px-5 pb-1 pt-3 shadow-[0_-8px_16px_rgba(36,29,25,0.08)] sm:-mx-6 sm:px-6">
               <Button type="button" onClick={() => saveDesign()} disabled={savingDesign}>
                 {savingDesign ? 'Saving...' : 'Save'}
               </Button>

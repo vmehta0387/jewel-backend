@@ -27,7 +27,10 @@ import {
 
 const formatPoints = (value: number | null | undefined) => {
   const amount = Number(value || 0);
-  return new Intl.NumberFormat('en-US').format(Number.isFinite(amount) ? amount : 0);
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
 };
 
 const formatMoney = (value: number | null | undefined) => {
@@ -194,7 +197,7 @@ const SpiffRewardsScreen = () => {
   const submitClaim = useCallback(async () => {
     if (!token) return;
 
-    const points = Math.floor(Number(requestedPoints || 0));
+    const points = Math.round(Number(requestedPoints || 0) * 100) / 100;
     if (!Number.isFinite(points) || points <= 0) {
       Alert.alert('SPIFF', 'Enter valid points to redeem.');
       return;
@@ -242,6 +245,7 @@ const SpiffRewardsScreen = () => {
   const totalPoints = Number(summary?.wallet?.totalEarnedPoints || 0);
   const lockedPoints = Number(summary?.wallet?.lockedPoints || 0);
   const redeemablePoints = Number(summary?.wallet?.availablePoints || 0);
+  const redeemedPoints = Number(summary?.wallet?.fulfilledClaimedPoints || 0);
   const pointsPerDollar = Number(config?.pointsPerDollar || 100);
   const redeemableAmount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
   const currentRank = Number(leaderboard?.myRank?.rank || 0);
@@ -364,10 +368,13 @@ const SpiffRewardsScreen = () => {
               </View>
 
               <Text allowFontScaling={false} numberOfLines={1} style={styles.srHeroHint}>
-                ⚡ {tierLabel} rate: {TIER_RATES.find((row) => row.code === tierCode)?.rate.toFixed(2) || '1.00'}x
-                {' · '}Your {formatPoints(totalPoints)} pts
+                ⚡ {tierLabel} award rate: {TIER_RATES.find((row) => row.code === tierCode)?.rate.toFixed(2) || '1.00'}x
+                {' · '}Redeemable {formatPoints(redeemablePoints)} pts
                 {' ≈ '}
                 {formatMoney(redeemableAmount)}
+              </Text>
+              <Text allowFontScaling={false} numberOfLines={1} style={styles.srHeroHint}>
+                Redeemed so far: {formatPoints(redeemedPoints)} pts
               </Text>
             </View>
 
@@ -377,7 +384,7 @@ const SpiffRewardsScreen = () => {
                 <View style={styles.srTierHeaderRow}>
                   <Text style={[styles.srTierHeaderCell, styles.srTierHeaderTierCell]}>TIER</Text>
                   <Text style={[styles.srTierHeaderCell, styles.srTierHeaderRangeCell]}>POINTS RANGE</Text>
-                  <Text style={[styles.srTierHeaderCell, styles.srTierHeaderRateCell]}>$/PT RATE</Text>
+                  <Text style={[styles.srTierHeaderCell, styles.srTierHeaderRateCell]}>AWARD RATE</Text>
                 </View>
                 {TIER_RATES.map((row) => {
                   const isActiveTier = row.code === tierCode;
@@ -391,7 +398,7 @@ const SpiffRewardsScreen = () => {
                       </Text>
                       <View style={styles.srTierCellRateWrap}>
                         {isActiveTier ? <Text style={styles.srTierYouTag}>YOU</Text> : null}
-                        <Text style={styles.srTierCellRate}>{row.rate.toFixed(2)}%</Text>
+                        <Text style={styles.srTierCellRate}>{row.rate.toFixed(2)}x</Text>
                       </View>
                     </View>
                   );
@@ -504,7 +511,7 @@ const SpiffRewardsScreen = () => {
                   <Text style={styles.sectionSub}>Minimum {formatPoints(config?.minRedeemPoints || 500)} points</Text>
                   <TextInput
                     style={styles.input}
-                    keyboardType="number-pad"
+                    keyboardType="decimal-pad"
                     placeholder="Points to redeem"
                     placeholderTextColor="#9F978F"
                     value={requestedPoints}
@@ -710,10 +717,6 @@ const SpiffRewardsScreen = () => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#B58A3E" />}
           >
             <View style={styles.caHero}>
-              <View style={styles.caHeroTopRow}>
-                <Text allowFontScaling={false} style={styles.caHeroClock}>9:41</Text>
-                <Text allowFontScaling={false} style={styles.caHeroDots}>•••</Text>
-              </View>
               <Text allowFontScaling={false} style={styles.caHeroEyebrow}>SPIFF REDEMPTIONS</Text>
               <Text allowFontScaling={false} style={styles.caHeroTitle}>Approval Queue</Text>
               <Text allowFontScaling={false} style={styles.caHeroSub}>
@@ -926,7 +929,7 @@ const SpiffRewardsScreen = () => {
 
             <TextInput
               style={styles.input}
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               placeholder="Points to redeem"
               placeholderTextColor="#9F978F"
               value={requestedPoints}
@@ -1050,23 +1053,6 @@ const styles = StyleSheet.create({
     borderColor: '#2E251E',
     paddingHorizontal: 14,
     paddingVertical: 14,
-  },
-  caHeroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  caHeroClock: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  caHeroDots: {
-    color: '#B99341',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 3,
   },
   caHeroEyebrow: {
     marginTop: 14,

@@ -1111,7 +1111,7 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 27,
     borderWidth: 2,
-    borderColor: '#C89D5A',
+    borderColor: '#E3DBD1',
   },
   profileAvatarPlaceholder: {
     width: 54,

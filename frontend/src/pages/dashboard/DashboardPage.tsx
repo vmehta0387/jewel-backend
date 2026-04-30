@@ -695,17 +695,14 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-shell space-y-8 animate-fade-in pb-12">
-      <div className="glass-panel rounded-2xl px-6 py-6 md:px-8 md:py-8 shadow-glass-md flex flex-col gap-5 md:flex-row md:items-center md:justify-between border-t border-l border-white">
+      <div className="glass-panel rounded-2xl px-5 py-4 md:px-6 md:py-5 shadow-glass-md flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-t border-l border-white">
         <div className="flex items-center gap-5">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-soft ring-1 ring-white/40">
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
-              <path d="M12 9v6M8.75 12h6.5" />
-            </svg>
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#171311] text-[#c89948] shadow-soft ring-1 ring-[#dec8a1]">
+            <span className="text-base">⚡</span>
           </div>
           <div className="flex flex-col justify-center">
-            <h1 className="text-[1.75rem] font-bold tracking-tight text-slate-900 leading-none">
-              Super Admin Portal
+            <h1 className="text-[1.38rem] font-bold tracking-tight text-[#211913] leading-none">
+              BLITZ NYC Admin
             </h1>
           </div>
         </div>

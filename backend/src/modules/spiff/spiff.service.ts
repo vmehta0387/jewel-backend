@@ -456,7 +456,7 @@ export class SpiffService {
       throw new ForbiddenException('Only sales users can create redemption claims');
     }
 
-    const requestedPoints = Math.floor(Number(dto.requestedPoints || 0));
+    const requestedPoints = this.roundPoints(this.toNumber(dto.requestedPoints || 0));
     if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) {
       throw new BadRequestException('Requested points must be greater than zero');
     }
@@ -700,25 +700,29 @@ export class SpiffService {
   }
 
   private async recordQuoteCreated(order: Order): Promise<void> {
+    const awardRate = await this.getUserAwardRate(order.salesRepId!);
+    const awardedPoints = this.applyAwardRate(this.getQuoteCreatedPoints(), awardRate);
     await this.createLedgerEntryIfMissing({
       userId: order.salesRepId!,
       companyId: order.companyId || null,
       branchId: order.branchId || null,
       orderId: order.id,
-      points: this.getQuoteCreatedPoints(),
+      points: awardedPoints,
       eventType: SpiffLedgerEvent.QUOTE_CREATED,
       eventKey: `quote:${order.id}`,
       note: `Quote created (${order.orderNumber})`,
       metadata: {
         orderNumber: order.orderNumber,
         status: order.status,
+        awardRate,
       },
     });
   }
 
   private async recordOrderPlacedRewards(order: Order, includeFastClose: boolean): Promise<void> {
-    const basePoints = this.getOrderPlacedBasePoints();
-    const valueBonus = this.getOrderValueBonus(order.price);
+    const awardRate = await this.getUserAwardRate(order.salesRepId!);
+    const basePoints = this.applyAwardRate(this.getOrderPlacedBasePoints(), awardRate);
+    const valueBonus = this.applyAwardRate(this.getOrderValueBonus(order.price), awardRate);
 
     await this.createLedgerEntryIfMissing({
       userId: order.salesRepId!,
@@ -732,6 +736,7 @@ export class SpiffService {
       metadata: {
         orderNumber: order.orderNumber,
         status: order.status,
+        awardRate,
       },
     });
 
@@ -749,23 +754,26 @@ export class SpiffService {
           orderNumber: order.orderNumber,
           price: this.toNumber(order.price),
           status: order.status,
+          awardRate,
         },
       });
     }
 
     if (includeFastClose) {
+      const fastClosePoints = this.applyAwardRate(this.getFastClosePoints(), awardRate);
       await this.createLedgerEntryIfMissing({
         userId: order.salesRepId!,
         companyId: order.companyId || null,
         branchId: order.branchId || null,
         orderId: order.id,
-        points: this.getFastClosePoints(),
+        points: fastClosePoints,
         eventType: SpiffLedgerEvent.FAST_CLOSE_BONUS,
         eventKey: `fast-close:${order.id}`,
         note: `Fast close bonus (${order.orderNumber})`,
         metadata: {
           orderNumber: order.orderNumber,
           status: order.status,
+          awardRate,
         },
       });
     }
@@ -782,7 +790,7 @@ export class SpiffService {
     note: string;
     metadata?: Record<string, unknown>;
   }): Promise<void> {
-    const points = Math.floor(this.toNumber(input.points));
+    const points = this.roundPoints(this.toNumber(input.points));
     if (points <= 0) {
       return;
     }
@@ -884,6 +892,30 @@ export class SpiffService {
     return user?.role === UserRole.SALES_REP;
   }
 
+  private async getUserAwardRate(userId: string): Promise<number> {
+    const totalEarnedPoints = await this.getUserTotalEarnedPoints(userId);
+    return this.resolveTier(totalEarnedPoints).awardRate;
+  }
+
+  private async getUserTotalEarnedPoints(userId: string): Promise<number> {
+    const raw = await this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .select('COALESCE(SUM(ledger.points), 0)', 'points')
+      .where('ledger.userId = :userId', { userId })
+      .andWhere('ledger.points > 0')
+      .getRawOne();
+    return this.toNumber(raw?.points);
+  }
+
+  private applyAwardRate(points: number, awardRate: number): number {
+    const normalizedPoints = Math.max(0, this.roundPoints(this.toNumber(points)));
+    if (normalizedPoints <= 0) {
+      return 0;
+    }
+    const normalizedRate = Number.isFinite(awardRate) && awardRate > 0 ? awardRate : 1;
+    return this.roundPoints(normalizedPoints * normalizedRate);
+  }
+
   private resolveTier(points: number): {
     code: string;
     label: string;
@@ -891,6 +923,7 @@ export class SpiffService {
     minPoints: number;
     maxPoints: number | null;
     nextTierAt: number | null;
+    awardRate: number;
   } {
     if (points >= 4000) {
       return {
@@ -900,6 +933,7 @@ export class SpiffService {
         minPoints: 4000,
         maxPoints: null,
         nextTierAt: null,
+        awardRate: this.getTierRateLegend(),
       };
     }
 
@@ -911,6 +945,7 @@ export class SpiffService {
         minPoints: 1500,
         maxPoints: 3999,
         nextTierAt: 4000,
+        awardRate: this.getTierRateElite(),
       };
     }
 
@@ -922,6 +957,7 @@ export class SpiffService {
         minPoints: 500,
         maxPoints: 1499,
         nextTierAt: 1500,
+        awardRate: this.getTierRateSharp(),
       };
     }
 
@@ -932,6 +968,7 @@ export class SpiffService {
       minPoints: 0,
       maxPoints: 499,
       nextTierAt: 500,
+      awardRate: this.getTierRateCloser(),
     };
   }
 
@@ -1144,6 +1181,22 @@ export class SpiffService {
     return this.toIntEnv(process.env.SPIFF_FAST_CLOSE_BONUS_POINTS, 30);
   }
 
+  private getTierRateCloser(): number {
+    return this.toFloatEnv(process.env.SPIFF_TIER_RATE_CLOSER, 1);
+  }
+
+  private getTierRateSharp(): number {
+    return this.toFloatEnv(process.env.SPIFF_TIER_RATE_SHARP, 1.25);
+  }
+
+  private getTierRateElite(): number {
+    return this.toFloatEnv(process.env.SPIFF_TIER_RATE_ELITE, 1.5);
+  }
+
+  private getTierRateLegend(): number {
+    return this.toFloatEnv(process.env.SPIFF_TIER_RATE_LEGEND, 2);
+  }
+
   private async getPointsPerDollar(): Promise<number> {
     return this.getSettingInt(
       SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
@@ -1230,6 +1283,11 @@ export class SpiffService {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   }
 
+  private toFloatEnv(rawValue: unknown, fallback: number): number {
+    const value = Number.parseFloat(String(rawValue ?? '').trim());
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   private toNumber(value: unknown): number {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -1244,6 +1302,13 @@ export class SpiffService {
   }
 
   private roundMoney(value: number): number {
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.round(value * 100) / 100;
+  }
+
+  private roundPoints(value: number): number {
     if (!Number.isFinite(value)) {
       return 0;
     }

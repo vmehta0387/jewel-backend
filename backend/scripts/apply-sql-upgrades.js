@@ -49,6 +49,7 @@ function resolveSqlFiles(args) {
     path.resolve(repoRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_USER_LAST_SEEN_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
+    path.resolve(repoRoot, 'DATABASE_SPIFF_DECIMAL_POINTS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
   ].filter((filePath) => {

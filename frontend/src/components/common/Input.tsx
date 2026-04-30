@@ -12,22 +12,22 @@ export default function Input({ label, error, className = '', type, ...props }: 
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-[0.85rem] font-bold tracking-wide text-slate-700 mb-1.5">
+        <label className="block text-[0.78rem] font-bold tracking-[0.17em] uppercase text-[#7e7368] mb-2">
           {label}
         </label>
       )}
       <div className="relative">
         <input
           type={currentType}
-          className={`w-full px-4 py-2.5 bg-white/70 backdrop-blur-sm border rounded-xl focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all duration-300 hover:bg-white/90 focus:bg-white shadow-inner font-medium text-slate-800 placeholder-slate-400 outline-none ${
-            error ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/30 ring-1 ring-rose-400' : 'border-slate-200/80 hover:border-slate-300'
+          className={`w-full px-4 py-3 bg-[#f3efea] border rounded-2xl focus:ring-2 focus:ring-[#cba86b]/35 focus:border-[#d3ba91] transition-all duration-200 hover:bg-[#f8f5ef] focus:bg-white font-semibold text-[#251d17] placeholder-[#a09384] outline-none ${
+            error ? 'border-[#df9d9d] focus:border-[#c46f6f] focus:ring-[#c46f6f]/25 ring-1 ring-[#e5bbbb]' : 'border-[#ddd3c7] hover:border-[#cec1b2]'
           } ${isPassword ? 'pr-11' : ''} ${className}`}
           {...props}
         />
         {isPassword && (
           <button
             type="button"
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-500 transition-colors focus:outline-none"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#988c7d] hover:text-[#ab7f38] transition-colors focus:outline-none"
             onClick={() => setShowPassword(!showPassword)}
             tabIndex={-1}
             title={showPassword ? "Hide password" : "Show password"}
@@ -45,7 +45,7 @@ export default function Input({ label, error, className = '', type, ...props }: 
           </button>
         )}
       </div>
-      {error && <p className="mt-1.5 text-xs font-bold tracking-wide text-rose-500">{error}</p>}
+      {error && <p className="mt-1.5 text-xs font-bold tracking-wide text-[#b34b4b]">{error}</p>}
     </div>
   );
 }

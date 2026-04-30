@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { TaskPermission, UserRole } from '../../types/auth.types';
 import { getStoredUser, hasTaskPermission } from '../../utils/auth';
+import BlitzBrand from '../common/BlitzBrand';
 
 type MenuIconName =
   | 'dashboard'
@@ -138,8 +139,8 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
     <span
       className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 ${
         isActive
-          ? 'bg-indigo-500 text-white shadow-soft ring-1 ring-white/10'
-          : 'bg-transparent text-slate-400 group-hover:bg-slate-800/60 group-hover:text-white'
+          ? 'bg-[#b98e45] text-white shadow-sm ring-1 ring-[#d7be94]'
+          : 'bg-transparent text-[#b7aa98] group-hover:bg-[#3b3027] group-hover:text-white'
       }`}
     >
       <svg {...iconBase}>{iconBody}</svg>
@@ -175,6 +176,10 @@ export default function Sidebar({
       } ${
         collapsed ? 'lg:w-20' : 'lg:w-64'
       } lg:translate-x-0 shadow-2xl flex flex-col`}
+      style={{
+        background: 'linear-gradient(180deg, #171311 0%, #221b17 100%)',
+        borderRightColor: '#352b24',
+      }}
     >
       <div
         className={`relative flex items-center shrink-0 border-b border-white/5 ${
@@ -182,17 +187,14 @@ export default function Sidebar({
         }`}
       >
         <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
-          <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-indigo-400 flex items-center justify-center shadow-soft shrink-0">
-             <span className="text-white font-bold text-sm">JP</span>
+          <div className={`${collapsed ? '' : 'max-w-[170px]'} overflow-hidden`}>
+            <BlitzBrand compact subtitle="NEW YORK CITY" className={`sidebar-blitz ${collapsed ? 'scale-90' : ''}`} />
           </div>
-          <h1 className={`font-bold text-white tracking-wide transition-opacity duration-200 ${collapsed ? 'hidden lg:hidden' : 'text-[1.05rem]'}`}>
-            Jewelry Platform
-          </h1>
         </div>
         <button
           type="button"
           onClick={onCloseMobile}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition-colors hover:bg-white/10 lg:hidden"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#4b3a2d] bg-[#2a211b] text-[#d3c8ba] transition-colors hover:bg-[#3a2f26] lg:hidden"
           aria-label="Close navigation"
         >
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -214,8 +216,8 @@ export default function Sidebar({
                   collapsed ? 'justify-center p-2.5' : 'px-3.5 py-2.5'
                 } ${
                   isActive
-                    ? 'bg-indigo-500/10 text-white font-semibold'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    ? 'bg-[#2f261f] text-white font-semibold border border-[#4a3a2d]'
+                    : 'text-[#b8ab9a] hover:text-white hover:bg-[#2c231c]'
                 }`}
                 title={collapsed ? item.name : undefined}
               >
@@ -227,11 +229,11 @@ export default function Sidebar({
         </nav>
       </div>
 
-      <div className={`shrink-0 border-t border-white/5 p-4 ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`shrink-0 border-t border-[#352b24] p-4 ${collapsed ? 'flex justify-center' : ''}`}>
         <button
           type="button"
           onClick={onToggle}
-          className={`flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-2.5 text-xs font-semibold uppercase tracking-wider text-slate-400 transition-all hover:bg-white/10 hover:text-white ${
+          className={`flex items-center gap-3 rounded-xl border border-[#4b3a2d] bg-[#2a211b] p-2.5 text-xs font-semibold uppercase tracking-wider text-[#b9ac9a] transition-all hover:bg-[#3a2f26] hover:text-white ${
             collapsed ? 'w-full justify-center' : 'w-full'
           }`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

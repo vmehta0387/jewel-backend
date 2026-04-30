@@ -41,7 +41,7 @@ export class SpiffPointLedger {
   @Column({ name: 'event_key', length: 150, nullable: true, unique: true })
   eventKey: string | null;
 
-  @Column({ type: 'int' })
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   points: number;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
