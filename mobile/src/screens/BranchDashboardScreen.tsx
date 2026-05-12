@@ -302,8 +302,8 @@ const BranchDashboardScreen = () => {
 
     if (spiffRes.status === 'fulfilled') {
       const pointsPerDollar = Number(spiffRes.value?.config?.pointsPerDollar || 100);
-      const totalEarnedPoints = Number(spiffRes.value?.wallet?.totalEarnedPoints || 0);
-      const amount = pointsPerDollar > 0 ? totalEarnedPoints / pointsPerDollar : 0;
+      const redeemablePoints = Number(spiffRes.value?.wallet?.availablePoints || 0);
+      const amount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
       setSpiffEarned(Number.isFinite(amount) ? amount : 0);
     } else {
       setSpiffEarned(0);

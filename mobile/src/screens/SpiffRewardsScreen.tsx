@@ -142,7 +142,7 @@ const SpiffRewardsScreen = () => {
                 : user?.role === 'SALES_REP'
                   ? 'MY_COMPANY'
                 : 'MY_BRANCH',
-          period: 'MONTHLY',
+          period: user?.role === 'SALES_REP' ? 'ALL_TIME' : 'MONTHLY',
           limit: 10,
         }),
         fetchSpiffClaims(token, 1, 20),
@@ -152,7 +152,7 @@ const SpiffRewardsScreen = () => {
         try {
           secondaryBoardRes = await fetchSpiffLeaderboard(token, {
             scope: 'GLOBAL',
-            period: 'MONTHLY',
+            period: 'ALL_TIME',
             limit: 10,
           });
         } catch {

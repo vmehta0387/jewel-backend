@@ -7,6 +7,7 @@
     "start:prod": "node dist/main.js",
     "build": "nest build",
     "db:upgrade": "node scripts/apply-sql-upgrades.js",
+    "db:migrate:railway-to-ec2": "bash scripts/migrate-railway-to-ec2.sh",
     "spiff:backfill": "node scripts/backfill-spiff-from-orders.js",
     "spiff:reset-claims": "node scripts/reset-spiff-claims-by-email.js"
   },
