@@ -8,6 +8,17 @@ set -euo pipefail
 #   TARGET_DB_HOST=127.0.0.1 TARGET_DB_PORT=3306 TARGET_DB_USER=root TARGET_DB_PASSWORD=... TARGET_DB_NAME=blitznyc \
 #   ./scripts/migrate-railway-to-ec2.sh
 
+load_env_file() {
+  local file="$1"
+  if [ -f "$file" ]; then
+    # shellcheck disable=SC1090
+    set -a; source "$file"; set +a
+  fi
+}
+
+# Auto-load env file if present (keeps CLI usage simple on EC2)
+load_env_file "./scripts/migration.env"
+
 require_var() {
   local name="$1"
   if [ -z "${!name:-}" ]; then
