@@ -20,23 +20,25 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
+import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { CreateUserDto, FindUsersQueryDto, UpdateUserDto, UpdateUserStatusDto } from './dto/user.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard)
-@Roles(UserRole.SUPER_ADMIN)
 @TaskPermissions(TaskPermission.USER_MANAGEMENT)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  findAll(@Query() query: FindUsersQueryDto) {
-    return this.usersService.findAll(query);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  findAll(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
+    return this.usersService.findAll(query, req.user);
   }
 
   @Get('export/template')
+  @Roles(UserRole.SUPER_ADMIN)
   async downloadImportTemplate() {
     const file = await this.usersService.generateImportTemplate();
     return new StreamableFile(file.buffer, {
@@ -46,8 +48,9 @@ export class UsersController {
   }
 
   @Get('export')
-  async exportUsers(@Query() query: FindUsersQueryDto) {
-    const file = await this.usersService.exportUsers(query);
+  @Roles(UserRole.SUPER_ADMIN)
+  async exportUsers(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
+    const file = await this.usersService.exportUsers(query, req.user);
     return new StreamableFile(file.buffer, {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       disposition: `attachment; filename="${file.fileName}"`,
@@ -55,12 +58,14 @@ export class UsersController {
   }
 
   @Post('import')
+  @Roles(UserRole.SUPER_ADMIN)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   importUsers(@UploadedFile() file: { buffer?: Buffer; originalname?: string }) {
     return this.usersService.importUsers(file);
   }
 
   @Post('upload-photo')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadPhoto(
     @UploadedFile() file: { buffer?: Buffer; originalname?: string; mimetype?: string },
@@ -70,22 +75,26 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.usersService.findOne(id, req.user);
   }
 
   @Post()
-  create(@Body() dto: CreateUserDto) {
-    return this.usersService.create(dto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  create(@Body() dto: CreateUserDto, @Request() req: { user: AuthUser }) {
+    return this.usersService.create(dto, req.user);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.usersService.update(id, dto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: { user: AuthUser }) {
+    return this.usersService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {
-    return this.usersService.updateStatus(id, dto.isActive);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto, @Request() req: { user: AuthUser }) {
+    return this.usersService.updateStatus(id, dto.isActive, req.user);
   }
 }

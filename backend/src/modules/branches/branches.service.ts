@@ -26,9 +26,19 @@ export class BranchesService {
     private readonly pricingSlabRepo: Repository<BranchPricingSlab>,
   ) {}
 
-  async create(dto: CreateBranchDto): Promise<Branch> {
+  async create(dto: CreateBranchDto, requester?: AuthUser): Promise<Branch> {
     if (dto.branchManagerId && dto.newBranchManager) {
       throw new BadRequestException('Provide either branchManagerId or newBranchManager, not both');
+    }
+
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new BadRequestException('Company admin must be assigned to a company');
+      }
+      if (dto.companyId && dto.companyId !== requester.companyId) {
+        throw new BadRequestException('You can only create branches in your company');
+      }
+      dto.companyId = requester.companyId;
     }
 
     await this.ensureCompanyExists(dto.companyId);
@@ -65,7 +75,7 @@ export class BranchesService {
       await this.assignExistingBranchManager(saved.id, saved.companyId, branchManagerId || null);
     }
 
-    return this.findOne(saved.id);
+    return this.findOne(saved.id, requester);
   }
 
   async findAll(
@@ -118,6 +128,13 @@ export class BranchesService {
       query.andWhere('company.accountManagerId = :requesterId', { requesterId: requester.id });
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new BadRequestException('Company admin must be assigned to a company');
+      }
+      query.andWhere('branch.companyId = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+    }
+
     const [data, total] = await query.getManyAndCount();
 
     return {
@@ -142,17 +159,32 @@ export class BranchesService {
       throw new NotFoundException('Branch not found');
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN && branch.companyId !== requester.companyId) {
+      throw new NotFoundException('Branch not found');
+    }
+
     return this.sanitizeBranch(branch);
   }
 
-  async update(id: string, dto: UpdateBranchDto): Promise<Branch> {
+  async update(id: string, dto: UpdateBranchDto, requester?: AuthUser): Promise<Branch> {
     if (dto.branchManagerId !== undefined && dto.newBranchManager !== undefined) {
       throw new BadRequestException('Provide either branchManagerId or newBranchManager, not both');
     }
 
-    const branch = await this.findOne(id);
+    const branch = await this.findOne(id, requester);
     const previousCompanyId = branch.companyId;
-    const nextCompanyId = dto.companyId ?? branch.companyId;
+    let nextCompanyId = dto.companyId ?? branch.companyId;
+
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new BadRequestException('Company admin must be assigned to a company');
+      }
+      if (dto.companyId && dto.companyId !== requester.companyId) {
+        throw new BadRequestException('You can only manage branches in your company');
+      }
+      nextCompanyId = requester.companyId;
+      dto.companyId = requester.companyId;
+    }
 
     await this.ensureCompanyExists(nextCompanyId);
 
@@ -204,17 +236,20 @@ export class BranchesService {
       await this.userRepo.update({ branchId: id }, { companyId: branch.companyId });
     }
 
-    return this.findOne(id);
+    return this.findOne(id, requester);
   }
 
-  async updateStatus(id: string, isActive: boolean): Promise<Branch> {
-    const branch = await this.findOne(id);
+  async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<Branch> {
+    const branch = await this.findOne(id, requester);
     branch.isActive = isActive;
     await this.branchRepo.save(branch);
-    return this.findOne(id);
+    return this.findOne(id, requester);
   }
 
-  async updatePricingSlabs(branchId: string, slabs: BranchPricingSlabDto[]): Promise<void> {
+  async updatePricingSlabs(branchId: string, slabs: BranchPricingSlabDto[], requester?: AuthUser): Promise<void> {
+    if (requester) {
+      await this.findOne(branchId, requester);
+    }
     await this.pricingSlabRepo.delete({ branchId });
 
     if (!slabs || slabs.length === 0) {

@@ -19,7 +19,7 @@ export class CompaniesController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   findAll(
     @Request() req: { user: AuthUser },
     @Query('page') page?: string,
@@ -45,7 +45,7 @@ export class CompaniesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.companiesService.findOne(id, req.user);
   }

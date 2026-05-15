@@ -12,6 +12,7 @@ import {
   USER_ROLE_OPTIONS,
   UserRecord,
 } from '../../types/user.types';
+import { getStoredUser } from '../../utils/auth';
 
 interface CompanyOption {
   id: string;
@@ -49,6 +50,12 @@ function roleNeedsBranch(role: UserRole): boolean {
 
 export default function EditUser() {
   const navigate = useNavigate();
+  const currentUser = getStoredUser();
+  const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const companyAdminCompanyId = currentUser?.companyId || '';
+  const allowedRoleOptions = isCompanyAdmin
+    ? USER_ROLE_OPTIONS.filter((option) => option.value === 'BRANCH_MANAGER' || option.value === 'SALES_REP')
+    : USER_ROLE_OPTIONS;
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,6 +127,14 @@ export default function EditUser() {
             ? sanitizedTaskPermissions
             : DEFAULT_TASK_PERMISSIONS_BY_ROLE[user.role],
       });
+
+      if (isCompanyAdmin && companyAdminCompanyId) {
+        setFormData((prev) => ({
+          ...prev,
+          role: prev.role === 'BRANCH_MANAGER' || prev.role === 'SALES_REP' ? prev.role : 'SALES_REP',
+          companyId: companyAdminCompanyId,
+        }));
+      }
       setPhotoPreviewUrl(user.photoUrl || user.photoStoragePath || '');
 
       if (user.companyId && roleNeedsBranch(user.role)) {
@@ -176,6 +191,9 @@ export default function EditUser() {
   };
 
   const handleRoleChange = (role: UserRole) => {
+    if (isCompanyAdmin && role !== 'BRANCH_MANAGER' && role !== 'SALES_REP') {
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       role,
@@ -375,12 +393,12 @@ export default function EditUser() {
                 value={formData.role}
                 onChange={(event) => handleRoleChange(event.target.value as UserRole)}
               >
-                {USER_ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                  {allowedRoleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
             </div>
 
             {roleNeedsCompany(formData.role) && (
@@ -394,6 +412,7 @@ export default function EditUser() {
                   onChange={(event) =>
                     setFormData({ ...formData, companyId: event.target.value, branchId: '' })
                   }
+                  disabled={isCompanyAdmin}
                 >
                   <option value="">Select Company</option>
                   {companies.map((company) => (

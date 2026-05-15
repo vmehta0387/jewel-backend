@@ -11,6 +11,7 @@ import {
   TASK_PERMISSION_OPTIONS,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
+import { getStoredUser } from '../../utils/auth';
 
 interface CompanyOption {
   id: string;
@@ -48,17 +49,28 @@ function roleNeedsBranch(role: UserRole): boolean {
 
 export default function AddUser() {
   const navigate = useNavigate();
+  const currentUser = getStoredUser();
+  const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const companyAdminCompanyId = currentUser?.companyId || '';
+  const allowedRoleOptions = isCompanyAdmin
+    ? USER_ROLE_OPTIONS.filter((option) => option.value === 'BRANCH_MANAGER' || option.value === 'SALES_REP')
+    : USER_ROLE_OPTIONS;
   const [searchParams] = useSearchParams();
   const roleParam = searchParams.get('role');
   const presetCompanyId = searchParams.get('companyId') || '';
   const presetBranchId = searchParams.get('branchId') || '';
-  const presetRole = (
+  const presetRoleCandidate = (
     USER_ROLE_OPTIONS.some((option) => option.value === roleParam)
       ? roleParam
       : presetBranchId
         ? 'SALES_REP'
         : 'COMPANY_ADMIN'
   ) as UserRole;
+  const presetRole = isCompanyAdmin
+    ? (presetRoleCandidate === 'BRANCH_MANAGER' || presetRoleCandidate === 'SALES_REP'
+        ? presetRoleCandidate
+        : 'SALES_REP')
+    : presetRoleCandidate;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
@@ -87,6 +99,16 @@ export default function AddUser() {
   useEffect(() => {
     fetchCompanies();
   }, []);
+
+  useEffect(() => {
+    if (isCompanyAdmin && companyAdminCompanyId) {
+      setFormData((prev) => ({
+        ...prev,
+        companyId: companyAdminCompanyId,
+        role: prev.role === 'BRANCH_MANAGER' || prev.role === 'SALES_REP' ? prev.role : 'SALES_REP',
+      }));
+    }
+  }, [isCompanyAdmin, companyAdminCompanyId]);
 
   useEffect(() => {
     if (formData.companyId && roleNeedsBranch(formData.role)) {
@@ -152,6 +174,9 @@ export default function AddUser() {
   };
 
   const handleRoleChange = (role: UserRole) => {
+    if (isCompanyAdmin && role !== 'BRANCH_MANAGER' && role !== 'SALES_REP') {
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       role,
@@ -344,12 +369,12 @@ export default function AddUser() {
                 value={formData.role}
                 onChange={(event) => handleRoleChange(event.target.value as UserRole)}
               >
-                {USER_ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                  {allowedRoleOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
             </div>
 
             {roleNeedsCompany(formData.role) && (
@@ -363,6 +388,7 @@ export default function AddUser() {
                   onChange={(event) =>
                     setFormData({ ...formData, companyId: event.target.value, branchId: '' })
                   }
+                  disabled={isCompanyAdmin}
                 >
                   <option value="">Select Company</option>
                   {companies.map((company) => (

@@ -156,7 +156,9 @@ export class UsersService {
     ],
   };
 
-  async findAll(query: FindUsersQueryDto = {}): Promise<UserResponse[]> {
+  private readonly companyAdminManagedRoles: UserRole[] = [UserRole.BRANCH_MANAGER, UserRole.SALES_REP];
+
+  async findAll(query: FindUsersQueryDto = {}, requester?: AuthUser): Promise<UserResponse[]> {
     const usersQuery = this.userRepo
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.company', 'company')
@@ -190,6 +192,19 @@ export class UsersService {
       usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId.trim() });
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new ForbiddenException('Company admin must be assigned to a company');
+      }
+
+      usersQuery.andWhere('user.companyId = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+      usersQuery.andWhere('user.role IN (:...managedRoles)', { managedRoles: this.companyAdminManagedRoles });
+
+      if (query.role && !this.companyAdminManagedRoles.includes(query.role)) {
+        return [];
+      }
+    }
+
     const users = await usersQuery.getMany();
     const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
     return Promise.all(
@@ -197,7 +212,7 @@ export class UsersService {
     );
   }
 
-  async findOne(id: string): Promise<UserResponse> {
+  async findOne(id: string, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({
       where: { id },
       relations: ['company', 'branch'],
@@ -207,11 +222,25 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      this.assertCompanyAdminCanManageUser(requester, user);
+    }
+
     const managedCompaniesMap = await this.getManagedCompaniesMap([user.id]);
     return this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || []);
   }
 
-  async create(dto: CreateUserDto): Promise<UserResponse> {
+  async create(dto: CreateUserDto, requester?: AuthUser): Promise<UserResponse> {
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new ForbiddenException('Company admin must be assigned to a company');
+      }
+      if (!this.companyAdminManagedRoles.includes(dto.role)) {
+        throw new ForbiddenException('Company admin can only create branch managers or sales reps');
+      }
+      dto.companyId = requester.companyId;
+    }
+
     const normalizedEmail = this.normalizeEmail(dto.email);
     await this.ensureEmailAvailable(normalizedEmail);
 
@@ -234,13 +263,25 @@ export class UsersService {
     });
 
     const saved = await this.userRepo.save(user);
-    return this.findOne(saved.id);
+    return this.findOne(saved.id, requester);
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponse> {
+  async update(id: string, dto: UpdateUserDto, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      this.assertCompanyAdminCanManageUser(requester, user);
+      const nextRoleForCheck = dto.role ?? user.role;
+      if (!this.companyAdminManagedRoles.includes(nextRoleForCheck)) {
+        throw new ForbiddenException('Company admin can only manage branch managers or sales reps');
+      }
+      if (dto.companyId && dto.companyId !== requester.companyId) {
+        throw new ForbiddenException('You can only manage users in your company');
+      }
+      dto.companyId = requester.companyId || null;
     }
 
     if (dto.email !== undefined) {
@@ -293,18 +334,22 @@ export class UsersService {
     user.taskPermissions = this.normalizePermissions(permissionsInput, nextRole);
 
     await this.userRepo.save(user);
-    return this.findOne(id);
+    return this.findOne(id, requester);
   }
 
-  async updateStatus(id: string, isActive: boolean): Promise<UserResponse> {
+  async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      this.assertCompanyAdminCanManageUser(requester, user);
+    }
+
     user.isActive = isActive;
     await this.userRepo.save(user);
-    return this.findOne(id);
+    return this.findOne(id, requester);
   }
 
   async uploadPhoto(
@@ -414,8 +459,8 @@ export class UsersService {
     };
   }
 
-  async exportUsers(query: FindUsersQueryDto = {}): Promise<{ buffer: Buffer; fileName: string }> {
-    const users = await this.findAll(query);
+  async exportUsers(query: FindUsersQueryDto = {}, requester?: AuthUser): Promise<{ buffer: Buffer; fileName: string }> {
+    const users = await this.findAll(query, requester);
     const workbook = XLSX.utils.book_new();
     const rows = users.map((user) => ({
       Email: user.email,
@@ -616,7 +661,7 @@ export class UsersService {
       payload.companyId = branch.companyId;
     }
 
-    return this.update(id, payload);
+    return this.update(id, payload, requester);
   }
 
   async updateBranchEmployeeStatus(
@@ -636,7 +681,22 @@ export class UsersService {
       throw new ForbiddenException('Only sales reps can be managed from mobile');
     }
 
-    return this.updateStatus(id, isActive);
+    return this.updateStatus(id, isActive, requester);
+  }
+
+  private assertCompanyAdminCanManageUser(requester: AuthUser, user: User): void {
+    if (requester.role !== UserRole.COMPANY_ADMIN) {
+      return;
+    }
+    if (!requester.companyId) {
+      throw new ForbiddenException('Company admin must be assigned to a company');
+    }
+    if (user.companyId !== requester.companyId) {
+      throw new ForbiddenException('You can only manage users in your company');
+    }
+    if (!this.companyAdminManagedRoles.includes(user.role)) {
+      throw new ForbiddenException('Company admin can only manage branch managers or sales reps');
+    }
   }
 
   private async resolveScope(

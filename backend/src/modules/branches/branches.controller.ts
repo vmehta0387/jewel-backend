@@ -13,13 +13,13 @@ export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN)
-  create(@Body() dto: CreateBranchDto) {
-    return this.branchesService.create(dto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  create(@Body() dto: CreateBranchDto, @Request() req: { user: AuthUser }) {
+    return this.branchesService.create(dto, req.user);
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   findAll(
     @Request() req: { user: AuthUser },
     @Query('page') page?: string,
@@ -43,26 +43,26 @@ export class BranchesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.branchesService.findOne(id, req.user);
   }
 
   @Put(':id')
-  @Roles(UserRole.SUPER_ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateBranchDto) {
-    return this.branchesService.update(id, dto);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  update(@Param('id') id: string, @Body() dto: UpdateBranchDto, @Request() req: { user: AuthUser }) {
+    return this.branchesService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.SUPER_ADMIN)
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateBranchStatusDto) {
-    return this.branchesService.updateStatus(id, dto.isActive);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  updateStatus(@Param('id') id: string, @Body() dto: UpdateBranchStatusDto, @Request() req: { user: AuthUser }) {
+    return this.branchesService.updateStatus(id, dto.isActive, req.user);
   }
 
   @Post(':id/pricing-slabs')
-  @Roles(UserRole.SUPER_ADMIN)
-  updatePricingSlabs(@Param('id') id: string, @Body() slabs: BranchPricingSlabDto[]) {
-    return this.branchesService.updatePricingSlabs(id, slabs);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  updatePricingSlabs(@Param('id') id: string, @Body() slabs: BranchPricingSlabDto[], @Request() req: { user: AuthUser }) {
+    return this.branchesService.updatePricingSlabs(id, slabs, req.user);
   }
 }

@@ -63,7 +63,12 @@ export class AuthService {
     }
 
     if (clientPlatform === LoginClientPlatform.ADMIN_PORTAL) {
-      const adminAllowedRoles: UserRole[] = [UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP];
+      const adminAllowedRoles: UserRole[] = [
+        UserRole.SUPER_ADMIN,
+        UserRole.INTERNAL_REP,
+        UserRole.COMPANY_ADMIN,
+        UserRole.BRANCH_MANAGER,
+      ];
       if (!adminAllowedRoles.includes(user.role)) {
         throw new UnauthorizedException('This role is not allowed in the admin portal');
       }

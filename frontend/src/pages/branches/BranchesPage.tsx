@@ -12,6 +12,8 @@ export default function BranchesPage() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const canManageBranches = isSuperAdmin || isCompanyAdmin;
   const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -107,7 +109,7 @@ export default function BranchesPage() {
     },
   ];
 
-  if (isSuperAdmin) {
+  if (canManageBranches) {
     columns.push({
       key: 'actions',
       label: 'Actions',
@@ -147,12 +149,12 @@ export default function BranchesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Branches</h1>
           <p className="text-sm text-gray-600 mt-1">
-            {isSuperAdmin
+            {canManageBranches
               ? 'Manage company branches, branch managers, and branch-level pricing'
               : 'View branches for your assigned companies'}
           </p>
         </div>
-        {isSuperAdmin && <Button onClick={() => navigate('/branches/add')}>+ Add Branch</Button>}
+        {canManageBranches && <Button onClick={() => navigate('/branches/add')}>+ Add Branch</Button>}
       </div>
 
       <Card className="mb-6">

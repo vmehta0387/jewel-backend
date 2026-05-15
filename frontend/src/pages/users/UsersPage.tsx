@@ -9,6 +9,7 @@ import Avatar from '../../components/common/Avatar';
 import api from '../../services/api';
 import { UserRole } from '../../types/auth.types';
 import { TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
+import { getStoredUser } from '../../utils/auth';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 type RoleFilter = 'ALL' | UserRole;
@@ -23,6 +24,8 @@ const roleBadgeClass: Record<UserRole, string> = {
 
 export default function UsersPage() {
   const navigate = useNavigate();
+  const currentUser = getStoredUser();
+  const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -32,6 +35,9 @@ export default function UsersPage() {
   const [role, setRole] = useState<RoleFilter>('ALL');
   const [page, setPage] = useState(1);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const roleOptions = isCompanyAdmin
+    ? USER_ROLE_OPTIONS.filter((option) => option.value === 'BRANCH_MANAGER' || option.value === 'SALES_REP')
+    : USER_ROLE_OPTIONS;
 
   const pageSize = 15;
   const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
@@ -91,6 +97,12 @@ export default function UsersPage() {
     setStatus('ALL');
     setRole('ALL');
   };
+
+  useEffect(() => {
+    if (isCompanyAdmin && role !== 'ALL' && role !== 'BRANCH_MANAGER' && role !== 'SALES_REP') {
+      setRole('ALL');
+    }
+  }, [isCompanyAdmin, role]);
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     try {
@@ -320,25 +332,33 @@ export default function UsersPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-          <p className="text-sm text-gray-600 mt-1">Manage role assignments and task-level access control.</p>
+          <p className="text-sm text-gray-600 mt-1">
+            {isCompanyAdmin
+              ? 'Manage branch managers and sales reps in your company.'
+              : 'Manage role assignments and task-level access control.'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
-            Template
-          </Button>
-          <Button type="button" variant="secondary" onClick={handleExport}>
-            Export Excel
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => importInputRef.current?.click()} disabled={importing}>
-            {importing ? 'Importing...' : 'Import Excel'}
-          </Button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={handleImportChange}
-          />
+          {!isCompanyAdmin && (
+            <>
+              <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
+                Template
+              </Button>
+              <Button type="button" variant="secondary" onClick={handleExport}>
+                Export Excel
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => importInputRef.current?.click()} disabled={importing}>
+                {importing ? 'Importing...' : 'Import Excel'}
+              </Button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleImportChange}
+              />
+            </>
+          )}
           <Button onClick={() => navigate('/users/add')}>+ Add User</Button>
         </div>
       </div>
@@ -358,7 +378,7 @@ export default function UsersPage() {
             onChange={(event) => setRole(event.target.value as RoleFilter)}
           >
             <option value="ALL">All Roles</option>
-            {USER_ROLE_OPTIONS.map((option) => (
+            {roleOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>

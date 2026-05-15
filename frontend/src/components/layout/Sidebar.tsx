@@ -30,7 +30,7 @@ interface SidebarProps {
 }
 
 const navigation: NavigationItem[] = [
-  { name: 'Dashboard', path: '/dashboard', icon: 'dashboard' },
+  { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP'] },
   {
     name: 'Companies',
     path: '/companies',
@@ -42,15 +42,15 @@ const navigation: NavigationItem[] = [
     name: 'Branches',
     path: '/branches',
     icon: 'branches',
-    permission: 'COMPANY_MANAGEMENT',
-    allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP'],
+    permission: 'BRANCH_MANAGEMENT',
+    allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN'],
   },
   {
     name: 'Users',
     path: '/users',
     icon: 'users',
     permission: 'USER_MANAGEMENT',
-    allowedRoles: ['SUPER_ADMIN'],
+    allowedRoles: ['SUPER_ADMIN', 'COMPANY_ADMIN'],
   },
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES' },

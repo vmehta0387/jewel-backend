@@ -143,6 +143,13 @@ export class CompaniesService {
       query.andWhere('company.accountManagerId = :requesterId', { requesterId: requester.id });
     }
 
+    if (requester?.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new NotFoundException('Company not found');
+      }
+      query.andWhere('company.id = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+    }
+
     if (pricingMode === 'DEFAULT') {
       query.andWhere('company.enableSlabPricing = :slab AND company.enableCollectionPricing = :collection', {
         slab: false,
@@ -186,6 +193,10 @@ export class CompaniesService {
     }
 
     if (requester?.role === UserRole.INTERNAL_REP && company.accountManagerId !== requester.id) {
+      throw new NotFoundException('Company not found');
+    }
+
+    if (requester?.role === UserRole.COMPANY_ADMIN && requester.companyId !== company.id) {
       throw new NotFoundException('Company not found');
     }
 

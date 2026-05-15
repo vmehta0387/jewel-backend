@@ -16,28 +16,62 @@ import ProtectedRoute from '../components/auth/ProtectedRoute';
 import UsersPage from '../pages/users/UsersPage';
 import AddUser from '../pages/users/AddUser';
 import EditUser from '../pages/users/EditUser';
+import { getStoredUser, getToken } from '../utils/auth';
+
+function HomeRedirect() {
+  const token = getToken();
+  const user = getStoredUser();
+
+  if (!token || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role === 'COMPANY_ADMIN' || user.role === 'BRANCH_MANAGER') {
+    return <Navigate to="/orders" replace />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
+}
 
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <Navigate to="/dashboard" replace />,
+    element: <HomeRedirect />,
   },
   {
     path: '/login',
     element: <LoginPage />,
   },
   {
-    element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
+    element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN', 'BRANCH_MANAGER']} />,
     children: [
       {
         element: <DashboardLayout />,
         children: [
-          { path: '/dashboard', element: <DashboardPage /> },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
+            children: [{ path: '/dashboard', element: <DashboardPage /> }],
+          },
           {
             element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
             children: [
               { path: '/companies', element: <CompaniesPage /> },
+            ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']} requiredTaskPermissions={['BRANCH_MANAGEMENT']} />,
+            children: [
               { path: '/branches', element: <BranchesPage /> },
+              { path: '/branches/add', element: <AddBranch /> },
+              { path: '/branches/edit/:id', element: <EditBranch /> },
+            ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} />,
+            children: [
+              { path: '/users', element: <UsersPage /> },
+              { path: '/users/add', element: <AddUser /> },
+              { path: '/users/edit/:id', element: <EditUser /> },
             ],
           },
           {
@@ -45,11 +79,6 @@ export const router = createBrowserRouter([
             children: [
               { path: '/companies/add', element: <AddCompany /> },
               { path: '/companies/edit/:id', element: <EditCompany /> },
-              { path: '/branches/add', element: <AddBranch /> },
-              { path: '/branches/edit/:id', element: <EditBranch /> },
-              { path: '/users', element: <UsersPage /> },
-              { path: '/users/add', element: <AddUser /> },
-              { path: '/users/edit/:id', element: <EditUser /> },
             ],
           },
           {

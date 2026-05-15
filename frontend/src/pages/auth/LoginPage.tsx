@@ -5,7 +5,7 @@ import Button from '../../components/common/Button';
 import api from '../../services/api';
 import { saveAuthSession } from '../../utils/auth';
 
-const ADMIN_PORTAL_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'INTERNAL_REP']);
+const ADMIN_PORTAL_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN', 'BRANCH_MANAGER']);
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -29,7 +29,11 @@ export default function LoginPage() {
       }
       saveAuthSession(response.data.accessToken, nextUser);
 
-      const redirectTo = (location.state as { from?: string } | undefined)?.from || '/dashboard';
+      const roleDefaultRoute =
+        nextUser.role === 'COMPANY_ADMIN' || nextUser.role === 'BRANCH_MANAGER'
+          ? '/orders'
+          : '/dashboard';
+      const redirectTo = (location.state as { from?: string } | undefined)?.from || roleDefaultRoute;
       navigate(redirectTo, { replace: true });
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;

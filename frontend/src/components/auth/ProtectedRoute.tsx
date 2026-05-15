@@ -17,13 +17,17 @@ export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions }
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
+  const fallbackPath =
+    user.role === 'COMPANY_ADMIN' || user.role === 'BRANCH_MANAGER'
+      ? '/orders'
+      : '/dashboard';
+
   if (allowedRoles && !hasAllowedRole(user, allowedRoles)) {
-    clearAuthSession();
-    return <Navigate to="/login" replace />;
+    return <Navigate to={fallbackPath} replace />;
   }
 
   if (requiredTaskPermissions && !hasAllTaskPermissions(user, requiredTaskPermissions)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={fallbackPath} replace />;
   }
 
   return <Outlet />;
