@@ -6,6 +6,7 @@ import Input from '../../components/common/Input';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
+  ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
   TASK_PERMISSION_OPTIONS,
   USER_ROLE_OPTIONS,
@@ -69,6 +70,11 @@ export default function EditUser() {
     isActive: true,
     taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE.COMPANY_ADMIN,
   });
+  const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
+  const visiblePermissionOptions = TASK_PERMISSION_OPTIONS.filter((permission) =>
+    allowedPermissionsForRole.includes(permission.value),
+  );
+  const canCustomizePermissions = formData.role === 'INTERNAL_REP' || formData.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     fetchInitialData();
@@ -94,6 +100,10 @@ export default function EditUser() {
       setCompanies(companiesResponse.data.data || []);
 
       const user = userResponse.data as UserRecord;
+      const allowedByUserRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[user.role];
+      const sanitizedTaskPermissions = (user.taskPermissions || []).filter((permission) =>
+        allowedByUserRole.includes(permission),
+      );
       setFormData({
         firstName: user.firstName || '',
         lastName: user.lastName || '',
@@ -106,8 +116,8 @@ export default function EditUser() {
         photoUrl: user.photoStoragePath || user.photoUrl || '',
         isActive: user.isActive,
         taskPermissions:
-          user.taskPermissions && user.taskPermissions.length > 0
-            ? user.taskPermissions
+          sanitizedTaskPermissions.length > 0
+            ? sanitizedTaskPermissions
             : DEFAULT_TASK_PERMISSIONS_BY_ROLE[user.role],
       });
       setPhotoPreviewUrl(user.photoUrl || user.photoStoragePath || '');
@@ -176,6 +186,8 @@ export default function EditUser() {
   };
 
   const handlePermissionToggle = (permission: TaskPermission) => {
+    if (!canCustomizePermissions) return;
+    if (!allowedPermissionsForRole.includes(permission)) return;
     setFormData((prev) => {
       const exists = prev.taskPermissions.includes(permission);
       return {
@@ -195,6 +207,9 @@ export default function EditUser() {
 
     setIsSubmitting(true);
     try {
+      const normalizedPermissions = formData.taskPermissions.filter((permission) =>
+        allowedPermissionsForRole.includes(permission),
+      );
       const payload: Record<string, unknown> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
@@ -205,7 +220,7 @@ export default function EditUser() {
         phone: formData.phone.trim() || null,
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
-        taskPermissions: formData.taskPermissions,
+        taskPermissions: normalizedPermissions,
       };
 
       if (formData.password.trim()) {
@@ -419,12 +434,15 @@ export default function EditUser() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">
-                Select what this user is allowed to access. Use defaults to reset by role.
+                {canCustomizePermissions
+                  ? 'Select what this user is allowed to access. Use defaults to reset by role.'
+                  : 'Task permissions for this role are fixed by policy.'}
               </p>
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
+                disabled={!canCustomizePermissions}
                 onClick={() =>
                   setFormData((prev) => ({
                     ...prev,
@@ -437,7 +455,7 @@ export default function EditUser() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {TASK_PERMISSION_OPTIONS.map((permission) => {
+              {visiblePermissionOptions.map((permission) => {
                 const checked = formData.taskPermissions.includes(permission.value);
                 return (
                   <label
@@ -450,6 +468,7 @@ export default function EditUser() {
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!canCustomizePermissions}
                         onChange={() => handlePermissionToggle(permission.value)}
                         className="mt-1 w-4 h-4 text-primary-600"
                       />

@@ -11,6 +11,7 @@ const USER_KEY = 'auth_user';
 const BIOMETRIC_KEY = 'auth_biometric_enabled';
 const BIOMETRIC_PROMPTED_KEY = 'auth_biometric_prompted';
 const SECURE_TOKEN_KEY = 'auth_secure_token';
+const MOBILE_ALLOWED_ROLES = new Set(['SALES_REP', 'BRANCH_MANAGER', 'COMPANY_ADMIN']);
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -49,6 +50,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const assertMobileAccessRole = useCallback((nextUser: AuthUser) => {
+    if (!MOBILE_ALLOWED_ROLES.has(nextUser.role)) {
+      throw new Error('This role is not allowed in the mobile app');
+    }
+  }, []);
+
   const loadStored = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -77,19 +84,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (storedToken) {
-        setToken(storedToken);
         if (storedUser) {
-          setUser(JSON.parse(storedUser));
+          const parsed = JSON.parse(storedUser) as AuthUser;
+          assertMobileAccessRole(parsed);
+          setToken(storedToken);
+          setUser(parsed);
         } else {
           const me = await meApi(storedToken);
+          assertMobileAccessRole(me);
+          setToken(storedToken);
           setUser(me);
           await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
         }
       }
+    } catch {
+      setUser(null);
+      setToken(null);
+      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY, BIOMETRIC_KEY, BIOMETRIC_PROMPTED_KEY]);
+      await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+      setBiometricEnabled(false);
+      setBiometricPrompted(false);
     } finally {
       setIsLoading(false);
     }
-  }, [checkBiometricAvailable]);
+  }, [assertMobileAccessRole, checkBiometricAvailable]);
 
   useEffect(() => {
     loadStored();
@@ -98,6 +116,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = useCallback(
     async (email: string, password: string) => {
       const response = await loginApi(email, password);
+      assertMobileAccessRole(response.user);
       
       const available = await checkBiometricAvailable();
       setBiometricAvailable(available);
@@ -145,7 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
     },
-    [checkBiometricAvailable],
+    [assertMobileAccessRole, checkBiometricAvailable],
   );
 
   const setBiometricPreference = useCallback(async (enabled: boolean) => {
@@ -195,12 +214,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Biometric authentication cancelled');
     }
     const me = await meApi(storedToken);
+    assertMobileAccessRole(me);
     setUser(me);
     await AsyncStorage.setItem(TOKEN_KEY, storedToken);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
     setToken(storedToken);
     setBiometricRequired(false);
-  }, [checkBiometricAvailable]);
+  }, [assertMobileAccessRole, checkBiometricAvailable]);
 
   const signOut = useCallback(async () => {
     setUser(null);

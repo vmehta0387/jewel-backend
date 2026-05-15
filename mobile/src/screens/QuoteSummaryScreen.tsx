@@ -4,7 +4,6 @@ import {
   Image,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -279,22 +278,6 @@ const QuoteSummaryScreen = () => {
       shipped: shippedDone,
     };
   }, [currentStatus]);
-
-  const handleShare = useCallback(async () => {
-    const message = [
-      `Order Summary - ${orderNumber || 'Draft'}`,
-      `Customer: ${summary.customerName || '-'}`,
-      `PO: ${summary.purchaseOrderNumber || '-'}`,
-      `Item: ${summary.designName || summary.designNo || '-'}`,
-      `Price: ${formatCurrency(retailPrice)}`,
-      `Status: ${summaryStatus}`,
-    ].join('\n');
-
-    await Share.share({
-      title: 'Order Summary',
-      message,
-    });
-  }, [orderNumber, summary.customerName, summary.purchaseOrderNumber, summary.designName, summary.designNo, retailPrice, summaryStatus]);
 
   const handleSendForApproval = useCallback(async () => {
     if (!token || !user?.companyId || !user?.branchId) {
@@ -574,10 +557,6 @@ const QuoteSummaryScreen = () => {
               <TouchableOpacity style={styles.smallBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
                 <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
                 <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]}>{actionConfig.leftLabel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.smallBtn} onPress={handleShare} activeOpacity={0.9}>
-                <Ionicons name="share-social-outline" size={13} color="#A88BC5" />
-                <Text style={[styles.smallBtnText, styles.smallBtnTextShare]}>Share</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity
@@ -903,9 +882,6 @@ const styles = StyleSheet.create({
   },
   smallBtnTextEdit: {
     color: '#8B6D50',
-  },
-  smallBtnTextShare: {
-    color: '#7B6E8E',
   },
   sendBtn: {
     height: 46,

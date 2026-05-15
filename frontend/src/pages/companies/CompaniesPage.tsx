@@ -81,7 +81,7 @@ export default function CompaniesPage() {
     },
     {
       key: 'defaultMultiplier',
-      label: 'Default Multiplier',
+      label: 'Default Mark-up',
       render: (val: number) => `${val}x`,
     },
     {
@@ -193,3 +193,4 @@ export default function CompaniesPage() {
     </div>
   );
 }
+

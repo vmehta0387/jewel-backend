@@ -18,7 +18,8 @@ export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions }
   }
 
   if (allowedRoles && !hasAllowedRole(user, allowedRoles)) {
-    return <Navigate to="/dashboard" replace />;
+    clearAuthSession();
+    return <Navigate to="/login" replace />;
   }
 
   if (requiredTaskPermissions && !hasAllTaskPermissions(user, requiredTaskPermissions)) {

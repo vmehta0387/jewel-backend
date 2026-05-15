@@ -9,7 +9,8 @@ import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 import { User } from '../users/entities/user.entity';
-import { LoginDto } from './dto/login.dto';
+import { UserRole } from '../../common/enums/user-role.enum';
+import { LoginClientPlatform, LoginDto } from './dto/login.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUser }> {
     const user = await this.validateUser(dto.email, dto.password);
+    this.assertLoginRoleAccess(user, dto.clientPlatform);
     user.lastSeenAt = new Date();
     await this.userRepo.save(user);
     const payload: JwtPayload = {
@@ -41,6 +43,31 @@ export class AuthService {
       accessToken: await this.jwtService.signAsync(payload),
       user: await this.toAuthUser(user),
     };
+  }
+
+  private assertLoginRoleAccess(user: User, clientPlatform?: LoginClientPlatform): void {
+    if (!clientPlatform) {
+      return;
+    }
+
+    if (clientPlatform === LoginClientPlatform.MOBILE_APP) {
+      const mobileAllowedRoles: UserRole[] = [
+        UserRole.SALES_REP,
+        UserRole.BRANCH_MANAGER,
+        UserRole.COMPANY_ADMIN,
+      ];
+      if (!mobileAllowedRoles.includes(user.role)) {
+        throw new UnauthorizedException('This role is not allowed in the mobile app');
+      }
+      return;
+    }
+
+    if (clientPlatform === LoginClientPlatform.ADMIN_PORTAL) {
+      const adminAllowedRoles: UserRole[] = [UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP];
+      if (!adminAllowedRoles.includes(user.role)) {
+        throw new UnauthorizedException('This role is not allowed in the admin portal');
+      }
+    }
   }
 
   async me(userId: string): Promise<AuthUser> {

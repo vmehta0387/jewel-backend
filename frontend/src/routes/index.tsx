@@ -27,7 +27,7 @@ export const router = createBrowserRouter([
     element: <LoginPage />,
   },
   {
-    element: <ProtectedRoute />,
+    element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
     children: [
       {
         element: <DashboardLayout />,

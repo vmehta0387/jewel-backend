@@ -169,8 +169,14 @@
   }
   .blitz-bolt {
     color: var(--blitz-gold);
-    font-size: 14px;
+    @apply inline-flex items-center justify-center;
+    width: 18px;
+    height: 18px;
     line-height: 1;
+  }
+  .blitz-bolt-icon {
+    width: 100%;
+    height: 100%;
   }
   .blitz-wordmark {
     color: var(--blitz-text);
@@ -193,7 +199,8 @@
     letter-spacing: 0.12em;
   }
   .blitz-brand-compact .blitz-bolt {
-    font-size: 12px;
+    width: 20px;
+    height: 20px;
   }
   .sidebar-blitz .blitz-wordmark {
     color: #f5f0e8;

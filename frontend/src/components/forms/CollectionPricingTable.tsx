@@ -44,7 +44,7 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
             <thead>
               <tr>
                 <th className="app-table-head-cell">Collection Type</th>
-                <th className="app-table-head-cell">Multiplier</th>
+                <th className="app-table-head-cell">Mark-up</th>
                 <th className="app-table-head-cell text-right">Action</th>
               </tr>
             </thead>
@@ -95,5 +95,6 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
     </div>
   );
 }
+
 
 

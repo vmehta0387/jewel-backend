@@ -7,7 +7,6 @@ import {
   NativeSyntheticEvent,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -531,75 +530,6 @@ const DesignDetailScreen = () => {
     ],
   );
 
-  const handleShare = useCallback(async () => {
-    if (!activeDesign) return;
-    const shareImageUrl = activeImage || '';
-
-    const shortenUrl = async (url: string) => {
-      if (!url || url.length < 40) return url;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2800);
-        const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, {
-          method: 'GET',
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-        if (!response.ok) return url;
-        const shortened = (await response.text()).trim();
-        if (/^https?:\/\//i.test(shortened)) return shortened;
-      } catch {
-        // Fallback: keep original URL when shortener fails or times out.
-      }
-      return url;
-    };
-
-    const finalImageUrl = shareImageUrl ? await shortenUrl(shareImageUrl) : '';
-    const detailLines = [
-      `Design: ${activeDesign.designNo || '-'}`,
-      activeDesign.designName ? `Name: ${activeDesign.designName}` : null,
-      `Price: ${formatDetailPrice(displayPrice)}`,
-      `Metal: ${toMetalShortCode(selectedMetalColor)}`,
-      `Coverage: ${selectedStyle || '-'}`,
-      `Diamond Quality: ${selectedQuality || '-'}`,
-      `Carat Weight: ${toCtwLabel(selectedWeight) || '-'}`,
-      `Ring Size: ${selectedRingSize || '-'}`,
-      `Stone: ${selectedDiamondType || '-'}`,
-      `Shape: ${selectedShape || '-'}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    const shareMessage = finalImageUrl
-      ? `${detailLines}\n\nImage: ${finalImageUrl}`
-      : detailLines;
-
-    await Share.share(
-      Platform.select({
-        ios: {
-          title: activeDesign.designNo,
-          message: detailLines,
-          url: finalImageUrl || undefined,
-        },
-        default: {
-          title: activeDesign.designNo,
-          message: shareMessage,
-        },
-      })!,
-    );
-  }, [
-    activeDesign,
-    activeImage,
-    displayPrice,
-    selectedMetalColor,
-    selectedStyle,
-    selectedQuality,
-    selectedWeight,
-    selectedRingSize,
-    selectedDiamondType,
-    selectedShape,
-  ]);
-
   const handleOpenQuoteBuilder = useCallback(() => {
     if (!activeDesign) return;
     const shortDescription = [
@@ -1009,9 +939,6 @@ const DesignDetailScreen = () => {
           <View style={styles.bottomActionsRow}>
             <TouchableOpacity style={styles.ghostActionBtn} onPress={handleOpenQuoteBuilder} activeOpacity={0.9}>
               <Text style={styles.ghostActionText}>Save Quote</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.ghostActionBtn} onPress={handleShare} activeOpacity={0.9}>
-              <Text style={styles.ghostActionText}>Share</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.processActionBtn} onPress={handleProcessOrder} activeOpacity={0.9}>
               <Text style={styles.processActionText}>Process Order</Text>

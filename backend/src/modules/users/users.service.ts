@@ -121,8 +121,37 @@ export class UsersService {
       TaskPermission.ORDER_ENTRIES,
       TaskPermission.VIEW_REPORTS,
     ],
+    [UserRole.INTERNAL_REP]: [],
+  };
+
+  private readonly allowedPermissionsByRole: Record<UserRole, TaskPermission[]> = {
+    [UserRole.SUPER_ADMIN]: this.allPermissions,
+    [UserRole.COMPANY_ADMIN]: [
+      TaskPermission.BRANCH_MANAGEMENT,
+      TaskPermission.USER_MANAGEMENT,
+      TaskPermission.DESIGN_ENTRIES,
+      TaskPermission.ORDER_ENTRIES,
+      TaskPermission.ORDER_APPROVALS,
+      TaskPermission.PRICING_CONFIGURATION,
+      TaskPermission.VIEW_REPORTS,
+    ],
+    [UserRole.BRANCH_MANAGER]: [
+      TaskPermission.DESIGN_ENTRIES,
+      TaskPermission.ORDER_ENTRIES,
+      TaskPermission.ORDER_APPROVALS,
+      TaskPermission.PRICING_CONFIGURATION,
+      TaskPermission.VIEW_REPORTS,
+    ],
+    [UserRole.SALES_REP]: [
+      TaskPermission.DESIGN_ENTRIES,
+      TaskPermission.ORDER_ENTRIES,
+      TaskPermission.VIEW_REPORTS,
+    ],
     [UserRole.INTERNAL_REP]: [
       TaskPermission.COMPANY_MANAGEMENT,
+      TaskPermission.DESIGN_ENTRIES,
+      TaskPermission.ORDER_ENTRIES,
+      TaskPermission.ORDER_APPROVALS,
       TaskPermission.VIEW_REPORTS,
     ],
   };
@@ -670,12 +699,13 @@ export class UsersService {
     permissions: TaskPermission[] | undefined,
     role: UserRole,
   ): TaskPermission[] {
+    const allowed = new Set(this.allowedPermissionsByRole[role] || []);
+    const source = permissions ?? this.defaultPermissionsByRole[role];
+    const normalized = Array.from(new Set(source)).filter((permission) => allowed.has(permission));
     if (role === UserRole.SUPER_ADMIN) {
       return this.allPermissions;
     }
-
-    const source = permissions ?? this.defaultPermissionsByRole[role];
-    return Array.from(new Set(source));
+    return normalized;
   }
 
   private normalizeEmail(email: string): string {

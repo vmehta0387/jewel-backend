@@ -257,7 +257,7 @@ export class CompaniesService {
       }
 
       if (slab.multiplier < 1 || slab.multiplier > 10) {
-        throw new BadRequestException('Company pricing slab multiplier must be between 1 and 10');
+        throw new BadRequestException('Company pricing slab mark-up must be between 1 and 10');
       }
 
       if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
@@ -345,3 +345,4 @@ export class CompaniesService {
     }
   }
 }
+

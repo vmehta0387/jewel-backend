@@ -20,6 +20,7 @@ interface OrderRow {
   salesRepEmail?: string | null;
   deliveryDate?: string | null;
   quantity: number;
+  costPrice?: number | null;
   price: number;
   shortDescription?: string | null;
   customerName?: string | null;
@@ -168,6 +169,14 @@ const isVideoUrl = (url: string): boolean => {
 const formatMoney = (value: number): string =>
   `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 const formatWeight = (value?: number | null): string => Number(value || 0).toFixed(3);
+const formatDesignLabel = (designNo?: string | null, version?: string | null): string => {
+  const safeNo = String(designNo || '').trim();
+  const safeVersion = String(version || '').trim();
+  if (!safeNo && !safeVersion) return '-';
+  if (!safeVersion) return safeNo || '-';
+  if (!safeNo) return safeVersion;
+  return `${safeNo} - ${safeVersion.toUpperCase()}`;
+};
 const getBaseDesignNo = (designNo?: string | null): string =>
   String(designNo || '')
     .trim()
@@ -255,6 +264,7 @@ function Modal({
 
 export default function OrdersPage() {
   const currentUser = useMemo(() => getStoredUser(), []);
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const canViewOrders = useMemo(() => {
     if (!currentUser) return false;
     return hasTaskPermission(currentUser, 'ORDER_ENTRIES');
@@ -284,6 +294,7 @@ export default function OrdersPage() {
   const [packetLookup, setPacketLookup] = useState<Record<string, string>>({});
   const [viewOrder, setViewOrder] = useState<OrderRow | null>(null);
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ from: string; to: string } | null>(null);
   const [filters, setFilters] = useState({
     orderStatus: '',
     companyId: '',
@@ -292,6 +303,7 @@ export default function OrdersPage() {
   });
 
   const isEditing = Boolean(editingOrderId);
+  const listTableColumnCount = isSuperAdmin ? 12 : 11;
 
   const pageOffset = (page - 1) * 15;
 
@@ -333,21 +345,13 @@ export default function OrdersPage() {
     try {
       const response = await api.get('/products', { params: { limit: 200, status: 'ACTIVE' } });
       const allRows: DesignOption[] = response.data?.data || [];
-
-      // Prefer primary design versions in order flow. If primary flags are missing, keep latest row per base design.
-      const primaryRows = allRows.filter((row) => Boolean(row.isPrimary));
-      const sourceRows = primaryRows.length > 0 ? primaryRows : allRows;
-
-      const deduped = new Map<string, DesignOption>();
-      sourceRows.forEach((row) => {
-        const base = getBaseDesignNo(row.designNo);
-        const key = base || row.designNo || row.id;
-        if (!deduped.has(key)) {
-          deduped.set(key, row);
-        }
+      const sorted = [...allRows].sort((a, b) => {
+        const aBase = getBaseDesignNo(a.designNo);
+        const bBase = getBaseDesignNo(b.designNo);
+        if (aBase !== bBase) return aBase.localeCompare(bBase);
+        return (a.version || '').localeCompare(b.version || '', undefined, { numeric: true, sensitivity: 'base' });
       });
-
-      setDesignOptions(Array.from(deduped.values()));
+      setDesignOptions(sorted);
     } catch {
       setDesignOptions([]);
     }
@@ -572,16 +576,21 @@ export default function OrdersPage() {
     setShowAddModal(true);
   };
 
+  const requestStatusChange = (nextStatus: string) => {
+    if (!nextStatus || nextStatus === form.status) return;
+    setPendingStatusChange({ from: form.status, to: nextStatus });
+  };
+
   const selectedDesignLabel = useMemo(() => {
     if (!designDetail) return '-';
-    return `${designDetail.designNo}`;
+    return formatDesignLabel(designDetail.designNo, designDetail.version);
   }, [designDetail]);
 
   const editingDesignLabel = useMemo(() => {
     if (selectedDesignLabel !== '-') return selectedDesignLabel;
     if (editingDesignNo) return editingDesignNo;
     const matched = designOptions.find((option) => option.id === form.designId);
-    return matched?.designNo || '';
+    return formatDesignLabel(matched?.designNo, matched?.version);
   }, [selectedDesignLabel, editingDesignNo, designOptions, form.designId]);
 
   const metalsDisplay = useMemo(() => {
@@ -671,9 +680,10 @@ export default function OrdersPage() {
             <div><span class="label">Status</span>${order.status}${order.isActive ? '' : ' (Suspended)'}</div>
             <div><span class="label">Company</span>${order.companyName || '-'}</div>
             <div><span class="label">Branch</span>${order.branchName || '-'}</div>
-            <div><span class="label">Design</span>${design ? `${design.designNo}` : '-'}</div>
+            <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
             <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
             <div><span class="label">Quantity</span>${order.quantity}</div>
+            ${isSuperAdmin ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
             <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
             <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
             <div><span class="label">Customer Name</span>${order.customerName || '-'}</div>
@@ -856,6 +866,7 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">Branch</th>
                   <th className="app-table-head-cell">Delivery</th>
                   <th className="app-table-head-cell">Qty</th>
+                  {isSuperAdmin && <th className="app-table-head-cell">Cost Price</th>}
                   <th className="app-table-head-cell">Price</th>
                   <th className="app-table-head-cell">Status</th>
                   <th className="app-table-head-cell">Created</th>
@@ -865,25 +876,28 @@ export default function OrdersPage() {
               <tbody>
                 {ordersLoading && (
                   <tr>
-                    <td colSpan={11} className="app-table-empty">Loading orders...</td>
+                    <td colSpan={listTableColumnCount} className="app-table-empty">Loading orders...</td>
                   </tr>
                 )}
                 {!ordersLoading && orders.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="app-table-empty">No orders found.</td>
+                    <td colSpan={listTableColumnCount} className="app-table-empty">No orders found.</td>
                   </tr>
                 )}
                 {!ordersLoading && orders.map((order, index) => (
                   <tr key={order.id} className="app-table-row">
                     <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                     <td className="app-table-cell text-sm font-semibold text-slate-900">{order.orderNumber}</td>
-                    <td className="app-table-cell text-sm text-slate-700">
-                      {order.designNo ? `${order.designNo}` : '-'}
-                    </td>
+                    <td className="app-table-cell text-sm text-slate-700">{formatDesignLabel(order.designNo, order.designVersion)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.companyName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.deliveryDate || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{Number(order.quantity || 0)}</td>
+                    {isSuperAdmin && (
+                      <td className="app-table-cell text-sm text-slate-700">
+                        {order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}
+                      </td>
+                    )}
                     <td className="app-table-cell text-sm font-semibold text-slate-800">{formatMoney(Number(order.price || 0))}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.status}</td>
                     <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">
@@ -1012,7 +1026,7 @@ export default function OrdersPage() {
                         <option value="">Select Design</option>
                         {designOptions.map((option) => (
                           <option key={option.id} value={option.id}>
-                            {option.designNo}
+                            {formatDesignLabel(option.designNo, option.version)}
                           </option>
                         ))}
                       </select>
@@ -1064,7 +1078,7 @@ export default function OrdersPage() {
                     <select
                       className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={form.status}
-                      onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value }))}
+                      onChange={(event) => requestStatusChange(event.target.value)}
                     >
                       {orderStatusOptions.map((status) => (
                         <option key={status} value={status}>
@@ -1337,13 +1351,37 @@ export default function OrdersPage() {
           </div>
         </Modal>
       )}
+      {pendingStatusChange && (
+        <Modal title="Confirm status change" onClose={() => setPendingStatusChange(null)} size="max-w-md">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              Do you want to change status from <span className="font-semibold">{pendingStatusChange.from}</span> to{' '}
+              <span className="font-semibold">{pendingStatusChange.to}</span>?
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" type="button" onClick={() => setPendingStatusChange(null)}>
+                No
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setForm((prev) => ({ ...prev, status: pendingStatusChange.to }));
+                  setPendingStatusChange(null);
+                }}
+              >
+                Yes
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {showViewModal && (
         <Modal title={`ORDER DETAILS ${viewOrder?.orderNumber ? `(${viewOrder.orderNumber})` : ''}`} onClose={() => setShowViewModal(false)} size="max-w-6xl">
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="text-sm font-medium text-slate-700">Design</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign ? `${viewDesign.designNo}` : '-'}
+                {viewDesign ? formatDesignLabel(viewDesign.designNo, viewDesign.version) : '-'}
               </div>
             </div>
             <div>
@@ -1424,6 +1462,16 @@ export default function OrdersPage() {
                 {formatMoney(Number(viewOrder?.price || 0))}
               </div>
             </div>
+            {isSuperAdmin && (
+              <div>
+                <label className="text-sm font-medium text-slate-700">Cost Price</label>
+                <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  {viewOrder?.costPrice !== undefined && viewOrder?.costPrice !== null
+                    ? formatMoney(Number(viewOrder?.costPrice || 0))
+                    : '-'}
+                </div>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-slate-700">Sales Rep</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">

@@ -30,7 +30,7 @@ export const validatePricingSlabs = (slabs: Slab[]): string | null => {
       return 'Max Cost must be greater than or equal to Min Cost';
     }
     if (slab.multiplier < 1 || slab.multiplier > 10) {
-      return 'Multiplier must be between 1 and 10';
+      return 'Mark-up must be between 1 and 10';
     }
     if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
       return 'Pricing slab ranges cannot overlap';
@@ -64,7 +64,7 @@ export default function PricingSlabTable({ slabs, setSlabs }: Props) {
               <tr>
                 <th className="app-table-head-cell">Min Cost</th>
                 <th className="app-table-head-cell">Max Cost</th>
-                <th className="app-table-head-cell">Multiplier</th>
+                <th className="app-table-head-cell">Mark-up</th>
                 <th className="app-table-head-cell text-right">Action</th>
               </tr>
             </thead>
@@ -118,4 +118,5 @@ export default function PricingSlabTable({ slabs, setSlabs }: Props) {
     </div>
   );
 }
+
 

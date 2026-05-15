@@ -5,7 +5,6 @@ import {
   Image,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -593,42 +592,6 @@ const QuoteBuilderScreen = () => {
     }
   }, [canPersist, navigation, persistOrder]);
 
-  const handleShare = useCallback(async () => {
-    const quoteNo = order?.orderNumber || 'Quote Draft';
-    const payload = [
-      `${quoteNo} - Jewelry Proposal`,
-      `Design: ${(activeDesign?.designNo || draft.designNo || '').trim()}`,
-      activeDesign?.designName || draft.designName ? `Item: ${(activeDesign?.designName || draft.designName || '').trim()}` : null,
-      `Price: ${formatCurrency(displayPrice)}`,
-      selectionSummary ? `Specs: ${selectionSummary}` : null,
-      customerName ? `Prepared for: ${customerName}` : null,
-      customerPhone ? `Phone: ${customerPhone}` : null,
-      customerEmail ? `Email: ${customerEmail}` : null,
-      notes ? `Notes: ${notes}` : null,
-      activeImage ? `Image: ${activeImage}` : null,
-    ]
-      .filter(Boolean)
-      .join('\n');
-
-    await Share.share({
-      title: quoteNo,
-      message: payload,
-    });
-  }, [
-    order?.orderNumber,
-    activeDesign?.designNo,
-    activeDesign?.designName,
-    draft.designNo,
-    draft.designName,
-    displayPrice,
-    selectionSummary,
-    customerName,
-    customerPhone,
-    customerEmail,
-    notes,
-    activeImage,
-  ]);
-
   const handleSummary = useCallback(() => {
     navigation.navigate('QuoteSummary', {
       summary: {
@@ -867,9 +830,6 @@ const QuoteBuilderScreen = () => {
         <View style={styles.bottomSmallActions}>
           <TouchableOpacity style={styles.smallBtn} onPress={handleSave} disabled={!canPersist} activeOpacity={0.9}>
             <Text style={styles.smallBtnText}>Save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.smallBtn} onPress={handleShare} activeOpacity={0.9}>
-            <Text style={styles.smallBtnText}>Share</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.smallBtn} onPress={handleSummary} activeOpacity={0.9}>
             <Text style={styles.smallBtnText}>Summary</Text>

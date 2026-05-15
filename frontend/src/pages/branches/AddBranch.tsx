@@ -92,7 +92,7 @@ export default function AddBranch() {
     if (!formData.name.trim()) newErrors.name = 'Branch name is required';
     if (!formData.code.trim()) newErrors.code = 'Branch code is required';
     if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
-      newErrors.branchMultiplier = 'Multiplier must be between 1 and 10';
+      newErrors.branchMultiplier = 'Mark-up must be between 1 and 10';
     }
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Invalid email format';
@@ -426,7 +426,7 @@ export default function AddBranch() {
         <Card title="Branch Pricing">
           <div className="space-y-4">
             <Input
-              label="Default Branch Multiplier *"
+              label="Default Branch Mark-up *"
               type="number"
               min="1"
               max="10"
@@ -468,4 +468,5 @@ export default function AddBranch() {
     </div>
   );
 }
+
 

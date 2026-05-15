@@ -6,7 +6,7 @@ export type LoginResponse = { accessToken: string; user: AuthUser };
 export const login = (email: string, password: string) =>
   apiRequest<LoginResponse>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, clientPlatform: 'MOBILE_APP' }),
   });
 
 export const me = (token: string) =>

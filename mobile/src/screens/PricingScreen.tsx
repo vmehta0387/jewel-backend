@@ -186,7 +186,7 @@ const PricingScreen = () => {
     if (!token) return;
     const multiplier = Number(markupInput || 1);
     if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 10) {
-      Alert.alert('Pricing', 'Markup multiplier must be between 1 and 10.');
+      Alert.alert('Pricing', 'Mark-up must be between 1 and 10.');
       return;
     }
 
@@ -298,7 +298,7 @@ const PricingScreen = () => {
               <Text style={styles.helperText}>Applied to all orders unless overridden by a pricing slab below.</Text>
               <View style={styles.markupRow}>
                 <View style={styles.markupFieldWrap}>
-                  <Text style={styles.fieldTitle}>MARKUP MULTIPLIER</Text>
+                  <Text style={styles.fieldTitle}>MARK-UP</Text>
                   <TextInput
                     style={styles.markupInput}
                     value={markupInput}
@@ -506,3 +506,4 @@ const styles = StyleSheet.create({
 });
 
 export default PricingScreen;
+

@@ -152,7 +152,7 @@ export default function AddCompany() {
     }
 
     if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
-      newErrors.defaultMultiplier = 'Multiplier must be between 1 and 10';
+      newErrors.defaultMultiplier = 'Mark-up must be between 1 and 10';
     }
 
     if (formData.shipToType === 'CUSTOM' && !formData.shipStreetAddress.trim()) {
@@ -182,7 +182,7 @@ export default function AddCompany() {
     if (!newBranchData.name.trim()) nextErrors.newBranchName = 'Branch name is required';
     if (!newBranchData.code.trim()) nextErrors.newBranchCode = 'Branch code is required';
     if (newBranchData.branchMultiplier < 1 || newBranchData.branchMultiplier > 10) {
-      nextErrors.newBranchMultiplier = 'Multiplier must be between 1 and 10';
+      nextErrors.newBranchMultiplier = 'Mark-up must be between 1 and 10';
     }
     if (newBranchData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newBranchData.email)) {
       nextErrors.newBranchEmail = 'Invalid email format';
@@ -689,7 +689,7 @@ export default function AddCompany() {
                   />
                   <div className="col-span-2">
                     <Input
-                      label="Branch Multiplier *"
+                      label="Branch Mark-up *"
                       type="number"
                       min="1"
                       max="10"
@@ -735,7 +735,7 @@ export default function AddCompany() {
                       <th className="text-left px-4 py-2 font-medium text-gray-700">Branch</th>
                       <th className="text-left px-4 py-2 font-medium text-gray-700">Code</th>
                       <th className="text-left px-4 py-2 font-medium text-gray-700">Location</th>
-                      <th className="text-left px-4 py-2 font-medium text-gray-700">Multiplier</th>
+                      <th className="text-left px-4 py-2 font-medium text-gray-700">Mark-up</th>
                       <th className="text-left px-4 py-2 font-medium text-gray-700">Pricing Mode</th>
                       <th className="text-left px-4 py-2 font-medium text-gray-700">Action</th>
                     </tr>
@@ -1020,7 +1020,7 @@ export default function AddCompany() {
         <Card title="Pricing Configuration">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Default Multiplier *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Default Mark-up *</label>
               <Input
                 type="number"
                 step="0.01"
@@ -1033,7 +1033,7 @@ export default function AddCompany() {
                 error={errors.defaultMultiplier}
                 required
               />
-              <p className="text-xs text-gray-500 mt-1">Base multiplier applied to all products (1.0 - 10.0)</p>
+              <p className="text-xs text-gray-500 mt-1">Base mark-up applied to all products (1.0 - 10.0)</p>
             </div>
 
             <div className="border-t pt-4">
@@ -1046,7 +1046,7 @@ export default function AddCompany() {
                 />
                 <span className="text-sm font-medium text-gray-700">Enable Cost-Based Slab Pricing</span>
               </label>
-              <p className="text-xs text-gray-500 ml-6 mt-1">Override default multiplier based on cost ranges</p>
+              <p className="text-xs text-gray-500 ml-6 mt-1">Override default mark-up based on cost ranges</p>
             </div>
             
             {formData.enableSlabPricing && (
@@ -1090,5 +1090,6 @@ export default function AddCompany() {
     </div>
   );
 }
+
 
 

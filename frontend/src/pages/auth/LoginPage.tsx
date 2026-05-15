@@ -5,6 +5,8 @@ import Button from '../../components/common/Button';
 import api from '../../services/api';
 import { saveAuthSession } from '../../utils/auth';
 
+const ADMIN_PORTAL_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'INTERNAL_REP']);
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -19,8 +21,13 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await api.post('/auth/login', { email, password });
-      saveAuthSession(response.data.accessToken, response.data.user);
+      const response = await api.post('/auth/login', { email, password, clientPlatform: 'ADMIN_PORTAL' });
+      const nextUser = response.data.user;
+      if (!ADMIN_PORTAL_ALLOWED_ROLES.has(nextUser.role)) {
+        setError('This role is not allowed in the admin portal');
+        return;
+      }
+      saveAuthSession(response.data.accessToken, nextUser);
 
       const redirectTo = (location.state as { from?: string } | undefined)?.from || '/dashboard';
       navigate(redirectTo, { replace: true });

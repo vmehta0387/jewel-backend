@@ -60,7 +60,7 @@ export const TASK_PERMISSION_OPTIONS: TaskPermissionOption[] = [
   {
     value: 'BRANCH_MANAGEMENT',
     label: 'Branch Management',
-    description: 'Create and update branch profiles and pricing multipliers.',
+    description: 'Create and update branch profiles and pricing mark-ups.',
   },
   {
     value: 'USER_MANAGEMENT',
@@ -85,7 +85,7 @@ export const TASK_PERMISSION_OPTIONS: TaskPermissionOption[] = [
   {
     value: 'PRICING_CONFIGURATION',
     label: 'Pricing Configuration',
-    description: 'Manage price multipliers and pricing rules.',
+    description: 'Manage price mark-ups and pricing rules.',
   },
   {
     value: 'VIEW_REPORTS',
@@ -118,5 +118,22 @@ export const DEFAULT_TASK_PERMISSIONS_BY_ROLE: Record<UserRole, TaskPermission[]
   ],
   BRANCH_MANAGER: ['DESIGN_ENTRIES', 'ORDER_ENTRIES', 'ORDER_APPROVALS', 'VIEW_REPORTS'],
   SALES_REP: ['DESIGN_ENTRIES', 'ORDER_ENTRIES', 'VIEW_REPORTS'],
-  INTERNAL_REP: ['COMPANY_MANAGEMENT', 'VIEW_REPORTS'],
+  INTERNAL_REP: [],
 };
+
+export const ALLOWED_TASK_PERMISSIONS_BY_ROLE: Record<UserRole, TaskPermission[]> = {
+  SUPER_ADMIN: TASK_PERMISSION_OPTIONS.map((item) => item.value),
+  COMPANY_ADMIN: [
+    'BRANCH_MANAGEMENT',
+    'USER_MANAGEMENT',
+    'DESIGN_ENTRIES',
+    'ORDER_ENTRIES',
+    'ORDER_APPROVALS',
+    'PRICING_CONFIGURATION',
+    'VIEW_REPORTS',
+  ],
+  BRANCH_MANAGER: ['DESIGN_ENTRIES', 'ORDER_ENTRIES', 'ORDER_APPROVALS', 'PRICING_CONFIGURATION', 'VIEW_REPORTS'],
+  SALES_REP: ['DESIGN_ENTRIES', 'ORDER_ENTRIES', 'VIEW_REPORTS'],
+  INTERNAL_REP: ['COMPANY_MANAGEMENT', 'DESIGN_ENTRIES', 'ORDER_ENTRIES', 'ORDER_APPROVALS', 'VIEW_REPORTS'],
+};
+
