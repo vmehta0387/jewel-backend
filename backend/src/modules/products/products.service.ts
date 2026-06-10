@@ -2375,6 +2375,26 @@ export class ProductsService {
       diamondQualities: [] as Array<{ id: string; value: string }>,
       vendorNames: [] as Array<{ id: string; value: string }>,
       laborHeads: [] as Array<{ id: string; value: string }>,
+      laborRules: [] as Array<{
+        id: string;
+        value: string;
+        jewelryGroupId?: string;
+        jewelryGroup?: string;
+        laborApplyMode?: LaborApplyMode;
+        flatCost?: number;
+        ratePerStone?: number;
+        ratePerGram?: number;
+        ratePerGroup?: number;
+      }>,
+      overheadRules: [] as Array<{
+        id: string;
+        value: string;
+        jewelryGroupId?: string;
+        jewelryGroup?: string;
+        overheadApplyMode?: OverheadApplyMode;
+        ratePercent?: number;
+        flatAmount?: number;
+      }>,
       findingHeads: [] as Array<{ id: string; value: string }>,
       packetStones: [] as Array<{ id: string; value: string }>,
       packetShapes: [] as Array<{ id: string; value: string }>,
@@ -2475,6 +2495,44 @@ export class ProductsService {
         grouped.vendorNames.push(option);
       } else if (entry.masterType === DesignMasterType.LABOR_HEAD) {
         grouped.laborHeads.push(option);
+      } else if (entry.masterType === DesignMasterType.LABOR_RULE) {
+        grouped.laborRules.push({
+          ...option,
+          jewelryGroupId: entry.jewelryGroupId || undefined,
+          jewelryGroup: entry.jewelryGroup || undefined,
+          laborApplyMode: entry.laborApplyMode || undefined,
+          flatCost:
+            entry.flatCost !== null && entry.flatCost !== undefined
+              ? this.toNumber(entry.flatCost)
+              : undefined,
+          ratePerStone:
+            entry.ratePerStone !== null && entry.ratePerStone !== undefined
+              ? this.toNumber(entry.ratePerStone)
+              : undefined,
+          ratePerGram:
+            entry.ratePerGram !== null && entry.ratePerGram !== undefined
+              ? this.toNumber(entry.ratePerGram)
+              : undefined,
+          ratePerGroup:
+            entry.ratePerGroup !== null && entry.ratePerGroup !== undefined
+              ? this.toNumber(entry.ratePerGroup)
+              : undefined,
+        });
+      } else if (entry.masterType === DesignMasterType.OVERHEAD_RULE) {
+        grouped.overheadRules.push({
+          ...option,
+          jewelryGroupId: entry.jewelryGroupId || undefined,
+          jewelryGroup: entry.jewelryGroup || undefined,
+          overheadApplyMode: entry.overheadApplyMode || undefined,
+          ratePercent:
+            entry.ratePercent !== null && entry.ratePercent !== undefined
+              ? this.toNumber(entry.ratePercent)
+              : undefined,
+          flatAmount:
+            entry.flatAmount !== null && entry.flatAmount !== undefined
+              ? this.toNumber(entry.flatAmount)
+              : undefined,
+        });
       } else if (entry.masterType === DesignMasterType.PACKET_STONE) {
         grouped.packetStones.push(option);
       } else if (entry.masterType === DesignMasterType.PACKET_SHAPE) {

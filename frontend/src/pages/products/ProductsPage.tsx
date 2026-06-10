@@ -26,6 +26,8 @@ type DesignMasterType =
   | 'DIAMOND_QUALITY'
   | 'VENDOR_NAME'
   | 'LABOR_HEAD'
+  | 'LABOR_RULE'
+  | 'OVERHEAD_RULE'
   | 'FINDING_HEAD'
   | 'PACKET_STONE'
   | 'PACKET_SHAPE'
@@ -48,6 +50,14 @@ interface MasterOption {
   wastagePercent?: number;
   defaultWastagePercent?: number;
   livePricePerGm?: number;
+  laborApplyMode?: 'FLAT' | 'PER_STONE' | 'PER_GRAM' | 'PER_GROUP';
+  flatCost?: number;
+  ratePerStone?: number;
+  ratePerGram?: number;
+  ratePerGroup?: number;
+  overheadApplyMode?: 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT';
+  ratePercent?: number;
+  flatAmount?: number;
 }
 
 interface DesignRow {
@@ -269,7 +279,24 @@ interface VersionBuilderOptionGroup {
 type VersionBuilderImageMode = 'INHERIT_PARENT' | 'MAP_BY_METAL' | 'MANUAL_AFTER_CREATE';
 type VersionBuilderGemMode = 'INHERIT_BASE' | 'OVERRIDE_BLOCK';
 type VersionBuilderGemApplyScope = 'ALL_COMBINATIONS' | 'FILTERED_COMBINATIONS';
-type VersionBuilderWorkflowStep = 'INFO' | 'DIMENSIONS' | 'GEMSTONES' | 'SIZE_CHART' | 'IMAGES' | 'PREVIEW';
+type VersionBuilderWorkflowStep =
+  | 'INFO'
+  | 'DIMENSIONS'
+  | 'GEMSTONES'
+  | 'SIZE_CHART'
+  | 'IMAGES'
+  | 'BOM'
+  | 'PREVIEW';
+
+interface VersionBuilderBomSelection {
+  size: string;
+  metal: string;
+  diamondQuality: string;
+  coverage: string;
+  caratWeight: string;
+  laborRuleId: string;
+  overheadRuleId: string;
+}
 
 interface VersionBuilderSizeChartGroupCell {
   count: string;
@@ -969,6 +996,8 @@ const emptyMasterOptions = {
   diamondQualities: [] as MasterOption[],
   vendorNames: [] as MasterOption[],
   laborHeads: [] as MasterOption[],
+  laborRules: [] as MasterOption[],
+  overheadRules: [] as MasterOption[],
   findingHeads: [] as MasterOption[],
   packetStones: [] as MasterOption[],
   packetShapes: [] as MasterOption[],
@@ -992,6 +1021,8 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   DIAMOND_QUALITY: 'Diamond Quality',
   VENDOR_NAME: 'Vendor Name',
   LABOR_HEAD: 'Labor Head',
+  LABOR_RULE: 'Labor Master',
+  OVERHEAD_RULE: 'Overhead Master',
   FINDING_HEAD: 'Finding Head',
   PACKET_STONE: 'Stone',
   PACKET_SHAPE: 'Shape',
@@ -1033,7 +1064,8 @@ const VERSION_BUILDER_WORKFLOW: Array<{
   { id: 'GEMSTONES', title: '3a · Stone Layout', subtitle: 'Copy or override gemstone rows.' },
   { id: 'SIZE_CHART', title: '3b · Composition Size Chart', subtitle: 'Edit counts and carat per stone by size.' },
   { id: 'IMAGES', title: '4 · Media Rules', subtitle: 'Set media behavior for new versions.' },
-  { id: 'PREVIEW', title: '5 · Generated', subtitle: 'Review generated version rows.' },
+  { id: 'BOM', title: '5 · BOM', subtitle: 'Live cost breakdown for a sample variant.' },
+  { id: 'PREVIEW', title: '6 · Generated', subtitle: 'Review generated version rows.' },
 ];
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
@@ -1379,6 +1411,15 @@ export default function ProductsPage() {
   const [versionBuilderBaseMetalRows, setVersionBuilderBaseMetalRows] = useState<MetalRow[]>([]);
   const [versionBuilderChartCoverage, setVersionBuilderChartCoverage] = useState('');
   const [versionBuilderSizeChart, setVersionBuilderSizeChart] = useState<VersionBuilderSizeChartState>({});
+  const [versionBuilderBomSelection, setVersionBuilderBomSelection] = useState<VersionBuilderBomSelection>({
+    size: '',
+    metal: '',
+    diamondQuality: '',
+    coverage: '',
+    caratWeight: '',
+    laborRuleId: '',
+    overheadRuleId: '',
+  });
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
@@ -2050,6 +2091,8 @@ export default function ProductsPage() {
         diamondQualities: response.data?.diamondQualities || [],
         vendorNames: response.data?.vendorNames || [],
         laborHeads: response.data?.laborHeads || [],
+        laborRules: response.data?.laborRules || [],
+        overheadRules: response.data?.overheadRules || [],
         findingHeads: response.data?.findingHeads || [],
         packetStones: response.data?.packetStones || [],
         packetShapes: response.data?.packetShapes || [],
@@ -3492,6 +3535,185 @@ export default function ProductsPage() {
     versionBuilderUploadedImageUrls,
   ]);
 
+  const versionBuilderCategoryRuleFiltered = useMemo(() => {
+    const categoryKey = normalizeLookupKey(versionBuilderBaseDesign?.jewelryGroup);
+    const laborRules = masterOptions.laborRules.filter((rule) => {
+      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
+      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+    });
+    const overheadRules = masterOptions.overheadRules.filter((rule) => {
+      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
+      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+    });
+    return { laborRules, overheadRules };
+  }, [masterOptions.laborRules, masterOptions.overheadRules, versionBuilderBaseDesign]);
+
+  const versionBuilderSelectedLaborRule = useMemo(
+    () =>
+      versionBuilderCategoryRuleFiltered.laborRules.find(
+        (rule) => rule.id === versionBuilderBomSelection.laborRuleId,
+      ),
+    [versionBuilderBomSelection.laborRuleId, versionBuilderCategoryRuleFiltered.laborRules],
+  );
+
+  const versionBuilderSelectedOverheadRule = useMemo(
+    () =>
+      versionBuilderCategoryRuleFiltered.overheadRules.find(
+        (rule) => rule.id === versionBuilderBomSelection.overheadRuleId,
+      ),
+    [versionBuilderBomSelection.overheadRuleId, versionBuilderCategoryRuleFiltered.overheadRules],
+  );
+
+  const versionBuilderBomBreakdown = useMemo(() => {
+    const empty = {
+      metalLabel: '',
+      variantSku: '',
+      metal: { netWeight: 0, wastagePercent: 0, totalWeight: 0, rate: 0, cost: 0, formula: '-', source: '-' },
+      stones: [] as Array<{
+        id: string;
+        label: string;
+        subtitle: string;
+        count: number;
+        totalCarat: number;
+        rate: number;
+        cost: number;
+        formula: string;
+        source: string;
+      }>,
+      labor: { cost: 0, formula: '-', source: '-' },
+      overhead: { cost: 0, formula: '-', source: '-' },
+      totalStoneCost: 0,
+      totalStoneCount: 0,
+      total: 0,
+    };
+    if (!versionBuilderBaseDesign) return empty;
+
+    const selectedCoverage = versionBuilderBomSelection.coverage || versionBuilderChartCoverage;
+    const chartByCoverage = versionBuilderSizeChart[selectedCoverage] || {};
+    const selectedSizeKey = normalizeSizeChartKey(versionBuilderBomSelection.size || '');
+    const chartRow = chartByCoverage[selectedSizeKey];
+    if (!chartRow) return empty;
+
+    const selectedMetal = versionBuilderBomSelection.metal;
+    const selectedMetalPurity = getMetalPurityBucket(selectedMetal);
+    const selectedMetalOption = getMetalMasterOption(selectedMetal);
+    const metalNetWeight = Math.max(0, parseNum(chartRow.metalWeights?.[selectedMetalPurity] || '0'));
+    const metalWastagePercent =
+      selectedMetalOption?.defaultWastagePercent !== undefined && selectedMetalOption?.defaultWastagePercent !== null
+        ? selectedMetalOption.defaultWastagePercent
+        : selectedMetalOption?.wastagePercent || 0;
+    const metalTotalWeight = metalNetWeight + (metalNetWeight * metalWastagePercent) / 100;
+    const metalRate = getMetalRate(selectedMetal) || 0;
+    const metalCost = metalTotalWeight * metalRate;
+
+    const stoneLines = versionBuilderGemRows.map((row, index) => {
+      const packet = packetOptions.find((entry) => entry.id === row.packetId);
+      const cell = chartRow.groups?.[row.id];
+      const count = Math.max(0, parseNum(cell?.count || '0'));
+      const ctPerStone = Math.max(0, parseNum(cell?.ctPerStone || '0'));
+      const totalCarat = count * ctPerStone;
+      const rate = Math.max(0, parseNum(row.pricePerCt || '0'));
+      const cost = totalCarat * rate;
+      const groupLabel = `Group ${String.fromCharCode(65 + index)}`;
+      return {
+        id: row.id,
+        label: `${groupLabel} - ${row.shape || packet?.shape || 'Stone group'}`,
+        subtitle: `${row.stone || packet?.stone || 'Diamond'} ${row.size || packet?.size ? `- ${row.size || packet?.size} mm` : ''} · ${count} stones`,
+        count,
+        totalCarat,
+        rate,
+        cost,
+        formula: `${count} × ${formatMoney(rate)}/ct × ${ctPerStone.toFixed(3)} ct`,
+        source: packet?.packetName || packet?.id || 'Manual packet',
+      };
+    });
+
+    const totalStoneCost = stoneLines.reduce((sum, line) => sum + line.cost, 0);
+    const totalStoneCount = stoneLines.reduce((sum, line) => sum + line.count, 0);
+    const totalGroups = stoneLines.filter((line) => line.count > 0).length;
+
+    const laborFlat = Math.max(0, versionBuilderSelectedLaborRule?.flatCost || 0);
+    const laborPerStone = Math.max(0, versionBuilderSelectedLaborRule?.ratePerStone || 0);
+    const laborPerGram = Math.max(0, versionBuilderSelectedLaborRule?.ratePerGram || 0);
+    const laborPerGroup = Math.max(0, versionBuilderSelectedLaborRule?.ratePerGroup || 0);
+    const laborCost =
+      laborFlat +
+      totalStoneCount * laborPerStone +
+      metalTotalWeight * laborPerGram +
+      totalGroups * laborPerGroup;
+    const laborFormulaParts = [
+      laborFlat > 0 ? formatMoney(laborFlat) : '',
+      laborPerStone > 0 ? `${totalStoneCount} × ${formatMoney(laborPerStone)}` : '',
+      laborPerGram > 0 ? `${metalTotalWeight.toFixed(2)}g × ${formatMoney(laborPerGram)}` : '',
+      laborPerGroup > 0 ? `${totalGroups} × ${formatMoney(laborPerGroup)}` : '',
+    ].filter(Boolean);
+
+    const overheadRatePercent = Math.max(0, versionBuilderSelectedOverheadRule?.ratePercent || 0);
+    const overheadFlatAmount = Math.max(0, versionBuilderSelectedOverheadRule?.flatAmount || 0);
+    const overheadMode = versionBuilderSelectedOverheadRule?.overheadApplyMode || '';
+    const materialsSubtotal = metalCost + totalStoneCost;
+    const bomSubtotal = materialsSubtotal + laborCost;
+    const overheadCost =
+      overheadMode === 'FLAT'
+        ? overheadFlatAmount
+        : overheadMode === 'PERCENT_BOM_SUBTOTAL'
+          ? (bomSubtotal * overheadRatePercent) / 100
+          : (materialsSubtotal * overheadRatePercent) / 100;
+    const overheadFormula =
+      overheadMode === 'FLAT'
+        ? formatMoney(overheadFlatAmount)
+        : `${overheadRatePercent.toFixed(2)}% × ${
+            overheadMode === 'PERCENT_BOM_SUBTOTAL' ? '(metal + stones + labor)' : '(metal + stones)'
+          }`;
+
+    const selectedVersion = `V${versionBuilderHighestVersion + 1}`;
+    const variantSku = buildVersionedDesignNo(
+      getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo,
+      selectedVersion,
+    );
+
+    return {
+      metalLabel: selectedMetal,
+      variantSku,
+      metal: {
+        netWeight: metalNetWeight,
+        wastagePercent: metalWastagePercent,
+        totalWeight: metalTotalWeight,
+        rate: metalRate,
+        cost: metalCost,
+        formula: `${metalTotalWeight.toFixed(2)}g × ${formatMoney(metalRate)}`,
+        source: selectedMetal || 'No metal selected',
+      },
+      stones: stoneLines,
+      labor: {
+        cost: laborCost,
+        formula: laborFormulaParts.join(' + ') || '-',
+        source: versionBuilderSelectedLaborRule?.value || 'No labor rule selected',
+      },
+      overhead: {
+        cost: overheadCost,
+        formula: overheadFormula,
+        source: versionBuilderSelectedOverheadRule?.value || 'No overhead rule selected',
+      },
+      totalStoneCost,
+      totalStoneCount,
+      total: metalCost + totalStoneCost + laborCost + overheadCost,
+    };
+  }, [
+    versionBuilderBaseDesign,
+    versionBuilderBomSelection,
+    versionBuilderCategoryRuleFiltered,
+    versionBuilderChartCoverage,
+    versionBuilderGemRows,
+    versionBuilderHighestVersion,
+    packetOptions,
+    masterOptions.goldColours,
+    masterOptions.metalCaratages,
+    versionBuilderSelectedLaborRule,
+    versionBuilderSelectedOverheadRule,
+    versionBuilderSizeChart,
+  ]);
+
   const versionBuilderParentImageUrls = useMemo(
     () => normalizeStringArray(versionBuilderBaseDesign?.imageUrls).map(resolvePublicAssetUrl),
     [versionBuilderBaseDesign],
@@ -3526,6 +3748,48 @@ export default function ProductsPage() {
       setVersionBuilderActiveMetal(versionBuilderSelections.metals[0]);
     }
   }, [versionBuilderActiveMetal, versionBuilderSelections.metals]);
+
+  useEffect(() => {
+    setVersionBuilderBomSelection((prev) => ({
+      size:
+        prev.size && versionBuilderSelections.sizes.includes(prev.size)
+          ? prev.size
+          : versionBuilderSelections.sizes[0] || '',
+      metal:
+        prev.metal && versionBuilderSelections.metals.includes(prev.metal)
+          ? prev.metal
+          : versionBuilderSelections.metals[0] || '',
+      diamondQuality:
+        prev.diamondQuality && versionBuilderSelections.diamondQualities.includes(prev.diamondQuality)
+          ? prev.diamondQuality
+          : versionBuilderSelections.diamondQualities[0] || '',
+      coverage:
+        prev.coverage && versionBuilderSizeChartCoverages.includes(prev.coverage)
+          ? prev.coverage
+          : versionBuilderSizeChartCoverages[0] || '',
+      caratWeight:
+        prev.caratWeight && versionBuilderSelections.caratWeights.includes(prev.caratWeight)
+          ? prev.caratWeight
+          : versionBuilderSelections.caratWeights[0] || '',
+      laborRuleId:
+        prev.laborRuleId &&
+        versionBuilderCategoryRuleFiltered.laborRules.some((rule) => rule.id === prev.laborRuleId)
+          ? prev.laborRuleId
+          : versionBuilderCategoryRuleFiltered.laborRules[0]?.id || '',
+      overheadRuleId:
+        prev.overheadRuleId &&
+        versionBuilderCategoryRuleFiltered.overheadRules.some((rule) => rule.id === prev.overheadRuleId)
+          ? prev.overheadRuleId
+          : versionBuilderCategoryRuleFiltered.overheadRules[0]?.id || '',
+    }));
+  }, [
+    versionBuilderCategoryRuleFiltered,
+    versionBuilderSelections.caratWeights,
+    versionBuilderSelections.diamondQualities,
+    versionBuilderSelections.metals,
+    versionBuilderSelections.sizes,
+    versionBuilderSizeChartCoverages,
+  ]);
 
   const pageSize = 15;
   const totalPages = useMemo(
@@ -5511,7 +5775,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             {versionBuilderWorkflowStep === 'INFO' ? (
               <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
                 <div className="mb-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 1 of 5</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 1 of 6</p>
                   <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Style info</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
                     Base style and general info for the builder flow. Use this as the starting point before enabling variant axes.
@@ -5554,7 +5818,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             {versionBuilderWorkflowStep === 'DIMENSIONS' ? (
               <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
                 <div className="mb-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 2 of 5</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 2 of 6</p>
                   <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Variant axes</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
                     Toggle values on or off. The variant count updates live, and so does what the rep sees in the configurator.
@@ -6270,6 +6534,226 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'BOM' ? (
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 5 of 6</p>
+                    <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">BOM - recomputes from your current config</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      Uses the current size chart, metal rates, packet costs, and selected labor and overhead rules.
+                    </p>
+                  </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">
+                    Pick a sample variant · cost is live
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-[#e4d8c9] bg-[#fffdf9] p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Size</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.size}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, size: event.target.value }))
+                        }
+                      >
+                        {versionBuilderSelections.sizes.map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Metal</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.metal}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, metal: event.target.value }))
+                        }
+                      >
+                        {versionBuilderSelections.metals.map((metal) => (
+                          <option key={metal} value={metal}>
+                            {metal}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Quality</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.diamondQuality}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, diamondQuality: event.target.value }))
+                        }
+                      >
+                        {versionBuilderSelections.diamondQualities.map((quality) => (
+                          <option key={quality} value={quality}>
+                            {quality}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Coverage</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.coverage}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, coverage: event.target.value }))
+                        }
+                      >
+                        {versionBuilderSizeChartCoverages.map((coverage) => (
+                          <option key={coverage} value={coverage}>
+                            {coverage}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Carat Weight</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.caratWeight}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, caratWeight: event.target.value }))
+                        }
+                      >
+                        {versionBuilderSelections.caratWeights.map((weight) => (
+                          <option key={weight} value={weight}>
+                            {weight}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Labor</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.laborRuleId}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, laborRuleId: event.target.value }))
+                        }
+                      >
+                        <option value="">Select labor</option>
+                        {versionBuilderCategoryRuleFiltered.laborRules.map((rule) => (
+                          <option key={rule.id} value={rule.id}>
+                            {rule.value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Overhead</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderBomSelection.overheadRuleId}
+                        onChange={(event) =>
+                          setVersionBuilderBomSelection((prev) => ({ ...prev, overheadRuleId: event.target.value }))
+                        }
+                      >
+                        <option value="">Select overhead</option>
+                        {versionBuilderCategoryRuleFiltered.overheadRules.map((rule) => (
+                          <option key={rule.id} value={rule.id}>
+                            {rule.value}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white">
+                  <table className="min-w-full">
+                    <thead className="bg-[#f8f1e6]">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Line</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Formula</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Source</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-[#efe4d6]">
+                        <td className="px-4 py-4 align-top">
+                          <p className="text-[15px] font-semibold text-[#2b241d]">Metal</p>
+                          <p className="mt-1 text-[12px] text-[#8c7b67]">net wt + wastage</p>
+                        </td>
+                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">
+                          {versionBuilderBomBreakdown.metal.netWeight.toFixed(2)}g + {versionBuilderBomBreakdown.metal.wastagePercent.toFixed(2)}% = {versionBuilderBomBreakdown.metal.totalWeight.toFixed(2)}g · {formatMoney(versionBuilderBomBreakdown.metal.rate)}
+                        </td>
+                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.metal.source}</td>
+                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                          {formatMoney(versionBuilderBomBreakdown.metal.cost)}
+                        </td>
+                      </tr>
+
+                      {versionBuilderBomBreakdown.stones.map((stone) => (
+                        <tr key={`bom-stone-${stone.id}`} className="border-t border-[#efe4d6]">
+                          <td className="px-4 py-4 align-top">
+                            <p className="text-[15px] font-semibold text-[#b37b1a]">{stone.label}</p>
+                            <p className="mt-1 text-[12px] text-[#8c7b67]">{stone.subtitle}</p>
+                          </td>
+                          <td className="px-4 py-4 text-[12px] text-[#7b6f61]">
+                            {stone.count} × {stone.totalCarat > 0 && stone.count > 0 ? `${(stone.totalCarat / stone.count).toFixed(3)} ct` : '0 ct'} × {formatMoney(stone.rate)}/ct
+                          </td>
+                          <td className="px-4 py-4 text-[12px] text-[#2b241d]">{stone.source}</td>
+                          <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                            {formatMoney(stone.cost)}
+                          </td>
+                        </tr>
+                      ))}
+
+                      <tr className="border-t border-[#efe4d6]">
+                        <td className="px-4 py-4 align-top">
+                          <p className="text-[15px] font-semibold text-[#2b241d]">Labor</p>
+                          <p className="mt-1 text-[12px] text-[#8c7b67]">flat + variable rates</p>
+                        </td>
+                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">{versionBuilderBomBreakdown.labor.formula}</td>
+                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.labor.source}</td>
+                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                          {formatMoney(versionBuilderBomBreakdown.labor.cost)}
+                        </td>
+                      </tr>
+
+                      <tr className="border-t border-[#efe4d6]">
+                        <td className="px-4 py-4 align-top">
+                          <p className="text-[15px] font-semibold text-[#2b241d]">Overhead</p>
+                          <p className="mt-1 text-[12px] text-[#8c7b67]">materials or subtotal based</p>
+                        </td>
+                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">{versionBuilderBomBreakdown.overhead.formula}</td>
+                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.overhead.source}</td>
+                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                          {formatMoney(versionBuilderBomBreakdown.overhead.cost)}
+                        </td>
+                      </tr>
+
+                      <tr className="bg-[#211a14]">
+                        <td className="px-4 py-4 text-[16px] font-semibold text-white">BOM cost - this variant</td>
+                        <td colSpan={2}></td>
+                        <td className="px-4 py-4 text-right text-[18px] font-bold text-[#f0c979]">
+                          {formatMoney(versionBuilderBomBreakdown.total)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-[#e0c98f] bg-[#f9f0db] px-4 py-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">SKU</p>
+                  <p className="mt-2 text-[18px] font-bold text-[#2b241d]">{versionBuilderBomBreakdown.variantSku || '-'}</p>
+                  <p className="mt-1 text-[12px] text-[#7b6f61]">
+                    Sample variant: {versionBuilderBomSelection.metal || '-'} · {versionBuilderBomSelection.coverage || '-'} · {versionBuilderBomSelection.diamondQuality || '-'} · Size {versionBuilderBomSelection.size || '-'}
+                  </p>
                 </div>
               </div>
             ) : null}
