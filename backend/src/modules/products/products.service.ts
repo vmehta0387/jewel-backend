@@ -54,7 +54,13 @@ import { DesignVendor } from './entities/design-vendor.entity';
 import { StonePacket, StonePacketPriceIn, StoneWeightUnit } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
-import { DesignMaster, DesignMasterType, FindingPriceIn } from './entities/design-master.entity';
+import {
+  DesignMaster,
+  DesignMasterType,
+  FindingPriceIn,
+  LaborApplyMode,
+  OverheadApplyMode,
+} from './entities/design-master.entity';
 import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-library.entity';
@@ -141,6 +147,14 @@ interface MasterImportRow {
   marketPricePerGm?: string | number;
   livePricePerGm?: string | number;
   defaultWastagePercent?: string | number;
+  laborApplyMode?: string;
+  flatCost?: string | number;
+  ratePerStone?: string | number;
+  ratePerGram?: string | number;
+  ratePerGroup?: string | number;
+  overheadApplyMode?: string;
+  ratePercent?: string | number;
+  flatAmount?: string | number;
   isActive?: string;
 }
 
@@ -262,6 +276,14 @@ export class ProductsService {
     'Market Price Per Gm',
     'Live Price Per Gm',
     'Default Wastage Percent',
+    'Labor Apply Mode',
+    'Flat Cost',
+    'Rate Per Stone',
+    'Rate Per Gram',
+    'Rate Per Group',
+    'Overhead Apply Mode',
+    'Rate Percent',
+    'Flat Amount',
     'Status',
   ] as const;
 
@@ -2649,6 +2671,26 @@ export class ProductsService {
       },
       undefined,
     );
+    const laborRuleFields = this.normalizeLaborRuleFields(
+      masterType,
+      {
+        laborApplyMode: dto.laborApplyMode,
+        flatCost: dto.flatCost,
+        ratePerStone: dto.ratePerStone,
+        ratePerGram: dto.ratePerGram,
+        ratePerGroup: dto.ratePerGroup,
+      },
+      undefined,
+    );
+    const overheadRuleFields = this.normalizeOverheadRuleFields(
+      masterType,
+      {
+        overheadApplyMode: dto.overheadApplyMode,
+        ratePercent: dto.ratePercent,
+        flatAmount: dto.flatAmount,
+      },
+      undefined,
+    );
     const defaultWastagePercent =
       masterType === DesignMasterType.GOLD_COLOUR
         ? this.optionalNonNegativeNumber(dto.pricePerUnit, 'pricePerUnit')
@@ -2704,6 +2746,14 @@ export class ProductsService {
         valueMatch.marketPricePerGm = metalFields.marketPricePerGm;
         valueMatch.livePricePerGm = metalFields.livePricePerGm;
         valueMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
+        valueMatch.laborApplyMode = laborRuleFields.laborApplyMode;
+        valueMatch.flatCost = laborRuleFields.flatCost;
+        valueMatch.ratePerStone = laborRuleFields.ratePerStone;
+        valueMatch.ratePerGram = laborRuleFields.ratePerGram;
+        valueMatch.ratePerGroup = laborRuleFields.ratePerGroup;
+        valueMatch.overheadApplyMode = overheadRuleFields.overheadApplyMode;
+        valueMatch.ratePercent = overheadRuleFields.ratePercent;
+        valueMatch.flatAmount = overheadRuleFields.flatAmount;
         valueMatch.isActive = true;
         valueMatch.updatedBy = requester.id;
         return this.designMasterRepo.save(valueMatch);
@@ -2735,6 +2785,14 @@ export class ProductsService {
         aliasMatch.marketPricePerGm = metalFields.marketPricePerGm;
         aliasMatch.livePricePerGm = metalFields.livePricePerGm;
         aliasMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
+        aliasMatch.laborApplyMode = laborRuleFields.laborApplyMode;
+        aliasMatch.flatCost = laborRuleFields.flatCost;
+        aliasMatch.ratePerStone = laborRuleFields.ratePerStone;
+        aliasMatch.ratePerGram = laborRuleFields.ratePerGram;
+        aliasMatch.ratePerGroup = laborRuleFields.ratePerGroup;
+        aliasMatch.overheadApplyMode = overheadRuleFields.overheadApplyMode;
+        aliasMatch.ratePercent = overheadRuleFields.ratePercent;
+        aliasMatch.flatAmount = overheadRuleFields.flatAmount;
         aliasMatch.isActive = true;
         aliasMatch.updatedBy = requester.id;
         return this.designMasterRepo.save(aliasMatch);
@@ -2770,6 +2828,14 @@ export class ProductsService {
           findingNoMatch.marketPricePerGm = metalFields.marketPricePerGm;
           findingNoMatch.livePricePerGm = metalFields.livePricePerGm;
           findingNoMatch.defaultWastagePercent = metalFields.defaultWastagePercent;
+          findingNoMatch.laborApplyMode = laborRuleFields.laborApplyMode;
+          findingNoMatch.flatCost = laborRuleFields.flatCost;
+          findingNoMatch.ratePerStone = laborRuleFields.ratePerStone;
+          findingNoMatch.ratePerGram = laborRuleFields.ratePerGram;
+          findingNoMatch.ratePerGroup = laborRuleFields.ratePerGroup;
+          findingNoMatch.overheadApplyMode = overheadRuleFields.overheadApplyMode;
+          findingNoMatch.ratePercent = overheadRuleFields.ratePercent;
+          findingNoMatch.flatAmount = overheadRuleFields.flatAmount;
           findingNoMatch.isActive = true;
           findingNoMatch.updatedBy = requester.id;
           return this.designMasterRepo.save(findingNoMatch);
@@ -2802,6 +2868,14 @@ export class ProductsService {
       marketPricePerGm: metalFields.marketPricePerGm,
       livePricePerGm: metalFields.livePricePerGm,
       defaultWastagePercent: metalFields.defaultWastagePercent,
+      laborApplyMode: laborRuleFields.laborApplyMode,
+      flatCost: laborRuleFields.flatCost,
+      ratePerStone: laborRuleFields.ratePerStone,
+      ratePerGram: laborRuleFields.ratePerGram,
+      ratePerGroup: laborRuleFields.ratePerGroup,
+      overheadApplyMode: overheadRuleFields.overheadApplyMode,
+      ratePercent: overheadRuleFields.ratePercent,
+      flatAmount: overheadRuleFields.flatAmount,
       isActive: true,
       createdBy: requester.id,
       updatedBy: requester.id,
@@ -2861,6 +2935,26 @@ export class ProductsService {
       master.masterType,
       {
         jewelryGroupId: dto.jewelryGroupId,
+      },
+      master,
+    );
+    const laborRuleFields = this.normalizeLaborRuleFields(
+      master.masterType,
+      {
+        laborApplyMode: dto.laborApplyMode,
+        flatCost: dto.flatCost,
+        ratePerStone: dto.ratePerStone,
+        ratePerGram: dto.ratePerGram,
+        ratePerGroup: dto.ratePerGroup,
+      },
+      master,
+    );
+    const overheadRuleFields = this.normalizeOverheadRuleFields(
+      master.masterType,
+      {
+        overheadApplyMode: dto.overheadApplyMode,
+        ratePercent: dto.ratePercent,
+        flatAmount: dto.flatAmount,
       },
       master,
     );
@@ -2936,6 +3030,14 @@ export class ProductsService {
     master.marketPricePerGm = metalFields.marketPricePerGm;
     master.livePricePerGm = metalFields.livePricePerGm;
     master.defaultWastagePercent = metalFields.defaultWastagePercent;
+    master.laborApplyMode = laborRuleFields.laborApplyMode;
+    master.flatCost = laborRuleFields.flatCost;
+    master.ratePerStone = laborRuleFields.ratePerStone;
+    master.ratePerGram = laborRuleFields.ratePerGram;
+    master.ratePerGroup = laborRuleFields.ratePerGroup;
+    master.overheadApplyMode = overheadRuleFields.overheadApplyMode;
+    master.ratePercent = overheadRuleFields.ratePercent;
+    master.flatAmount = overheadRuleFields.flatAmount;
     master.updatedBy = requester.id;
 
     const savedMaster = await this.designMasterRepo.save(master);
@@ -4473,6 +4575,14 @@ export class ProductsService {
       marketPricePerGm: this.getImportCell(row, 'Market Price Per Gm', 'marketPricePerGm'),
       livePricePerGm: this.getImportCell(row, 'Live Price Per Gm', 'livePricePerGm'),
       defaultWastagePercent: this.getImportCell(row, 'Default Wastage Percent', 'defaultWastagePercent'),
+      laborApplyMode: this.getImportCell(row, 'Labor Apply Mode', 'laborApplyMode'),
+      flatCost: this.getImportCell(row, 'Flat Cost', 'flatCost'),
+      ratePerStone: this.getImportCell(row, 'Rate Per Stone', 'ratePerStone'),
+      ratePerGram: this.getImportCell(row, 'Rate Per Gram', 'ratePerGram'),
+      ratePerGroup: this.getImportCell(row, 'Rate Per Group', 'ratePerGroup'),
+      overheadApplyMode: this.getImportCell(row, 'Overhead Apply Mode', 'overheadApplyMode'),
+      ratePercent: this.getImportCell(row, 'Rate Percent', 'ratePercent'),
+      flatAmount: this.getImportCell(row, 'Flat Amount', 'flatAmount'),
       isActive: this.getImportCell(row, 'Status', 'status', 'isActive'),
     };
   }
@@ -4524,7 +4634,12 @@ export class ProductsService {
       description: row.description?.trim() || undefined,
     };
 
-    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+    if (
+      type === DesignMasterType.JEWELRY_SIZE ||
+      type === DesignMasterType.COLLECTION ||
+      type === DesignMasterType.LABOR_RULE ||
+      type === DesignMasterType.OVERHEAD_RULE
+    ) {
       const jewelryGroup = row.jewelryGroup?.trim();
       if (!jewelryGroup) {
         throw new BadRequestException('Category is required');
@@ -4581,6 +4696,22 @@ export class ProductsService {
     } else if (type === DesignMasterType.GOLD_COLOUR) {
       payload.pricePerUnit =
         this.optionalNonNegativeNumber(row.pricePerUnit, 'pricePerUnit') ?? undefined;
+    } else if (type === DesignMasterType.LABOR_RULE) {
+      payload.laborApplyMode = (row.laborApplyMode?.trim().toUpperCase() as LaborApplyMode) || undefined;
+      payload.flatCost = this.optionalNonNegativeNumber(row.flatCost, 'flatCost') ?? undefined;
+      payload.ratePerStone =
+        this.optionalNonNegativeNumber(row.ratePerStone, 'ratePerStone') ?? undefined;
+      payload.ratePerGram =
+        this.optionalNonNegativeNumber(row.ratePerGram, 'ratePerGram') ?? undefined;
+      payload.ratePerGroup =
+        this.optionalNonNegativeNumber(row.ratePerGroup, 'ratePerGroup') ?? undefined;
+    } else if (type === DesignMasterType.OVERHEAD_RULE) {
+      payload.overheadApplyMode =
+        (row.overheadApplyMode?.trim().toUpperCase() as OverheadApplyMode) || undefined;
+      payload.ratePercent =
+        this.optionalNonNegativeNumber(row.ratePercent, 'ratePercent') ?? undefined;
+      payload.flatAmount =
+        this.optionalNonNegativeNumber(row.flatAmount, 'flatAmount') ?? undefined;
     } else if (type === DesignMasterType.FINDING_HEAD) {
       payload.findingNo = row.findingNo?.trim() || undefined;
       payload.metalCaratage = row.metalCaratage?.trim() || undefined;
@@ -4600,7 +4731,12 @@ export class ProductsService {
     payload: UpdateDesignMasterDto,
   ): Promise<DesignMaster | null> {
     let scopeKey = '';
-    if (type === DesignMasterType.JEWELRY_SIZE || type === DesignMasterType.COLLECTION) {
+    if (
+      type === DesignMasterType.JEWELRY_SIZE ||
+      type === DesignMasterType.COLLECTION ||
+      type === DesignMasterType.LABOR_RULE ||
+      type === DesignMasterType.OVERHEAD_RULE
+    ) {
       const jewelrySizeFields = await this.normalizeCategoryScopedMasterFields(
         type,
         { jewelryGroupId: payload.jewelryGroupId },
@@ -4639,8 +4775,38 @@ export class ProductsService {
       'Market Price Per Gm': '',
       'Live Price Per Gm': '',
       'Default Wastage Percent': '',
+      'Labor Apply Mode': '',
+      'Flat Cost': '',
+      'Rate Per Stone': '',
+      'Rate Per Gram': '',
+      'Rate Per Group': '',
+      'Overhead Apply Mode': '',
+      'Rate Percent': '',
+      'Flat Amount': '',
       Status: 'ACTIVE',
     };
+
+    if (type === DesignMasterType.LABOR_RULE) {
+      row.Value = 'Standard Ring Labor';
+      row['Alias Name'] = 'STD-RING-LABOR';
+      row.Description = 'Base labor rule for ring styles';
+      row.Category = 'Ring';
+      row['Labor Apply Mode'] = 'PER_STONE';
+      row['Flat Cost'] = '45';
+      row['Rate Per Stone'] = '1.50';
+      row['Rate Per Gram'] = '';
+      row['Rate Per Group'] = '';
+    }
+
+    if (type === DesignMasterType.OVERHEAD_RULE) {
+      row.Value = 'Materials Overhead';
+      row['Alias Name'] = 'MAT-OH-15';
+      row.Description = 'Overhead applied on materials subtotal';
+      row.Category = 'Ring';
+      row['Overhead Apply Mode'] = 'PERCENT_MATERIALS';
+      row['Rate Percent'] = '15';
+      row['Flat Amount'] = '';
+    }
 
     switch (type) {
       case DesignMasterType.JEWELRY_SIZE:
@@ -4829,6 +4995,30 @@ export class ProductsService {
         master.defaultWastagePercent !== null && master.defaultWastagePercent !== undefined
           ? this.toNumber(master.defaultWastagePercent)
           : '',
+      'Labor Apply Mode': master.laborApplyMode || '',
+      'Flat Cost':
+        master.flatCost !== null && master.flatCost !== undefined ? this.toNumber(master.flatCost) : '',
+      'Rate Per Stone':
+        master.ratePerStone !== null && master.ratePerStone !== undefined
+          ? this.toNumber(master.ratePerStone)
+          : '',
+      'Rate Per Gram':
+        master.ratePerGram !== null && master.ratePerGram !== undefined
+          ? this.toNumber(master.ratePerGram)
+          : '',
+      'Rate Per Group':
+        master.ratePerGroup !== null && master.ratePerGroup !== undefined
+          ? this.toNumber(master.ratePerGroup)
+          : '',
+      'Overhead Apply Mode': master.overheadApplyMode || '',
+      'Rate Percent':
+        master.ratePercent !== null && master.ratePercent !== undefined
+          ? this.toNumber(master.ratePercent)
+          : '',
+      'Flat Amount':
+        master.flatAmount !== null && master.flatAmount !== undefined
+          ? this.toNumber(master.flatAmount)
+          : '',
       Status: master.isActive ? 'ACTIVE' : 'INACTIVE',
       'Created At': master.createdAt,
       'Updated At': master.updatedAt,
@@ -4963,7 +5153,12 @@ export class ProductsService {
     jewelryGroupId: string | null;
     jewelryGroup: string | null;
   }> {
-    if (masterType !== DesignMasterType.JEWELRY_SIZE && masterType !== DesignMasterType.COLLECTION) {
+    if (
+      masterType !== DesignMasterType.JEWELRY_SIZE &&
+      masterType !== DesignMasterType.COLLECTION &&
+      masterType !== DesignMasterType.LABOR_RULE &&
+      masterType !== DesignMasterType.OVERHEAD_RULE
+    ) {
       return this.emptyCategoryScopedMasterFields();
     }
 
@@ -4987,6 +5182,170 @@ export class ProductsService {
       scopeKey: jewelryGroupMaster.id,
       jewelryGroupId: jewelryGroupMaster.id,
       jewelryGroup: jewelryGroupMaster.value,
+    };
+  }
+
+  private emptyLaborRuleFields(): {
+    laborApplyMode: LaborApplyMode | null;
+    flatCost: number | null;
+    ratePerStone: number | null;
+    ratePerGram: number | null;
+    ratePerGroup: number | null;
+  } {
+    return {
+      laborApplyMode: null,
+      flatCost: null,
+      ratePerStone: null,
+      ratePerGram: null,
+      ratePerGroup: null,
+    };
+  }
+
+  private normalizeLaborApplyMode(value?: LaborApplyMode | string | null): LaborApplyMode {
+    const normalized = String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '_');
+    if (normalized === LaborApplyMode.FLAT) return LaborApplyMode.FLAT;
+    if (normalized === LaborApplyMode.PER_STONE) return LaborApplyMode.PER_STONE;
+    if (normalized === LaborApplyMode.PER_GRAM) return LaborApplyMode.PER_GRAM;
+    if (normalized === LaborApplyMode.PER_GROUP) return LaborApplyMode.PER_GROUP;
+    throw new BadRequestException('laborApplyMode is required');
+  }
+
+  private normalizeLaborRuleFields(
+    masterType: DesignMasterType,
+    input: {
+      laborApplyMode?: LaborApplyMode | string | null;
+      flatCost?: number | null;
+      ratePerStone?: number | null;
+      ratePerGram?: number | null;
+      ratePerGroup?: number | null;
+    },
+    existing?: DesignMaster,
+  ): {
+    laborApplyMode: LaborApplyMode | null;
+    flatCost: number | null;
+    ratePerStone: number | null;
+    ratePerGram: number | null;
+    ratePerGroup: number | null;
+  } {
+    if (masterType !== DesignMasterType.LABOR_RULE) {
+      return this.emptyLaborRuleFields();
+    }
+
+    const laborApplyMode = this.normalizeLaborApplyMode(
+      input.laborApplyMode !== undefined ? input.laborApplyMode : existing?.laborApplyMode,
+    );
+    const flatCost = this.optionalNonNegativeNumber(
+      input.flatCost !== undefined ? input.flatCost : existing?.flatCost,
+      'flatCost',
+    );
+    const ratePerStone = this.optionalNonNegativeNumber(
+      input.ratePerStone !== undefined ? input.ratePerStone : existing?.ratePerStone,
+      'ratePerStone',
+    );
+    const ratePerGram = this.optionalNonNegativeNumber(
+      input.ratePerGram !== undefined ? input.ratePerGram : existing?.ratePerGram,
+      'ratePerGram',
+    );
+    const ratePerGroup = this.optionalNonNegativeNumber(
+      input.ratePerGroup !== undefined ? input.ratePerGroup : existing?.ratePerGroup,
+      'ratePerGroup',
+    );
+
+    if (
+      laborApplyMode === LaborApplyMode.FLAT &&
+      flatCost === null &&
+      ratePerStone === null &&
+      ratePerGram === null &&
+      ratePerGroup === null
+    ) {
+      throw new BadRequestException('flatCost is required for FLAT labor mode');
+    }
+
+    return {
+      laborApplyMode,
+      flatCost,
+      ratePerStone,
+      ratePerGram,
+      ratePerGroup,
+    };
+  }
+
+  private emptyOverheadRuleFields(): {
+    overheadApplyMode: OverheadApplyMode | null;
+    ratePercent: number | null;
+    flatAmount: number | null;
+  } {
+    return {
+      overheadApplyMode: null,
+      ratePercent: null,
+      flatAmount: null,
+    };
+  }
+
+  private normalizeOverheadApplyMode(value?: OverheadApplyMode | string | null): OverheadApplyMode {
+    const normalized = String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '_');
+    if (normalized === OverheadApplyMode.PERCENT_MATERIALS) return OverheadApplyMode.PERCENT_MATERIALS;
+    if (normalized === OverheadApplyMode.PERCENT_BOM_SUBTOTAL) {
+      return OverheadApplyMode.PERCENT_BOM_SUBTOTAL;
+    }
+    if (normalized === OverheadApplyMode.FLAT) return OverheadApplyMode.FLAT;
+    throw new BadRequestException('overheadApplyMode is required');
+  }
+
+  private normalizeOverheadRuleFields(
+    masterType: DesignMasterType,
+    input: {
+      overheadApplyMode?: OverheadApplyMode | string | null;
+      ratePercent?: number | null;
+      flatAmount?: number | null;
+    },
+    existing?: DesignMaster,
+  ): {
+    overheadApplyMode: OverheadApplyMode | null;
+    ratePercent: number | null;
+    flatAmount: number | null;
+  } {
+    if (masterType !== DesignMasterType.OVERHEAD_RULE) {
+      return this.emptyOverheadRuleFields();
+    }
+
+    const overheadApplyMode = this.normalizeOverheadApplyMode(
+      input.overheadApplyMode !== undefined ? input.overheadApplyMode : existing?.overheadApplyMode,
+    );
+    const ratePercent = this.optionalNonNegativeNumber(
+      input.ratePercent !== undefined ? input.ratePercent : existing?.ratePercent,
+      'ratePercent',
+    );
+    const flatAmount = this.optionalNonNegativeNumber(
+      input.flatAmount !== undefined ? input.flatAmount : existing?.flatAmount,
+      'flatAmount',
+    );
+
+    if (
+      overheadApplyMode === OverheadApplyMode.FLAT &&
+      flatAmount === null &&
+      ratePercent === null
+    ) {
+      throw new BadRequestException('flatAmount is required for FLAT overhead mode');
+    }
+
+    if (
+      overheadApplyMode !== OverheadApplyMode.FLAT &&
+      ratePercent === null
+    ) {
+      throw new BadRequestException('ratePercent is required for percentage overhead mode');
+    }
+
+    return {
+      overheadApplyMode,
+      ratePercent,
+      flatAmount,
     };
   }
 

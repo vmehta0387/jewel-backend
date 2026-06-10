@@ -11,7 +11,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://jewel-backend-y6a2.onrender.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.blitznyc.com/api"
       }
     },
     "preview": {
@@ -20,13 +20,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://jewel-backend-y6a2.onrender.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.blitznyc.com/api"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://jewel-backend-y6a2.onrender.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.blitznyc.com/api"
       }
     }
   },

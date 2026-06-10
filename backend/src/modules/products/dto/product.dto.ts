@@ -971,6 +971,8 @@ export enum DesignMasterType {
   DIAMOND_QUALITY = 'DIAMOND_QUALITY',
   VENDOR_NAME = 'VENDOR_NAME',
   LABOR_HEAD = 'LABOR_HEAD',
+  LABOR_RULE = 'LABOR_RULE',
+  OVERHEAD_RULE = 'OVERHEAD_RULE',
   FINDING_HEAD = 'FINDING_HEAD',
   PACKET_STONE = 'PACKET_STONE',
   PACKET_SHAPE = 'PACKET_SHAPE',
@@ -985,6 +987,19 @@ export enum FindingPriceIn {
   GRAM = 'GRAM',
   PAIR = 'PAIR',
   INCHES = 'INCHES',
+}
+
+export enum LaborApplyMode {
+  FLAT = 'FLAT',
+  PER_STONE = 'PER_STONE',
+  PER_GRAM = 'PER_GRAM',
+  PER_GROUP = 'PER_GROUP',
+}
+
+export enum OverheadApplyMode {
+  PERCENT_MATERIALS = 'PERCENT_MATERIALS',
+  PERCENT_BOM_SUBTOTAL = 'PERCENT_BOM_SUBTOTAL',
+  FLAT = 'FLAT',
 }
 
 export class FindDesignMastersQueryDto {
@@ -1089,6 +1104,50 @@ export class CreateDesignMasterDto {
   @Min(0)
   @IsOptional()
   defaultWastagePercent?: number;
+
+  @IsEnum(LaborApplyMode)
+  @IsOptional()
+  laborApplyMode?: LaborApplyMode;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  flatCost?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerStone?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerGram?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerGroup?: number;
+
+  @IsEnum(OverheadApplyMode)
+  @IsOptional()
+  overheadApplyMode?: OverheadApplyMode;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePercent?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  flatAmount?: number;
 }
 
 export class UpdateDesignMasterDto {
@@ -1177,6 +1236,50 @@ export class UpdateDesignMasterDto {
   @Min(0)
   @IsOptional()
   defaultWastagePercent?: number;
+
+  @IsEnum(LaborApplyMode)
+  @IsOptional()
+  laborApplyMode?: LaborApplyMode;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  flatCost?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerStone?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerGram?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePerGroup?: number;
+
+  @IsEnum(OverheadApplyMode)
+  @IsOptional()
+  overheadApplyMode?: OverheadApplyMode;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePercent?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  flatAmount?: number;
 }
 
 export class UpdateDesignMasterStatusDto {

@@ -27,6 +27,8 @@ export enum DesignMasterType {
   DIAMOND_QUALITY = 'DIAMOND_QUALITY',
   VENDOR_NAME = 'VENDOR_NAME',
   LABOR_HEAD = 'LABOR_HEAD',
+  LABOR_RULE = 'LABOR_RULE',
+  OVERHEAD_RULE = 'OVERHEAD_RULE',
   FINDING_HEAD = 'FINDING_HEAD',
   PACKET_STONE = 'PACKET_STONE',
   PACKET_SHAPE = 'PACKET_SHAPE',
@@ -41,6 +43,19 @@ export enum FindingPriceIn {
   GRAM = 'GRAM',
   PAIR = 'PAIR',
   INCHES = 'INCHES',
+}
+
+export enum LaborApplyMode {
+  FLAT = 'FLAT',
+  PER_STONE = 'PER_STONE',
+  PER_GRAM = 'PER_GRAM',
+  PER_GROUP = 'PER_GROUP',
+}
+
+export enum OverheadApplyMode {
+  PERCENT_MATERIALS = 'PERCENT_MATERIALS',
+  PERCENT_BOM_SUBTOTAL = 'PERCENT_BOM_SUBTOTAL',
+  FLAT = 'FLAT',
 }
 
 @Entity('design_masters')
@@ -125,6 +140,30 @@ export class DesignMaster {
 
   @Column({ name: 'default_wastage_percent', type: 'decimal', precision: 8, scale: 3, nullable: true })
   defaultWastagePercent: number | null;
+
+  @Column({ name: 'labor_apply_mode', type: 'varchar', length: 32, nullable: true })
+  laborApplyMode: LaborApplyMode | null;
+
+  @Column({ name: 'flat_cost', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  flatCost: number | null;
+
+  @Column({ name: 'rate_per_stone', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  ratePerStone: number | null;
+
+  @Column({ name: 'rate_per_gram', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  ratePerGram: number | null;
+
+  @Column({ name: 'rate_per_group', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  ratePerGroup: number | null;
+
+  @Column({ name: 'overhead_apply_mode', type: 'varchar', length: 32, nullable: true })
+  overheadApplyMode: OverheadApplyMode | null;
+
+  @Column({ name: 'rate_percent', type: 'decimal', precision: 8, scale: 3, nullable: true })
+  ratePercent: number | null;
+
+  @Column({ name: 'flat_amount', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  flatAmount: number | null;
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;

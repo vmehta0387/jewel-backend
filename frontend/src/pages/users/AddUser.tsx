@@ -50,6 +50,7 @@ function roleNeedsBranch(role: UserRole): boolean {
 export default function AddUser() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const companyAdminCompanyId = currentUser?.companyId || '';
   const allowedRoleOptions = isCompanyAdmin
@@ -94,7 +95,7 @@ export default function AddUser() {
   const visiblePermissionOptions = TASK_PERMISSION_OPTIONS.filter((permission) =>
     allowedPermissionsForRole.includes(permission.value),
   );
-  const canCustomizePermissions = formData.role === 'INTERNAL_REP' || formData.role === 'SUPER_ADMIN';
+  const canCustomizePermissions = isSuperAdmin;
 
   useEffect(() => {
     fetchCompanies();

@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
@@ -169,8 +169,10 @@ interface DesignForm {
   stage: string;
   diamondType: string;
   diamondSpread: string;
+  coverageCustom: string;
   diamondWeight: string;
   diamondQuality: string;
+  diamondQualityCustom: string;
   jewelrySize: string;
   otherWeight: string;
   tags: string;
@@ -248,6 +250,38 @@ interface VendorRow {
   stockType: string;
   supplierStyleNo: string;
 }
+
+interface VersionBuilderSelections {
+  metals: string[];
+  coverages: string[];
+  diamondQualities: string[];
+  caratWeights: string[];
+  sizes: string[];
+}
+
+interface VersionBuilderOptionGroup {
+  id: keyof VersionBuilderSelections;
+  label: string;
+  helper: string;
+  values: string[];
+}
+
+type VersionBuilderImageMode = 'INHERIT_PARENT' | 'MAP_BY_METAL' | 'MANUAL_AFTER_CREATE';
+type VersionBuilderGemMode = 'INHERIT_BASE' | 'OVERRIDE_BLOCK';
+type VersionBuilderGemApplyScope = 'ALL_COMBINATIONS' | 'FILTERED_COMBINATIONS';
+type VersionBuilderWorkflowStep = 'INFO' | 'DIMENSIONS' | 'GEMSTONES' | 'SIZE_CHART' | 'IMAGES' | 'PREVIEW';
+
+interface VersionBuilderSizeChartGroupCell {
+  count: string;
+  ctPerStone: string;
+}
+
+interface VersionBuilderSizeChartRowState {
+  metalWeights: Record<string, string>;
+  groups: Record<string, VersionBuilderSizeChartGroupCell>;
+}
+
+type VersionBuilderSizeChartState = Record<string, Record<string, VersionBuilderSizeChartRowState>>;
 
 const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
   { key: 'media', label: 'Media' },
@@ -329,6 +363,165 @@ const isPartialDecimal = (value: string): boolean => value.trim().endsWith('.');
 const parseNumericValue = (value: number | string | null | undefined): number => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+const parseSizeNumber = (value: string | null | undefined): number | null => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return null;
+  const match = normalized.match(/\d+(\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number.parseFloat(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const calculateVersionBuilderGemRowForSize = (
+  row: GemRow,
+  mode: 'varies' | 'fixed',
+  baseSize: string,
+  targetSize: string,
+): { pcs: number; wtPerPcs: number; wtInCts: number } => {
+  const basePcs = Math.max(0, Math.round(parseNum(row.pcs)));
+  const baseWtPerPcs = Math.max(0, parseNum(row.wtPerPcs));
+  const explicitWtInCts = Math.max(0, parseNum(row.wtInCts));
+  const baseSizeValue = parseSizeNumber(baseSize);
+  const targetSizeValue = parseSizeNumber(targetSize);
+
+  let pcs = basePcs;
+  if (
+    mode === 'varies' &&
+    basePcs > 0 &&
+    baseSizeValue != null &&
+    targetSizeValue != null &&
+    baseSizeValue > 0
+  ) {
+    pcs = Math.max(1, Math.round(basePcs * (targetSizeValue / baseSizeValue)));
+  }
+
+  let wtInCts = 0;
+  if (baseWtPerPcs > 0 && pcs > 0) {
+    wtInCts = baseWtPerPcs * pcs;
+  } else if (explicitWtInCts > 0) {
+    wtInCts =
+      mode === 'varies' && basePcs > 0 && pcs > 0 ? explicitWtInCts * (pcs / basePcs) : explicitWtInCts;
+  }
+
+  return {
+    pcs,
+    wtPerPcs: baseWtPerPcs,
+    wtInCts,
+  };
+};
+const buildVersionBuilderSizeChartSizes = (): string[] => {
+  const sizes: string[] = [];
+  for (let size = 3; size <= 11.0001; size += 0.25) {
+    sizes.push(size.toFixed(2));
+  }
+  return sizes;
+};
+const getMetalPurityBucket = (value: string | null | undefined): string => {
+  const raw = String(value ?? '').trim();
+  const normalized = normalizeLookupKey(raw);
+  if (!normalized) return '';
+  if (normalized === 'pt' || normalized.includes('platinum')) return 'PT';
+  const karatMatch = raw.match(/(\d{2})/);
+  if (karatMatch?.[1]) return `${karatMatch[1]}K`;
+  if (normalized.includes('silver')) return 'Silver';
+  return raw.toUpperCase();
+};
+const getCoverageChartRatio = (coverage: string): number => {
+  const normalized = normalizeLookupKey(coverage);
+  if (normalized.includes('1/2') || normalized.includes('half')) return 0.5;
+  if (normalized.includes('3/4')) return 0.75;
+  if (normalized.includes('full')) return 1;
+  return 1;
+};
+const normalizeSizeChartKey = (value: string): string => {
+  const parsed = parseSizeNumber(value);
+  return parsed != null ? parsed.toFixed(2) : String(value ?? '').trim();
+};
+const buildBaseMetalWeightByPurity = (rows: MetalRow[]): Record<string, string> => {
+  return rows.reduce<Record<string, string>>((acc, row) => {
+    const purity = getMetalPurityBucket(row.goldColour);
+    if (!purity || acc[purity]) return acc;
+    const preferredWeight = row.netWt.trim() || row.totalWt.trim() || '0';
+    acc[purity] = preferredWeight;
+    return acc;
+  }, {});
+};
+const buildDefaultMetalWeightsForPurities = (
+  purities: string[],
+  baseWeightMap: Record<string, string>,
+): Record<string, string> => {
+  return purities.reduce<Record<string, string>>((acc, purity) => {
+    acc[purity] = baseWeightMap[purity] || '0';
+    return acc;
+  }, {});
+};
+const getDefaultSizeChartGroupCell = (
+  row: GemRow,
+  mode: 'varies' | 'fixed',
+  baseSize: string,
+  targetSize: string,
+  coverage: string,
+): VersionBuilderSizeChartGroupCell => {
+  const computed = calculateVersionBuilderGemRowForSize(row, mode, baseSize, targetSize);
+  const coverageRatio = getCoverageChartRatio(coverage);
+  const adjustedCount =
+    computed.pcs > 0
+      ? mode === 'fixed'
+        ? Math.max(1, Math.round(computed.pcs * coverageRatio))
+        : Math.max(1, Math.round(computed.pcs * coverageRatio))
+      : 0;
+  const ctPerStone =
+    computed.wtPerPcs > 0
+      ? computed.wtPerPcs
+      : computed.pcs > 0 && computed.wtInCts > 0
+        ? computed.wtInCts / computed.pcs
+        : 0;
+  return {
+    count: adjustedCount > 0 ? String(adjustedCount) : '',
+    ctPerStone: ctPerStone > 0 ? ctPerStone.toFixed(3) : '',
+  };
+};
+const summarizeVersionBuilderGemPlan = (
+  rows: GemRow[],
+  groupModes: Record<string, 'varies' | 'fixed'>,
+  baseSize: string,
+  targetSize: string,
+): string => {
+  const totalRows = rows.length;
+  const varyingGroups = rows.filter((row) => (groupModes[row.id] || 'varies') === 'varies').length;
+  const fixedGroups = Math.max(0, totalRows - varyingGroups);
+  const computed = rows.map((row) =>
+    calculateVersionBuilderGemRowForSize(row, groupModes[row.id] || 'varies', baseSize, targetSize),
+  );
+  const totalPcs = computed.reduce((sum, row) => sum + row.pcs, 0);
+  const totalWeight = computed.reduce((sum, row) => sum + row.wtInCts, 0);
+  const parts = [`${totalRows} rows`];
+
+  if (totalPcs > 0) parts.push(`${totalPcs} pcs`);
+  if (totalWeight > 0) parts.push(`${totalWeight.toFixed(2)} ctw`);
+
+  if (varyingGroups > 0 && fixedGroups > 0) {
+    parts.push(`${varyingGroups} vary`);
+  } else if (varyingGroups === totalRows && totalRows > 0) {
+    parts.push('size-based');
+  } else if (fixedGroups === totalRows && totalRows > 0) {
+    parts.push('fixed');
+  }
+
+  return `Configured (${parts.join(' · ')})`;
+};
+const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  values.forEach((value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) return;
+    const lookup = normalized.toLowerCase();
+    if (seen.has(lookup)) return;
+    seen.add(lookup);
+    result.push(normalized);
+  });
+  return result;
 };
 const toPacketAbbreviation = (value: string): string => {
   const normalized = (value || '').trim();
@@ -521,6 +714,12 @@ const normalizeVersionInput = (value: string): string => {
   return upper.startsWith('V') ? upper : `V${upper}`;
 };
 
+const getVersionDisplayValue = (value: string): string => {
+  const normalized = normalizeVersionInput(value);
+  const match = normalized.match(/^V(\d+)$/i);
+  return match ? match[1] : normalized.replace(/^V/i, '');
+};
+
 const getBaseDesignNo = (designNo: string): string => designNo.trim().toUpperCase().replace(/-V\d+$/i, '');
 
 const buildVersionedDesignNo = (designNo: string, version: string): string => {
@@ -534,6 +733,93 @@ const isAutoGeneratedDesignName = (designName: string, _jewelryGroup: string, de
   const normalizedName = normalizeLookupKey(designName);
   if (!normalizedName) return true;
   return normalizedName === normalizeLookupKey(designNo);
+};
+
+const STRUCTURED_COVERAGE_OPTIONS = [
+  { value: 'Full Eternity', label: 'F - Full Eternity' },
+  { value: '1/2 Way', label: '1/2 Way' },
+  { value: '3/4 Way', label: '3/4 Way' },
+  { value: 'Custom', label: 'C - Custom' },
+] as const;
+
+const STRUCTURED_DIAMOND_QUALITY_OPTIONS = [
+  { value: 'LAB', label: 'LAB' },
+  { value: 'GH/VS', label: 'GH/VS' },
+  { value: 'HI/SI', label: 'HI/SI' },
+  { value: 'Custom', label: 'C - Custom' },
+] as const;
+
+const sanitizeStructuredToken = (value: string, options?: { preserveSlash?: boolean }): string => {
+  const preserveSlash = options?.preserveSlash === true;
+  const matcher = preserveSlash ? /[^A-Z0-9/]+/g : /[^A-Z0-9]+/g;
+  return value.trim().toUpperCase().replace(matcher, '');
+};
+
+const resolveCoverageCode = (coverage: string, customCoverage: string): string => {
+  const normalized = normalizeLookupKey(coverage);
+  if (!normalized) return '';
+  if (normalized === 'custom') {
+    return sanitizeStructuredToken(customCoverage, { preserveSlash: true });
+  }
+  if (normalized.includes('full')) return 'F';
+  if (normalized.includes('1/2') || normalized.includes('half')) return '1/2';
+  if (normalized.includes('3/4')) return '3/4';
+  return sanitizeStructuredToken(coverage, { preserveSlash: true });
+};
+
+const resolveDiamondQualityCode = (diamondQuality: string, customDiamondQuality: string): string => {
+  const normalized = normalizeLookupKey(diamondQuality);
+  const rawValue = normalized === 'custom' ? customDiamondQuality : diamondQuality;
+  return sanitizeStructuredToken(rawValue, { preserveSlash: true }).replace(/\//g, '-');
+};
+
+const resolveSizeCode = (size: string): string => {
+  const trimmed = size.trim();
+  if (!trimmed) return '';
+  const numeric = Number.parseFloat(trimmed);
+  if (Number.isFinite(numeric) && /^\d+(\.\d+)?$/.test(trimmed)) {
+    return numeric.toFixed(2);
+  }
+  return sanitizeStructuredToken(trimmed, { preserveSlash: true });
+};
+
+const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string => {
+  const trimmed = metal.trim();
+  if (!trimmed) return '';
+  const match = metalOptions.find((option) => normalizeLookupKey(option.value) === normalizeLookupKey(trimmed));
+  const alias = sanitizeStructuredToken(match?.aliasName || '');
+  if (alias) return alias;
+
+  const normalized = normalizeLookupKey(trimmed);
+  if (normalized === 'pt' || normalized.includes('platinum')) return 'PT';
+
+  const karatMatch = trimmed.match(/(\d{2})/);
+  const karat = karatMatch?.[1] || '';
+  if (normalized.includes('white')) return `${karat || ''}KW`;
+  if (normalized.includes('yellow')) return `${karat || ''}KY`;
+  if (normalized.includes('rose') || normalized.includes('pink')) return `${karat || ''}KR`;
+
+  return sanitizeStructuredToken(trimmed);
+};
+
+const buildStructuredDesignNo = ({
+  categoryCode,
+  versionCode,
+  coverageCode,
+  metalCode,
+  diamondQualityCode,
+  sizeCode,
+}: {
+  categoryCode: string;
+  versionCode: string;
+  coverageCode: string;
+  metalCode: string;
+  diamondQualityCode: string;
+  sizeCode: string;
+}): string => {
+  const safeVersionCode = sanitizeStructuredToken(versionCode);
+  const segments = [categoryCode, safeVersionCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
+  return segments.join('-');
 };
 
 const getNextDesignVersion = (designNo: string, existingRows: DesignRow[]): string => {
@@ -619,8 +905,10 @@ const defaultForm: DesignForm = {
   stage: 'Sketch',
   diamondType: '',
   diamondSpread: '',
+  coverageCustom: '',
   diamondWeight: '',
   diamondQuality: '',
+  diamondQualityCustom: '',
   jewelrySize: '',
   otherWeight: '',
   tags: '',
@@ -645,6 +933,23 @@ const defaultPacketForm: PacketForm = {
   weightPerPc: '',
   weightIn: 'CTS',
 };
+
+const createEmptyGemRow = (): GemRow => ({
+  id: makeId(),
+  packetId: '',
+  stone: '',
+  shape: '',
+  size: '',
+  cut: '',
+  color: '',
+  quality: '',
+  settingType: '',
+  wtPerPcs: '',
+  pcs: '',
+  wtInCts: '',
+  pricePerCt: '',
+  amount: '',
+});
 
 const emptyMasterOptions = {
   jewelryGroups: [] as MasterOption[],
@@ -699,6 +1004,37 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
 const inlineMasterAddButtonClass =
   'inline-flex h-9 min-w-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-[#d9ccbc] bg-[#fbf8f3] px-2 text-sm font-semibold leading-none text-[#8f6a2c] transition-colors hover:border-[#cdb58d] hover:bg-[#f6ecda] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e8d3ad] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
 const FINDING_FEATURE_ENABLED = false;
+const VERSION_BUILDER_DIMENSION_CONFIG: Array<{ id: keyof VersionBuilderSelections; label: string; helper: string }> = [
+  { id: 'metals', label: 'Metal', helper: 'Creates one version per selected metal.' },
+  { id: 'coverages', label: 'Coverage', helper: 'Use all coverage variants for this design.' },
+  { id: 'diamondQualities', label: 'Diamond Quality', helper: 'Useful when pricing differs by quality.' },
+  { id: 'caratWeights', label: 'Carat Weight', helper: 'Optional if your design supports multiple carat weights.' },
+  { id: 'sizes', label: 'Jewelry Size', helper: 'Select one or many sizes for this version batch.' },
+];
+
+const EMPTY_VERSION_BUILDER_SELECTIONS: VersionBuilderSelections = {
+  metals: [],
+  coverages: [],
+  diamondQualities: [],
+  caratWeights: [],
+  sizes: [],
+};
+
+const VERSION_BUILDER_PREVIEW_LIMIT = 24;
+const VERSION_BUILDER_GROUP_COLORS = ['#c7983f', '#3f6db3', '#2f8f67', '#9a5ed0', '#c46b3d', '#6f7b87'];
+const VERSION_BUILDER_SIZE_CHART_SIZES = buildVersionBuilderSizeChartSizes();
+const VERSION_BUILDER_WORKFLOW: Array<{
+  id: VersionBuilderWorkflowStep;
+  title: string;
+  subtitle: string;
+}> = [
+  { id: 'INFO', title: '1 · Style Info', subtitle: 'Base style and general info.' },
+  { id: 'DIMENSIONS', title: '2 · Variant Axes', subtitle: 'Toggle values on and off for version generation.' },
+  { id: 'GEMSTONES', title: '3a · Stone Layout', subtitle: 'Copy or override gemstone rows.' },
+  { id: 'SIZE_CHART', title: '3b · Composition Size Chart', subtitle: 'Edit counts and carat per stone by size.' },
+  { id: 'IMAGES', title: '4 · Media Rules', subtitle: 'Set media behavior for new versions.' },
+  { id: 'PREVIEW', title: '5 · Generated', subtitle: 'Review generated version rows.' },
+];
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
   let bgColor = 'bg-slate-50/80';
@@ -770,6 +1106,14 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
     ) : label === 'Set Primary' ? (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 17.8l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />
+      </svg>
+    ) : label === 'Version Builder' ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="4" width="6" height="6" rx="1.5" />
+        <rect x="3" y="14" width="6" height="6" rx="1.5" />
+        <rect x="13" y="4" width="8" height="8" rx="2" />
+        <path d="m16 9 1.8 1.8L21 7.6" />
+        <path d="M13 17h8M17 13v8" />
       </svg>
     ) : (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -914,6 +1258,7 @@ export default function ProductsPage() {
     }
   });
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
+  const [isDesignNameManual, setIsDesignNameManual] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -921,6 +1266,7 @@ export default function ProductsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
   const [showMediaLibraryModal, setShowMediaLibraryModal] = useState(false);
+  const [showVersionBuilderModal, setShowVersionBuilderModal] = useState(false);
   const [modal, setModal] = useState<ModalType>(null);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -1015,6 +1361,24 @@ export default function ProductsPage() {
   const [detailDesignError, setDetailDesignError] = useState<string | null>(null);
   const [showStlViewerModal, setShowStlViewerModal] = useState(false);
   const [listMediaViewer, setListMediaViewer] = useState<ListMediaViewerState | null>(null);
+  const [versionBuilderBaseDesign, setVersionBuilderBaseDesign] = useState<DesignRow | null>(null);
+  const [versionBuilderSelections, setVersionBuilderSelections] = useState<VersionBuilderSelections>(
+    EMPTY_VERSION_BUILDER_SELECTIONS,
+  );
+  const [versionBuilderImageMode, setVersionBuilderImageMode] = useState<VersionBuilderImageMode>('INHERIT_PARENT');
+  const [versionBuilderGemMode, setVersionBuilderGemMode] = useState<VersionBuilderGemMode>('OVERRIDE_BLOCK');
+  const [versionBuilderGemApplyScope, setVersionBuilderGemApplyScope] = useState<VersionBuilderGemApplyScope>('ALL_COMBINATIONS');
+  const [versionBuilderWorkflowStep, setVersionBuilderWorkflowStep] = useState<VersionBuilderWorkflowStep>('INFO');
+  const [versionBuilderMetalImageMap, setVersionBuilderMetalImageMap] = useState<Record<string, string[]>>({});
+  const [versionBuilderActiveMetal, setVersionBuilderActiveMetal] = useState('');
+  const [versionBuilderUploadedImageUrls, setVersionBuilderUploadedImageUrls] = useState<string[]>([]);
+  const [versionBuilderGemRows, setVersionBuilderGemRows] = useState<GemRow[]>([]);
+  const [versionBuilderGemLoading, setVersionBuilderGemLoading] = useState(false);
+  const [versionBuilderGemError, setVersionBuilderGemError] = useState<string | null>(null);
+  const [versionBuilderGemGroupModes, setVersionBuilderGemGroupModes] = useState<Record<string, 'varies' | 'fixed'>>({});
+  const [versionBuilderBaseMetalRows, setVersionBuilderBaseMetalRows] = useState<MetalRow[]>([]);
+  const [versionBuilderChartCoverage, setVersionBuilderChartCoverage] = useState('');
+  const [versionBuilderSizeChart, setVersionBuilderSizeChart] = useState<VersionBuilderSizeChartState>({});
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
@@ -1029,11 +1393,56 @@ export default function ProductsPage() {
   const stlUploadInputRef = useRef<HTMLInputElement | null>(null);
   const mediaLibraryGalleryInputRef = useRef<HTMLInputElement | null>(null);
   const mediaLibraryStlInputRef = useRef<HTMLInputElement | null>(null);
+  const versionBuilderUploadInputRef = useRef<HTMLInputElement | null>(null);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
 
   const selected = useMemo(() => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const detailInfo = detailDesign ?? selected;
+  const primaryMetalValue = metalRows[0]?.goldColour || '';
+  const structuredMetalOptions = useMemo(
+    () => (masterOptions.metalCaratages.length > 0 ? masterOptions.metalCaratages : masterOptions.goldColours),
+    [masterOptions.goldColours, masterOptions.metalCaratages],
+  );
+  const structuredCategoryCode = useMemo(() => {
+    const match = masterOptions.jewelryGroups.find(
+      (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+    );
+    return sanitizeStructuredToken(match?.aliasName || form.jewelryGroup).slice(0, 5);
+  }, [form.jewelryGroup, masterOptions.jewelryGroups]);
+  const structuredCoverageCode = useMemo(
+    () => resolveCoverageCode(form.diamondSpread, form.coverageCustom),
+    [form.coverageCustom, form.diamondSpread],
+  );
+  const structuredDiamondQualityCode = useMemo(
+    () => resolveDiamondQualityCode(form.diamondQuality, form.diamondQualityCustom),
+    [form.diamondQuality, form.diamondQualityCustom],
+  );
+  const structuredVersionCode = useMemo(() => getVersionDisplayValue(form.version || '1'), [form.version]);
+  const structuredMetalCode = useMemo(
+    () => resolveMetalCode(primaryMetalValue, structuredMetalOptions),
+    [primaryMetalValue, structuredMetalOptions],
+  );
+  const structuredSizeCode = useMemo(() => resolveSizeCode(form.jewelrySize), [form.jewelrySize]);
+  const structuredDesignNo = useMemo(
+    () =>
+      buildStructuredDesignNo({
+        categoryCode: structuredCategoryCode,
+        versionCode: structuredVersionCode,
+        coverageCode: structuredCoverageCode,
+        metalCode: structuredMetalCode,
+        diamondQualityCode: structuredDiamondQualityCode,
+        sizeCode: structuredSizeCode,
+      }),
+    [
+      structuredCategoryCode,
+      structuredCoverageCode,
+      structuredDiamondQualityCode,
+      structuredMetalCode,
+      structuredSizeCode,
+      structuredVersionCode,
+    ],
+  );
   const detailGalleryUrls = useMemo(
     () => normalizeStringArray(detailInfo?.imageUrls).map(resolvePublicAssetUrl),
     [detailInfo],
@@ -1056,6 +1465,37 @@ export default function ProductsPage() {
       (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
     );
   }, [form.jewelryGroup, masterOptions.jewelrySizes]);
+
+  useEffect(() => {
+    if (editingId || sourceDesignNo) {
+      return;
+    }
+
+    setForm((prev) => {
+      if (prev.designNo === structuredDesignNo && (isDesignNameManual || prev.designName === structuredDesignNo)) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        designNo: structuredDesignNo,
+        designName: isDesignNameManual ? prev.designName : structuredDesignNo,
+      };
+    });
+  }, [editingId, isDesignNameManual, sourceDesignNo, structuredDesignNo]);
+
+  useEffect(() => {
+    setVersionBuilderGemGroupModes((prev) => {
+      const next: Record<string, 'varies' | 'fixed'> = {};
+      versionBuilderGemRows.forEach((row) => {
+        next[row.id] = prev[row.id] || 'varies';
+      });
+      const keysChanged =
+        Object.keys(next).length !== Object.keys(prev).length ||
+        Object.keys(next).some((key) => next[key] !== prev[key]);
+      return keysChanged ? next : prev;
+    });
+  }, [versionBuilderGemRows]);
   const filteredSubCategoryFilterOptions = useMemo(() => {
     if (!filters.jewelryGroup.trim()) {
       return masterOptions.collections;
@@ -1400,7 +1840,8 @@ export default function ProductsPage() {
     const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
       (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
     );
-    const nextDesignNo = isDesignNoManual ? '' : suggestNextDesignNo(jewelryGroup);
+    const isStructuredNewDesignMode = !editingId && !sourceDesignNo;
+    const nextDesignNo = isDesignNoManual || isStructuredNewDesignMode ? '' : suggestNextDesignNo(jewelryGroup);
     setForm((prev) => {
       const previousAutoName = isAutoGeneratedDesignName(prev.designName, prev.jewelryGroup, prev.designNo);
       return {
@@ -1416,7 +1857,7 @@ export default function ProductsPage() {
       };
     });
 
-    if (!isDesignNoManual) {
+    if (!isDesignNoManual && !isStructuredNewDesignMode) {
       syncDesignNoFromServer(jewelryGroup);
     }
   };
@@ -2451,6 +2892,641 @@ export default function ProductsPage() {
     return versionsByBaseDesign.get(base) || [];
   };
 
+  const versionBuilderVersionRows = useMemo(
+    () => (versionBuilderBaseDesign ? getVersionsForDesign(versionBuilderBaseDesign.designNo) : []),
+    [versionBuilderBaseDesign, versionsByBaseDesign],
+  );
+
+  const versionBuilderOptionGroups = useMemo<VersionBuilderOptionGroup[]>(() => {
+    if (!versionBuilderBaseDesign) {
+      return [];
+    }
+
+    const normalizedGroup = versionBuilderBaseDesign.jewelryGroup.trim().toLowerCase();
+    const filteredSizeOptions =
+      masterOptions.jewelrySizes
+        .filter((option) => {
+          const optionGroup = (option.jewelryGroup || '').trim().toLowerCase();
+          return !normalizedGroup || optionGroup === normalizedGroup;
+        })
+        .map((option) => option.value) || [];
+
+    const metals = uniqueNonEmptyValues([
+      ...masterOptions.metalCaratages.map((option) => option.aliasName || option.value),
+      ...masterOptions.goldColours.map((option) => option.aliasName || option.value),
+      versionBuilderBaseDesign.goldColour,
+    ]);
+    const coverages = uniqueNonEmptyValues([
+      ...masterOptions.diamondSpreads.map((option) => option.value),
+      versionBuilderBaseDesign.diamondSpread,
+    ]);
+    const diamondQualities = uniqueNonEmptyValues(masterOptions.diamondQualities.map((option) => option.value));
+    const caratWeights = uniqueNonEmptyValues(masterOptions.diamondWeights.map((option) => option.value));
+    const sizes = uniqueNonEmptyValues([...filteredSizeOptions, versionBuilderBaseDesign.jewelrySize]);
+
+    return VERSION_BUILDER_DIMENSION_CONFIG.map((dimension) => {
+      if (dimension.id === 'metals') {
+        return { ...dimension, values: metals };
+      }
+      if (dimension.id === 'coverages') {
+        return { ...dimension, values: coverages };
+      }
+      if (dimension.id === 'diamondQualities') {
+        return { ...dimension, values: diamondQualities };
+      }
+      if (dimension.id === 'caratWeights') {
+        return { ...dimension, values: caratWeights };
+      }
+      return { ...dimension, values: sizes };
+    });
+  }, [masterOptions, versionBuilderBaseDesign]);
+
+  const openVersionBuilder = (row: DesignRow) => {
+    setVersionBuilderBaseDesign(row);
+
+    const normalizedGroup = row.jewelryGroup.trim().toLowerCase();
+    const filteredSizeOptions = masterOptions.jewelrySizes
+      .filter((option) => {
+        const optionGroup = (option.jewelryGroup || '').trim().toLowerCase();
+        return !normalizedGroup || optionGroup === normalizedGroup;
+      })
+      .map((option) => option.value);
+
+    setVersionBuilderSelections({
+      metals: uniqueNonEmptyValues([row.goldColour]),
+      coverages: uniqueNonEmptyValues([row.diamondSpread]),
+      diamondQualities: uniqueNonEmptyValues([masterOptions.diamondQualities[0]?.value || '']),
+      caratWeights: uniqueNonEmptyValues([masterOptions.diamondWeights[0]?.value || '']),
+      sizes: uniqueNonEmptyValues([row.jewelrySize || filteredSizeOptions[0] || '']),
+    });
+    setVersionBuilderImageMode('INHERIT_PARENT');
+    setVersionBuilderGemMode('OVERRIDE_BLOCK');
+    setVersionBuilderGemApplyScope('ALL_COMBINATIONS');
+    setVersionBuilderWorkflowStep('INFO');
+    setVersionBuilderMetalImageMap({});
+    setVersionBuilderActiveMetal(uniqueNonEmptyValues([row.goldColour])[0] || '');
+    setVersionBuilderUploadedImageUrls([]);
+    setVersionBuilderGemRows([]);
+    setVersionBuilderBaseMetalRows([]);
+    setVersionBuilderGemError(null);
+    setShowVersionBuilderModal(true);
+    void loadVersionBuilderGemstoneTemplate(row);
+  };
+
+  const closeVersionBuilderModal = () => {
+    versionBuilderUploadedImageUrls.forEach((url) => {
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url);
+      }
+    });
+    setVersionBuilderUploadedImageUrls([]);
+    setShowVersionBuilderModal(false);
+  };
+
+  const loadVersionBuilderGemstoneTemplate = async (row: DesignRow) => {
+    const canLoadDetails = /^[0-9a-fA-F-]{36}$/.test(row.id);
+    if (!canLoadDetails) {
+      setVersionBuilderGemRows([createEmptyGemRow()]);
+      return;
+    }
+
+    setVersionBuilderGemLoading(true);
+    setVersionBuilderGemError(null);
+    try {
+      const detail = (await api.get(`/products/${row.id}`)).data;
+      const gemstones = Array.isArray(detail?.gemstones) ? detail.gemstones : [];
+      const metals = Array.isArray(detail?.metals) ? detail.metals : [];
+      const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+      const resolvePacketForGem = (gem: any): string => {
+        const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
+        if (direct) return direct;
+
+        const match = packetOptions.find((packet) =>
+          normalized(packet.stone) === normalized(gem?.stone) &&
+          normalized(packet.shape) === normalized(gem?.shape) &&
+          normalized(packet.size) === normalized(gem?.size) &&
+          normalized(packet.color) === normalized(gem?.color) &&
+          normalized(packet.quality) === normalized(gem?.quality),
+        );
+        return match?.id || '';
+      };
+
+      const rowsFromDesign: GemRow[] =
+        gemstones.length > 0
+          ? gemstones.map((item: any) => ({
+              id: item.id || makeId(),
+              packetId: resolvePacketForGem(item),
+              stone: String(item.stone || ''),
+              shape: String(item.shape || ''),
+              size: String(item.size || ''),
+              cut: String(item.cut || ''),
+              color: String(item.color || ''),
+              quality: String(item.quality || ''),
+              settingType: String(item.stoneType || ''),
+              wtPerPcs: String(item.wtPerPcs ?? ''),
+              pcs: String(item.pcs ?? ''),
+              wtInCts: String(item.wtInCts ?? ''),
+              pricePerCt: String(item.pricePerCt ?? ''),
+              amount: String(item.amount ?? ''),
+            }))
+          : [createEmptyGemRow()];
+
+      setVersionBuilderGemRows(rowsFromDesign);
+      setVersionBuilderBaseMetalRows(
+        metals.length > 0
+          ? metals.map((item: any) => ({
+              id: item.id || makeId(),
+              goldColour: String(item.metalCaratage || item.goldColour || ''),
+              netWt: String(item.netWt ?? ''),
+              wastagePercent: String(item.wastagePercent ?? ''),
+              wastageWt: String(item.wastageWt ?? ''),
+              totalWt: String(item.totalWt ?? ''),
+              pricePerGm: String(item.pricePerGm ?? ''),
+              value: String(item.value ?? ''),
+            }))
+          : [],
+      );
+    } catch (error: any) {
+      setVersionBuilderGemRows([createEmptyGemRow()]);
+      setVersionBuilderBaseMetalRows([]);
+      setVersionBuilderGemError(error?.response?.data?.message || 'Unable to load gemstone template from base design.');
+    } finally {
+      setVersionBuilderGemLoading(false);
+    }
+  };
+
+  const updateVersionBuilderGemRow = (rowId: string, field: keyof GemRow, value: string) => {
+    setVersionBuilderGemRows((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
+    );
+  };
+
+  const removeVersionBuilderGemRow = (rowId: string) => {
+    setVersionBuilderGemRows((prev) => {
+      const next = prev.filter((row) => row.id !== rowId);
+      return next.length > 0 ? next : [createEmptyGemRow()];
+    });
+  };
+
+  const addVersionBuilderGemRow = () => {
+    setVersionBuilderGemRows((prev) => [...prev, createEmptyGemRow()]);
+  };
+
+  const applyPacketToVersionBuilderGemRow = (rowId: string, packetId: string) => {
+    const packet = packetOptions.find((entry) => entry.id === packetId);
+    if (!packet) {
+      updateVersionBuilderGemRow(rowId, 'packetId', '');
+      return;
+    }
+
+    const packetWeightPerPc = packet.weightPerPc != null ? String(packet.weightPerPc) : '';
+    const packetPieces = packet.pieces != null ? String(packet.pieces) : '';
+    const packetWtInCts = packet.weightUnit === 'CTS' && packet.weight != null ? String(packet.weight) : '';
+    const packetRate = packet.sellingPrice != null ? String(packet.sellingPrice) : '';
+
+    setVersionBuilderGemRows((prev) =>
+      prev.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              packetId: packet.id,
+              stone: packet.stone || row.stone,
+              shape: packet.shape || row.shape,
+              size: packet.size || row.size,
+              color: packet.color || row.color,
+              quality: packet.quality || row.quality,
+              wtPerPcs: packetWeightPerPc || row.wtPerPcs,
+              pcs: packetPieces || row.pcs,
+              wtInCts: packetWtInCts || row.wtInCts,
+              pricePerCt: packetRate || row.pricePerCt,
+            }
+          : row,
+      ),
+    );
+  };
+
+  const toggleVersionBuilderValue = (groupId: keyof VersionBuilderSelections, value: string) => {
+    setVersionBuilderSelections((prev) => {
+      const current = prev[groupId];
+      const exists = current.includes(value);
+      return {
+        ...prev,
+        [groupId]: exists ? current.filter((item) => item !== value) : [...current, value],
+      };
+    });
+  };
+
+  const setAllVersionBuilderValues = (groupId: keyof VersionBuilderSelections, values: string[]) => {
+    setVersionBuilderSelections((prev) => ({
+      ...prev,
+      [groupId]: values,
+    }));
+  };
+
+  const toggleVersionBuilderMetalImageMap = (metal: string, imageUrl: string) => {
+    setVersionBuilderMetalImageMap((prev) => {
+      const current = prev[metal] || [];
+      const exists = current.includes(imageUrl);
+      return {
+        ...prev,
+        [metal]: exists ? current.filter((url) => url !== imageUrl) : [...current, imageUrl],
+      };
+    });
+  };
+
+  const removeVersionBuilderMetalImage = (metal: string, imageUrl: string) => {
+    setVersionBuilderMetalImageMap((prev) => ({
+      ...prev,
+      [metal]: (prev[metal] || []).filter((url) => url !== imageUrl),
+    }));
+  };
+
+  const handleVersionBuilderImageUploadChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    const uploaded = files.map((file) => URL.createObjectURL(file));
+    setVersionBuilderUploadedImageUrls((prev) => [...prev, ...uploaded]);
+  };
+  const updateVersionBuilderSizeChartCell = (
+    coverage: string,
+    sizeKey: string,
+    rowId: string,
+    field: keyof VersionBuilderSizeChartGroupCell,
+    value: string,
+  ) => {
+    setVersionBuilderSizeChart((prev) => {
+      const coverageState = { ...(prev[coverage] || {}) };
+      const sizeState = coverageState[sizeKey] || {
+        metalWeights: buildDefaultMetalWeightsForPurities(
+          versionBuilderMetalPurityColumns,
+          versionBuilderBaseMetalWeightMap,
+        ),
+        groups: {},
+      };
+      const currentCell = sizeState.groups[rowId] || { count: '', ctPerStone: '' };
+      const mode = versionBuilderGemGroupModes[rowId] || 'varies';
+
+      if (mode === 'fixed') {
+        const nextCoverageState = { ...coverageState };
+        versionBuilderSizeChartSizes.forEach((chartSizeKey) => {
+          const chartSizeState = nextCoverageState[chartSizeKey] || {
+            metalWeights: buildDefaultMetalWeightsForPurities(
+              versionBuilderMetalPurityColumns,
+              versionBuilderBaseMetalWeightMap,
+            ),
+            groups: {},
+          };
+          nextCoverageState[chartSizeKey] = {
+            ...chartSizeState,
+            groups: {
+              ...chartSizeState.groups,
+              [rowId]: {
+                ...((chartSizeState.groups && chartSizeState.groups[rowId]) || currentCell),
+                [field]: value,
+              },
+            },
+          };
+        });
+        return {
+          ...prev,
+          [coverage]: nextCoverageState,
+        };
+      }
+
+      return {
+        ...prev,
+        [coverage]: {
+          ...coverageState,
+          [sizeKey]: {
+            ...sizeState,
+            groups: {
+              ...sizeState.groups,
+              [rowId]: {
+                ...currentCell,
+                [field]: value,
+              },
+            },
+          },
+        },
+      };
+    });
+  };
+  const updateVersionBuilderSizeChartMetalWeight = (
+    coverage: string,
+    sizeKey: string,
+    purity: string,
+    value: string,
+  ) => {
+    setVersionBuilderSizeChart((prev) => {
+      const coverageState = { ...(prev[coverage] || {}) };
+      const sizeState = coverageState[sizeKey] || {
+        metalWeights: buildDefaultMetalWeightsForPurities(
+          versionBuilderMetalPurityColumns,
+          versionBuilderBaseMetalWeightMap,
+        ),
+        groups: {},
+      };
+      return {
+        ...prev,
+        [coverage]: {
+          ...coverageState,
+          [sizeKey]: {
+            ...sizeState,
+            metalWeights: {
+              ...sizeState.metalWeights,
+              [purity]: value,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const versionBuilderCombinationCount = useMemo(() => {
+    const groups = versionBuilderOptionGroups.map((group) => versionBuilderSelections[group.id].length);
+    if (!groups.length || groups.some((count) => count === 0)) {
+      return 0;
+    }
+
+    return groups.reduce((total, count) => total * count, 1);
+  }, [versionBuilderOptionGroups, versionBuilderSelections]);
+
+  const versionBuilderHighestVersion = useMemo(() => {
+    if (!versionBuilderVersionRows.length) {
+      return 0;
+    }
+
+    return versionBuilderVersionRows.reduce((max, row) => Math.max(max, getVersionNumber(row.version)), 0);
+  }, [versionBuilderVersionRows]);
+  const versionBuilderStepOrder = useMemo(
+    () => VERSION_BUILDER_WORKFLOW.map((step) => step.id),
+    [],
+  );
+  const versionBuilderCurrentStepIndex = useMemo(
+    () => versionBuilderStepOrder.indexOf(versionBuilderWorkflowStep),
+    [versionBuilderStepOrder, versionBuilderWorkflowStep],
+  );
+  const versionBuilderSizeChartCoverages = useMemo(
+    () =>
+      uniqueNonEmptyValues([
+        ...versionBuilderSelections.coverages,
+        versionBuilderBaseDesign?.diamondSpread,
+      ]),
+    [versionBuilderBaseDesign?.diamondSpread, versionBuilderSelections.coverages],
+  );
+  const versionBuilderMetalPurityColumns = useMemo(
+    () =>
+      uniqueNonEmptyValues(
+        versionBuilderSelections.metals.map((metal) => getMetalPurityBucket(metal)).filter(Boolean),
+      ),
+    [versionBuilderSelections.metals],
+  );
+  const versionBuilderBaseMetalWeightMap = useMemo(
+    () => buildBaseMetalWeightByPurity(versionBuilderBaseMetalRows),
+    [versionBuilderBaseMetalRows],
+  );
+  const versionBuilderSizeChartSizes = useMemo(() => VERSION_BUILDER_SIZE_CHART_SIZES, []);
+
+  useEffect(() => {
+    if (!versionBuilderSizeChartCoverages.length) {
+      setVersionBuilderChartCoverage('');
+      return;
+    }
+    if (!versionBuilderSizeChartCoverages.includes(versionBuilderChartCoverage)) {
+      setVersionBuilderChartCoverage(versionBuilderSizeChartCoverages[0]);
+    }
+  }, [versionBuilderChartCoverage, versionBuilderSizeChartCoverages]);
+
+  useEffect(() => {
+    if (!versionBuilderBaseDesign || !versionBuilderGemRows.length || !versionBuilderSizeChartCoverages.length) {
+      return;
+    }
+
+    setVersionBuilderSizeChart((prev) => {
+      const next: VersionBuilderSizeChartState = { ...prev };
+      versionBuilderSizeChartCoverages.forEach((coverage) => {
+        const coverageState = { ...(next[coverage] || {}) };
+        versionBuilderSizeChartSizes.forEach((sizeKey) => {
+          const existingRow = coverageState[sizeKey];
+          const groups: Record<string, VersionBuilderSizeChartGroupCell> = {};
+          versionBuilderGemRows.forEach((row) => {
+            groups[row.id] =
+              existingRow?.groups?.[row.id] ||
+              getDefaultSizeChartGroupCell(
+                row,
+                versionBuilderGemGroupModes[row.id] || 'varies',
+                versionBuilderBaseDesign.jewelrySize,
+                sizeKey,
+                coverage,
+              );
+          });
+          coverageState[sizeKey] = {
+            metalWeights:
+              existingRow?.metalWeights ||
+              buildDefaultMetalWeightsForPurities(versionBuilderMetalPurityColumns, versionBuilderBaseMetalWeightMap),
+            groups,
+          };
+        });
+        next[coverage] = coverageState;
+      });
+      return next;
+    });
+  }, [
+    versionBuilderBaseDesign,
+    versionBuilderBaseMetalWeightMap,
+    versionBuilderGemGroupModes,
+    versionBuilderGemRows,
+    versionBuilderMetalPurityColumns,
+    versionBuilderSizeChartCoverages,
+    versionBuilderSizeChartSizes,
+  ]);
+
+  const activeVersionBuilderSizeChartRows = useMemo(
+    () => (versionBuilderChartCoverage ? versionBuilderSizeChart[versionBuilderChartCoverage] || {} : {}),
+    [versionBuilderChartCoverage, versionBuilderSizeChart],
+  );
+
+  const activeVersionBuilderSizeChartGroupSummaries = useMemo(() => {
+    return versionBuilderGemRows.map((row) => {
+      let totalCount = 0;
+      let totalCarat = 0;
+      let estCost = 0;
+      versionBuilderSizeChartSizes.forEach((sizeKey) => {
+        const groupCell = activeVersionBuilderSizeChartRows[sizeKey]?.groups?.[row.id];
+        const count = Math.max(0, parseNum(groupCell?.count || '0'));
+        const ctPerStone = Math.max(0, parseNum(groupCell?.ctPerStone || '0'));
+        totalCount += count;
+        totalCarat += count * ctPerStone;
+        estCost += count * Math.max(0, parseNum(row.pricePerCt || '0'));
+      });
+      return {
+        row,
+        totalCount,
+        totalCarat,
+        estCost,
+      };
+    });
+  }, [activeVersionBuilderSizeChartRows, versionBuilderGemRows, versionBuilderSizeChartSizes]);
+
+  const versionBuilderPreviewRows = useMemo(() => {
+    if (!versionBuilderBaseDesign) {
+      return [] as Array<{
+        designNo: string;
+        version: string;
+        metal: string;
+        coverage: string;
+        diamondQuality: string;
+        caratWeight: string;
+        size: string;
+        imageInfo: string;
+        gemstoneInfo: string;
+      }>;
+    }
+
+    const metals = versionBuilderSelections.metals;
+    const coverages = versionBuilderSelections.coverages;
+    const qualities = versionBuilderSelections.diamondQualities;
+    const weights = versionBuilderSelections.caratWeights;
+    const sizes = versionBuilderSelections.sizes;
+    if (!metals.length || !coverages.length || !qualities.length || !weights.length || !sizes.length) {
+      return [];
+    }
+
+    const baseDesignNo = getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo;
+    const previewRows: Array<{
+      designNo: string;
+      version: string;
+      metal: string;
+      coverage: string;
+      diamondQuality: string;
+      caratWeight: string;
+      size: string;
+      imageInfo: string;
+      gemstoneInfo: string;
+    }> = [];
+
+    let generated = 0;
+    const startVersion = versionBuilderHighestVersion + 1;
+    outer: for (const metal of metals) {
+      for (const coverage of coverages) {
+        for (const quality of qualities) {
+          for (const weight of weights) {
+            for (const size of sizes) {
+              const version = `V${startVersion + generated}`;
+              const chartCoverage =
+                versionBuilderSizeChart[coverage] ||
+                versionBuilderSizeChart[versionBuilderChartCoverage] ||
+                {};
+              const chartRow = chartCoverage[normalizeSizeChartKey(size)];
+              const chartGroupCells = chartRow?.groups || {};
+              const totalGemRows = versionBuilderGemRows.length;
+              const totalPcs = versionBuilderGemRows.reduce(
+                (sum, row) => sum + Math.max(0, parseNum(chartGroupCells[row.id]?.count || '0')),
+                0,
+              );
+              const totalGemWeight = versionBuilderGemRows.reduce(
+                (sum, row) =>
+                  sum +
+                  Math.max(0, parseNum(chartGroupCells[row.id]?.count || '0')) *
+                    Math.max(0, parseNum(chartGroupCells[row.id]?.ctPerStone || '0')),
+                0,
+              );
+              const gemstoneInfo =
+                chartRow
+                  ? `Configured (${totalGemRows} rows · ${totalPcs} pcs · ${totalGemWeight.toFixed(2)} ctw)`
+                  : summarizeVersionBuilderGemPlan(
+                      versionBuilderGemRows,
+                      versionBuilderGemGroupModes,
+                      versionBuilderBaseDesign.jewelrySize,
+                      size,
+                    );
+              const imageCount =
+                versionBuilderImageMode === 'INHERIT_PARENT'
+                  ? uniqueNonEmptyValues([
+                      ...normalizeStringArray(versionBuilderBaseDesign.imageUrls).map(resolvePublicAssetUrl),
+                      ...versionBuilderUploadedImageUrls,
+                    ]).length
+                  : versionBuilderImageMode === 'MAP_BY_METAL'
+                    ? (versionBuilderMetalImageMap[metal] || []).length
+                    : 0;
+              const imageInfo =
+                versionBuilderImageMode === 'MANUAL_AFTER_CREATE'
+                  ? 'Set later'
+                  : `${imageCount} image${imageCount === 1 ? '' : 's'}`;
+              previewRows.push({
+                designNo: buildVersionedDesignNo(baseDesignNo, version),
+                version,
+                metal,
+                coverage,
+                diamondQuality: quality,
+                caratWeight: weight,
+                size,
+                imageInfo,
+                gemstoneInfo,
+              });
+              generated += 1;
+              if (generated >= VERSION_BUILDER_PREVIEW_LIMIT) {
+                break outer;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return previewRows;
+  }, [
+    versionBuilderBaseDesign,
+    versionBuilderGemApplyScope,
+    versionBuilderGemMode,
+    versionBuilderGemGroupModes,
+    versionBuilderGemRows,
+    versionBuilderHighestVersion,
+    versionBuilderImageMode,
+    versionBuilderMetalImageMap,
+    versionBuilderSelections,
+    versionBuilderSizeChart,
+    versionBuilderChartCoverage,
+    versionBuilderUploadedImageUrls,
+  ]);
+
+  const versionBuilderParentImageUrls = useMemo(
+    () => normalizeStringArray(versionBuilderBaseDesign?.imageUrls).map(resolvePublicAssetUrl),
+    [versionBuilderBaseDesign],
+  );
+
+  const versionBuilderAllImageUrls = useMemo(
+    () => uniqueNonEmptyValues([...versionBuilderParentImageUrls, ...versionBuilderUploadedImageUrls]),
+    [versionBuilderParentImageUrls, versionBuilderUploadedImageUrls],
+  );
+
+  const versionBuilderActiveMetalImages = useMemo(
+    () => (versionBuilderActiveMetal ? versionBuilderMetalImageMap[versionBuilderActiveMetal] || [] : []),
+    [versionBuilderActiveMetal, versionBuilderMetalImageMap],
+  );
+
+  const versionBuilderMappedMetalsCount = useMemo(() => {
+    const selectedMetals = versionBuilderSelections.metals;
+    if (!selectedMetals.length) {
+      return 0;
+    }
+
+    return selectedMetals.filter((metal) => (versionBuilderMetalImageMap[metal] || []).length > 0).length;
+  }, [versionBuilderMetalImageMap, versionBuilderSelections.metals]);
+
+  useEffect(() => {
+    if (!versionBuilderSelections.metals.length) {
+      setVersionBuilderActiveMetal('');
+      return;
+    }
+
+    if (!versionBuilderSelections.metals.includes(versionBuilderActiveMetal)) {
+      setVersionBuilderActiveMetal(versionBuilderSelections.metals[0]);
+    }
+  }, [versionBuilderActiveMetal, versionBuilderSelections.metals]);
+
   const pageSize = 15;
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(filteredBaseRows.length / pageSize)),
@@ -2650,26 +3726,28 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
     setEditingId(null);
     setIsDesignNoManual(false);
+    setIsDesignNameManual(false);
     setSourceDesignNo('');
     designNoRequestSeqRef.current += 1;
-    const initialJewelryGroup = masterOptions.jewelryGroups[0]?.value || defaultForm.jewelryGroup;
-    const autoDesignNo = suggestNextDesignNo(initialJewelryGroup);
     setForm({
       ...defaultForm,
-      designNo: autoDesignNo,
-      designName: autoDesignNo,
+      designNo: '',
+      designName: '',
       version: defaultForm.version,
-      jewelryGroup: initialJewelryGroup,
-      stage: masterOptions.stages[0]?.value || defaultForm.stage,
-      diamondType: masterOptions.diamondTypes[0]?.value || defaultForm.diamondType,
-      diamondSpread: masterOptions.diamondSpreads[0]?.value || defaultForm.diamondSpread,
-      diamondWeight: masterOptions.diamondWeights[0]?.value || defaultForm.diamondWeight,
-      diamondQuality: masterOptions.diamondQualities[0]?.value || defaultForm.diamondQuality,
-      designStatus: masterOptions.designStatuses[0]?.value || defaultForm.designStatus,
+      jewelryGroup: '',
+      collection: '',
+      stage: '',
+      diamondType: '',
+      diamondSpread: '',
+      diamondWeight: '',
+      diamondQuality: '',
+      jewelrySize: '',
+      designStatus: '',
+      coverageCustom: '',
+      diamondQualityCustom: '',
       ijewelModelId: '',
       ijewelBaseName: '',
     });
-    syncDesignNoFromServer(initialJewelryGroup);
     setTagPicker('');
     setGalleryItems([]);
     setStlItem(null);
@@ -2768,8 +3846,10 @@ const createDefaultVendorRow = (): VendorRow => ({
         stage: detail.stage || row.stage || '',
         diamondType: detail.diamondType || '',
         diamondSpread: detail.diamondSpread || '',
+        coverageCustom: '',
         diamondWeight: detail.diamondWeight || '',
         diamondQuality: detail.diamondQuality || '',
+        diamondQualityCustom: '',
         jewelrySize: detail.jewelrySize || row.jewelrySize || '',
         otherWeight: asInput(detail.otherWeight),
         tags: tags.join(', '),
@@ -2930,8 +4010,10 @@ const createDefaultVendorRow = (): VendorRow => ({
         stage: row.stage,
         diamondType: row.diamondType || '',
         diamondSpread: row.diamondSpread || '',
+        coverageCustom: '',
         diamondWeight: '',
         diamondQuality: '',
+        diamondQualityCustom: '',
         jewelrySize: row.jewelrySize,
         otherWeight: '',
         tags: row.tags.join(', '),
@@ -2979,6 +4061,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     setEditingId(row.id);
     setIsDesignNoManual(true);
+    setIsDesignNameManual(true);
     designNoRequestSeqRef.current += 1;
     setSelectedId(row.id);
 
@@ -2992,6 +4075,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
     setEditingId(null);
     setIsDesignNoManual(true);
+    setIsDesignNameManual(true);
     designNoRequestSeqRef.current += 1;
     setSelectedId(row.id);
     const baseDesignNo = getBaseDesignNo(row.designNo);
@@ -3004,6 +4088,7 @@ const createDefaultVendorRow = (): VendorRow => ({
   const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean; overrideDesignNo?: string }) => {
     const forceCreate = Boolean(options?.forceCreate);
     const isUpdate = Boolean(editingId) && !forceCreate;
+    const isStructuredNewDesignMode = !isUpdate && !forceCreate && !sourceDesignNo;
     if (isUpdate) {
       if (!canModifyExistingDesigns) {
         window.alert('You have read-only access for existing designs.');
@@ -3023,11 +4108,12 @@ const createDefaultVendorRow = (): VendorRow => ({
     const overrideDesignNo = options?.overrideDesignNo?.trim();
     const baseDesignNo =
       overrideDesignNo ||
+      (isStructuredNewDesignMode ? structuredDesignNo : '') ||
       (forceCreate && sourceDesignNo ? sourceDesignNo : '') ||
       form.designNo.trim() ||
       (!isUpdate ? suggestNextDesignNo(form.jewelryGroup) : '');
     const resolvedDesignNo = baseDesignNo;
-    const shouldSendDesignNo = isUpdate || isDesignNoManual || forceCreate;
+    const shouldSendDesignNo = isStructuredNewDesignMode || isUpdate || isDesignNoManual || forceCreate;
     if (shouldSendDesignNo && !resolvedDesignNo) {
       window.alert('Design No is required.');
       return;
@@ -4119,6 +5205,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       <Action label={versionsLabel} onClick={() => toggleVersionsForDesign(row.designNo)} />
                       {canCreateDesign ? (
+                        <Action label="Version Builder" onClick={() => openVersionBuilder(row)} />
+                      ) : null}
+                      {canCreateDesign ? (
                         <Action label="New Version" onClick={() => openNewVersion(row)} />
                       ) : null}
                       {canModifyExistingDesigns ? (
@@ -4375,12 +5464,921 @@ const createDefaultVendorRow = (): VendorRow => ({
         </Modal>
       ) : null}
 
+      {showVersionBuilderModal && versionBuilderBaseDesign ? (
+        <Modal
+          title={`VERSION BUILDER (${getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo})`}
+          size="max-w-6xl"
+          onClose={closeVersionBuilderModal}
+        >
+          <div className="space-y-5">
+            <div className="overflow-x-auto">
+              <div className="flex min-w-max items-end border-b border-[#e3d9cc]">
+                {VERSION_BUILDER_WORKFLOW.map((step) => {
+                  const active = versionBuilderWorkflowStep === step.id;
+                  const badgeValue =
+                    step.id === 'DIMENSIONS'
+                      ? versionBuilderCombinationCount
+                      : step.id === 'GEMSTONES'
+                        ? versionBuilderGemRows.length
+                        : step.id === 'SIZE_CHART'
+                          ? versionBuilderGemRows.length
+                        : step.id === 'PREVIEW'
+                          ? versionBuilderCombinationCount
+                          : null;
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => setVersionBuilderWorkflowStep(step.id)}
+                      className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
+                        active
+                          ? 'border-[#bf944d] text-[#1f1914]'
+                          : 'border-transparent text-[#8e8276] hover:text-[#4d433a]'
+                      }`}
+                    >
+                      <span>{step.title}</span>
+                      {badgeValue !== null ? (
+                        <span className="rounded-full bg-[#f7ecd7] px-2 py-0.5 text-[11px] font-bold text-[#8f6a2c]">
+                          {badgeValue}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {versionBuilderWorkflowStep === 'INFO' ? (
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 1 of 5</p>
+                  <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Style info</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Base style and general info for the builder flow. Use this as the starting point before enabling variant axes.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-[#e6ddd2] bg-[#fffdf9] p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Base Style</p>
+                      <h3 className="mt-1 text-lg font-bold text-[#2b241d]">
+                        {versionBuilderBaseDesign.designNo}
+                        <span className="ml-2 text-sm font-semibold text-slate-500">({versionBuilderBaseDesign.version || 'V1'})</span>
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-600">{versionBuilderBaseDesign.designName || 'Unnamed design'}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <div className="rounded-xl border border-[#e6ddd2] bg-white px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Category</p>
+                        <p className="text-sm font-semibold text-slate-900">{versionBuilderBaseDesign.jewelryGroup || '-'}</p>
+                      </div>
+                      <div className="rounded-xl border border-[#e6ddd2] bg-white px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Existing</p>
+                        <p className="text-sm font-semibold text-slate-900">{versionBuilderVersionRows.length} versions</p>
+                      </div>
+                      <div className="rounded-xl border border-[#e6ddd2] bg-white px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Variant Count</p>
+                        <p className="text-sm font-semibold text-slate-900">{versionBuilderCombinationCount}</p>
+                      </div>
+                      <div className="rounded-xl border border-[#d9b977] bg-[#faf4e6] px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Next Version</p>
+                        <p className="text-sm font-semibold text-amber-800">V{versionBuilderHighestVersion + 1}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'DIMENSIONS' ? (
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 2 of 5</p>
+                  <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Variant axes</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Toggle values on or off. The variant count updates live, and so does what the rep sees in the configurator.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {versionBuilderOptionGroups.map((group) => {
+                    const selectedValues = versionBuilderSelections[group.id];
+                    const hasValues = group.values.length > 0;
+                    return (
+                      <div key={group.id} className="rounded-2xl border border-[#e6ddd2] bg-[#fffdf9] px-5 py-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[14px] font-bold text-[#2b241d]">{group.label}</p>
+                            <span className="rounded-full bg-[#f4ede3] px-2.5 py-1 text-[10px] font-semibold tracking-[0.05em] text-[#7b6f61]">
+                              {hasValues ? `${selectedValues.length} selected` : '0 selected'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="rounded-lg border border-[#ddd2c3] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#6f6358] transition hover:border-[#cdb58d] hover:bg-[#fbf8f3]"
+                              onClick={() => setAllVersionBuilderValues(group.id, group.values)}
+                              disabled={!hasValues}
+                            >
+                              All values
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-[#ddd2c3] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#6f6358] transition hover:border-[#cdb58d] hover:bg-[#fbf8f3]"
+                              onClick={() => setAllVersionBuilderValues(group.id, [])}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="mb-3 text-[12px] text-slate-500">{group.helper}</p>
+
+                        {!hasValues ? (
+                          <div className="rounded-xl border border-dashed border-[#ddd2c3] bg-[#faf7f2] px-4 py-3 text-xs text-slate-500">
+                            No options available in masters for this axis.
+                          </div>
+                        ) : (
+                          <div className="flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
+                            {group.values.map((value) => {
+                              const selected = selectedValues.includes(value);
+                              return (
+                                <button
+                                  key={`${group.id}-${value}`}
+                                  type="button"
+                                  className={`rounded-[10px] border px-3 py-2 text-[12.5px] font-semibold transition ${
+                                    selected
+                                      ? 'border-[#d9b977] bg-[#f7ecd7] text-[#8f6a2c]'
+                                      : 'border-[#e3d9cc] bg-white text-[#5b5147] hover:border-[#cdb58d] hover:bg-[#fbf8f3]'
+                                  }`}
+                                  onClick={() => toggleVersionBuilderValue(group.id, value)}
+                                >
+                                  {value}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#ebe2d6] pt-4">
+                  <p className="text-xs text-slate-500">
+                    Variant count is the cartesian product of selected values across all enabled axes.
+                  </p>
+                  <span className="rounded-full border border-[#e0d3bf] bg-[#faf5ec] px-3 py-1.5 text-xs font-semibold text-[#7b6132]">
+                    {versionBuilderCombinationCount.toLocaleString('en-US')} combinations
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'IMAGES' ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-[#e4d8c9] bg-white p-4 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Image Handling Strategy</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => setVersionBuilderImageMode('INHERIT_PARENT')}
+                      className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                        versionBuilderImageMode === 'INHERIT_PARENT'
+                          ? 'border-[#bf944d] bg-[#f8f2e8] text-[#8f6a2c]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-semibold">Use Parent Images</p>
+                      <p className="mt-1 text-slate-500">All new versions inherit base design media.</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVersionBuilderImageMode('MAP_BY_METAL')}
+                      className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                        versionBuilderImageMode === 'MAP_BY_METAL'
+                          ? 'border-[#bf944d] bg-[#f8f2e8] text-[#8f6a2c]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-semibold">Map by Metal</p>
+                      <p className="mt-1 text-slate-500">Choose specific image per selected metal.</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVersionBuilderImageMode('MANUAL_AFTER_CREATE')}
+                      className={`rounded-xl border px-3 py-3 text-left text-xs transition ${
+                        versionBuilderImageMode === 'MANUAL_AFTER_CREATE'
+                          ? 'border-[#bf944d] bg-[#f8f2e8] text-[#8f6a2c]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <p className="font-semibold">Set Later</p>
+                      <p className="mt-1 text-slate-500">Create versions first, assign media after batch.</p>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#e4d8c9] bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Parent Media Gallery</p>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                        {versionBuilderAllImageUrls.length} images
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => versionBuilderUploadInputRef.current?.click()}
+                        className="rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100"
+                      >
+                        + Upload
+                      </button>
+                      <input
+                        ref={versionBuilderUploadInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleVersionBuilderImageUploadChange}
+                      />
+                    </div>
+                  </div>
+                  {versionBuilderAllImageUrls.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
+                      No parent images found on this design. Mapping is disabled until media is uploaded.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {versionBuilderAllImageUrls.map((url, idx) => {
+                        const isMapped =
+                          versionBuilderImageMode === 'MAP_BY_METAL' &&
+                          versionBuilderActiveMetalImages.includes(url);
+                        return (
+                        <button
+                          key={`${url}-${idx}`}
+                          type="button"
+                          className={`overflow-hidden rounded-xl border bg-white ${isMapped ? 'border-[#bf944d] ring-2 ring-[#f0dfc2]' : 'border-slate-200 hover:border-[#bf944d]'}`}
+                          onClick={() => {
+                            if (versionBuilderImageMode === 'MAP_BY_METAL' && versionBuilderActiveMetal) {
+                              toggleVersionBuilderMetalImageMap(versionBuilderActiveMetal, url);
+                            }
+                          }}
+                          title={versionBuilderImageMode === 'MAP_BY_METAL' ? `Assign to ${versionBuilderActiveMetal || 'selected metal'}` : 'Parent gallery image'}
+                        >
+                          <img src={url} alt={`Parent media ${idx + 1}`} className="h-20 w-full object-cover" />
+                          <div className="border-t border-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
+                            {versionBuilderImageMode === 'MAP_BY_METAL' && isMapped ? 'Selected' : `Image ${idx + 1}`}
+                          </div>
+                        </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {versionBuilderImageMode === 'MAP_BY_METAL' ? (
+                  <div className="rounded-2xl border border-[#e4d8c9] bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Metal Image Mapping</p>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                        {versionBuilderMappedMetalsCount}/{versionBuilderSelections.metals.length} mapped
+                      </span>
+                    </div>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {versionBuilderSelections.metals.map((metal) => {
+                        const active = versionBuilderActiveMetal === metal;
+                        const mapped = Boolean(versionBuilderMetalImageMap[metal]);
+                        return (
+                          <button
+                            key={metal}
+                            type="button"
+                            onClick={() => setVersionBuilderActiveMetal(metal)}
+                            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                              active
+                                ? 'border-[#bf944d] bg-[#f8f2e8] text-[#8f6a2c]'
+                                : mapped
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border-slate-200 bg-white text-slate-700'
+                            }`}
+                          >
+                            {metal}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      Click a metal above, then click any parent image tile to assign it.
+                    </div>
+                    {versionBuilderActiveMetal ? (
+                      <div className="mt-3">
+                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                          Selected for {versionBuilderActiveMetal} ({versionBuilderActiveMetalImages.length})
+                        </p>
+                        {versionBuilderActiveMetalImages.length === 0 ? (
+                          <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                            No images selected yet.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {versionBuilderActiveMetalImages.map((url) => (
+                              <div key={`${versionBuilderActiveMetal}-${url}`} className="relative overflow-hidden rounded-lg border border-slate-200">
+                                <img src={url} alt={`${versionBuilderActiveMetal} mapped`} className="h-14 w-14 object-cover" />
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] font-bold text-white"
+                                  onClick={() => removeVersionBuilderMetalImage(versionBuilderActiveMetal, url)}
+                                >
+                                    x
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'GEMSTONES' ? (
+              <div className="space-y-4">
+                <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                  <div className="mb-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 3a · Stone Layout</p>
+                    <h3 className="mt-1 text-[1.15rem] font-bold text-[#2b241d]">Define stone groups</h3>
+                    <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                      Each group links to a packet from inventory. Type/shape/mm/quality are inherited from the packet; price is too.
+                    </p>
+                  </div>
+
+                  {versionBuilderGemLoading ? (
+                    <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-[11px] text-slate-500">
+                      Loading gemstone template from base design...
+                    </p>
+                  ) : null}
+                  {versionBuilderGemError ? (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700">
+                      {versionBuilderGemError}
+                    </p>
+                  ) : null}
+
+                  {!versionBuilderGemLoading ? (
+                    <div className="space-y-4">
+                      {versionBuilderGemRows.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-[#ddd2c3] bg-[#faf7f2] px-4 py-3 text-[11px] text-slate-500">
+                          No gemstone rows configured.
+                        </div>
+                      ) : (
+                        versionBuilderGemRows.map((item, index) => {
+                          const packet = packetOptions.find((entry) => entry.id === item.packetId);
+                          const groupColor = VERSION_BUILDER_GROUP_COLORS[index % VERSION_BUILDER_GROUP_COLORS.length];
+                          const groupLabel = String.fromCharCode(65 + index);
+                          const groupMode = versionBuilderGemGroupModes[item.id] || 'varies';
+                          const isPacketLinked = Boolean(packet);
+                          return (
+                            <div key={item.id} className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white">
+                              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#efe5d8] px-5 py-4">
+                                <div className="flex items-center gap-4">
+                                  <div
+                                    className="grid h-11 w-11 place-items-center rounded-full text-base font-bold"
+                                    style={{ backgroundColor: `${groupColor}22`, color: groupColor }}
+                                  >
+                                    {groupLabel}
+                                  </div>
+                                  <div>
+                                    <p className="text-[14px] font-bold text-[#2b241d]">
+                                      Group {groupLabel} - {item.shape || packet?.shape || 'Stone group'}
+                                    </p>
+                                    <p className="text-[12px] text-slate-500">
+                                      {groupMode === 'varies' ? 'Count varies per ring size' : 'Fixed per piece'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="rounded-lg bg-[#f5efe6] p-1">
+                                    <button
+                                      type="button"
+                                      className={`rounded-md px-3 py-1.5 text-[12px] font-semibold ${
+                                        groupMode === 'varies' ? 'bg-white text-[#1f1914] shadow-sm' : 'text-slate-500'
+                                      }`}
+                                      onClick={() =>
+                                        setVersionBuilderGemGroupModes((prev) => ({ ...prev, [item.id]: 'varies' }))
+                                      }
+                                    >
+                                      Varies per size
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`rounded-md px-3 py-1.5 text-[12px] font-semibold ${
+                                        groupMode === 'fixed' ? 'bg-white text-[#1f1914] shadow-sm' : 'text-slate-500'
+                                      }`}
+                                      onClick={() =>
+                                        setVersionBuilderGemGroupModes((prev) => ({ ...prev, [item.id]: 'fixed' }))
+                                      }
+                                    >
+                                      Fixed per piece
+                                    </button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#ece2d5] bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 disabled:opacity-40"
+                                    disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || versionBuilderGemRows.length <= 1}
+                                    onClick={() => removeVersionBuilderGemRow(item.id)}
+                                  >
+                                    x
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="px-5 py-4">
+                                <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">
+                                  Diamond Packet
+                                </label>
+                                <select
+                                  className="w-full rounded-xl border border-[#ddd2c3] bg-[#fbf8f3] px-4 py-2.5 text-[12px] font-semibold text-[#2b241d]"
+                                  value={item.packetId}
+                                  disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                  onChange={(event) => applyPacketToVersionBuilderGemRow(item.id, event.target.value)}
+                                >
+                                  <option value="">-- Custom values (not from inventory) --</option>
+                                  {packetOptions.map((entry) => (
+                                    <option key={entry.id} value={entry.id}>
+                                      {entry.packetName}
+                                      {entry.sellingPrice != null ? ` · $${Number(entry.sellingPrice).toFixed(2)}/stone` : ''}
+                                      {entry.pieces != null ? ` · qty ${entry.pieces}` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="mt-2 text-[11px] text-slate-500">
+                                  Selecting a packet sets type, shape, size and quality automatically.
+                                </p>
+
+                                {isPacketLinked ? (
+                                  <div
+                                    className="mt-4 grid gap-4 rounded-xl border bg-[#fbf7ef] px-4 py-3.5 md:grid-cols-3"
+                                    style={{ borderLeftWidth: 4, borderLeftColor: groupColor, borderColor: '#eadfcf' }}
+                                  >
+                                    <div>
+                                      <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500">Packet</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d] break-words">{packet?.packetName || packet?.id || item.packetId}</p>
+                                      <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Quality</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">{item.quality || packet?.quality || '-'} {item.color || packet?.color ? `· ${item.color || packet?.color}` : ''}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500">Type · Shape</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">
+                                        {item.stone || packet?.stone || '-'} · {item.shape || packet?.shape || '-'}
+                                      </p>
+                                      <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Cost / Stone</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">${parseNum(item.pricePerCt || String(packet?.sellingPrice || 0)).toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500">Size</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">{item.size || packet?.size || '-'} {item.size || packet?.size ? 'mm' : ''}</p>
+                                      <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">On Hand</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">{packet?.pieces ?? '-'}</p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="mt-4 rounded-xl border border-dashed border-[#ddd2c3] bg-[#faf7f2] px-4 py-3 text-[11px] text-slate-500">
+                                    Custom - type, shape, size and quality entered below. Reorder will not be possible without a packet link.
+                                  </div>
+                                )}
+
+                                <details className="mt-4" open={!isPacketLinked}>
+                                  <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">
+                                    {isPacketLinked ? 'Override Packet Values (Advanced)' : 'Custom values'}
+                                  </summary>
+                                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Stone Type</label>
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.stone}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'stone', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Shape</label>
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.shape}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'shape', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Diameter (mm)</label>
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.size}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'size', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Quality</label>
+                                      <input
+                                        type="text"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.quality}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'quality', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Wt / Per Pcs.</label>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.wtPerPcs}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'wtPerPcs', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Pcs</label>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.pcs}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'pcs', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Wt(In Cts)</label>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.wtInCts}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'wtInCts', event.target.value)}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">@(P/C/In USD)</label>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                        value={item.pricePerCt}
+                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'pricePerCt', event.target.value)}
+                                      />
+                                    </div>
+                                  </div>
+                                </details>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={addVersionBuilderGemRow}
+                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                        className="mt-2 rounded-lg border border-transparent bg-transparent px-1 py-1 text-[15px] font-semibold text-[#1f1914] transition hover:text-[#8f6a2c] disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        + Add stone group
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'SIZE_CHART' ? (
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8f6a2c]">Step 3b · Composition Size Chart</p>
+                  <h3 className="mt-1 text-[1.15rem] font-bold text-[#2b241d]">Each group gets its own count column — edit any cell</h3>
+                  <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                    Sizes 3.00 to 11.00 at 0.25 increments. Totals and BOM preview recalc live.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-[#e4d8c9] bg-[#fffdfa] p-5">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {versionBuilderSizeChartCoverages.map((coverage) => {
+                        const active = versionBuilderChartCoverage === coverage;
+                        return (
+                          <button
+                            key={coverage}
+                            type="button"
+                            onClick={() => setVersionBuilderChartCoverage(coverage)}
+                            className={`rounded-xl border px-4 py-1.5 text-[11px] font-semibold transition ${
+                              active
+                                ? 'border-[#e0cfaf] bg-white text-[#1f1914] shadow-sm'
+                                : 'border-transparent bg-[#f7f0e4] text-[#8c7b67] hover:text-[#5f5245]'
+                            }`}
+                          >
+                            {coverage}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-[#8c7b67]">
+                      {versionBuilderGemRows.length} group{versionBuilderGemRows.length === 1 ? '' : 's'} ·{' '}
+                      {versionBuilderChartCoverage || 'No coverage'} · {versionBuilderSizeChartSizes.length} sizes (0.25 steps)
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {activeVersionBuilderSizeChartGroupSummaries.map(({ row, totalCount, totalCarat, estCost }, index) => {
+                      const packet = packetOptions.find((entry) => entry.id === row.packetId);
+                      const groupLabel = String.fromCharCode(65 + index);
+                      const groupColor = VERSION_BUILDER_GROUP_COLORS[index % VERSION_BUILDER_GROUP_COLORS.length];
+                      return (
+                        <div key={`chart-summary-${row.id}`} className="rounded-2xl border border-[#e4d8c9] bg-white px-4 py-3.5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: groupColor }}>
+                                · Group {groupLabel}
+                              </p>
+                              <p className="mt-2 text-[14px] font-semibold text-[#2b241d]">
+                                {row.shape || packet?.shape || 'Stone group'} {row.size || packet?.size ? `· ${row.size || packet?.size} mm` : ''}
+                              </p>
+                              <p className="mt-1 text-[11px] text-[#8c7b67]">
+                                {row.stone || packet?.stone || 'Diamond'} · {row.quality || packet?.quality || '-'} · {row.color || packet?.color || '-'}
+                              </p>
+                            </div>
+                            {packet?.packetName ? (
+                              <span className="rounded-full border border-[#e0d3bf] bg-[#faf5ec] px-3 py-1 text-[10px] font-semibold text-[#9a8b76]">
+                                {packet.packetName}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-dashed border-[#eadfcf] pt-3 md:grid-cols-3">
+                            <div>
+                              <p className="text-[20px] font-semibold leading-none text-[#2b241d]">{Math.round(totalCount)}</p>
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a8b76]">Stones · {versionBuilderChartCoverage || '-'}</p>
+                            </div>
+                            <div>
+                              <p className="text-[20px] font-semibold leading-none text-[#2b241d]">{totalCarat.toFixed(2)}<span className="ml-1 text-[11px]">ct</span></p>
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a8b76]">Total Carat</p>
+                            </div>
+                            <div>
+                              <p className="text-[20px] font-semibold leading-none text-[#2b241d]">${estCost.toFixed(0)}</p>
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a8b76]">Est. Stone Cost</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 overflow-x-auto">
+                    <table className="min-w-full border-separate border-spacing-0 overflow-hidden rounded-2xl border border-[#e4d8c9]">
+                      <thead>
+                        <tr className="bg-[#f8f1e6] text-[#9a8b76]">
+                          <th className="border-b border-[#eadfcf] px-3 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em]">Size (US)</th>
+                          {versionBuilderMetalPurityColumns.map((purity) => (
+                            <th
+                              key={`metal-head-${purity}`}
+                              className="border-b border-[#eadfcf] px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em]"
+                            >
+                              {purity} Weight Editable
+                            </th>
+                          ))}
+                          {versionBuilderGemRows.map((row, index) => {
+                            const groupLabel = String.fromCharCode(65 + index);
+                            return (
+                              <th key={`group-head-${row.id}`} colSpan={2} className="border-b border-[#eadfcf] px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#c7983f]">
+                                · Group {groupLabel} — {(row.shape || 'Stone group').toUpperCase()}
+                              </th>
+                            );
+                          })}
+                          <th className="border-b border-[#eadfcf] px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em]">Total Stones</th>
+                          <th className="border-b border-[#eadfcf] px-3 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em]">TCW (Σ Count×Ct)</th>
+                        </tr>
+                        <tr className="bg-[#fbf7ef] text-[#9a8b76]">
+                          {versionBuilderMetalPurityColumns.map((purity) => (
+                            <th key={`metal-sub-${purity}`} className="border-b border-[#eadfcf] px-3 py-2.5"></th>
+                          ))}
+                          <th className="border-b border-[#eadfcf] px-3 py-2.5"></th>
+                          {versionBuilderGemRows.map((row) => (
+                            <Fragment key={`group-sub-${row.id}`}>
+                              <th className="border-b border-[#eadfcf] px-3 py-2.5 text-center text-[9px] font-semibold uppercase tracking-[0.12em]">Count</th>
+                              <th className="border-b border-[#eadfcf] px-3 py-2.5 text-center text-[9px] font-semibold uppercase tracking-[0.12em]">Ct / Stone</th>
+                            </Fragment>
+                          ))}
+                          <th className="border-b border-[#eadfcf] px-3 py-2.5"></th>
+                          <th className="border-b border-[#eadfcf] px-3 py-2.5"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {versionBuilderSizeChartSizes.map((sizeKey) => {
+                          const rowState = activeVersionBuilderSizeChartRows[sizeKey] || {
+                            metalWeights: buildDefaultMetalWeightsForPurities(
+                              versionBuilderMetalPurityColumns,
+                              versionBuilderBaseMetalWeightMap,
+                            ),
+                            groups: {},
+                          };
+                          const totalStones = versionBuilderGemRows.reduce(
+                            (sum, row) => sum + Math.max(0, parseNum(rowState.groups[row.id]?.count || '0')),
+                            0,
+                          );
+                          const totalTcw = versionBuilderGemRows.reduce(
+                            (sum, row) =>
+                              sum +
+                              Math.max(0, parseNum(rowState.groups[row.id]?.count || '0')) *
+                                Math.max(0, parseNum(rowState.groups[row.id]?.ctPerStone || '0')),
+                            0,
+                          );
+                          const highlightBaseSize =
+                            normalizeSizeChartKey(versionBuilderBaseDesign.jewelrySize) === normalizeSizeChartKey(sizeKey);
+                          return (
+                            <tr key={`chart-row-${sizeKey}`} className={highlightBaseSize ? 'bg-[#fbf7ef]' : 'bg-white'}>
+                              <td className="border-b border-[#f0e7da] px-3 py-2 text-[12px] font-semibold text-[#2b241d]">{sizeKey}</td>
+                              {versionBuilderMetalPurityColumns.map((purity) => (
+                                <td key={`metal-cell-${sizeKey}-${purity}`} className="border-b border-[#f0e7da] px-3 py-2 text-center">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
+                                    value={rowState.metalWeights?.[purity] || '0'}
+                                    onChange={(event) =>
+                                      updateVersionBuilderSizeChartMetalWeight(
+                                        versionBuilderChartCoverage,
+                                        sizeKey,
+                                        purity,
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </td>
+                              ))}
+                              {versionBuilderGemRows.map((row) => {
+                                const cell = rowState.groups[row.id] || { count: '', ctPerStone: '' };
+                                return (
+                                  <Fragment key={`chart-cell-${sizeKey}-${row.id}`}>
+                                    <td className="border-b border-[#f0e7da] px-3 py-2 text-center">
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
+                                        value={cell.count}
+                                        onChange={(event) =>
+                                          updateVersionBuilderSizeChartCell(
+                                            versionBuilderChartCoverage,
+                                            sizeKey,
+                                            row.id,
+                                            'count',
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </td>
+                                    <td className="border-b border-[#f0e7da] px-3 py-2 text-center">
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
+                                        value={cell.ctPerStone}
+                                        onChange={(event) =>
+                                          updateVersionBuilderSizeChartCell(
+                                            versionBuilderChartCoverage,
+                                            sizeKey,
+                                            row.id,
+                                            'ctPerStone',
+                                            event.target.value,
+                                          )
+                                        }
+                                      />
+                                    </td>
+                                  </Fragment>
+                                );
+                              })}
+                              <td className="border-b border-[#f0e7da] px-3 py-2 text-center text-[12px] font-semibold text-[#2b241d]">{Math.round(totalStones)}</td>
+                              <td className="border-b border-[#f0e7da] px-3 py-2 text-center text-[12px] font-semibold text-[#7b6f61]">{totalTcw.toFixed(2)} ct</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {versionBuilderWorkflowStep === 'PREVIEW' ? (
+              <div className="rounded-2xl border border-[#e4d8c9] bg-white p-4 shadow-sm">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Preview (UI only)</p>
+                    <p className="text-xs text-slate-500">
+                      Showing first {VERSION_BUILDER_PREVIEW_LIMIT} rows out of {versionBuilderCombinationCount} combinations.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    Starts from V{versionBuilderHighestVersion + 1}
+                  </span>
+                </div>
+                <div className="app-table-scroll scrollbar-top rounded-xl border border-slate-200">
+                  <table className="app-table app-table-compact">
+                    <thead>
+                      <tr>
+                        <th className="app-table-head-cell">Design No</th>
+                        <th className="app-table-head-cell">Version</th>
+                        <th className="app-table-head-cell">Metal</th>
+                        <th className="app-table-head-cell">Coverage</th>
+                        <th className="app-table-head-cell">Diamond Quality</th>
+                        <th className="app-table-head-cell">Carat Weight</th>
+                        <th className="app-table-head-cell">Size</th>
+                        <th className="app-table-head-cell">Images</th>
+                        <th className="app-table-head-cell">Gemstone Plan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {versionBuilderPreviewRows.length === 0 ? (
+                        <tr>
+                          <td className="app-table-cell text-sm text-slate-500" colSpan={9}>
+                            Select at least one option in every dimension to generate combinations.
+                          </td>
+                        </tr>
+                      ) : (
+                        versionBuilderPreviewRows.map((previewRow) => (
+                          <tr key={`${previewRow.designNo}-${previewRow.version}`}>
+                            <td className="app-table-cell font-semibold text-slate-900">{previewRow.designNo}</td>
+                            <td className="app-table-cell">{previewRow.version}</td>
+                            <td className="app-table-cell">{previewRow.metal}</td>
+                            <td className="app-table-cell">{previewRow.coverage}</td>
+                            <td className="app-table-cell">{previewRow.diamondQuality}</td>
+                            <td className="app-table-cell">{previewRow.caratWeight}</td>
+                            <td className="app-table-cell">{previewRow.size}</td>
+                            <td className="app-table-cell">
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                                {previewRow.imageInfo}
+                              </span>
+                            </td>
+                            <td className="app-table-cell text-xs text-slate-600">{previewRow.gemstoneInfo}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-2">
+              <p className="text-xs text-slate-500">
+                This screen is UI-only for now. Save action will be connected to bulk version create API in next step.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const previousStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex - 1];
+                    if (previousStep) setVersionBuilderWorkflowStep(previousStep);
+                  }}
+                  disabled={versionBuilderCurrentStepIndex <= 0}
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const nextStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex + 1];
+                    if (nextStep) setVersionBuilderWorkflowStep(nextStep);
+                  }}
+                  disabled={versionBuilderCurrentStepIndex >= versionBuilderStepOrder.length - 1}
+                >
+                  Next
+                </Button>
+                <Button type="button" variant="secondary" onClick={closeVersionBuilderModal}>
+                  Close
+                </Button>
+                <Button type="button" disabled>
+                  Create Versions (Coming Soon)
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
       {showAddModal && (
         <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); }}>
           <div className="space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
-              <p className="font-semibold text-slate-700">Version: {normalizeVersionInput(form.version || 'V1')}</p>
+              <p className="font-semibold text-slate-700">Version: {getVersionDisplayValue(form.version || 'V1')}</p>
             </div>
             {mastersLoading && <p className="text-xs text-gray-500">Loading master dropdowns...</p>}
 
@@ -4393,7 +6391,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <input
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={form.designName}
-                      onChange={(event) => setForm((prev) => ({ ...prev, designName: event.target.value }))}
+                      onChange={(event) => {
+                        setIsDesignNameManual(true);
+                        setForm((prev) => ({ ...prev, designName: event.target.value }));
+                      }}
                       placeholder="Design Name"
                     />
                   </div>
@@ -4410,9 +6411,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <label className="mb-1 block text-sm font-medium text-slate-700">Version</label>
                     <input
                       className="w-full rounded border border-gray-300 bg-slate-50 px-2 py-2 text-sm text-slate-700"
-                      value={normalizeVersionInput(form.version || 'V1')}
-                      readOnly
-                      placeholder="V1"
+                      value={getVersionDisplayValue(form.version || 'V1')}
+                      readOnly={Boolean(editingId || sourceDesignNo)}
+                      onChange={(event) => {
+                        const digitsOnly = event.target.value.replace(/[^0-9]/g, '');
+                        setForm((prev) => ({ ...prev, version: digitsOnly || '1' }));
+                      }}
+                      placeholder="1"
                     />
                   </div>
 
@@ -4468,35 +6473,89 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                   </div>
                   <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Jewelry Size</label>
-                    <div className="flex gap-2">
-                      <select
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Coverage</label>
+                    <select
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.diamondSpread}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          diamondSpread: event.target.value,
+                          coverageCustom: event.target.value === 'Custom' ? prev.coverageCustom : '',
+                        }))
+                      }
+                    >
+                      <option value="">Select Coverage</option>
+                      {STRUCTURED_COVERAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Dia Quality</label>
+                    <select
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.diamondQuality}
+                      onChange={(event) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          diamondQuality: event.target.value,
+                          diamondQualityCustom: event.target.value === 'Custom' ? prev.diamondQualityCustom : '',
+                        }))
+                      }
+                    >
+                      <option value="">Select Dia Quality</option>
+                      {STRUCTURED_DIAMOND_QUALITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {form.diamondSpread === 'Custom' ? (
+                    <div className="xl:col-span-3">
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Coverage Custom Code</label>
+                      <input
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.jewelrySize}
-                        onChange={(event) => setForm((prev) => ({ ...prev, jewelrySize: event.target.value }))}
-                        disabled={!form.jewelryGroup}
-                      >
-                        <option value="">Select Jewelry Size</option>
-                        {!filteredJewelrySizeOptions.some(
-                          (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelrySize),
-                        ) && form.jewelrySize ? (
-                          <option value={form.jewelrySize}>{form.jewelrySize}</option>
-                        ) : null}
-                        {filteredJewelrySizeOptions.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'JEWELRY_SIZE'}
-                        onClick={() => addMasterFromDesign('JEWELRY_SIZE')}
-                      >
-                        +
-                      </button>
+                        value={form.coverageCustom}
+                        onChange={(event) => setForm((prev) => ({ ...prev, coverageCustom: event.target.value }))}
+                        placeholder="C"
+                      />
                     </div>
+                  ) : null}
+                  {form.diamondQuality === 'Custom' ? (
+                    <div className="xl:col-span-3">
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Dia Quality Custom Code</label>
+                      <input
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        value={form.diamondQualityCustom}
+                        onChange={(event) => setForm((prev) => ({ ...prev, diamondQualityCustom: event.target.value }))}
+                        placeholder="C"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="xl:col-span-3">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Size</label>
+                    <select
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={form.jewelrySize}
+                      onChange={(event) => setForm((prev) => ({ ...prev, jewelrySize: event.target.value }))}
+                      disabled={!form.jewelryGroup}
+                    >
+                      <option value="">Select Size</option>
+                      {!filteredJewelrySizeOptions.some(
+                        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelrySize),
+                      ) && form.jewelrySize ? (
+                        <option value={form.jewelrySize}>{form.jewelrySize}</option>
+                      ) : null}
+                      {filteredJewelrySizeOptions.map((option) => (
+                        <option key={option.id} value={option.value}>
+                          {option.value}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Status</label>
@@ -4550,31 +6609,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                   </div>
                   <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.diamondSpread}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondSpread: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Spread</option>
-                        {masterOptions.diamondSpreads.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'DIAMOND_SPREAD'}
-                        onClick={() => addMasterFromDesign('DIAMOND_SPREAD')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Wt</label>
                     <div className="flex gap-2">
                       <select
@@ -4599,32 +6633,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </button>
                     </div>
                   </div>
-                  <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Quality</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                        value={form.diamondQuality}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondQuality: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Quality</option>
-                        {masterOptions.diamondQualities.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'DIAMOND_QUALITY'}
-                        onClick={() => addMasterFromDesign('DIAMOND_QUALITY')}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Stage</label>
                     <div className="flex gap-2">
@@ -4921,7 +6929,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 onClick={() => moveGalleryItem(index, -1)}
                                 disabled={index === 0}
                               >
-                                ↑
+                                ^
                               </button>
                               <button
                                 type="button"
@@ -4929,7 +6937,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 onClick={() => moveGalleryItem(index, 1)}
                                 disabled={index === galleryItems.length - 1}
                               >
-                                ↓
+                                v
                               </button>
                               <button
                                 type="button"
@@ -5534,7 +7542,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <option value="">Select Category</option>
                     {masterOptions.jewelryGroups.map((option) => (
                       <option key={option.id} value={option.id}>
-                        {option.aliasName || option.value}
+                        {option.value}
                       </option>
                     ))}
                   </select>
@@ -6106,7 +8114,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Wt</td><td className="px-3 py-2">{detailInfo.diamondWeight || '-'}</td><td className="px-3 py-2 font-medium">Diamond Quality</td><td className="px-3 py-2">{detailInfo.diamondQuality || '-'}</td></tr>
-                    <tr className="border-b"><td className="px-3 py-2 font-medium">Drawer Location</td><td className="px-3 py-2">{detailInfo.drawerLocation || '-'}</td><td className="px-3 py-2 font-medium">Other Wt</td><td className="px-3 py-2">{detailInfo.otherWeight ?? '-'}</td></tr>
+                    <tr className="border-b"><td className="px-3 py-2 font-medium">Drawer Location</td><td className="px-3 py-2">{detailInfo.drawerLocation || '-'}</td><td className="px-3 py-2 font-medium">Other Wt</td><td className="px-3 py-2">{detailInfo.otherWeight || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2">{detailInfo.designDescription || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Total Value</td><td className="px-3 py-2">{formatMoney(detailSummary.totalValue || parseNumericValue(detailInfo.price))}</td><td className="px-3 py-2 font-medium">Remarks</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
                     <tr className="border-b"><td className="px-3 py-2 font-medium">Created</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.createdAt)}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.updatedAt || detailInfo.modifiedAt)}</td></tr>
@@ -6625,5 +8633,6 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
 
 

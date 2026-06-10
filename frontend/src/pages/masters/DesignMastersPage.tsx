@@ -22,6 +22,8 @@ type DesignMasterType =
   | 'DIAMOND_QUALITY'
   | 'VENDOR_NAME'
   | 'LABOR_HEAD'
+  | 'LABOR_RULE'
+  | 'OVERHEAD_RULE'
   | 'FINDING_HEAD'
   | 'PACKET_STONE'
   | 'PACKET_SHAPE'
@@ -32,6 +34,8 @@ type DesignMasterType =
 
 type MasterCategoryType = DesignMasterType | 'STONE_PACKET';
 type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
+type LaborApplyMode = 'FLAT' | 'PER_STONE' | 'PER_GRAM' | 'PER_GROUP';
+type OverheadApplyMode = 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT';
 
 interface MasterOption {
   id: string;
@@ -69,6 +73,14 @@ interface MasterRow {
   marketPricePerGm?: number | null;
   livePricePerGm?: number | null;
   defaultWastagePercent?: number | null;
+  laborApplyMode?: LaborApplyMode | null;
+  flatCost?: number | null;
+  ratePerStone?: number | null;
+  ratePerGram?: number | null;
+  ratePerGroup?: number | null;
+  overheadApplyMode?: OverheadApplyMode | null;
+  ratePercent?: number | null;
+  flatAmount?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -217,6 +229,20 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     hint: 'Labor line item heads',
   },
   {
+    value: 'LABOR_RULE',
+    label: 'Labor Master',
+    icon: 'LR',
+    accentClass: 'bg-violet-50 text-violet-700 ring-violet-200',
+    hint: 'Flat, per-stone, per-gram and per-group labor rules',
+  },
+  {
+    value: 'OVERHEAD_RULE',
+    label: 'Overhead Master',
+    icon: 'OH',
+    accentClass: 'bg-amber-50 text-amber-700 ring-amber-200',
+    hint: 'Material percentage or flat overhead rules',
+  },
+  {
     value: 'PACKET_STONE',
     label: 'Stone Type',
     icon: 'PS',
@@ -314,6 +340,27 @@ function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
     );
   }
 
+  if (type === 'LABOR_RULE') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 19h16" />
+        <path d="M8 15V9" />
+        <path d="M12 15V5" />
+        <path d="M16 15v-3" />
+      </svg>
+    );
+  }
+
+  if (type === 'OVERHEAD_RULE') {
+    return (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="7" />
+        <path d="M12 8v8" />
+        <path d="M9.5 10.5c0-1 1-1.75 2.5-1.75s2.5.75 2.5 1.75c0 2-5 1-5 3 0 1 1 1.75 2.5 1.75s2.5-.75 2.5-1.75" />
+      </svg>
+    );
+  }
+
   if (type === 'PACKET_STONE' || type === 'PACKET_SHAPE' || type === 'PACKET_SIZE' || type === 'PACKET_CUT' || type === 'PACKET_COLOR' || type === 'PACKET_QUALITY' || type === 'STONE_PACKET') {
     return (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -357,6 +404,8 @@ interface MasterModalProps {
   isMetalColorType: boolean;
   isMetalPurityType: boolean;
   isMetalCaratageType: boolean;
+  isLaborRuleType: boolean;
+  isOverheadRuleType: boolean;
   findingNo: string;
   jewelryGroupId: string;
   metalCaratage: string;
@@ -375,6 +424,14 @@ interface MasterModalProps {
   pricePerUnit: string;
   dimensions: string;
   weightPerUnit: string;
+  laborApplyMode: LaborApplyMode;
+  flatCost: string;
+  ratePerStone: string;
+  ratePerGram: string;
+  ratePerGroup: string;
+  overheadApplyMode: OverheadApplyMode;
+  ratePercent: string;
+  flatAmount: string;
   jewelryGroupOptions: MasterOption[];
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -396,6 +453,14 @@ interface MasterModalProps {
   onChangePricePerUnit: (value: string) => void;
   onChangeDimensions: (value: string) => void;
   onChangeWeightPerUnit: (value: string) => void;
+  onChangeLaborApplyMode: (value: LaborApplyMode) => void;
+  onChangeFlatCost: (value: string) => void;
+  onChangeRatePerStone: (value: string) => void;
+  onChangeRatePerGram: (value: string) => void;
+  onChangeRatePerGroup: (value: string) => void;
+  onChangeOverheadApplyMode: (value: OverheadApplyMode) => void;
+  onChangeRatePercent: (value: string) => void;
+  onChangeFlatAmount: (value: string) => void;
 }
 
 interface PacketModalProps {
@@ -536,6 +601,8 @@ function MasterModal({
   isMetalColorType,
   isMetalPurityType,
   isMetalCaratageType,
+  isLaborRuleType,
+  isOverheadRuleType,
   findingNo,
   jewelryGroupId,
   metalCaratage,
@@ -554,6 +621,14 @@ function MasterModal({
   pricePerUnit,
   dimensions,
   weightPerUnit,
+  laborApplyMode,
+  flatCost,
+  ratePerStone,
+  ratePerGram,
+  ratePerGroup,
+  overheadApplyMode,
+  ratePercent,
+  flatAmount,
   jewelryGroupOptions,
   onClose,
   onSubmit,
@@ -575,6 +650,14 @@ function MasterModal({
   onChangePricePerUnit,
   onChangeDimensions,
   onChangeWeightPerUnit,
+  onChangeLaborApplyMode,
+  onChangeFlatCost,
+  onChangeRatePerStone,
+  onChangeRatePerGram,
+  onChangeRatePerGroup,
+  onChangeOverheadApplyMode,
+  onChangeRatePercent,
+  onChangeFlatAmount,
 }: MasterModalProps) {
   if (!open) {
     return null;
@@ -671,7 +754,7 @@ function MasterModal({
                   <option value="">Select Category</option>
                   {jewelryGroupOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {option.aliasName || option.value}
+                      {option.value}
                     </option>
                   ))}
                 </select>
@@ -721,6 +804,171 @@ function MasterModal({
                 />
               </div>
             </div>
+          ) : null}
+
+          {isLaborRuleType ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={jewelryGroupId}
+                    onChange={(event) => onChangeJewelryGroupId(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {jewelryGroupOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={laborApplyMode}
+                    onChange={(event) => onChangeLaborApplyMode(event.target.value as LaborApplyMode)}
+                    required
+                  >
+                    <option value="FLAT">Flat</option>
+                    <option value="PER_STONE">Per Stone</option>
+                    <option value="PER_GRAM">Per Gram</option>
+                    <option value="PER_GROUP">Per Group</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Flat Cost</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={flatCost}
+                    onChange={(event) => onChangeFlatCost(event.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Rate Per Stone</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={ratePerStone}
+                    onChange={(event) => onChangeRatePerStone(event.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Rate Per Gram</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={ratePerGram}
+                    onChange={(event) => onChangeRatePerGram(event.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Rate Per Group</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={ratePerGroup}
+                    onChange={(event) => onChangeRatePerGroup(event.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={formDescription}
+                    onChange={(event) => onChangeDescription(event.target.value)}
+                    placeholder="Explain how this labor rule should apply in BOM."
+                  />
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {isOverheadRuleType ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 rounded-2xl border border-amber-100 bg-amber-50/40 p-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={jewelryGroupId}
+                    onChange={(event) => onChangeJewelryGroupId(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {jewelryGroupOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={overheadApplyMode}
+                    onChange={(event) =>
+                      onChangeOverheadApplyMode(event.target.value as OverheadApplyMode)
+                    }
+                    required
+                  >
+                    <option value="PERCENT_MATERIALS">% of Materials</option>
+                    <option value="PERCENT_BOM_SUBTOTAL">% of BOM Subtotal</option>
+                    <option value="FLAT">Flat</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Rate Percent</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={ratePercent}
+                    onChange={(event) => onChangeRatePercent(event.target.value)}
+                    placeholder="0.000"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Flat Amount</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={flatAmount}
+                    onChange={(event) => onChangeFlatAmount(event.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={formDescription}
+                    onChange={(event) => onChangeDescription(event.target.value)}
+                    placeholder="Explain how this overhead rule should apply in BOM."
+                  />
+                </div>
+              </div>
+            </>
           ) : null}
 
           {isFindingType ? (
@@ -1279,6 +1527,15 @@ export default function DesignMastersPage() {
   const [formPricePerUnit, setFormPricePerUnit] = useState('');
   const [formDimensions, setFormDimensions] = useState('');
   const [formWeightPerUnit, setFormWeightPerUnit] = useState('');
+  const [formLaborApplyMode, setFormLaborApplyMode] = useState<LaborApplyMode>('FLAT');
+  const [formFlatCost, setFormFlatCost] = useState('');
+  const [formRatePerStone, setFormRatePerStone] = useState('');
+  const [formRatePerGram, setFormRatePerGram] = useState('');
+  const [formRatePerGroup, setFormRatePerGroup] = useState('');
+  const [formOverheadApplyMode, setFormOverheadApplyMode] =
+    useState<OverheadApplyMode>('PERCENT_MATERIALS');
+  const [formRatePercent, setFormRatePercent] = useState('');
+  const [formFlatAmount, setFormFlatAmount] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
@@ -1526,6 +1783,14 @@ export default function DesignMastersPage() {
     setFormPricePerUnit('');
     setFormDimensions('');
     setFormWeightPerUnit('');
+    setFormLaborApplyMode('FLAT');
+    setFormFlatCost('');
+    setFormRatePerStone('');
+    setFormRatePerGram('');
+    setFormRatePerGroup('');
+    setFormOverheadApplyMode('PERCENT_MATERIALS');
+    setFormRatePercent('');
+    setFormFlatAmount('');
     setPacketForm(defaultPacketForm);
     setPacketNameManuallyEdited(false);
   };
@@ -1580,6 +1845,26 @@ export default function DesignMastersPage() {
     setFormPricePerUnit(row.pricePerUnit !== null && row.pricePerUnit !== undefined ? String(row.pricePerUnit) : '');
     setFormDimensions(row.dimensions || '');
     setFormWeightPerUnit(row.weightPerUnit !== null && row.weightPerUnit !== undefined ? String(row.weightPerUnit) : '');
+    setFormLaborApplyMode((row.laborApplyMode as LaborApplyMode) || 'FLAT');
+    setFormFlatCost(row.flatCost !== null && row.flatCost !== undefined ? String(row.flatCost) : '');
+    setFormRatePerStone(
+      row.ratePerStone !== null && row.ratePerStone !== undefined ? String(row.ratePerStone) : '',
+    );
+    setFormRatePerGram(
+      row.ratePerGram !== null && row.ratePerGram !== undefined ? String(row.ratePerGram) : '',
+    );
+    setFormRatePerGroup(
+      row.ratePerGroup !== null && row.ratePerGroup !== undefined ? String(row.ratePerGroup) : '',
+    );
+    setFormOverheadApplyMode(
+      (row.overheadApplyMode as OverheadApplyMode) || 'PERCENT_MATERIALS',
+    );
+    setFormRatePercent(
+      row.ratePercent !== null && row.ratePercent !== undefined ? String(row.ratePercent) : '',
+    );
+    setFormFlatAmount(
+      row.flatAmount !== null && row.flatAmount !== undefined ? String(row.flatAmount) : '',
+    );
     setShowModal(true);
   };
 
@@ -1763,9 +2048,30 @@ export default function DesignMastersPage() {
                 }
               : null;
     const categoryScopedPayload =
-      selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'
+      selectedType === 'JEWELRY_SIZE' ||
+      selectedType === 'COLLECTION' ||
+      selectedType === 'LABOR_RULE' ||
+      selectedType === 'OVERHEAD_RULE'
         ? {
             jewelryGroupId: formJewelryGroupId,
+          }
+        : null;
+    const laborRulePayload =
+      selectedType === 'LABOR_RULE'
+        ? {
+            laborApplyMode: formLaborApplyMode,
+            flatCost: parseOptionalNum(formFlatCost),
+            ratePerStone: parseOptionalNum(formRatePerStone),
+            ratePerGram: parseOptionalNum(formRatePerGram),
+            ratePerGroup: parseOptionalNum(formRatePerGroup),
+          }
+        : null;
+    const overheadRulePayload =
+      selectedType === 'OVERHEAD_RULE'
+        ? {
+            overheadApplyMode: formOverheadApplyMode,
+            ratePercent: parseOptionalNum(formRatePercent),
+            flatAmount: parseOptionalNum(formFlatAmount),
           }
         : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
@@ -1780,9 +2086,44 @@ export default function DesignMastersPage() {
         return;
       }
     }
-    if ((selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION') && !formJewelryGroupId.trim()) {
+    if (
+      (selectedType === 'JEWELRY_SIZE' ||
+        selectedType === 'COLLECTION' ||
+        selectedType === 'LABOR_RULE' ||
+        selectedType === 'OVERHEAD_RULE') &&
+      !formJewelryGroupId.trim()
+    ) {
       window.alert('Category is required.');
       return;
+    }
+
+    if (selectedType === 'LABOR_RULE') {
+      const hasAnyRate =
+        parseOptionalNum(formFlatCost) !== null ||
+        parseOptionalNum(formRatePerStone) !== null ||
+        parseOptionalNum(formRatePerGram) !== null ||
+        parseOptionalNum(formRatePerGroup) !== null;
+      if (!hasAnyRate) {
+        window.alert('Enter at least one labor rate or flat cost.');
+        return;
+      }
+    }
+
+    if (selectedType === 'OVERHEAD_RULE') {
+      if (
+        formOverheadApplyMode === 'FLAT' &&
+        parseOptionalNum(formFlatAmount) === null
+      ) {
+        window.alert('Flat Amount is required for flat overhead mode.');
+        return;
+      }
+      if (
+        formOverheadApplyMode !== 'FLAT' &&
+        parseOptionalNum(formRatePercent) === null
+      ) {
+        window.alert('Rate Percent is required for percentage overhead mode.');
+        return;
+      }
     }
 
     if (selectedType === 'METAL_NAME') {
@@ -1830,6 +2171,8 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(categoryScopedPayload || {}),
+          ...(laborRulePayload || {}),
+          ...(overheadRulePayload || {}),
           ...(findingPayload || {}),
           ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
@@ -1841,6 +2184,8 @@ export default function DesignMastersPage() {
           aliasName,
           description: descriptionPayload,
           ...(categoryScopedPayload || {}),
+          ...(laborRulePayload || {}),
+          ...(overheadRulePayload || {}),
           ...(findingPayload || {}),
           ...(metalPayload || {}),
           ...(defaultWastagePayload || {}),
@@ -2540,6 +2885,162 @@ export default function DesignMastersPage() {
                   )}
                 </tbody>
               </table>
+            ) : selectedType === 'LABOR_RULE' ? (
+              <table className="app-table app-table-compact min-w-[1450px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Labor Rule</th>
+                    <th className="app-table-head-cell">Category</th>
+                    <th className="app-table-head-cell">Apply Mode</th>
+                    <th className="app-table-head-cell">Flat Cost</th>
+                    <th className="app-table-head-cell">Rate/Stone</th>
+                    <th className="app-table-head-cell">Rate/Gram</th>
+                    <th className="app-table-head-cell">Rate/Group</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Status</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={12} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={12} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.laborApplyMode || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.flatCost !== null && row.flatCost !== undefined ? Number(row.flatCost).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.ratePerStone !== null && row.ratePerStone !== undefined ? Number(row.ratePerStone).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.ratePerGram !== null && row.ratePerGram !== undefined ? Number(row.ratePerGram).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.ratePerGroup !== null && row.ratePerGroup !== undefined ? Number(row.ratePerGroup).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell text-sm">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              row.isActive
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : selectedType === 'OVERHEAD_RULE' ? (
+              <table className="app-table app-table-compact min-w-[1350px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Overhead Rule</th>
+                    <th className="app-table-head-cell">Category</th>
+                    <th className="app-table-head-cell">Apply Mode</th>
+                    <th className="app-table-head-cell">Rate %</th>
+                    <th className="app-table-head-cell">Flat Amount</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Status</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.overheadApplyMode || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.ratePercent !== null && row.ratePercent !== undefined ? Number(row.ratePercent).toFixed(3) : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {row.flatAmount !== null && row.flatAmount !== undefined ? Number(row.flatAmount).toFixed(2) : '-'}
+                        </td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell text-sm">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              row.isActive
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             ) : (
               <table className="app-table app-table-compact min-w-[1100px] w-full">
                 <thead>
@@ -2663,6 +3164,8 @@ export default function DesignMastersPage() {
           isMetalColorType={selectedType === 'METAL_COLOR'}
           isMetalPurityType={selectedType === 'METAL_PURITY'}
           isMetalCaratageType={selectedType === 'METAL_CARATAGE' || selectedType === 'GOLD_COLOUR'}
+          isLaborRuleType={selectedType === 'LABOR_RULE'}
+          isOverheadRuleType={selectedType === 'OVERHEAD_RULE'}
           findingNo={formFindingNo}
           jewelryGroupId={formJewelryGroupId}
           metalCaratage={formMetalCaratage}
@@ -2681,6 +3184,14 @@ export default function DesignMastersPage() {
           pricePerUnit={formPricePerUnit}
           dimensions={formDimensions}
           weightPerUnit={formWeightPerUnit}
+          laborApplyMode={formLaborApplyMode}
+          flatCost={formFlatCost}
+          ratePerStone={formRatePerStone}
+          ratePerGram={formRatePerGram}
+          ratePerGroup={formRatePerGroup}
+          overheadApplyMode={formOverheadApplyMode}
+          ratePercent={formRatePercent}
+          flatAmount={formFlatAmount}
           jewelryGroupOptions={metalMasterOptions.jewelryGroups}
           onClose={() => {
             setShowModal(false);
@@ -2705,6 +3216,14 @@ export default function DesignMastersPage() {
           onChangePricePerUnit={setFormPricePerUnit}
           onChangeDimensions={setFormDimensions}
           onChangeWeightPerUnit={setFormWeightPerUnit}
+          onChangeLaborApplyMode={setFormLaborApplyMode}
+          onChangeFlatCost={setFormFlatCost}
+          onChangeRatePerStone={setFormRatePerStone}
+          onChangeRatePerGram={setFormRatePerGram}
+          onChangeRatePerGroup={setFormRatePerGroup}
+          onChangeOverheadApplyMode={setFormOverheadApplyMode}
+          onChangeRatePercent={setFormRatePercent}
+          onChangeFlatAmount={setFormFlatAmount}
         />
       )}
     </div>
