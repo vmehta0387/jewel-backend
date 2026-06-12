@@ -69,6 +69,8 @@ interface DesignRow {
   jewelrySize: string;
   diamondType: string;
   diamondSpread: string;
+  diamondWeight?: string;
+  diamondQuality?: string;
   goldColour: string;
   collection: string;
   stoneInfo: string;
@@ -237,6 +239,12 @@ interface LaborRow {
   laborValue: string;
 }
 
+interface OverheadRow {
+  id: string;
+  overheadHead: string;
+  ruleId: string;
+}
+
 interface FindingRow {
   id: string;
   findingHead: string;
@@ -285,6 +293,7 @@ type VersionBuilderWorkflowStep =
   | 'GEMSTONES'
   | 'SIZE_CHART'
   | 'IMAGES'
+  | 'LABOR_OVERHEAD'
   | 'BOM'
   | 'PREVIEW';
 
@@ -294,8 +303,36 @@ interface VersionBuilderBomSelection {
   diamondQuality: string;
   coverage: string;
   caratWeight: string;
-  laborRuleId: string;
-  overheadRuleId: string;
+}
+
+interface VersionBuilderGeneratedFilterState {
+  size: string;
+  coverage: string;
+  search: string;
+}
+
+interface VersionBuilderGeneratedRow {
+  designNo: string;
+  version: string;
+  metal: string;
+  coverage: string;
+  diamondQuality: string;
+  caratWeight: string;
+  size: string;
+  imageInfo: string;
+  gemstoneInfo: string;
+  composition: string;
+  bomCost: number;
+}
+
+interface VersionBuilderCreateResult {
+  status: 'created' | 'failed';
+  message?: string;
+}
+
+interface VersionBuilderUploadedMediaItem {
+  previewUrl: string;
+  file: File;
 }
 
 interface VersionBuilderSizeChartGroupCell {
@@ -671,6 +708,8 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     jewelrySize: design.jewelrySize || 'N/A',
     diamondType: design.diamondType || '-',
     diamondSpread: design.diamondSpread || '-',
+    diamondWeight: design.diamondWeight || '',
+    diamondQuality: design.diamondQuality || '',
     goldColour: design.goldColour || 'N/A',
     collection: design.collection || 'General',
     stoneInfo: design.stoneInfo || 'N/A',
@@ -1051,7 +1090,6 @@ const EMPTY_VERSION_BUILDER_SELECTIONS: VersionBuilderSelections = {
   sizes: [],
 };
 
-const VERSION_BUILDER_PREVIEW_LIMIT = 24;
 const VERSION_BUILDER_GROUP_COLORS = ['#c7983f', '#3f6db3', '#2f8f67', '#9a5ed0', '#c46b3d', '#6f7b87'];
 const VERSION_BUILDER_SIZE_CHART_SIZES = buildVersionBuilderSizeChartSizes();
 const VERSION_BUILDER_WORKFLOW: Array<{
@@ -1064,8 +1102,9 @@ const VERSION_BUILDER_WORKFLOW: Array<{
   { id: 'GEMSTONES', title: '3a · Stone Layout', subtitle: 'Copy or override gemstone rows.' },
   { id: 'SIZE_CHART', title: '3b · Composition Size Chart', subtitle: 'Edit counts and carat per stone by size.' },
   { id: 'IMAGES', title: '4 · Media Rules', subtitle: 'Set media behavior for new versions.' },
-  { id: 'BOM', title: '5 · BOM', subtitle: 'Live cost breakdown for a sample variant.' },
-  { id: 'PREVIEW', title: '6 · Generated', subtitle: 'Review generated version rows.' },
+  { id: 'LABOR_OVERHEAD', title: '5 · Labor & Overhead', subtitle: 'Add labor rows and overhead rules before BOM.' },
+  { id: 'BOM', title: '6 · BOM', subtitle: 'Live cost breakdown for a sample variant.' },
+  { id: 'PREVIEW', title: '7 · Generated', subtitle: 'Review generated version rows.' },
 ];
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
@@ -1346,6 +1385,7 @@ export default function ProductsPage() {
     unitQty: '',
     laborValue: '',
   }]);
+  const [overheadRows, setOverheadRows] = useState<OverheadRow[]>([]);
   const [findingRows, setFindingRows] = useState<FindingRow[]>([]);
   const [processRows, setProcessRows] = useState<ProcessRow[]>([
     { id: makeId(), stage: 'CAD', netWeight: '5', duration: '45', remarks: 'Initial modeling' },
@@ -1381,6 +1421,9 @@ export default function ProductsPage() {
   const [inlineMetalColor, setInlineMetalColor] = useState('');
   const [inlineMetalPurity, setInlineMetalPurity] = useState('');
   const [inlineDefaultWastagePercent, setInlineDefaultWastagePercent] = useState('');
+  const [inlineOverheadApplyMode, setInlineOverheadApplyMode] = useState<'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT'>('PERCENT_MATERIALS');
+  const [inlineRatePercent, setInlineRatePercent] = useState('');
+  const [inlineFlatAmount, setInlineFlatAmount] = useState('');
   const [inlinePriceIn, setInlinePriceIn] = useState<'PIECES' | 'GRAM' | 'PAIR' | 'INCHES'>('PIECES');
   const [inlinePricePerUnit, setInlinePricePerUnit] = useState('');
   const [inlineDimensions, setInlineDimensions] = useState('');
@@ -1399,11 +1442,14 @@ export default function ProductsPage() {
   );
   const [versionBuilderImageMode, setVersionBuilderImageMode] = useState<VersionBuilderImageMode>('INHERIT_PARENT');
   const [versionBuilderGemMode, setVersionBuilderGemMode] = useState<VersionBuilderGemMode>('OVERRIDE_BLOCK');
-  const [versionBuilderGemApplyScope, setVersionBuilderGemApplyScope] = useState<VersionBuilderGemApplyScope>('ALL_COMBINATIONS');
+  const [, setVersionBuilderGemApplyScope] = useState<VersionBuilderGemApplyScope>('ALL_COMBINATIONS');
   const [versionBuilderWorkflowStep, setVersionBuilderWorkflowStep] = useState<VersionBuilderWorkflowStep>('INFO');
   const [versionBuilderMetalImageMap, setVersionBuilderMetalImageMap] = useState<Record<string, string[]>>({});
   const [versionBuilderActiveMetal, setVersionBuilderActiveMetal] = useState('');
   const [versionBuilderUploadedImageUrls, setVersionBuilderUploadedImageUrls] = useState<string[]>([]);
+  const [versionBuilderUploadedMediaItems, setVersionBuilderUploadedMediaItems] = useState<
+    VersionBuilderUploadedMediaItem[]
+  >([]);
   const [versionBuilderGemRows, setVersionBuilderGemRows] = useState<GemRow[]>([]);
   const [versionBuilderGemLoading, setVersionBuilderGemLoading] = useState(false);
   const [versionBuilderGemError, setVersionBuilderGemError] = useState<string | null>(null);
@@ -1411,15 +1457,28 @@ export default function ProductsPage() {
   const [versionBuilderBaseMetalRows, setVersionBuilderBaseMetalRows] = useState<MetalRow[]>([]);
   const [versionBuilderChartCoverage, setVersionBuilderChartCoverage] = useState('');
   const [versionBuilderSizeChart, setVersionBuilderSizeChart] = useState<VersionBuilderSizeChartState>({});
+  const [versionBuilderLaborRows, setVersionBuilderLaborRows] = useState<LaborRow[]>([
+    { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' },
+  ]);
+  const [versionBuilderOverheadRows, setVersionBuilderOverheadRows] = useState<OverheadRow[]>([]);
   const [versionBuilderBomSelection, setVersionBuilderBomSelection] = useState<VersionBuilderBomSelection>({
     size: '',
     metal: '',
     diamondQuality: '',
     coverage: '',
     caratWeight: '',
-    laborRuleId: '',
-    overheadRuleId: '',
   });
+  const [versionBuilderGeneratedFilters, setVersionBuilderGeneratedFilters] =
+    useState<VersionBuilderGeneratedFilterState>({
+      size: 'ALL',
+      coverage: 'ALL',
+      search: '',
+    });
+  const [creatingVersions, setCreatingVersions] = useState(false);
+  const [versionCreateProgress, setVersionCreateProgress] = useState({ done: 0, total: 0 });
+  const [versionBuilderCreateResults, setVersionBuilderCreateResults] = useState<
+    Record<string, VersionBuilderCreateResult>
+  >({});
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
@@ -1429,7 +1488,7 @@ export default function ProductsPage() {
   const designImportInputRef = useRef<HTMLInputElement | null>(null);
   const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
-  const inlineMasterCreatedHandlerRef = useRef<((masterValue: string) => void) | null>(null);
+  const inlineMasterCreatedHandlerRef = useRef<((masterValue: string, createdMaster?: { id?: string; value?: string }) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const stlUploadInputRef = useRef<HTMLInputElement | null>(null);
   const mediaLibraryGalleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -1506,6 +1565,13 @@ export default function ProductsPage() {
       (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
     );
   }, [form.jewelryGroup, masterOptions.jewelrySizes]);
+  const singleDesignOverheadRules = useMemo(() => {
+    const categoryKey = normalizeLookupKey(form.jewelryGroup);
+    return masterOptions.overheadRules.filter((rule) => {
+      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
+      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+    });
+  }, [form.jewelryGroup, masterOptions.overheadRules]);
 
   useEffect(() => {
     if (editingId || sourceDesignNo) {
@@ -2042,14 +2108,26 @@ export default function ProductsPage() {
     setRowsLoading(true);
     setRowsError(null);
     try {
-      const response = await api.get('/products', {
-        params: {
-          page: 1,
-          limit: 200,
-          status: 'ALL',
-        },
-      });
-      const mappedRows = ((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow);
+      const limit = 200;
+      let currentPage = 1;
+      let totalPages = 1;
+      const allRows: ApiDesignRow[] = [];
+
+      do {
+        const response = await api.get('/products', {
+          params: {
+            page: currentPage,
+            limit,
+            status: 'ALL',
+          },
+        });
+        const pageRows = (response.data?.data || []) as ApiDesignRow[];
+        allRows.push(...pageRows);
+        totalPages = Number(response.data?.totalPages || 1);
+        currentPage += 1;
+      } while (currentPage <= totalPages);
+
+      const mappedRows = allRows.map(mapApiDesignToRow);
       setRows(mappedRows);
       setSelectedId((current) => {
         if (preferredSelectedId && mappedRows.some((row) => row.id === preferredSelectedId)) {
@@ -2352,6 +2430,9 @@ export default function ProductsPage() {
     setInlineMetalColor('');
     setInlineMetalPurity('');
     setInlineDefaultWastagePercent('');
+    setInlineOverheadApplyMode('PERCENT_MATERIALS');
+    setInlineRatePercent('');
+    setInlineFlatAmount('');
     setInlinePriceIn('PIECES');
     setInlinePricePerUnit('');
     setInlineDimensions('');
@@ -2431,12 +2512,16 @@ export default function ProductsPage() {
 
   const addMasterFromDesign = (
     masterType: DesignMasterType,
-    onCreated?: (masterValue: string) => void,
+    onCreated?: (masterValue: string, createdMaster?: { id?: string; value?: string }) => void,
   ) => {
+    const scopedJewelryGroupValue =
+      masterType === 'OVERHEAD_RULE' && showVersionBuilderModal && versionBuilderBaseDesign?.jewelryGroup
+        ? versionBuilderBaseDesign.jewelryGroup
+        : form.jewelryGroup;
     const selectedJewelryGroupId =
-      masterType === 'JEWELRY_SIZE' || masterType === 'COLLECTION'
+      masterType === 'JEWELRY_SIZE' || masterType === 'COLLECTION' || masterType === 'OVERHEAD_RULE'
         ? masterOptions.jewelryGroups.find(
-            (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+            (option) => normalizeLookupKey(option.value) === normalizeLookupKey(scopedJewelryGroupValue),
           )?.id || ''
         : '';
     setInlineMasterType(masterType);
@@ -2450,6 +2535,9 @@ export default function ProductsPage() {
     setInlineMetalColor('');
     setInlineMetalPurity('');
     setInlineDefaultWastagePercent('');
+    setInlineOverheadApplyMode('PERCENT_MATERIALS');
+    setInlineRatePercent('');
+    setInlineFlatAmount('');
     setInlinePriceIn('PIECES');
     setInlinePricePerUnit('');
     setInlineDimensions('');
@@ -2503,9 +2591,23 @@ export default function ProductsPage() {
           }
         : null;
     const categoryScopedPayload =
-      inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION'
+      inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' || inlineMasterType === 'OVERHEAD_RULE'
         ? {
             jewelryGroupId: inlineJewelryGroupId,
+          }
+        : null;
+    const overheadRulePayload =
+      inlineMasterType === 'OVERHEAD_RULE'
+        ? {
+            overheadApplyMode: inlineOverheadApplyMode,
+            ratePercent:
+              inlineOverheadApplyMode !== 'FLAT' && inlineRatePercent.trim().length > 0
+                ? parseNum(inlineRatePercent)
+                : undefined,
+            flatAmount:
+              inlineOverheadApplyMode === 'FLAT' && inlineFlatAmount.trim().length > 0
+                ? parseNum(inlineFlatAmount)
+                : undefined,
           }
         : null;
     const metalCaratagePayload =
@@ -2550,11 +2652,21 @@ export default function ProductsPage() {
       }
     }
     if (
-      (inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION') &&
+      (inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' || inlineMasterType === 'OVERHEAD_RULE') &&
       !inlineJewelryGroupId.trim()
     ) {
       window.alert('Category is required.');
       return;
+    }
+    if (inlineMasterType === 'OVERHEAD_RULE') {
+      if (inlineOverheadApplyMode === 'FLAT' && inlineFlatAmount.trim().length === 0) {
+        window.alert('Flat Amount is required for flat overhead mode.');
+        return;
+      }
+      if (inlineOverheadApplyMode !== 'FLAT' && inlineRatePercent.trim().length === 0) {
+        window.alert('Rate % is required for percentage overhead mode.');
+        return;
+      }
     }
 
     setCreatingMasterType(inlineMasterType);
@@ -2568,13 +2680,17 @@ export default function ProductsPage() {
         ...(findingPayload || {}),
         ...(defaultWastagePayload || {}),
         ...(metalCaratagePayload || {}),
+        ...(overheadRulePayload || {}),
       });
 
       const masterValue = response.data?.value || value;
       await fetchMasterOptions();
 
       if (inlineMasterCreatedHandlerRef.current) {
-        inlineMasterCreatedHandlerRef.current(masterValue);
+        inlineMasterCreatedHandlerRef.current(masterValue, {
+          id: response.data?.id,
+          value: response.data?.value || masterValue,
+        });
       } else {
         applyCreatedMasterSelection(inlineMasterType, masterValue);
       }
@@ -3009,8 +3125,13 @@ export default function ProductsPage() {
     setVersionBuilderMetalImageMap({});
     setVersionBuilderActiveMetal(uniqueNonEmptyValues([row.goldColour])[0] || '');
     setVersionBuilderUploadedImageUrls([]);
+    setVersionBuilderUploadedMediaItems([]);
+    setVersionBuilderCreateResults({});
+    setVersionCreateProgress({ done: 0, total: 0 });
     setVersionBuilderGemRows([]);
     setVersionBuilderBaseMetalRows([]);
+    setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
+    setVersionBuilderOverheadRows([]);
     setVersionBuilderGemError(null);
     setShowVersionBuilderModal(true);
     void loadVersionBuilderGemstoneTemplate(row);
@@ -3023,6 +3144,12 @@ export default function ProductsPage() {
       }
     });
     setVersionBuilderUploadedImageUrls([]);
+    setVersionBuilderUploadedMediaItems([]);
+    setVersionBuilderCreateResults({});
+    setCreatingVersions(false);
+    setVersionCreateProgress({ done: 0, total: 0 });
+    setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
+    setVersionBuilderOverheadRows([]);
     setShowVersionBuilderModal(false);
   };
 
@@ -3039,6 +3166,7 @@ export default function ProductsPage() {
       const detail = (await api.get(`/products/${row.id}`)).data;
       const gemstones = Array.isArray(detail?.gemstones) ? detail.gemstones : [];
       const metals = Array.isArray(detail?.metals) ? detail.metals : [];
+      const labors = Array.isArray(detail?.labors) ? detail.labors : [];
       const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
       const resolvePacketForGem = (gem: any): string => {
         const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
@@ -3089,12 +3217,339 @@ export default function ProductsPage() {
             }))
           : [],
       );
+      const visibleLabors = labors.filter(
+        (item: any) =>
+          !String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
+      );
+      setVersionBuilderLaborRows(
+        visibleLabors.length > 0
+          ? visibleLabors.map((item: any) => ({
+              id: item.id || makeId(),
+              laborHead: String(item.laborHead || ''),
+              laborPerUnit: String(item.laborPerUnit ?? ''),
+              unitQty: String(item.unitQty ?? ''),
+              laborValue: String(item.laborValue ?? ''),
+            }))
+          : [{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }],
+      );
+      setVersionBuilderOverheadRows(
+        labors
+          .filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'))
+          .map((item: any) => {
+            const overheadLabel = String(item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
+            const matchedOverheadRule = masterOptions.overheadRules.find(
+              (rule) => normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
+            );
+            return {
+              id: item.id || makeId(),
+              overheadHead: overheadLabel,
+              ruleId: matchedOverheadRule?.id || '',
+            };
+          }),
+      );
     } catch (error: any) {
       setVersionBuilderGemRows([createEmptyGemRow()]);
       setVersionBuilderBaseMetalRows([]);
+      setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
+      setVersionBuilderOverheadRows([]);
       setVersionBuilderGemError(error?.response?.data?.message || 'Unable to load gemstone template from base design.');
     } finally {
       setVersionBuilderGemLoading(false);
+    }
+  };
+
+  const resolveVersionBuilderPersistedImages = (
+    detail: any,
+    metal: string,
+    uploadedAssetMap: Record<string, string>,
+  ): string[] => {
+    const detailImageUrls = normalizeStringArray(detail?.imageUrls).map(resolvePublicAssetUrl);
+    const detailImageKeys = normalizeStringArray(detail?.imageKeys ?? detail?.imageUrls);
+    const detailPairs = detailImageUrls.map((url, index) => ({
+      url,
+      key: detailImageKeys[index] || detailImageUrls[index] || url,
+    }));
+    const safeUploaded = uniqueNonEmptyValues([
+      ...Object.values(uploadedAssetMap),
+      ...versionBuilderUploadedImageUrls.filter((url) => url && !url.startsWith('blob:')),
+    ]);
+
+    if (versionBuilderImageMode === 'MANUAL_AFTER_CREATE') {
+      return safeUploaded;
+    }
+
+    if (versionBuilderImageMode === 'MAP_BY_METAL') {
+      const selectedUrls = versionBuilderMetalImageMap[metal] || [];
+      const mapped = selectedUrls
+        .map((selectedUrl) => {
+          if (uploadedAssetMap[selectedUrl]) {
+            return uploadedAssetMap[selectedUrl];
+          }
+          const normalizedSelected = resolvePublicAssetUrl(selectedUrl);
+          const match = detailPairs.find((pair) => pair.url === normalizedSelected || pair.key === selectedUrl);
+          return match?.key || (selectedUrl.startsWith('blob:') ? '' : selectedUrl);
+        })
+        .filter(Boolean);
+      return uniqueNonEmptyValues([...mapped, ...safeUploaded]);
+    }
+
+    return uniqueNonEmptyValues([...(detailImageKeys.length ? detailImageKeys : detailImageUrls), ...safeUploaded]);
+  };
+
+  const createVersionBuilderVariants = async () => {
+    if (!versionBuilderBaseDesign) {
+      window.alert('No base design selected.');
+      return;
+    }
+    if (!canCreateDesign) {
+      window.alert('You do not have permission to add designs.');
+      return;
+    }
+    if (creatingVersions) {
+      return;
+    }
+    const rowsToCreate = versionBuilderGeneratedRows.filter(
+      (row) => versionBuilderCreateResults[row.designNo]?.status !== 'created',
+    );
+    if (!rowsToCreate.length) {
+      window.alert('No generated variants available to create.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Create ${rowsToCreate.length} versions from ${versionBuilderBaseDesign.designNo}? This will create actual design records.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setCreatingVersions(true);
+    setVersionCreateProgress({ done: 0, total: rowsToCreate.length });
+
+    try {
+      const detail = (await api.get(`/products/${versionBuilderBaseDesign.id}`)).data;
+      const relevantDesignIds = (Array.isArray(detail?.relevantDesigns) ? detail.relevantDesigns : [])
+        .map((item: any) => String(item?.id || '').trim())
+        .filter(Boolean);
+      let uploadedAssetMap: Record<string, string> = {};
+
+      if (versionBuilderUploadedMediaItems.length > 0) {
+        const formData = new FormData();
+        versionBuilderUploadedMediaItems.forEach((item) => formData.append('files', item.file));
+        const uploadResponse = await api.post('/products/gallery-files', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const uploadedFiles = Array.isArray(uploadResponse.data?.files) ? uploadResponse.data.files : [];
+        uploadedAssetMap = versionBuilderUploadedMediaItems.reduce<Record<string, string>>((acc, item, index) => {
+          const uploaded = uploadedFiles[index];
+          const key = String(uploaded?.key || uploaded?.url || '').trim();
+          if (key) {
+            acc[item.previewUrl] = key;
+          }
+          return acc;
+        }, {});
+      }
+
+      const createdRows: DesignRow[] = [];
+      const failures: string[] = [];
+
+      for (let index = 0; index < rowsToCreate.length; index += 1) {
+        const row = rowsToCreate[index];
+        const selection: VersionBuilderBomSelection = {
+          size: row.size,
+          metal: row.metal,
+          diamondQuality: row.diamondQuality,
+          coverage: row.coverage,
+          caratWeight: row.caratWeight,
+        };
+        const breakdown = getVersionBuilderBomBreakdownForSelection(selection, row.version);
+        const chartByCoverage = versionBuilderSizeChart[row.coverage] || {};
+        const chartRow = chartByCoverage[normalizeSizeChartKey(row.size)];
+
+        if (!chartRow) {
+          failures.push(`${row.designNo}: size chart missing`);
+          setVersionBuilderCreateResults((prev) => ({
+            ...prev,
+            [row.designNo]: { status: 'failed', message: 'Size chart missing' },
+          }));
+          setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
+          continue;
+        }
+
+        const metalPurity = getMetalPurityBucket(row.metal);
+        const metalNetWt = Math.max(0, parseNum(chartRow.metalWeights?.[metalPurity] || '0'));
+        const metalWastageWt = Math.max(0, breakdown.metal.totalWeight - breakdown.metal.netWeight);
+
+        const gemstones = versionBuilderGemRows
+          .map((baseRow) => {
+            const cell = chartRow.groups?.[baseRow.id];
+            const pcs = Math.max(0, parseNum(cell?.count || '0'));
+            const wtPerPcs = Math.max(0, parseNum(cell?.ctPerStone || '0'));
+            const wtInCts = pcs * wtPerPcs;
+            const pricePerCt = Math.max(0, parseNum(baseRow.pricePerCt || '0'));
+            const amount = wtInCts * pricePerCt;
+            return {
+              packetId: baseRow.packetId || undefined,
+              stone: baseRow.stone.trim() || undefined,
+              shape: baseRow.shape.trim() || undefined,
+              size: baseRow.size.trim() || undefined,
+              cut: baseRow.cut.trim() || undefined,
+              color: baseRow.color.trim() || undefined,
+              quality: row.diamondQuality || baseRow.quality.trim() || undefined,
+              stoneType: baseRow.settingType.trim() || undefined,
+              wtPerPcs,
+              pcs,
+              wtInCts,
+              pricePerCt,
+              amount,
+            };
+          })
+          .filter((gem) => gem.pcs > 0 || gem.wtInCts > 0);
+
+        const laborRowsPayload = [
+          ...versionBuilderLaborRows
+            .filter((laborRow) => laborRow.laborHead.trim() || parseNum(laborRow.laborPerUnit) > 0 || parseNum(laborRow.unitQty) > 0)
+            .map((laborRow) => ({
+              laborHead: laborRow.laborHead.trim() || undefined,
+              laborPerUnit: parseNum(laborRow.laborPerUnit),
+              unitQty: parseNum(laborRow.unitQty),
+              laborValue: getLaborValue(laborRow),
+            })),
+          ...versionBuilderOverheadRows
+            .map((overheadRow) => {
+              const rule = getVersionBuilderOverheadRuleForRow(overheadRow);
+              const label = overheadRow.overheadHead.trim() || rule?.value || '';
+              if (!label) return null;
+              const mode = rule?.overheadApplyMode || '';
+              const ratePercent = Math.max(0, rule?.ratePercent || 0);
+              const flatAmount = Math.max(0, rule?.flatAmount || 0);
+              const value =
+                mode === 'FLAT'
+                  ? flatAmount
+                  : mode === 'PERCENT_BOM_SUBTOTAL'
+                    ? ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100
+                    : ((breakdown.metal.cost + breakdown.totalStoneCost) * ratePercent) / 100;
+              return {
+                laborHead: `Overhead - ${label}`,
+                laborPerUnit: value,
+                unitQty: 1,
+                laborValue: value,
+              };
+            })
+            .filter(Boolean),
+        ].filter(Boolean);
+
+        const payload = {
+          designNo: row.designNo,
+          designName: row.designNo,
+          version: row.version,
+          companyId: detail?.companyId || undefined,
+          branchId: detail?.branchId || undefined,
+          jewelryGroup: String(detail?.jewelryGroup || versionBuilderBaseDesign.jewelryGroup || '').trim(),
+          collection: String(detail?.collection || '').trim() || undefined,
+          jewelrySize: row.size,
+          stage: String(detail?.stage || '').trim() || undefined,
+          diamondSpread: row.coverage || undefined,
+          diamondType: String(detail?.diamondType || '').trim() || undefined,
+          diamondWeight: row.caratWeight || undefined,
+          diamondQuality: row.diamondQuality || undefined,
+          designStatus: String(detail?.designStatus || '').trim() || undefined,
+          tags: Array.isArray(detail?.tags) ? detail.tags : [],
+          drawerLocation: String(detail?.drawerLocation || '').trim() || undefined,
+          otherWeight:
+            detail?.otherWeight !== undefined && detail?.otherWeight !== null
+              ? parseNum(String(detail.otherWeight))
+              : undefined,
+          designDescription: String(detail?.designDescription || '').trim() || undefined,
+          remarks: String(detail?.remarks || '').trim() || undefined,
+          imageUrls: resolveVersionBuilderPersistedImages(detail, row.metal, uploadedAssetMap),
+          stlFileUrl: String(detail?.stlFileUrl || '').trim() || undefined,
+          ijewelModelId: String(detail?.ijewelModelId || '').trim() || undefined,
+          ijewelBaseName: String(detail?.ijewelBaseName || '').trim() || undefined,
+          metals: [
+            {
+              metalCaratage: row.metal,
+              goldColour: row.metal,
+              netWt: metalNetWt,
+              wastagePercent: breakdown.metal.wastagePercent,
+              wastageWt: metalWastageWt,
+              totalWt: breakdown.metal.totalWeight,
+              pricePerGm: breakdown.metal.rate,
+              value: breakdown.metal.cost,
+            },
+          ],
+          gemstones,
+          labors: laborRowsPayload,
+          findings: [],
+          processStages: (Array.isArray(detail?.processStages) ? detail.processStages : [])
+            .filter((item: any) => String(item?.processStage || '').trim())
+            .map((item: any) => ({
+              processStage: String(item.processStage || '').trim(),
+              netWeight: parseNum(String(item.netWeight ?? '0')),
+              duration: parseNum(String(item.duration ?? '0')),
+              durationType: String(item.durationType || 'MINUTES'),
+              remarks: String(item.remarks || '').trim() || undefined,
+            })),
+          pricingTiers: (Array.isArray(detail?.pricingTiers) ? detail.pricingTiers : [])
+            .filter((item: any) => String(item?.name || '').trim())
+            .map((item: any) => ({
+              name: String(item.name || '').trim(),
+              incrementBy: String(item.incrementBy || 'PERCENTAGE'),
+              value: parseNum(String(item.value ?? '0')),
+              sellingPrice: parseNum(String(item.sellingPrice ?? item.value ?? '0')),
+              unit: String(item.unit || 'PCS'),
+              weightBy: String(item.weightBy || 'TOTAL'),
+            })),
+          vendors: (Array.isArray(detail?.vendors) ? detail.vendors : [])
+            .filter((item: any) => String(item?.supplierName || '').trim())
+            .map((item: any) => ({
+              supplierName: String(item.supplierName || '').trim(),
+              stockType: String(item.stockType || '').trim() || undefined,
+              supplierStyleNo: String(item.supplierStyleNo || '').trim() || undefined,
+            })),
+          relevantDesignIds,
+          isActive: detail?.isActive !== false,
+        };
+
+        try {
+          const response = await api.post('/products', payload);
+          createdRows.push(mapApiDesignToRow(response.data as ApiDesignRow));
+          setVersionBuilderCreateResults((prev) => ({
+            ...prev,
+            [row.designNo]: { status: 'created', message: 'Version created successfully' },
+          }));
+        } catch (error: any) {
+          const message = String(error?.response?.data?.message || error?.message || 'Create failed');
+          failures.push(`${row.designNo}: ${message}`);
+          setVersionBuilderCreateResults((prev) => ({
+            ...prev,
+            [row.designNo]: { status: 'failed', message },
+          }));
+        } finally {
+          setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
+        }
+      }
+
+      if (createdRows.length > 0) {
+        setRows((prev) => [...createdRows, ...prev]);
+        setSelectedId(createdRows[0].id);
+      }
+
+      if (failures.length > 0) {
+        window.alert(
+          `Created ${createdRows.length} version(s). ${failures.length} failed.\n\n${failures.slice(0, 8).join('\n')}${
+            failures.length > 8 ? '\n...' : ''
+          }`,
+        );
+      } else {
+        window.alert(`Created ${createdRows.length} version(s) successfully.`);
+        closeVersionBuilderModal();
+      }
+    } catch (error: any) {
+      window.alert(error?.response?.data?.message || 'Unable to create versions.');
+    } finally {
+      setCreatingVersions(false);
+      setVersionCreateProgress({ done: 0, total: 0 });
     }
   };
 
@@ -3189,8 +3644,12 @@ export default function ProductsPage() {
     event.target.value = '';
     if (!files.length) return;
 
-    const uploaded = files.map((file) => URL.createObjectURL(file));
-    setVersionBuilderUploadedImageUrls((prev) => [...prev, ...uploaded]);
+    const uploadedItems = files.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setVersionBuilderUploadedMediaItems((prev) => [...prev, ...uploadedItems]);
+    setVersionBuilderUploadedImageUrls((prev) => [...prev, ...uploadedItems.map((item) => item.previewUrl)]);
   };
   const updateVersionBuilderSizeChartCell = (
     coverage: string,
@@ -3288,13 +3747,23 @@ export default function ProductsPage() {
   };
 
   const versionBuilderCombinationCount = useMemo(() => {
-    const groups = versionBuilderOptionGroups.map((group) => versionBuilderSelections[group.id].length);
+    const fallbackSelections: VersionBuilderSelections = {
+      metals: uniqueNonEmptyValues([versionBuilderBaseDesign?.goldColour || '']),
+      coverages: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondSpread || '']),
+      diamondQualities: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondQuality || '']),
+      caratWeights: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondWeight || '']),
+      sizes: uniqueNonEmptyValues([versionBuilderBaseDesign?.jewelrySize || '']),
+    };
+    const groups = versionBuilderOptionGroups.map((group) => {
+      const selected = versionBuilderSelections[group.id];
+      return (selected.length > 0 ? selected : fallbackSelections[group.id]).length;
+    });
     if (!groups.length || groups.some((count) => count === 0)) {
       return 0;
     }
 
     return groups.reduce((total, count) => total * count, 1);
-  }, [versionBuilderOptionGroups, versionBuilderSelections]);
+  }, [versionBuilderBaseDesign, versionBuilderOptionGroups, versionBuilderSelections]);
 
   const versionBuilderHighestVersion = useMemo(() => {
     if (!versionBuilderVersionRows.length) {
@@ -3322,15 +3791,36 @@ export default function ProductsPage() {
   const versionBuilderMetalPurityColumns = useMemo(
     () =>
       uniqueNonEmptyValues(
-        versionBuilderSelections.metals.map((metal) => getMetalPurityBucket(metal)).filter(Boolean),
+        (versionBuilderSelections.metals.length > 0
+          ? versionBuilderSelections.metals
+          : uniqueNonEmptyValues([versionBuilderBaseDesign?.goldColour || ''])
+        )
+          .map((metal) => getMetalPurityBucket(metal))
+          .filter(Boolean),
       ),
-    [versionBuilderSelections.metals],
+    [versionBuilderBaseDesign?.goldColour, versionBuilderSelections.metals],
   );
   const versionBuilderBaseMetalWeightMap = useMemo(
     () => buildBaseMetalWeightByPurity(versionBuilderBaseMetalRows),
     [versionBuilderBaseMetalRows],
   );
-  const versionBuilderSizeChartSizes = useMemo(() => VERSION_BUILDER_SIZE_CHART_SIZES, []);
+  const versionBuilderSizeChartSizes = useMemo(() => {
+    const selectedSizes = uniqueNonEmptyValues(
+      versionBuilderSelections.sizes
+        .map((size) => normalizeSizeChartKey(size))
+        .filter(Boolean),
+    );
+    if (selectedSizes.length) {
+      return selectedSizes;
+    }
+
+    const baseSize = normalizeSizeChartKey(versionBuilderBaseDesign?.jewelrySize || '');
+    if (baseSize) {
+      return [baseSize];
+    }
+
+    return VERSION_BUILDER_SIZE_CHART_SIZES;
+  }, [versionBuilderBaseDesign?.jewelrySize, versionBuilderSelections.sizes]);
 
   useEffect(() => {
     if (!versionBuilderSizeChartCoverages.length) {
@@ -3413,51 +3903,236 @@ export default function ProductsPage() {
     });
   }, [activeVersionBuilderSizeChartRows, versionBuilderGemRows, versionBuilderSizeChartSizes]);
 
-  const versionBuilderPreviewRows = useMemo(() => {
+  const versionBuilderCategoryRuleFiltered = useMemo(() => {
+    const categoryKey = normalizeLookupKey(versionBuilderBaseDesign?.jewelryGroup);
+    const laborRules = masterOptions.laborRules.filter((rule) => {
+      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
+      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+    });
+    const overheadRules = masterOptions.overheadRules.filter((rule) => {
+      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
+      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+    });
+    return { laborRules, overheadRules };
+  }, [masterOptions.laborRules, masterOptions.overheadRules, versionBuilderBaseDesign]);
+
+  const getVersionBuilderOverheadRuleForRow = (row: OverheadRow): MasterOption | null => {
+    if (!row.ruleId && !row.overheadHead.trim()) return null;
+    return (
+      versionBuilderCategoryRuleFiltered.overheadRules.find(
+        (rule) =>
+          rule.id === row.ruleId ||
+          normalizeLookupKey(rule.value) === normalizeLookupKey(row.overheadHead),
+      ) || null
+    );
+  };
+
+  const getVersionBuilderBomBreakdownForSelection = (
+    selection: VersionBuilderBomSelection,
+    versionLabel = `V${versionBuilderHighestVersion + 1}`,
+  ) => {
+    const empty = {
+      metalLabel: '',
+      variantSku: '',
+      metal: { netWeight: 0, wastagePercent: 0, totalWeight: 0, rate: 0, cost: 0, formula: '-', source: '-' },
+      stones: [] as Array<{
+        id: string;
+        label: string;
+        subtitle: string;
+        count: number;
+        totalCarat: number;
+        rate: number;
+        cost: number;
+        formula: string;
+        source: string;
+      }>,
+      labor: { cost: 0, formula: '-', source: '-' },
+      overhead: { cost: 0, formula: '-', source: '-' },
+      totalStoneCost: 0,
+      totalStoneCount: 0,
+      total: 0,
+    };
+    if (!versionBuilderBaseDesign) return empty;
+
+    const selectedCoverage = selection.coverage || versionBuilderChartCoverage;
+    const chartByCoverage = versionBuilderSizeChart[selectedCoverage] || {};
+    const selectedSizeKey = normalizeSizeChartKey(selection.size || '');
+    const chartRow = chartByCoverage[selectedSizeKey];
+    if (!chartRow) return empty;
+
+    const selectedMetal = selection.metal;
+    const selectedMetalPurity = getMetalPurityBucket(selectedMetal);
+    const selectedMetalOption = getMetalMasterOption(selectedMetal);
+    const metalNetWeight = Math.max(0, parseNum(chartRow.metalWeights?.[selectedMetalPurity] || '0'));
+    const metalWastagePercent =
+      selectedMetalOption?.defaultWastagePercent !== undefined && selectedMetalOption?.defaultWastagePercent !== null
+        ? selectedMetalOption.defaultWastagePercent
+        : selectedMetalOption?.wastagePercent || 0;
+    const metalTotalWeight = metalNetWeight + (metalNetWeight * metalWastagePercent) / 100;
+    const metalRate = getMetalRate(selectedMetal) || 0;
+    const metalCost = metalTotalWeight * metalRate;
+
+    const stoneLines = versionBuilderGemRows.map((row, index) => {
+      const packet = packetOptions.find((entry) => entry.id === row.packetId);
+      const cell = chartRow.groups?.[row.id];
+      const count = Math.max(0, parseNum(cell?.count || '0'));
+      const ctPerStone = Math.max(0, parseNum(cell?.ctPerStone || '0'));
+      const totalCarat = count * ctPerStone;
+      const rate = Math.max(0, parseNum(row.pricePerCt || '0'));
+      const cost = totalCarat * rate;
+      const groupLabel = `Group ${String.fromCharCode(65 + index)}`;
+      return {
+        id: row.id,
+        label: `${groupLabel} - ${row.shape || packet?.shape || 'Stone group'}`,
+        subtitle: `${row.stone || packet?.stone || 'Diamond'} ${row.size || packet?.size ? `- ${row.size || packet?.size} mm` : ''} · ${count} stones`,
+        count,
+        totalCarat,
+        rate,
+        cost,
+        formula: `${count} × ${formatMoney(rate)}/ct × ${ctPerStone.toFixed(3)} ct`,
+        source: packet?.packetName || packet?.id || 'Manual packet',
+      };
+    });
+
+    const totalStoneCost = stoneLines.reduce((sum, line) => sum + line.cost, 0);
+    const totalStoneCount = stoneLines.reduce((sum, line) => sum + line.count, 0);
+    const materialsSubtotal = metalCost + totalStoneCost;
+    const laborCost = versionBuilderLaborRows.reduce((sum, row) => sum + getLaborValue(row), 0);
+    const laborFormulaParts = versionBuilderLaborRows
+      .filter((row) => row.laborHead.trim() || parseNum(row.laborPerUnit) > 0 || parseNum(row.unitQty) > 0)
+      .map((row) => `${parseNum(row.unitQty).toFixed(2)} × ${formatMoney(parseNum(row.laborPerUnit))}`);
+    const laborSourceParts = versionBuilderLaborRows
+      .map((row) => row.laborHead.trim())
+      .filter(Boolean);
+    const bomSubtotal = materialsSubtotal + laborCost;
+
+    const overheadDetails = versionBuilderOverheadRows
+      .map((row) => {
+        const rule = getVersionBuilderOverheadRuleForRow(row);
+        if (!rule) return null;
+        const mode = rule.overheadApplyMode || '';
+        const ratePercent = Math.max(0, rule.ratePercent || 0);
+        const flatAmount = Math.max(0, rule.flatAmount || 0);
+        const cost =
+          mode === 'FLAT'
+            ? flatAmount
+            : mode === 'PERCENT_BOM_SUBTOTAL'
+              ? (bomSubtotal * ratePercent) / 100
+              : (materialsSubtotal * ratePercent) / 100;
+        const formula =
+          mode === 'FLAT'
+            ? formatMoney(flatAmount)
+            : `${ratePercent.toFixed(2)}% × ${
+                mode === 'PERCENT_BOM_SUBTOTAL' ? '(metal + stones + labor)' : '(metal + stones)'
+              }`;
+        return {
+          label: row.overheadHead.trim() || rule.value || 'Overhead',
+          cost,
+          formula,
+        };
+      })
+      .filter(Boolean) as Array<{ label: string; cost: number; formula: string }>;
+    const overheadCost = overheadDetails.reduce((sum, row) => sum + row.cost, 0);
+    const overheadFormula = overheadDetails.map((row) => row.formula).join(' + ') || '-';
+    const overheadSource = overheadDetails.map((row) => row.label).join(', ');
+
+    const variantSku = buildVersionedDesignNo(
+      getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo,
+      versionLabel,
+    );
+
+    return {
+      metalLabel: selectedMetal,
+      variantSku,
+      metal: {
+        netWeight: metalNetWeight,
+        wastagePercent: metalWastagePercent,
+        totalWeight: metalTotalWeight,
+        rate: metalRate,
+        cost: metalCost,
+        formula: `${metalTotalWeight.toFixed(2)}g × ${formatMoney(metalRate)}`,
+        source: selectedMetal || 'No metal selected',
+      },
+      stones: stoneLines,
+      labor: {
+        cost: laborCost,
+        formula: laborFormulaParts.join(' + ') || '-',
+        source: laborSourceParts.join(', ') || 'No labor added',
+      },
+      overhead: {
+        cost: overheadCost,
+        formula: overheadFormula,
+        source: overheadSource || 'No overhead added',
+      },
+      totalStoneCost,
+      totalStoneCount,
+      total: metalCost + totalStoneCost + laborCost + overheadCost,
+    };
+  };
+
+  const versionBuilderBomBreakdown = useMemo(() => getVersionBuilderBomBreakdownForSelection(versionBuilderBomSelection), [
+    versionBuilderBaseDesign,
+    versionBuilderCategoryRuleFiltered,
+    versionBuilderChartCoverage,
+    versionBuilderGemRows,
+    versionBuilderHighestVersion,
+    packetOptions,
+    masterOptions.goldColours,
+    masterOptions.metalCaratages,
+    versionBuilderLaborRows,
+    versionBuilderOverheadRows,
+    versionBuilderBomSelection,
+    versionBuilderSizeChart,
+  ]);
+
+  const versionBuilderGeneratedRows = useMemo(() => {
     if (!versionBuilderBaseDesign) {
-      return [] as Array<{
-        designNo: string;
-        version: string;
-        metal: string;
-        coverage: string;
-        diamondQuality: string;
-        caratWeight: string;
-        size: string;
-        imageInfo: string;
-        gemstoneInfo: string;
-      }>;
+      return [] as VersionBuilderGeneratedRow[];
     }
 
-    const metals = versionBuilderSelections.metals;
-    const coverages = versionBuilderSelections.coverages;
-    const qualities = versionBuilderSelections.diamondQualities;
-    const weights = versionBuilderSelections.caratWeights;
-    const sizes = versionBuilderSelections.sizes;
+    const metals =
+      versionBuilderSelections.metals.length > 0
+        ? versionBuilderSelections.metals
+        : uniqueNonEmptyValues([versionBuilderBaseDesign.goldColour || '']);
+    const coverages =
+      versionBuilderSelections.coverages.length > 0
+        ? versionBuilderSelections.coverages
+        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondSpread || '']);
+    const qualities =
+      versionBuilderSelections.diamondQualities.length > 0
+        ? versionBuilderSelections.diamondQualities
+        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondQuality || '']);
+    const weights =
+      versionBuilderSelections.caratWeights.length > 0
+        ? versionBuilderSelections.caratWeights
+        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondWeight || '']);
+    const sizes =
+      versionBuilderSelections.sizes.length > 0
+        ? versionBuilderSelections.sizes
+        : uniqueNonEmptyValues([versionBuilderBaseDesign.jewelrySize || '']);
     if (!metals.length || !coverages.length || !qualities.length || !weights.length || !sizes.length) {
-      return [];
+      return [] as VersionBuilderGeneratedRow[];
     }
 
-    const baseDesignNo = getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo;
-    const previewRows: Array<{
-      designNo: string;
-      version: string;
-      metal: string;
-      coverage: string;
-      diamondQuality: string;
-      caratWeight: string;
-      size: string;
-      imageInfo: string;
-      gemstoneInfo: string;
-    }> = [];
-
-    let generated = 0;
+    const rows: VersionBuilderGeneratedRow[] = [];
     const startVersion = versionBuilderHighestVersion + 1;
-    outer: for (const metal of metals) {
+    let versionOffset = 0;
+
+    for (const metal of metals) {
       for (const coverage of coverages) {
         for (const quality of qualities) {
           for (const weight of weights) {
             for (const size of sizes) {
-              const version = `V${startVersion + generated}`;
+              const version = `V${startVersion + versionOffset}`;
+              const selection: VersionBuilderBomSelection = {
+                size,
+                metal,
+                diamondQuality: quality,
+                coverage,
+                caratWeight: weight,
+              };
+
+              const breakdown = getVersionBuilderBomBreakdownForSelection(selection, version);
               const chartCoverage =
                 versionBuilderSizeChart[coverage] ||
                 versionBuilderSizeChart[versionBuilderChartCoverage] ||
@@ -3498,8 +4173,16 @@ export default function ProductsPage() {
                 versionBuilderImageMode === 'MANUAL_AFTER_CREATE'
                   ? 'Set later'
                   : `${imageCount} image${imageCount === 1 ? '' : 's'}`;
-              previewRows.push({
-                designNo: buildVersionedDesignNo(baseDesignNo, version),
+              const composition = breakdown.stones
+                .filter((stone) => stone.count > 0)
+                .map((stone) => {
+                  const shapeToken = sanitizeStructuredToken(stone.label.split(' - ').pop() || 'S');
+                  return `${stone.count}${shapeToken.charAt(0) || 'S'}`;
+                })
+                .join(' + ');
+
+              rows.push({
+                designNo: breakdown.variantSku || buildVersionedDesignNo(getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo, version),
                 version,
                 metal,
                 coverage,
@@ -3508,22 +4191,22 @@ export default function ProductsPage() {
                 size,
                 imageInfo,
                 gemstoneInfo,
+                composition: composition || '-',
+                bomCost: breakdown.total,
               });
-              generated += 1;
-              if (generated >= VERSION_BUILDER_PREVIEW_LIMIT) {
-                break outer;
-              }
+              versionOffset += 1;
             }
           }
         }
       }
     }
 
-    return previewRows;
+    return rows;
   }, [
+    getVersionBuilderBomBreakdownForSelection,
     versionBuilderBaseDesign,
-    versionBuilderGemApplyScope,
-    versionBuilderGemMode,
+    versionBuilderLaborRows,
+    versionBuilderOverheadRows,
     versionBuilderGemGroupModes,
     versionBuilderGemRows,
     versionBuilderHighestVersion,
@@ -3535,184 +4218,42 @@ export default function ProductsPage() {
     versionBuilderUploadedImageUrls,
   ]);
 
-  const versionBuilderCategoryRuleFiltered = useMemo(() => {
-    const categoryKey = normalizeLookupKey(versionBuilderBaseDesign?.jewelryGroup);
-    const laborRules = masterOptions.laborRules.filter((rule) => {
-      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
-      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+  const versionBuilderFilteredGeneratedRows = useMemo(() => {
+    const search = versionBuilderGeneratedFilters.search.trim().toLowerCase();
+    return versionBuilderGeneratedRows.filter((row) => {
+      if (versionBuilderGeneratedFilters.size !== 'ALL' && row.size !== versionBuilderGeneratedFilters.size) {
+        return false;
+      }
+      if (
+        versionBuilderGeneratedFilters.coverage !== 'ALL' &&
+        row.coverage !== versionBuilderGeneratedFilters.coverage
+      ) {
+        return false;
+      }
+      if (!search) {
+        return true;
+      }
+      return [
+        row.designNo,
+        row.metal,
+        row.diamondQuality,
+        row.coverage,
+        row.size,
+        row.composition,
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(search);
     });
-    const overheadRules = masterOptions.overheadRules.filter((rule) => {
-      const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
-      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
-    });
-    return { laborRules, overheadRules };
-  }, [masterOptions.laborRules, masterOptions.overheadRules, versionBuilderBaseDesign]);
+  }, [versionBuilderGeneratedFilters, versionBuilderGeneratedRows]);
 
-  const versionBuilderSelectedLaborRule = useMemo(
+  const versionBuilderPendingCreateCount = useMemo(
     () =>
-      versionBuilderCategoryRuleFiltered.laborRules.find(
-        (rule) => rule.id === versionBuilderBomSelection.laborRuleId,
-      ),
-    [versionBuilderBomSelection.laborRuleId, versionBuilderCategoryRuleFiltered.laborRules],
+      versionBuilderGeneratedRows.filter(
+        (row) => versionBuilderCreateResults[row.designNo]?.status !== 'created',
+      ).length,
+    [versionBuilderCreateResults, versionBuilderGeneratedRows],
   );
-
-  const versionBuilderSelectedOverheadRule = useMemo(
-    () =>
-      versionBuilderCategoryRuleFiltered.overheadRules.find(
-        (rule) => rule.id === versionBuilderBomSelection.overheadRuleId,
-      ),
-    [versionBuilderBomSelection.overheadRuleId, versionBuilderCategoryRuleFiltered.overheadRules],
-  );
-
-  const versionBuilderBomBreakdown = useMemo(() => {
-    const empty = {
-      metalLabel: '',
-      variantSku: '',
-      metal: { netWeight: 0, wastagePercent: 0, totalWeight: 0, rate: 0, cost: 0, formula: '-', source: '-' },
-      stones: [] as Array<{
-        id: string;
-        label: string;
-        subtitle: string;
-        count: number;
-        totalCarat: number;
-        rate: number;
-        cost: number;
-        formula: string;
-        source: string;
-      }>,
-      labor: { cost: 0, formula: '-', source: '-' },
-      overhead: { cost: 0, formula: '-', source: '-' },
-      totalStoneCost: 0,
-      totalStoneCount: 0,
-      total: 0,
-    };
-    if (!versionBuilderBaseDesign) return empty;
-
-    const selectedCoverage = versionBuilderBomSelection.coverage || versionBuilderChartCoverage;
-    const chartByCoverage = versionBuilderSizeChart[selectedCoverage] || {};
-    const selectedSizeKey = normalizeSizeChartKey(versionBuilderBomSelection.size || '');
-    const chartRow = chartByCoverage[selectedSizeKey];
-    if (!chartRow) return empty;
-
-    const selectedMetal = versionBuilderBomSelection.metal;
-    const selectedMetalPurity = getMetalPurityBucket(selectedMetal);
-    const selectedMetalOption = getMetalMasterOption(selectedMetal);
-    const metalNetWeight = Math.max(0, parseNum(chartRow.metalWeights?.[selectedMetalPurity] || '0'));
-    const metalWastagePercent =
-      selectedMetalOption?.defaultWastagePercent !== undefined && selectedMetalOption?.defaultWastagePercent !== null
-        ? selectedMetalOption.defaultWastagePercent
-        : selectedMetalOption?.wastagePercent || 0;
-    const metalTotalWeight = metalNetWeight + (metalNetWeight * metalWastagePercent) / 100;
-    const metalRate = getMetalRate(selectedMetal) || 0;
-    const metalCost = metalTotalWeight * metalRate;
-
-    const stoneLines = versionBuilderGemRows.map((row, index) => {
-      const packet = packetOptions.find((entry) => entry.id === row.packetId);
-      const cell = chartRow.groups?.[row.id];
-      const count = Math.max(0, parseNum(cell?.count || '0'));
-      const ctPerStone = Math.max(0, parseNum(cell?.ctPerStone || '0'));
-      const totalCarat = count * ctPerStone;
-      const rate = Math.max(0, parseNum(row.pricePerCt || '0'));
-      const cost = totalCarat * rate;
-      const groupLabel = `Group ${String.fromCharCode(65 + index)}`;
-      return {
-        id: row.id,
-        label: `${groupLabel} - ${row.shape || packet?.shape || 'Stone group'}`,
-        subtitle: `${row.stone || packet?.stone || 'Diamond'} ${row.size || packet?.size ? `- ${row.size || packet?.size} mm` : ''} · ${count} stones`,
-        count,
-        totalCarat,
-        rate,
-        cost,
-        formula: `${count} × ${formatMoney(rate)}/ct × ${ctPerStone.toFixed(3)} ct`,
-        source: packet?.packetName || packet?.id || 'Manual packet',
-      };
-    });
-
-    const totalStoneCost = stoneLines.reduce((sum, line) => sum + line.cost, 0);
-    const totalStoneCount = stoneLines.reduce((sum, line) => sum + line.count, 0);
-    const totalGroups = stoneLines.filter((line) => line.count > 0).length;
-
-    const laborFlat = Math.max(0, versionBuilderSelectedLaborRule?.flatCost || 0);
-    const laborPerStone = Math.max(0, versionBuilderSelectedLaborRule?.ratePerStone || 0);
-    const laborPerGram = Math.max(0, versionBuilderSelectedLaborRule?.ratePerGram || 0);
-    const laborPerGroup = Math.max(0, versionBuilderSelectedLaborRule?.ratePerGroup || 0);
-    const laborCost =
-      laborFlat +
-      totalStoneCount * laborPerStone +
-      metalTotalWeight * laborPerGram +
-      totalGroups * laborPerGroup;
-    const laborFormulaParts = [
-      laborFlat > 0 ? formatMoney(laborFlat) : '',
-      laborPerStone > 0 ? `${totalStoneCount} × ${formatMoney(laborPerStone)}` : '',
-      laborPerGram > 0 ? `${metalTotalWeight.toFixed(2)}g × ${formatMoney(laborPerGram)}` : '',
-      laborPerGroup > 0 ? `${totalGroups} × ${formatMoney(laborPerGroup)}` : '',
-    ].filter(Boolean);
-
-    const overheadRatePercent = Math.max(0, versionBuilderSelectedOverheadRule?.ratePercent || 0);
-    const overheadFlatAmount = Math.max(0, versionBuilderSelectedOverheadRule?.flatAmount || 0);
-    const overheadMode = versionBuilderSelectedOverheadRule?.overheadApplyMode || '';
-    const materialsSubtotal = metalCost + totalStoneCost;
-    const bomSubtotal = materialsSubtotal + laborCost;
-    const overheadCost =
-      overheadMode === 'FLAT'
-        ? overheadFlatAmount
-        : overheadMode === 'PERCENT_BOM_SUBTOTAL'
-          ? (bomSubtotal * overheadRatePercent) / 100
-          : (materialsSubtotal * overheadRatePercent) / 100;
-    const overheadFormula =
-      overheadMode === 'FLAT'
-        ? formatMoney(overheadFlatAmount)
-        : `${overheadRatePercent.toFixed(2)}% × ${
-            overheadMode === 'PERCENT_BOM_SUBTOTAL' ? '(metal + stones + labor)' : '(metal + stones)'
-          }`;
-
-    const selectedVersion = `V${versionBuilderHighestVersion + 1}`;
-    const variantSku = buildVersionedDesignNo(
-      getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo,
-      selectedVersion,
-    );
-
-    return {
-      metalLabel: selectedMetal,
-      variantSku,
-      metal: {
-        netWeight: metalNetWeight,
-        wastagePercent: metalWastagePercent,
-        totalWeight: metalTotalWeight,
-        rate: metalRate,
-        cost: metalCost,
-        formula: `${metalTotalWeight.toFixed(2)}g × ${formatMoney(metalRate)}`,
-        source: selectedMetal || 'No metal selected',
-      },
-      stones: stoneLines,
-      labor: {
-        cost: laborCost,
-        formula: laborFormulaParts.join(' + ') || '-',
-        source: versionBuilderSelectedLaborRule?.value || 'No labor rule selected',
-      },
-      overhead: {
-        cost: overheadCost,
-        formula: overheadFormula,
-        source: versionBuilderSelectedOverheadRule?.value || 'No overhead rule selected',
-      },
-      totalStoneCost,
-      totalStoneCount,
-      total: metalCost + totalStoneCost + laborCost + overheadCost,
-    };
-  }, [
-    versionBuilderBaseDesign,
-    versionBuilderBomSelection,
-    versionBuilderCategoryRuleFiltered,
-    versionBuilderChartCoverage,
-    versionBuilderGemRows,
-    versionBuilderHighestVersion,
-    packetOptions,
-    masterOptions.goldColours,
-    masterOptions.metalCaratages,
-    versionBuilderSelectedLaborRule,
-    versionBuilderSelectedOverheadRule,
-    versionBuilderSizeChart,
-  ]);
 
   const versionBuilderParentImageUrls = useMemo(
     () => normalizeStringArray(versionBuilderBaseDesign?.imageUrls).map(resolvePublicAssetUrl),
@@ -3771,19 +4312,8 @@ export default function ProductsPage() {
         prev.caratWeight && versionBuilderSelections.caratWeights.includes(prev.caratWeight)
           ? prev.caratWeight
           : versionBuilderSelections.caratWeights[0] || '',
-      laborRuleId:
-        prev.laborRuleId &&
-        versionBuilderCategoryRuleFiltered.laborRules.some((rule) => rule.id === prev.laborRuleId)
-          ? prev.laborRuleId
-          : versionBuilderCategoryRuleFiltered.laborRules[0]?.id || '',
-      overheadRuleId:
-        prev.overheadRuleId &&
-        versionBuilderCategoryRuleFiltered.overheadRules.some((rule) => rule.id === prev.overheadRuleId)
-          ? prev.overheadRuleId
-          : versionBuilderCategoryRuleFiltered.overheadRules[0]?.id || '',
     }));
   }, [
-    versionBuilderCategoryRuleFiltered,
     versionBuilderSelections.caratWeights,
     versionBuilderSelections.diamondQualities,
     versionBuilderSelections.metals,
@@ -3958,13 +4488,16 @@ export default function ProductsPage() {
     return { ...row, pricePerCt: (amount / wt).toFixed(2) };
   };
 
-  const getLaborValue = (row: LaborRow): number =>
-    parseNum(row.unitQty) * parseNum(row.laborPerUnit);
-const getFindingValue = (row: FindingRow): number => {
-  const manual = parseNum(row.findingValue);
-  if (manual > 0) return manual;
-  return parseNum(row.units) * parseNum(row.pricePerUnit);
-};
+  function getLaborValue(row: LaborRow): number {
+    return parseNum(row.unitQty) * parseNum(row.laborPerUnit);
+  }
+
+  function getFindingValue(row: FindingRow): number {
+    const manual = parseNum(row.findingValue);
+    if (manual > 0) return manual;
+    return parseNum(row.units) * parseNum(row.pricePerUnit);
+  }
+
 const createDefaultVendorRow = (): VendorRow => ({
   id: makeId(),
   supplier: '',
@@ -3972,16 +4505,62 @@ const createDefaultVendorRow = (): VendorRow => ({
   supplierStyleNo: '',
 });
 
-  const costTotals = useMemo(() => {
+  const getOverheadRuleForRow = (row: OverheadRow): MasterOption | null => {
+    if (!row.ruleId && !row.overheadHead.trim()) return null;
+    return (
+      singleDesignOverheadRules.find(
+        (rule) =>
+          rule.id === row.ruleId ||
+          normalizeLookupKey(rule.value) === normalizeLookupKey(row.overheadHead),
+      ) || null
+    );
+  };
+
+  const getSingleDesignOverheadContext = useMemo(() => {
     const metal = metalRows.reduce((sum, row) => sum + getMetalValue(row), 0);
     const gem = gemRows.reduce((sum, row) => sum + getGemValue(row), 0);
     const labor = laborRows.reduce((sum, row) => sum + getLaborValue(row), 0);
     const finding = findingRows.reduce((sum, row) => sum + getFindingValue(row), 0);
+    const materialsSubtotal = metal + gem;
+    const bomSubtotal = materialsSubtotal + labor;
+    return { metal, gem, labor, finding, materialsSubtotal, bomSubtotal };
+  }, [findingRows, gemRows, laborRows, metalRows]);
+
+  const getOverheadRowValue = (row: OverheadRow): number => {
+    const rule = getOverheadRuleForRow(row);
+    if (!rule) return 0;
+    const mode = rule.overheadApplyMode || '';
+    const ratePercent = Math.max(0, rule.ratePercent || 0);
+    const flatAmount = Math.max(0, rule.flatAmount || 0);
+    if (mode === 'FLAT') return flatAmount;
+    if (mode === 'PERCENT_BOM_SUBTOTAL') {
+      return (getSingleDesignOverheadContext.bomSubtotal * ratePercent) / 100;
+    }
+    if (mode === 'PERCENT_MATERIALS') {
+      return (getSingleDesignOverheadContext.materialsSubtotal * ratePercent) / 100;
+    }
+    return 0;
+  };
+
+  const costTotals = useMemo(() => {
+    const metal = metalRows.reduce((sum, row) => sum + getMetalValue(row), 0);
+    const gem = gemRows.reduce((sum, row) => sum + getGemValue(row), 0);
+    const labor = laborRows.reduce((sum, row) => sum + getLaborValue(row), 0);
+    const overhead = overheadRows.reduce((sum, row) => sum + getOverheadRowValue(row), 0);
+    const finding = findingRows.reduce((sum, row) => sum + getFindingValue(row), 0);
     const totalMetalNetWt = metalRows.reduce((sum, row) => sum + Math.max(0, parseNum(row.netWt)), 0);
     const totalGemWtInCts = gemRows.reduce((sum, row) => sum + getGemWeight(row), 0);
     const grossWeight = totalMetalNetWt + totalGemWtInCts / 5;
-    return { metal, gem, labor, finding, grossWeight, total: metal + gem + labor + finding };
-  }, [findingRows, gemRows, laborRows, metalRows]);
+    return { metal, gem, labor, overhead, finding, grossWeight, total: metal + gem + labor + overhead + finding };
+  }, [
+    findingRows,
+    gemRows,
+    laborRows,
+    metalRows,
+    overheadRows,
+    getSingleDesignOverheadContext.bomSubtotal,
+    getSingleDesignOverheadContext.materialsSubtotal,
+  ]);
 
   const openAdd = () => {
     if (!canCreateDesign) {
@@ -4040,6 +4619,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       unitQty: '',
       laborValue: '',
     }]);
+    setOverheadRows([]);
     setFindingRows([]);
     setVendorRows([createDefaultVendorRow()]);
     setShowAddModal(true);
@@ -4095,6 +4675,10 @@ const createDefaultVendorRow = (): VendorRow => ({
       const metals = Array.isArray(detail.metals) ? detail.metals : [];
       const gemstones = Array.isArray(detail.gemstones) ? detail.gemstones : [];
       const labors = Array.isArray(detail.labors) ? detail.labors : [];
+      const visibleLabors = labors.filter(
+        (item: any) =>
+          !String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
+      );
       const findings = Array.isArray(detail.findings) ? detail.findings : [];
       const processStages = Array.isArray(detail.processStages) ? detail.processStages : [];
       const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
@@ -4184,8 +4768,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       );
 
       setLaborRows(
-        labors.length > 0
-          ? labors.map((item: any) => ({
+        visibleLabors.length > 0
+          ? visibleLabors.map((item: any) => ({
               id: item.id || makeId(),
               laborHead: item.laborHead || '',
               laborPerUnit: asInput(item.laborPerUnit),
@@ -4199,6 +4783,21 @@ const createDefaultVendorRow = (): VendorRow => ({
               unitQty: '',
               laborValue: '',
             }],
+      );
+      setOverheadRows(
+        labors
+          .filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'))
+          .map((item: any) => {
+            const overheadLabel = String(item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
+            const matchedOverheadRule = masterOptions.overheadRules.find(
+              (rule) => normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
+            );
+            return {
+              id: item.id || makeId(),
+              overheadHead: overheadLabel,
+              ruleId: matchedOverheadRule?.id || '',
+            };
+          }),
       );
 
       setFindingRows(
@@ -4488,6 +5087,20 @@ const createDefaultVendorRow = (): VendorRow => ({
       ijewelModelId: form.ijewelModelId.trim(),
       ijewelBaseName: form.ijewelBaseName.trim(),
     };
+    const overheadLaborPayload = overheadRows
+      .map((row) => {
+        const rule = getOverheadRuleForRow(row);
+        const label = row.overheadHead.trim() || rule?.value || '';
+        const value = getOverheadRowValue(row);
+        if (!label) return null;
+        return {
+          laborHead: `Overhead - ${label}`,
+          laborPerUnit: value,
+          unitQty: 1,
+          laborValue: value,
+        };
+      })
+      .filter(Boolean);
     const createPayload = {
       ...basePayload,
       metals: metalRows.map((row) => ({
@@ -4515,12 +5128,15 @@ const createDefaultVendorRow = (): VendorRow => ({
         pricePerCt: parseNum(row.pricePerCt),
         amount: getGemValue(row),
       })),
-      labors: laborRows.map((row) => ({
-        laborHead: row.laborHead.trim() || undefined,
-        laborPerUnit: parseNum(row.laborPerUnit),
-        unitQty: parseNum(row.unitQty),
-        laborValue: getLaborValue(row),
-      })),
+      labors: [
+        ...laborRows.map((row) => ({
+          laborHead: row.laborHead.trim() || undefined,
+          laborPerUnit: parseNum(row.laborPerUnit),
+          unitQty: parseNum(row.unitQty),
+          laborValue: getLaborValue(row),
+        })),
+        ...overheadLaborPayload,
+      ],
       findings: FINDING_FEATURE_ENABLED
         ? findingRows.map((row) => ({
             findingHead: row.findingHead.trim() || undefined,
@@ -4785,6 +5401,10 @@ const createDefaultVendorRow = (): VendorRow => ({
 
   const updateLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
     setLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+  };
+
+  const updateVersionBuilderLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
+    setVersionBuilderLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
   };
 
   const updateFindingRow = (id: string, key: keyof Omit<FindingRow, 'id'>, value: string) => {
@@ -6328,7 +6948,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8f6a2c]">Step 3b · Composition Size Chart</p>
                   <h3 className="mt-1 text-[1.15rem] font-bold text-[#2b241d]">Each group gets its own count column — edit any cell</h3>
                   <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                    Sizes 3.00 to 11.00 at 0.25 increments. Totals and BOM preview recalc live.
+                    {versionBuilderSelections.sizes.length
+                      ? 'Only the sizes selected in Variant Axes are shown here. Totals and BOM preview recalc live.'
+                      : 'Sizes 3.00 to 11.00 at 0.25 increments. Totals and BOM preview recalc live.'}
                   </p>
                 </div>
 
@@ -6355,7 +6977,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                     <p className="text-[11px] text-[#8c7b67]">
                       {versionBuilderGemRows.length} group{versionBuilderGemRows.length === 1 ? '' : 's'} ·{' '}
-                      {versionBuilderChartCoverage || 'No coverage'} · {versionBuilderSizeChartSizes.length} sizes (0.25 steps)
+                      {versionBuilderChartCoverage || 'No coverage'} · {versionBuilderSizeChartSizes.length} selected size
+                      {versionBuilderSizeChartSizes.length === 1 ? '' : 's'}
                     </p>
                   </div>
 
@@ -6538,14 +7161,259 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
+            {versionBuilderWorkflowStep === 'LABOR_OVERHEAD' ? (
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 5 of 7</p>
+                    <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Labor &amp; Overhead</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      Add manual labor rows and overhead rules here. BOM will use these values for every generated variant.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+                  <div className="space-y-4">
+                    <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
+                      <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c]">Labor Information</div>
+                      <div className="overflow-x-auto scrollbar-top">
+                        <table className="min-w-full text-sm">
+                          <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
+                            <tr>
+                              <th className="px-2 py-2">##</th>
+                              <th className="px-2 py-2">Labor Head</th>
+                              <th className="px-2 py-2">Labor/Unit</th>
+                              <th className="px-2 py-2">Unit/Qty</th>
+                              <th className="px-2 py-2">Labor Value</th>
+                              <th className="px-2 py-2">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {versionBuilderLaborRows.map((item, idx) => (
+                              <tr key={item.id}>
+                                <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <select
+                                      className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                      value={item.laborHead}
+                                      onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborHead', event.target.value)}
+                                    >
+                                      <option value="">Select Labor Head</option>
+                                      {!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead ? (
+                                        <option value={item.laborHead}>{item.laborHead}</option>
+                                      ) : null}
+                                      {masterOptions.laborHeads.map((option) => (
+                                        <option key={option.id} value={option.value}>
+                                          {option.value}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className={inlineMasterAddButtonClass}
+                                      disabled={creatingMasterType === 'LABOR_HEAD'}
+                                      onClick={() =>
+                                        addMasterFromDesign('LABOR_HEAD', (masterValue) =>
+                                          updateVersionBuilderLaborRow(item.id, 'laborHead', masterValue),
+                                        )
+                                      }
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    className="w-full rounded border border-gray-300 px-2 py-1"
+                                    value={item.laborPerUnit}
+                                    onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborPerUnit', event.target.value)}
+                                    placeholder="Price Per Quantity"
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    className="w-full rounded border border-gray-300 px-2 py-1"
+                                    value={item.unitQty}
+                                    onChange={(event) => updateVersionBuilderLaborRow(item.id, 'unitQty', event.target.value)}
+                                    placeholder="0"
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    className="w-full cursor-not-allowed rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
+                                    value={getLaborValue(item).toFixed(2)}
+                                    readOnly
+                                    tabIndex={-1}
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+                                    onClick={() => setVersionBuilderLaborRows((prev) => prev.filter((row) => row.id !== item.id))}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
+                              <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
+                              <td className="px-2 py-2">
+                                {versionBuilderLaborRows.reduce((sum, row) => sum + getLaborValue(row), 0).toFixed(2)}
+                              </td>
+                              <td className="px-2 py-2"></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex justify-end border-t border-rose-200 bg-white px-3 py-2">
+                        <button
+                          type="button"
+                          className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          onClick={() =>
+                            setVersionBuilderLaborRows((prev) => [
+                              ...prev,
+                              { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' },
+                            ])
+                          }
+                        >
+                          + Add Line
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
+                      <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c]">Overhead Information</div>
+                      <div className="overflow-x-auto scrollbar-top">
+                        <table className="min-w-full text-sm">
+                          <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
+                            <tr>
+                              <th className="px-2 py-2">##</th>
+                              <th className="px-2 py-2">Overhead</th>
+                              <th className="px-2 py-2">Mode</th>
+                              <th className="px-2 py-2">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {versionBuilderOverheadRows.length === 0 ? (
+                              <tr>
+                                <td className="px-3 py-4 text-xs text-slate-500" colSpan={4}>
+                                  No overhead added yet.
+                                </td>
+                              </tr>
+                            ) : (
+                              versionBuilderOverheadRows.map((item, idx) => {
+                                const selectedRule = getVersionBuilderOverheadRuleForRow(item);
+                                const modeLabel =
+                                  selectedRule?.overheadApplyMode === 'FLAT'
+                                    ? 'Flat'
+                                    : selectedRule?.overheadApplyMode === 'PERCENT_BOM_SUBTOTAL'
+                                      ? '% of BOM'
+                                      : selectedRule?.overheadApplyMode === 'PERCENT_MATERIALS'
+                                        ? '% of Materials'
+                                        : '-';
+                                return (
+                                  <tr key={item.id}>
+                                    <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                    <td className="px-2 py-2">
+                                      <div className="flex items-center gap-2">
+                                        <select
+                                          className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                          value={item.ruleId}
+                                          onChange={(event) => {
+                                            const selectedRuleOption = versionBuilderCategoryRuleFiltered.overheadRules.find((rule) => rule.id === event.target.value);
+                                            setVersionBuilderOverheadRows((prev) =>
+                                              prev.map((row) =>
+                                                row.id === item.id
+                                                  ? {
+                                                      ...row,
+                                                      ruleId: event.target.value,
+                                                      overheadHead: selectedRuleOption?.value || '',
+                                                    }
+                                                  : row,
+                                              ),
+                                            );
+                                          }}
+                                        >
+                                          <option value="">Select Overhead</option>
+                                          {!versionBuilderCategoryRuleFiltered.overheadRules.some((option) => option.id === item.ruleId) && item.overheadHead ? (
+                                            <option value={item.ruleId}>{item.overheadHead}</option>
+                                          ) : null}
+                                          {versionBuilderCategoryRuleFiltered.overheadRules.map((option) => (
+                                            <option key={option.id} value={option.id}>
+                                              {option.value}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          type="button"
+                                          className={inlineMasterAddButtonClass}
+                                          disabled={creatingMasterType === 'OVERHEAD_RULE'}
+                                          onClick={() =>
+                                            addMasterFromDesign('OVERHEAD_RULE', (masterValue, createdMaster) =>
+                                              setVersionBuilderOverheadRows((prev) =>
+                                                prev.map((row) =>
+                                                  row.id === item.id
+                                                    ? {
+                                                        ...row,
+                                                        ruleId: createdMaster?.id || row.ruleId,
+                                                        overheadHead: createdMaster?.value || masterValue,
+                                                      }
+                                                    : row,
+                                                ),
+                                              ),
+                                            )
+                                          }
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                    <td className="px-2 py-2">
+                                      <button
+                                        type="button"
+                                        className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+                                        onClick={() => setVersionBuilderOverheadRows((prev) => prev.filter((row) => row.id !== item.id))}
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
+                        <button
+                          type="button"
+                          className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          onClick={() => setVersionBuilderOverheadRows((prev) => [...prev, { id: makeId(), overheadHead: '', ruleId: '' }])}
+                        >
+                          + Add Line
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             {versionBuilderWorkflowStep === 'BOM' ? (
               <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
                 <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 5 of 6</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 6 of 7</p>
                     <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">BOM - recomputes from your current config</h3>
                     <p className="mt-1 text-sm leading-6 text-slate-500">
-                      Uses the current size chart, metal rates, packet costs, and selected labor and overhead rules.
+                      Uses the current size chart, metal rates, packet costs, and the labor and overhead rows configured in the previous step.
                     </p>
                   </div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">
@@ -6554,7 +7422,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
 
                 <div className="rounded-2xl border border-[#e4d8c9] bg-[#fffdf9] p-4">
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                     <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Size</label>
                       <select
@@ -6564,7 +7432,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           setVersionBuilderBomSelection((prev) => ({ ...prev, size: event.target.value }))
                         }
                       >
-                        {versionBuilderSelections.sizes.map((size) => (
+                        {versionBuilderSizeChartSizes.map((size) => (
                           <option key={size} value={size}>
                             {size}
                           </option>
@@ -6635,40 +7503,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Labor</label>
-                      <select
-                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
-                        value={versionBuilderBomSelection.laborRuleId}
-                        onChange={(event) =>
-                          setVersionBuilderBomSelection((prev) => ({ ...prev, laborRuleId: event.target.value }))
-                        }
-                      >
-                        <option value="">Select labor</option>
-                        {versionBuilderCategoryRuleFiltered.laborRules.map((rule) => (
-                          <option key={rule.id} value={rule.id}>
-                            {rule.value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Overhead</label>
-                      <select
-                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
-                        value={versionBuilderBomSelection.overheadRuleId}
-                        onChange={(event) =>
-                          setVersionBuilderBomSelection((prev) => ({ ...prev, overheadRuleId: event.target.value }))
-                        }
-                      >
-                        <option value="">Select overhead</option>
-                        {versionBuilderCategoryRuleFiltered.overheadRules.map((rule) => (
-                          <option key={rule.id} value={rule.id}>
-                            {rule.value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
                 </div>
 
@@ -6684,63 +7518,63 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </thead>
                     <tbody>
                       <tr className="border-t border-[#efe4d6]">
-                        <td className="px-4 py-4 align-top">
-                          <p className="text-[15px] font-semibold text-[#2b241d]">Metal</p>
-                          <p className="mt-1 text-[12px] text-[#8c7b67]">net wt + wastage</p>
+                        <td className="px-4 py-3.5 align-top">
+                          <p className="text-[13px] font-semibold text-[#2b241d]">Metal</p>
+                          <p className="mt-1 text-[11px] text-[#8c7b67]">net wt + wastage</p>
                         </td>
-                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">
+                        <td className="px-4 py-3.5 text-[11px] text-[#7b6f61]">
                           {versionBuilderBomBreakdown.metal.netWeight.toFixed(2)}g + {versionBuilderBomBreakdown.metal.wastagePercent.toFixed(2)}% = {versionBuilderBomBreakdown.metal.totalWeight.toFixed(2)}g · {formatMoney(versionBuilderBomBreakdown.metal.rate)}
                         </td>
-                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.metal.source}</td>
-                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                        <td className="px-4 py-3.5 text-[11px] text-[#2b241d]">{versionBuilderBomBreakdown.metal.source}</td>
+                        <td className="px-4 py-3.5 text-right text-[13px] font-semibold text-[#2b241d]">
                           {formatMoney(versionBuilderBomBreakdown.metal.cost)}
                         </td>
                       </tr>
 
                       {versionBuilderBomBreakdown.stones.map((stone) => (
                         <tr key={`bom-stone-${stone.id}`} className="border-t border-[#efe4d6]">
-                          <td className="px-4 py-4 align-top">
-                            <p className="text-[15px] font-semibold text-[#b37b1a]">{stone.label}</p>
-                            <p className="mt-1 text-[12px] text-[#8c7b67]">{stone.subtitle}</p>
+                          <td className="px-4 py-3.5 align-top">
+                            <p className="text-[13px] font-semibold text-[#b37b1a]">{stone.label}</p>
+                            <p className="mt-1 text-[11px] text-[#8c7b67]">{stone.subtitle}</p>
                           </td>
-                          <td className="px-4 py-4 text-[12px] text-[#7b6f61]">
+                          <td className="px-4 py-3.5 text-[11px] text-[#7b6f61]">
                             {stone.count} × {stone.totalCarat > 0 && stone.count > 0 ? `${(stone.totalCarat / stone.count).toFixed(3)} ct` : '0 ct'} × {formatMoney(stone.rate)}/ct
                           </td>
-                          <td className="px-4 py-4 text-[12px] text-[#2b241d]">{stone.source}</td>
-                          <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                          <td className="px-4 py-3.5 text-[11px] text-[#2b241d]">{stone.source}</td>
+                          <td className="px-4 py-3.5 text-right text-[13px] font-semibold text-[#2b241d]">
                             {formatMoney(stone.cost)}
                           </td>
                         </tr>
                       ))}
 
                       <tr className="border-t border-[#efe4d6]">
-                        <td className="px-4 py-4 align-top">
-                          <p className="text-[15px] font-semibold text-[#2b241d]">Labor</p>
-                          <p className="mt-1 text-[12px] text-[#8c7b67]">flat + variable rates</p>
+                        <td className="px-4 py-3.5 align-top">
+                          <p className="text-[13px] font-semibold text-[#2b241d]">Labor</p>
+                          <p className="mt-1 text-[11px] text-[#8c7b67]">flat + variable rates</p>
                         </td>
-                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">{versionBuilderBomBreakdown.labor.formula}</td>
-                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.labor.source}</td>
-                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                        <td className="px-4 py-3.5 text-[11px] text-[#7b6f61]">{versionBuilderBomBreakdown.labor.formula}</td>
+                        <td className="px-4 py-3.5 text-[11px] text-[#2b241d]">{versionBuilderBomBreakdown.labor.source}</td>
+                        <td className="px-4 py-3.5 text-right text-[13px] font-semibold text-[#2b241d]">
                           {formatMoney(versionBuilderBomBreakdown.labor.cost)}
                         </td>
                       </tr>
 
                       <tr className="border-t border-[#efe4d6]">
-                        <td className="px-4 py-4 align-top">
-                          <p className="text-[15px] font-semibold text-[#2b241d]">Overhead</p>
-                          <p className="mt-1 text-[12px] text-[#8c7b67]">materials or subtotal based</p>
+                        <td className="px-4 py-3.5 align-top">
+                          <p className="text-[13px] font-semibold text-[#2b241d]">Overhead</p>
+                          <p className="mt-1 text-[11px] text-[#8c7b67]">materials or subtotal based</p>
                         </td>
-                        <td className="px-4 py-4 text-[12px] text-[#7b6f61]">{versionBuilderBomBreakdown.overhead.formula}</td>
-                        <td className="px-4 py-4 text-[12px] text-[#2b241d]">{versionBuilderBomBreakdown.overhead.source}</td>
-                        <td className="px-4 py-4 text-right text-[16px] font-semibold text-[#2b241d]">
+                        <td className="px-4 py-3.5 text-[11px] text-[#7b6f61]">{versionBuilderBomBreakdown.overhead.formula}</td>
+                        <td className="px-4 py-3.5 text-[11px] text-[#2b241d]">{versionBuilderBomBreakdown.overhead.source}</td>
+                        <td className="px-4 py-3.5 text-right text-[13px] font-semibold text-[#2b241d]">
                           {formatMoney(versionBuilderBomBreakdown.overhead.cost)}
                         </td>
                       </tr>
 
                       <tr className="bg-[#211a14]">
-                        <td className="px-4 py-4 text-[16px] font-semibold text-white">BOM cost - this variant</td>
+                        <td className="px-4 py-3 text-[13px] font-semibold text-white">BOM cost - this variant</td>
                         <td colSpan={2}></td>
-                        <td className="px-4 py-4 text-right text-[18px] font-bold text-[#f0c979]">
+                        <td className="px-4 py-3 text-right text-[14px] font-bold text-[#f0c979]">
                           {formatMoney(versionBuilderBomBreakdown.total)}
                         </td>
                       </tr>
@@ -6750,8 +7584,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
                 <div className="mt-4 rounded-2xl border border-[#e0c98f] bg-[#f9f0db] px-4 py-3">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">SKU</p>
-                  <p className="mt-2 text-[18px] font-bold text-[#2b241d]">{versionBuilderBomBreakdown.variantSku || '-'}</p>
-                  <p className="mt-1 text-[12px] text-[#7b6f61]">
+                  <p className="mt-2 text-[16px] font-bold text-[#2b241d]">{versionBuilderBomBreakdown.variantSku || '-'}</p>
+                  <p className="mt-1 text-[11px] text-[#7b6f61]">
                     Sample variant: {versionBuilderBomSelection.metal || '-'} · {versionBuilderBomSelection.coverage || '-'} · {versionBuilderBomSelection.diamondQuality || '-'} · Size {versionBuilderBomSelection.size || '-'}
                   </p>
                 </div>
@@ -6759,56 +7593,134 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
 
             {versionBuilderWorkflowStep === 'PREVIEW' ? (
-              <div className="rounded-2xl border border-[#e4d8c9] bg-white p-4 shadow-sm">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">Preview (UI only)</p>
-                    <p className="text-xs text-slate-500">
-                      Showing first {VERSION_BUILDER_PREVIEW_LIMIT} rows out of {versionBuilderCombinationCount} combinations.
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8f6a2c]">Step 7 of 7</p>
+                    <h3 className="mt-1 text-[1.35rem] font-bold text-[#2b241d]">Generated variants</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">
+                      Every SKU this style produces. Filter the list and review BOM cost across all generated variants.
                     </p>
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                    Starts from V{versionBuilderHighestVersion + 1}
+                  <span className="text-[12px] font-semibold text-[#8c7b67]">
+                    {versionBuilderGeneratedRows.length.toLocaleString('en-US')} SKUs
                   </span>
                 </div>
-                <div className="app-table-scroll scrollbar-top rounded-xl border border-slate-200">
-                  <table className="app-table app-table-compact">
-                    <thead>
+
+                <div className="rounded-2xl border border-[#e4d8c9] bg-[#fffdf9] p-4">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[140px_180px_minmax(220px,320px)_1fr]">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Size</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderGeneratedFilters.size}
+                        onChange={(event) =>
+                          setVersionBuilderGeneratedFilters((prev) => ({ ...prev, size: event.target.value }))
+                        }
+                      >
+                        <option value="ALL">All sizes</option>
+                        {versionBuilderSelections.sizes.map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Coverage</label>
+                      <select
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderGeneratedFilters.coverage}
+                        onChange={(event) =>
+                          setVersionBuilderGeneratedFilters((prev) => ({ ...prev, coverage: event.target.value }))
+                        }
+                      >
+                        <option value="ALL">All coverages</option>
+                        {versionBuilderSizeChartCoverages.map((coverage) => (
+                          <option key={coverage} value={coverage}>
+                            {coverage}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Search SKU</label>
+                      <input
+                        className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
+                        value={versionBuilderGeneratedFilters.search}
+                        onChange={(event) =>
+                          setVersionBuilderGeneratedFilters((prev) => ({ ...prev, search: event.target.value }))
+                        }
+                        placeholder="e.g. 18KW or GHVS"
+                      />
+                    </div>
+                    <div className="flex items-end justify-end">
+                      <p className="text-[12px] text-[#8c7b67]">
+                        <span className="font-semibold text-[#2b241d]">
+                          {versionBuilderFilteredGeneratedRows.length.toLocaleString('en-US')}
+                        </span>{' '}
+                        matching · {versionBuilderGeneratedRows.length.toLocaleString('en-US')} total in style
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-[#e4d8c9] bg-[#fff7ea] px-4 py-3 text-[12px] text-[#7b6f61]">
+                  Showing {versionBuilderFilteredGeneratedRows.length.toLocaleString('en-US')} of{' '}
+                  {versionBuilderGeneratedRows.length.toLocaleString('en-US')} matched rows.
+                </div>
+
+                <div className="app-table-scroll scrollbar-top mt-4 rounded-2xl border border-[#e4d8c9] bg-white">
+                  <table className="min-w-full">
+                    <thead className="bg-[#f8f1e6]">
                       <tr>
-                        <th className="app-table-head-cell">Design No</th>
-                        <th className="app-table-head-cell">Version</th>
-                        <th className="app-table-head-cell">Metal</th>
-                        <th className="app-table-head-cell">Coverage</th>
-                        <th className="app-table-head-cell">Diamond Quality</th>
-                        <th className="app-table-head-cell">Carat Weight</th>
-                        <th className="app-table-head-cell">Size</th>
-                        <th className="app-table-head-cell">Images</th>
-                        <th className="app-table-head-cell">Gemstone Plan</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">SKU</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Metal</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Quality</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Coverage</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Size</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Composition</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">BOM Cost</th>
+                        <th className="px-4 py-3 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {versionBuilderPreviewRows.length === 0 ? (
+                      {versionBuilderFilteredGeneratedRows.length === 0 ? (
                         <tr>
-                          <td className="app-table-cell text-sm text-slate-500" colSpan={9}>
-                            Select at least one option in every dimension to generate combinations.
+                          <td className="px-4 py-5 text-sm text-slate-500" colSpan={8}>
+                            No generated variants match the current filters.
                           </td>
                         </tr>
                       ) : (
-                        versionBuilderPreviewRows.map((previewRow) => (
-                          <tr key={`${previewRow.designNo}-${previewRow.version}`}>
-                            <td className="app-table-cell font-semibold text-slate-900">{previewRow.designNo}</td>
-                            <td className="app-table-cell">{previewRow.version}</td>
-                            <td className="app-table-cell">{previewRow.metal}</td>
-                            <td className="app-table-cell">{previewRow.coverage}</td>
-                            <td className="app-table-cell">{previewRow.diamondQuality}</td>
-                            <td className="app-table-cell">{previewRow.caratWeight}</td>
-                            <td className="app-table-cell">{previewRow.size}</td>
-                            <td className="app-table-cell">
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
-                                {previewRow.imageInfo}
-                              </span>
+                        versionBuilderFilteredGeneratedRows.map((previewRow) => (
+                          <tr key={`${previewRow.designNo}-${previewRow.version}`} className="border-t border-[#efe4d6]">
+                            <td className="px-4 py-3 text-[13px] font-semibold text-[#2b241d]">{previewRow.designNo}</td>
+                            <td className="px-4 py-3 text-[13px] text-[#2b241d]">{previewRow.metal}</td>
+                            <td className="px-4 py-3 text-[13px] text-[#2b241d]">{previewRow.diamondQuality}</td>
+                            <td className="px-4 py-3 text-[13px] text-[#2b241d]">{previewRow.coverage}</td>
+                            <td className="px-4 py-3 text-[13px] text-[#2b241d]">{previewRow.size}</td>
+                            <td className="px-4 py-3 text-[12px] text-[#7b6f61]">{previewRow.composition}</td>
+                            <td className="px-4 py-3 text-right text-[13px] font-semibold text-[#2b241d]">
+                              {formatMoney(previewRow.bomCost)}
                             </td>
-                            <td className="app-table-cell text-xs text-slate-600">{previewRow.gemstoneInfo}</td>
+                            <td className="px-4 py-3 text-center">
+                              {versionBuilderCreateResults[previewRow.designNo]?.status === 'created' ? (
+                                <span className="rounded-full border border-[#b9dec1] bg-[#eef9f0] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2f8f67]">
+                                  Created
+                                </span>
+                              ) : versionBuilderCreateResults[previewRow.designNo]?.status === 'failed' ? (
+                                <span
+                                  className="rounded-full border border-[#f0c5c5] bg-[#fff1f1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#c45858]"
+                                  title={versionBuilderCreateResults[previewRow.designNo]?.message || 'Create failed'}
+                                >
+                                  Failed
+                                </span>
+                              ) : (
+                                <span className="rounded-full border border-[#e4d8c9] bg-[#faf5ec] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8c7b67]">
+                                  Pending
+                                </span>
+                              )}
+                            </td>
                           </tr>
                         ))
                       )}
@@ -6820,7 +7732,10 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-2">
               <p className="text-xs text-slate-500">
-                This screen is UI-only for now. Save action will be connected to bulk version create API in next step.
+                Generated variants now reflect the full selected combination set.
+                {creatingVersions
+                  ? ` Creating ${versionCreateProgress.done}/${versionCreateProgress.total}...`
+                  : ' Use Create Versions to generate actual design records.'}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -6830,7 +7745,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     const previousStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex - 1];
                     if (previousStep) setVersionBuilderWorkflowStep(previousStep);
                   }}
-                  disabled={versionBuilderCurrentStepIndex <= 0}
+                  disabled={versionBuilderCurrentStepIndex <= 0 || creatingVersions}
                 >
                   Back
                 </Button>
@@ -6841,17 +7756,24 @@ const createDefaultVendorRow = (): VendorRow => ({
                     const nextStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex + 1];
                     if (nextStep) setVersionBuilderWorkflowStep(nextStep);
                   }}
-                  disabled={versionBuilderCurrentStepIndex >= versionBuilderStepOrder.length - 1}
+                  disabled={versionBuilderCurrentStepIndex >= versionBuilderStepOrder.length - 1 || creatingVersions}
                 >
                   Next
                 </Button>
-                <Button type="button" variant="secondary" onClick={closeVersionBuilderModal}>
+                <Button type="button" variant="secondary" onClick={closeVersionBuilderModal} disabled={creatingVersions}>
                   Close
                 </Button>
-                <Button type="button" disabled>
-                  Create Versions (Coming Soon)
+                <Button
+                  type="button"
+                  onClick={createVersionBuilderVariants}
+                  disabled={creatingVersions || versionBuilderPendingCreateCount === 0}
+                >
+                  {creatingVersions
+                    ? `Creating ${versionCreateProgress.done}/${versionCreateProgress.total}`
+                    : `Create Versions (${versionBuilderPendingCreateCount})`}
                 </Button>
               </div>
+
             </div>
           </div>
         </Modal>
@@ -7491,6 +8413,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <span>Labor Value</span>
                       <span className="font-semibold text-slate-900">{costTotals.labor.toFixed(2)}</span>
                     </div>
+                    <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
+                      <span>Overhead Value</span>
+                      <span className="font-semibold text-slate-900">{costTotals.overhead.toFixed(2)}</span>
+                    </div>
                     {FINDING_FEATURE_ENABLED ? (
                       <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                         <span>Finding Value</span>
@@ -7748,7 +8674,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
               </div>
-              <div className="hidden xl:block" aria-hidden="true" />
             </div>
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
@@ -7897,7 +8822,136 @@ const createDefaultVendorRow = (): VendorRow => ({
                 ) : null}
               </div>
 
-              <div className="hidden xl:block" aria-hidden="true" />
+              <div className="space-y-4">
+                <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md">
+                  <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Overhead Information</div>
+                  <div className="overflow-x-auto scrollbar-top">
+                    <table className="min-w-full text-sm">
+                      <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
+                        <tr>
+                          <th className="px-2 py-2">##</th>
+                          <th className="px-2 py-2">Overhead</th>
+                          <th className="px-2 py-2">Mode</th>
+                          <th className="px-2 py-2">Overhead Value</th>
+                          <th className="px-2 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {overheadRows.length === 0 ? (
+                          <tr>
+                            <td className="px-3 py-4 text-xs text-slate-500" colSpan={5}>
+                              No overhead added yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          overheadRows.map((item, idx) => {
+                            const selectedRule = getOverheadRuleForRow(item);
+                            const modeLabel =
+                              selectedRule?.overheadApplyMode === 'FLAT'
+                                ? 'Flat'
+                                : selectedRule?.overheadApplyMode === 'PERCENT_BOM_SUBTOTAL'
+                                  ? '% of BOM'
+                                  : selectedRule?.overheadApplyMode === 'PERCENT_MATERIALS'
+                                    ? '% of Materials'
+                                    : '-';
+                            return (
+                              <tr key={item.id}>
+                                <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                <td className="px-2 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <select
+                                      className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                      value={item.ruleId}
+                                      onChange={(event) => {
+                                        const selectedRuleOption = singleDesignOverheadRules.find((rule) => rule.id === event.target.value);
+                                        setOverheadRows((prev) =>
+                                          prev.map((row) =>
+                                            row.id === item.id
+                                              ? {
+                                                  ...row,
+                                                  ruleId: event.target.value,
+                                                  overheadHead: selectedRuleOption?.value || '',
+                                                }
+                                              : row,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <option value="">Select Overhead</option>
+                                      {!singleDesignOverheadRules.some((option) => option.id === item.ruleId) && item.overheadHead ? (
+                                        <option value={item.ruleId}>{item.overheadHead}</option>
+                                      ) : null}
+                                      {singleDesignOverheadRules.map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                          {option.value}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      className={inlineMasterAddButtonClass}
+                                      disabled={creatingMasterType === 'OVERHEAD_RULE'}
+                                      onClick={() =>
+                                        addMasterFromDesign('OVERHEAD_RULE', (masterValue, createdMaster) =>
+                                          setOverheadRows((prev) =>
+                                            prev.map((row) =>
+                                              row.id === item.id
+                                                ? {
+                                                    ...row,
+                                                    ruleId: createdMaster?.id || row.ruleId,
+                                                    overheadHead: createdMaster?.value || masterValue,
+                                                  }
+                                                : row,
+                                            ),
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                <td className="px-2 py-2">
+                                  <input
+                                    className="w-full cursor-not-allowed rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
+                                    value={getOverheadRowValue(item).toFixed(2)}
+                                    readOnly
+                                    tabIndex={-1}
+                                  />
+                                </td>
+                                <td className="px-2 py-2">
+                                  <button
+                                    type="button"
+                                    className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
+                                    onClick={() => setOverheadRows((prev) => prev.filter((row) => row.id !== item.id))}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
+                          <td className="px-2 py-2 text-right" colSpan={3}>Total</td>
+                          <td className="px-2 py-2">{costTotals.overhead.toFixed(2)}</td>
+                          <td className="px-2 py-2"></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
+                    <button
+                      type="button"
+                      className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                      onClick={() => setOverheadRows((prev) => [...prev, { id: makeId(), overheadHead: '', ruleId: '' }])}
+                    >
+                      + Add Line
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="sticky bottom-0 -mx-5 mt-2 flex justify-end gap-2 border-t border-[#dfd0be] bg-[#f7f2e9]/95 px-5 pb-1 pt-3 shadow-[0_-8px_16px_rgba(36,29,25,0.08)] sm:-mx-6 sm:px-6">
@@ -8246,6 +9300,86 @@ const createDefaultVendorRow = (): VendorRow => ({
               </div>
             ) : null}
 
+            {inlineMasterType === 'OVERHEAD_RULE' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineJewelryGroupId}
+                    onChange={(event) => setInlineJewelryGroupId(event.target.value)}
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    {masterOptions.jewelryGroups.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.value}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
+                  <select
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineOverheadApplyMode}
+                    onChange={(event) =>
+                      setInlineOverheadApplyMode(event.target.value as 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT')
+                    }
+                    required
+                  >
+                    <option value="PERCENT_MATERIALS">% of Materials</option>
+                    <option value="PERCENT_BOM_SUBTOTAL">% of BOM</option>
+                    <option value="FLAT">Flat</option>
+                  </select>
+                </div>
+                {inlineOverheadApplyMode === 'FLAT' ? (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Flat Amount*</label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={inlineFlatAmount}
+                        onChange={(event) => setInlineFlatAmount(event.target.value)}
+                        placeholder="0.00"
+                        required
+                      />
+                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Rate %*</label>
+                    <div className="flex">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={inlineRatePercent}
+                        onChange={(event) => setInlineRatePercent(event.target.value)}
+                        placeholder="0.00"
+                        required
+                      />
+                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
+                    </div>
+                  </div>
+                )}
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterDescription}
+                    onChange={(event) => setInlineMasterDescription(event.target.value)}
+                    placeholder="Description"
+                  />
+                </div>
+              </div>
+            ) : null}
+
             {inlineMasterType === 'METAL_CARATAGE' ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
@@ -8260,7 +9394,8 @@ const createDefaultVendorRow = (): VendorRow => ({
 
             {inlineMasterType !== 'FINDING_HEAD' &&
             inlineMasterType !== 'METAL_CARATAGE' &&
-            inlineMasterType !== 'JEWELRY_SIZE' ? (
+            inlineMasterType !== 'JEWELRY_SIZE' &&
+            inlineMasterType !== 'OVERHEAD_RULE' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
@@ -9117,6 +10252,3 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
-
-
-

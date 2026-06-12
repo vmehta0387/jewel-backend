@@ -26,10 +26,11 @@ export default function SearchableSelect({
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number; maxHeight: number }>({
     top: 0,
     left: 0,
     width: 0,
+    maxHeight: 320,
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -38,10 +39,16 @@ export default function SearchableSelect({
   const updateDropdownPosition = () => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const shouldOpenAbove = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(220, Math.min(420, shouldOpenAbove ? spaceAbove : spaceBelow));
     setDropdownStyle({
-      top: rect.bottom + 6,
+      top: shouldOpenAbove ? Math.max(12, rect.top - maxHeight - 6) : rect.bottom + 6,
       left: rect.left,
       width: Math.max(rect.width, 192),
+      maxHeight,
     });
   };
 
@@ -104,6 +111,8 @@ export default function SearchableSelect({
     setIsOpen(false);
   };
 
+  const optionsListMaxHeight = Math.max(140, dropdownStyle.maxHeight - 72);
+
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <button
@@ -131,8 +140,15 @@ export default function SearchableSelect({
         createPortal(
         <div
           ref={dropdownRef}
-          className="fixed z-[250] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-lg ring-1 ring-slate-900/5 backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-200"
-          style={{ top: dropdownStyle.top, left: dropdownStyle.left, width: dropdownStyle.width }}
+          className="fixed z-[250] flex flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-lg ring-1 ring-slate-900/5 backdrop-blur-md animate-in fade-in slide-in-from-top-1 duration-200"
+          style={{
+            top: dropdownStyle.top,
+            left: dropdownStyle.left,
+            width: dropdownStyle.width,
+            maxHeight: dropdownStyle.maxHeight,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="p-2">
             <div className="relative">
@@ -155,7 +171,12 @@ export default function SearchableSelect({
               </svg>
             </div>
           </div>
-          <div className="max-h-60 overflow-y-auto p-1 scrollbar-top">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1"
+            style={{ maxHeight: optionsListMaxHeight, WebkitOverflowScrolling: 'touch' }}
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
             {options.length > 0 && (
               <button
                 type="button"

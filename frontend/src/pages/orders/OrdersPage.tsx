@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Pagination from '../../components/common/Pagination';
+import SearchableSelect from '../../components/common/SearchableSelect';
 import api from '../../services/api';
 import { getStoredUser, hasTaskPermission } from '../../utils/auth';
 
@@ -592,6 +593,14 @@ export default function OrdersPage() {
     const matched = designOptions.find((option) => option.id === form.designId);
     return formatDesignLabel(matched?.designNo, matched?.version);
   }, [selectedDesignLabel, editingDesignNo, designOptions, form.designId]);
+  const designSelectOptions = useMemo(
+    () =>
+      designOptions.map((option) => ({
+        value: option.id,
+        label: formatDesignLabel(option.designNo, option.version),
+      })),
+    [designOptions],
+  );
 
   const metalsDisplay = useMemo(() => {
     if (!designDetail?.metals?.length) return [];
@@ -1015,21 +1024,16 @@ export default function OrdersPage() {
                         readOnly
                       />
                     ) : (
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      <SearchableSelect
+                        className="mt-1"
                         value={form.designId}
-                        onChange={(event) => {
+                        onChange={(value) => {
                           setPriceManuallyEdited(false);
-                          setForm((prev) => ({ ...prev, designId: event.target.value }));
+                          setForm((prev) => ({ ...prev, designId: value }));
                         }}
-                      >
-                        <option value="">Select Design</option>
-                        {designOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {formatDesignLabel(option.designNo, option.version)}
-                          </option>
-                        ))}
-                      </select>
+                        options={designSelectOptions}
+                        placeholder="Select Design"
+                      />
                     )}
                   </div>
 
