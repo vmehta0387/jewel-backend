@@ -1021,7 +1021,7 @@ export class ProductsService {
   async getNextDesignNo(
     query: GetNextDesignNoQueryDto,
     requester: AuthUser,
-  ): Promise<{ designNo: string; prefix: string }> {
+  ): Promise<{ designNo: string; prefix: string; serial?: string }> {
     this.assertDesignCreateAccess(requester);
     const jewelryGroup = query.jewelryGroup?.trim();
     if (!jewelryGroup) {
@@ -1030,6 +1030,37 @@ export class ProductsService {
 
     const scope = await this.resolveScope(query.companyId, query.branchId, requester);
     const prefix = await this.resolveJewelryGroupPrefix(jewelryGroup);
+
+    if (query.structured) {
+      const rows = await this.designRepo
+        .createQueryBuilder('design')
+        .select(['design.designNo'])
+        .where('design.company_id <=> :companyId', { companyId: scope.companyId })
+        .andWhere('design.design_no LIKE :prefixPattern', { prefixPattern: `${prefix}-%` })
+        .getMany();
+
+      const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const matcher = new RegExp(`^${escapedPrefix}-(\\d+)(?:-|$)`, 'i');
+      let maxSerial = 0;
+
+      for (const row of rows) {
+        const designNoValue = String(row.designNo || '').trim();
+        const match = matcher.exec(designNoValue);
+        if (!match) continue;
+        const parsed = Number.parseInt(match[1], 10);
+        if (Number.isFinite(parsed) && parsed > maxSerial) {
+          maxSerial = parsed;
+        }
+      }
+
+      const nextSerial = String(maxSerial + 1);
+      return {
+        designNo: `${prefix}-${nextSerial}`,
+        prefix,
+        serial: nextSerial,
+      };
+    }
+
     const designNo = await this.generateNextDesignNo(prefix, scope.companyId);
 
     return {

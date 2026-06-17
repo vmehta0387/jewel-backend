@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -429,6 +429,17 @@ export class GetNextDesignNoQueryDto {
   @IsString()
   @IsOptional()
   branchId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      return value.trim().toLowerCase() === 'true';
+    }
+    return false;
+  })
+  structured?: boolean;
 }
 
 export class GetNextDesignVersionQueryDto {
