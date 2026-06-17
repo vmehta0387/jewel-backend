@@ -1740,19 +1740,42 @@ export default function ProductsPage() {
     () => (Array.isArray(detailDesign?.gemstones) ? detailDesign.gemstones : []),
     [detailDesign],
   );
-  const detailLabors = useMemo(
+  const detailAllLabors = useMemo(
     () => (Array.isArray(detailDesign?.labors) ? detailDesign.labors : []),
     [detailDesign],
   );
+  const detailLabors = useMemo(
+    () =>
+      detailAllLabors.filter(
+        (labor: any) => !String(labor?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
+      ),
+    [detailAllLabors],
+  );
+  const detailOverheadRows = useMemo(
+    () =>
+      detailAllLabors.filter((labor: any) =>
+        String(labor?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
+      ),
+    [detailAllLabors],
+  );
   const detailSummary = useMemo(() => {
+    const computedLaborValue = detailLabors.reduce(
+      (sum: number, labor: any) => sum + parseNumericValue(labor?.laborValue),
+      0,
+    );
+    const computedOverheadValue = detailOverheadRows.reduce(
+      (sum: number, labor: any) => sum + parseNumericValue(labor?.laborValue),
+      0,
+    );
     return {
       metalValue: parseNumericValue(detailDesign?.metalValue),
       gemValue: parseNumericValue(detailDesign?.gemValue),
-      laborValue: parseNumericValue(detailDesign?.laborValue),
+      laborValue: detailAllLabors.length ? computedLaborValue : parseNumericValue(detailDesign?.laborValue),
+      overheadValue: detailAllLabors.length ? computedOverheadValue : 0,
       findingValue: parseNumericValue(detailDesign?.findingValue),
       totalValue: parseNumericValue(detailDesign?.totalValue),
     };
-  }, [detailDesign]);
+  }, [detailAllLabors.length, detailDesign, detailLabors, detailOverheadRows]);
   const detailPacketNameMap = useMemo(() => {
     const next = new Map<string, string>();
     packetOptions.forEach((packet) => {
@@ -4188,9 +4211,11 @@ export default function ProductsPage() {
     const metals = versionBuilderSelections.metals;
     const coverages = versionBuilderSelections.coverages;
     const qualities = versionBuilderSelections.diamondQualities;
-    const weights = versionBuilderSelections.caratWeights;
+    const weights = versionBuilderSelections.caratWeights.length
+      ? versionBuilderSelections.caratWeights
+      : [''];
     const sizes = versionBuilderSelections.sizes;
-    if (!metals.length || !coverages.length || !qualities.length || !weights.length || !sizes.length) {
+    if (!metals.length || !coverages.length || !qualities.length || !sizes.length) {
       return [] as VersionBuilderGeneratedRow[];
     }
 
@@ -4342,7 +4367,6 @@ export default function ProductsPage() {
     if (!versionBuilderSelections.metals.length) missing.push('metal');
     if (!versionBuilderSelections.coverages.length) missing.push('coverage');
     if (!versionBuilderSelections.diamondQualities.length) missing.push('diamond quality');
-    if (!versionBuilderSelections.caratWeights.length) missing.push('carat weight');
     if (!versionBuilderSelections.sizes.length) missing.push('size');
     if (!versionBuilderGemRows.length) missing.push('stone group');
 
@@ -4379,7 +4403,6 @@ export default function ProductsPage() {
     versionBuilderGemRows.length,
     versionBuilderGeneratedRows.length,
     versionBuilderMetalPurityColumns,
-    versionBuilderSelections.caratWeights.length,
     versionBuilderSelections.coverages,
     versionBuilderSelections.diamondQualities.length,
     versionBuilderSelections.metals.length,
@@ -4445,9 +4468,10 @@ export default function ProductsPage() {
       caratWeight:
         prev.caratWeight && versionBuilderSelections.caratWeights.includes(prev.caratWeight)
           ? prev.caratWeight
-          : versionBuilderSelections.caratWeights[0] || '',
+          : versionBuilderSelections.caratWeights[0] || versionBuilderBaseDesign?.diamondWeight || '',
     }));
   }, [
+    versionBuilderBaseDesign?.diamondWeight,
     versionBuilderSelections.caratWeights,
     versionBuilderSelections.diamondQualities,
     versionBuilderSelections.metals,
@@ -5210,7 +5234,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       stage: form.stage.trim() || undefined,
       diamondType: form.diamondType.trim() || undefined,
       diamondSpread: form.diamondSpread.trim() || undefined,
-      diamondWeight: form.diamondWeight.trim() || undefined,
+      diamondWeight: form.diamondWeight.trim().length > 0 ? form.diamondWeight.trim() : null,
       diamondQuality: form.diamondQuality.trim() || undefined,
       jewelrySize: form.jewelrySize.trim() || undefined,
       designStatus: form.designStatus.trim() || undefined,
@@ -8206,7 +8230,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                   </div>
                   <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Wt</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Wt (Optional)</label>
                     <div className="flex gap-2">
                       <select
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
@@ -10083,10 +10107,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            <div className={`grid grid-cols-1 gap-3 ${FINDING_FEATURE_ENABLED ? 'md:grid-cols-6' : 'md:grid-cols-5'}`}>
               <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Metal Value</p><p className="font-semibold">{detailSummary.metalValue.toFixed(2)}</p></div>
               <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gem Value</p><p className="font-semibold">{detailSummary.gemValue.toFixed(2)}</p></div>
               <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Labor Value</p><p className="font-semibold">{detailSummary.laborValue.toFixed(2)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Overhead Value</p><p className="font-semibold">{detailSummary.overheadValue.toFixed(2)}</p></div>
               {FINDING_FEATURE_ENABLED ? (
                 <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Finding Value</p><p className="font-semibold">{detailSummary.findingValue.toFixed(2)}</p></div>
               ) : null}
@@ -10192,6 +10217,31 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <td className="px-3 py-2">{parseNumericValue(labor.laborPerUnit).toFixed(2)}</td>
                           <td className="px-3 py-2">{parseNumericValue(labor.unitQty).toFixed(2)}</td>
                           <td className="px-3 py-2">{parseNumericValue(labor.laborValue).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="rounded border border-slate-200">
+              <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Overhead Information</div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2">Overhead</th>
+                      <th className="px-3 py-2">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {detailOverheadRows.length === 0 ? (
+                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={2}>No overhead details available.</td></tr>
+                    ) : (
+                      detailOverheadRows.map((overhead: any) => (
+                        <tr key={overhead.id || `${overhead.laborHead}-${overhead.sortOrder}`}>
+                          <td className="px-3 py-2">{String(overhead.laborHead || '-').replace(/^Overhead\s*-\s*/i, '') || '-'}</td>
+                          <td className="px-3 py-2">{parseNumericValue(overhead.laborValue).toFixed(2)}</td>
                         </tr>
                       ))
                     )}

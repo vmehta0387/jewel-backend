@@ -1468,7 +1468,7 @@ export class ProductsService {
     }
 
     if (dto.relevantDesignIds !== undefined) {
-      await this.replaceRelevantDesigns(id, dto.relevantDesignIds, requester);
+      await this.setRelevantDesignLinks(design, dto.relevantDesignIds, requester);
     }
 
     if (dto.stlFileUrl) {
@@ -1562,12 +1562,15 @@ export class ProductsService {
     id: string,
     designIds: string[],
     requester: AuthUser,
+    options?: { logHistory?: boolean },
   ): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     await this.setRelevantDesignLinks(design, designIds, requester);
 
-    await this.addHistory(id, 'RELEVANT_UPDATED', 'Relevant designs updated successfully.', requester.id);
+    if (options?.logHistory !== false) {
+      await this.addHistory(id, 'RELEVANT_UPDATED', 'Relevant designs updated successfully.', requester.id);
+    }
     return this.findOne(id, requester);
   }
 
