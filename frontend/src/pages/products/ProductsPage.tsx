@@ -1,4 +1,4 @@
-﻿import { ChangeEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
@@ -730,6 +730,13 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   };
 };
 const formatMoney = (value: number): string => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const getOverheadRuleConfiguredDisplay = (rule: MasterOption | null): string => {
+  if (!rule) return '-';
+  if (rule.overheadApplyMode === 'FLAT') {
+    return formatMoney(Math.max(0, rule.flatAmount || 0));
+  }
+  return `${Math.max(0, rule.ratePercent || 0).toFixed(2)}%`;
+};
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const sanitizeDesignPrefix = (value: string): string =>
   value
@@ -868,23 +875,47 @@ const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string =
   return sanitizeStructuredToken(trimmed);
 };
 
+const getNextStructuredDesignSerial = (
+  jewelryGroup: string,
+  existingRows: DesignRow[],
+  aliasName?: string,
+): string => {
+  const prefix = buildDesignNoPrefix(jewelryGroup, aliasName);
+  if (!prefix) return '1';
+
+  const matcher = new RegExp(`^${escapeRegex(prefix)}-(\d+)(?:-|$)`, 'i');
+  let maxSerial = 0;
+
+  existingRows.forEach((row) => {
+    const baseDesignNo = getBaseDesignNo(row.designNo || '');
+    const match = matcher.exec(baseDesignNo);
+    if (!match) return;
+    const parsed = Number.parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed > maxSerial) {
+      maxSerial = parsed;
+    }
+  });
+
+  return String(maxSerial + 1);
+};
+
 const buildStructuredDesignNo = ({
   categoryCode,
-  versionCode,
+  serialCode,
   coverageCode,
   metalCode,
   diamondQualityCode,
   sizeCode,
 }: {
   categoryCode: string;
-  versionCode: string;
+  serialCode: string;
   coverageCode: string;
   metalCode: string;
   diamondQualityCode: string;
   sizeCode: string;
 }): string => {
-  const safeVersionCode = sanitizeStructuredToken(versionCode);
-  const segments = [categoryCode, safeVersionCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
+  const safeSerialCode = sanitizeStructuredToken(serialCode);
+  const segments = [categoryCode, safeSerialCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
   return segments.join('-');
 };
 
@@ -1092,6 +1123,7 @@ const EMPTY_VERSION_BUILDER_SELECTIONS: VersionBuilderSelections = {
 
 const VERSION_BUILDER_GROUP_COLORS = ['#c7983f', '#3f6db3', '#2f8f67', '#9a5ed0', '#c46b3d', '#6f7b87'];
 const VERSION_BUILDER_SIZE_CHART_SIZES = buildVersionBuilderSizeChartSizes();
+const ZERO_LIKE_NUMERIC_VALUE = /^0(?:\.0+)?$/;
 const VERSION_BUILDER_WORKFLOW: Array<{
   id: VersionBuilderWorkflowStep;
   title: string;
@@ -1106,6 +1138,54 @@ const VERSION_BUILDER_WORKFLOW: Array<{
   { id: 'BOM', title: '6 · BOM', subtitle: 'Live cost breakdown for a sample variant.' },
   { id: 'PREVIEW', title: '7 · Generated', subtitle: 'Review generated version rows.' },
 ];
+
+function shouldReplaceZeroLikeNumericValue(value: string) {
+  return ZERO_LIKE_NUMERIC_VALUE.test(value.trim());
+}
+
+function handleNumericFieldFocus(event: FocusEvent<HTMLInputElement>) {
+  if (!shouldReplaceZeroLikeNumericValue(event.currentTarget.value)) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    try {
+      event.currentTarget.select();
+    } catch {
+      // Ignore select failures on browser-managed read-only states.
+    }
+  });
+}
+
+function handleNumericFieldMouseUp(event: ReactMouseEvent<HTMLInputElement>) {
+  if (shouldReplaceZeroLikeNumericValue(event.currentTarget.value)) {
+    event.preventDefault();
+  }
+}
+
+function sanitizeNumericTextInput(value: string, mode: 'decimal' | 'integer' = 'decimal') {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  if (mode === 'integer') {
+    const normalized = trimmed.replace(/^0+(?=\d)/, '');
+    return normalized || '0';
+  }
+
+  if (trimmed.endsWith('.')) {
+    const whole = trimmed.slice(0, -1).replace(/^0+(?=\d)/, '');
+    return `${whole || '0'}.`;
+  }
+
+  if (trimmed.includes('.')) {
+    const [wholePart, decimalPart] = trimmed.split('.', 2);
+    const normalizedWhole = wholePart.replace(/^0+(?=\d)/, '');
+    return `${normalizedWhole || '0'}.${decimalPart || ''}`;
+  }
+
+  const normalized = trimmed.replace(/^0+(?=\d)/, '');
+  return normalized || '0';
+}
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
   let bgColor = 'bg-slate-50/80';
@@ -1518,7 +1598,13 @@ export default function ProductsPage() {
     () => resolveDiamondQualityCode(form.diamondQuality, form.diamondQualityCustom),
     [form.diamondQuality, form.diamondQualityCustom],
   );
-  const structuredVersionCode = useMemo(() => getVersionDisplayValue(form.version || '1'), [form.version]);
+  const structuredSerialCode = useMemo(() => {
+    const categoryAlias =
+      masterOptions.jewelryGroups.find(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+      )?.aliasName || '';
+    return getNextStructuredDesignSerial(form.jewelryGroup, rows, categoryAlias);
+  }, [form.jewelryGroup, masterOptions.jewelryGroups, rows]);
   const structuredMetalCode = useMemo(
     () => resolveMetalCode(primaryMetalValue, structuredMetalOptions),
     [primaryMetalValue, structuredMetalOptions],
@@ -1528,7 +1614,7 @@ export default function ProductsPage() {
     () =>
       buildStructuredDesignNo({
         categoryCode: structuredCategoryCode,
-        versionCode: structuredVersionCode,
+        serialCode: structuredSerialCode,
         coverageCode: structuredCoverageCode,
         metalCode: structuredMetalCode,
         diamondQualityCode: structuredDiamondQualityCode,
@@ -1539,8 +1625,8 @@ export default function ProductsPage() {
       structuredCoverageCode,
       structuredDiamondQualityCode,
       structuredMetalCode,
+      structuredSerialCode,
       structuredSizeCode,
-      structuredVersionCode,
     ],
   );
   const detailGalleryUrls = useMemo(
@@ -3103,20 +3189,12 @@ export default function ProductsPage() {
   const openVersionBuilder = (row: DesignRow) => {
     setVersionBuilderBaseDesign(row);
 
-    const normalizedGroup = row.jewelryGroup.trim().toLowerCase();
-    const filteredSizeOptions = masterOptions.jewelrySizes
-      .filter((option) => {
-        const optionGroup = (option.jewelryGroup || '').trim().toLowerCase();
-        return !normalizedGroup || optionGroup === normalizedGroup;
-      })
-      .map((option) => option.value);
-
     setVersionBuilderSelections({
-      metals: uniqueNonEmptyValues([row.goldColour]),
-      coverages: uniqueNonEmptyValues([row.diamondSpread]),
-      diamondQualities: uniqueNonEmptyValues([masterOptions.diamondQualities[0]?.value || '']),
-      caratWeights: uniqueNonEmptyValues([masterOptions.diamondWeights[0]?.value || '']),
-      sizes: uniqueNonEmptyValues([row.jewelrySize || filteredSizeOptions[0] || '']),
+      metals: [],
+      coverages: [],
+      diamondQualities: [],
+      caratWeights: [],
+      sizes: [],
     });
     setVersionBuilderImageMode('INHERIT_PARENT');
     setVersionBuilderGemMode('OVERRIDE_BLOCK');
@@ -3554,8 +3632,17 @@ export default function ProductsPage() {
   };
 
   const updateVersionBuilderGemRow = (rowId: string, field: keyof GemRow, value: string) => {
+    const numericFieldMode: Partial<Record<keyof GemRow, 'decimal' | 'integer'>> = {
+      wtPerPcs: 'decimal',
+      pcs: 'integer',
+      wtInCts: 'decimal',
+      pricePerCt: 'decimal',
+      amount: 'decimal',
+    };
+    const nextValue = numericFieldMode[field] ? sanitizeNumericTextInput(value, numericFieldMode[field]!) : value;
+
     setVersionBuilderGemRows((prev) =>
-      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row)),
+      prev.map((row) => (row.id === rowId ? { ...row, [field]: nextValue } : row)),
     );
   };
 
@@ -3658,6 +3745,7 @@ export default function ProductsPage() {
     field: keyof VersionBuilderSizeChartGroupCell,
     value: string,
   ) => {
+    const nextValue = sanitizeNumericTextInput(value, field === 'count' ? 'integer' : 'decimal');
     setVersionBuilderSizeChart((prev) => {
       const coverageState = { ...(prev[coverage] || {}) };
       const sizeState = coverageState[sizeKey] || {
@@ -3686,7 +3774,7 @@ export default function ProductsPage() {
               ...chartSizeState.groups,
               [rowId]: {
                 ...((chartSizeState.groups && chartSizeState.groups[rowId]) || currentCell),
-                [field]: value,
+                [field]: nextValue,
               },
             },
           };
@@ -3707,7 +3795,7 @@ export default function ProductsPage() {
               ...sizeState.groups,
               [rowId]: {
                 ...currentCell,
-                [field]: value,
+                [field]: nextValue,
               },
             },
           },
@@ -3721,6 +3809,7 @@ export default function ProductsPage() {
     purity: string,
     value: string,
   ) => {
+    const nextValue = sanitizeNumericTextInput(value, 'decimal');
     setVersionBuilderSizeChart((prev) => {
       const coverageState = { ...(prev[coverage] || {}) };
       const sizeState = coverageState[sizeKey] || {
@@ -3738,7 +3827,7 @@ export default function ProductsPage() {
             ...sizeState,
             metalWeights: {
               ...sizeState.metalWeights,
-              [purity]: value,
+              [purity]: nextValue,
             },
           },
         },
@@ -3747,23 +3836,13 @@ export default function ProductsPage() {
   };
 
   const versionBuilderCombinationCount = useMemo(() => {
-    const fallbackSelections: VersionBuilderSelections = {
-      metals: uniqueNonEmptyValues([versionBuilderBaseDesign?.goldColour || '']),
-      coverages: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondSpread || '']),
-      diamondQualities: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondQuality || '']),
-      caratWeights: uniqueNonEmptyValues([versionBuilderBaseDesign?.diamondWeight || '']),
-      sizes: uniqueNonEmptyValues([versionBuilderBaseDesign?.jewelrySize || '']),
-    };
-    const groups = versionBuilderOptionGroups.map((group) => {
-      const selected = versionBuilderSelections[group.id];
-      return (selected.length > 0 ? selected : fallbackSelections[group.id]).length;
-    });
+    const groups = versionBuilderOptionGroups.map((group) => versionBuilderSelections[group.id].length);
     if (!groups.length || groups.some((count) => count === 0)) {
       return 0;
     }
 
     return groups.reduce((total, count) => total * count, 1);
-  }, [versionBuilderBaseDesign, versionBuilderOptionGroups, versionBuilderSelections]);
+  }, [versionBuilderOptionGroups, versionBuilderSelections]);
 
   const versionBuilderHighestVersion = useMemo(() => {
     if (!versionBuilderVersionRows.length) {
@@ -4090,26 +4169,11 @@ export default function ProductsPage() {
       return [] as VersionBuilderGeneratedRow[];
     }
 
-    const metals =
-      versionBuilderSelections.metals.length > 0
-        ? versionBuilderSelections.metals
-        : uniqueNonEmptyValues([versionBuilderBaseDesign.goldColour || '']);
-    const coverages =
-      versionBuilderSelections.coverages.length > 0
-        ? versionBuilderSelections.coverages
-        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondSpread || '']);
-    const qualities =
-      versionBuilderSelections.diamondQualities.length > 0
-        ? versionBuilderSelections.diamondQualities
-        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondQuality || '']);
-    const weights =
-      versionBuilderSelections.caratWeights.length > 0
-        ? versionBuilderSelections.caratWeights
-        : uniqueNonEmptyValues([versionBuilderBaseDesign.diamondWeight || '']);
-    const sizes =
-      versionBuilderSelections.sizes.length > 0
-        ? versionBuilderSelections.sizes
-        : uniqueNonEmptyValues([versionBuilderBaseDesign.jewelrySize || '']);
+    const metals = versionBuilderSelections.metals;
+    const coverages = versionBuilderSelections.coverages;
+    const qualities = versionBuilderSelections.diamondQualities;
+    const weights = versionBuilderSelections.caratWeights;
+    const sizes = versionBuilderSelections.sizes;
     if (!metals.length || !coverages.length || !qualities.length || !weights.length || !sizes.length) {
       return [] as VersionBuilderGeneratedRow[];
     }
@@ -4254,6 +4318,60 @@ export default function ProductsPage() {
       ).length,
     [versionBuilderCreateResults, versionBuilderGeneratedRows],
   );
+
+  const versionBuilderCreateValidation = useMemo(() => {
+    const missing: string[] = [];
+
+    if (!versionBuilderBaseDesign) missing.push('base style');
+    if (!versionBuilderSelections.metals.length) missing.push('metal');
+    if (!versionBuilderSelections.coverages.length) missing.push('coverage');
+    if (!versionBuilderSelections.diamondQualities.length) missing.push('diamond quality');
+    if (!versionBuilderSelections.caratWeights.length) missing.push('carat weight');
+    if (!versionBuilderSelections.sizes.length) missing.push('size');
+    if (!versionBuilderGemRows.length) missing.push('stone group');
+
+    let missingMetalWeights = false;
+    if (versionBuilderSelections.coverages.length && versionBuilderSelections.sizes.length && versionBuilderMetalPurityColumns.length) {
+      for (const coverage of versionBuilderSelections.coverages) {
+        const coverageChart = versionBuilderSizeChart[coverage] || {};
+        for (const size of versionBuilderSelections.sizes) {
+          const sizeKey = normalizeSizeChartKey(size);
+          const rowState = coverageChart[sizeKey];
+          for (const purity of versionBuilderMetalPurityColumns) {
+            const weight = parseNum(rowState?.metalWeights?.[purity] || '0');
+            if (weight <= 0) {
+              missingMetalWeights = true;
+              break;
+            }
+          }
+          if (missingMetalWeights) break;
+        }
+        if (missingMetalWeights) break;
+      }
+    }
+
+    if (missingMetalWeights) missing.push('size-chart metal weight');
+    if (versionBuilderGeneratedRows.length === 0) missing.push('generated combinations');
+
+    return {
+      isValid: missing.length === 0,
+      missing,
+      message: missing.length ? `Complete: ${missing.join(', ')}` : '',
+    };
+  }, [
+    versionBuilderBaseDesign,
+    versionBuilderGemRows.length,
+    versionBuilderGeneratedRows.length,
+    versionBuilderMetalPurityColumns,
+    versionBuilderSelections.caratWeights.length,
+    versionBuilderSelections.coverages,
+    versionBuilderSelections.diamondQualities.length,
+    versionBuilderSelections.metals.length,
+    versionBuilderSelections.sizes,
+    versionBuilderSizeChart,
+  ]);
+
+  const versionBuilderCanCreateFromCurrentStep = versionBuilderWorkflowStep === 'PREVIEW';
 
   const versionBuilderParentImageUrls = useMemo(
     () => normalizeStringArray(versionBuilderBaseDesign?.imageUrls).map(resolvePublicAssetUrl),
@@ -5304,13 +5422,22 @@ const createDefaultVendorRow = (): VendorRow => ({
   };
 
   const updateMetalRow = (id: string, key: keyof Omit<MetalRow, 'id'>, value: string) => {
+    const numericFieldMode: Partial<Record<keyof Omit<MetalRow, 'id'>, 'decimal' | 'integer'>> = {
+      netWt: 'decimal',
+      wastagePercent: 'decimal',
+      wastageWt: 'decimal',
+      pricePerGm: 'decimal',
+      value: 'decimal',
+    };
+    const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
+
     setMetalRows((prev) => {
-      if (['netWt', 'wastagePercent', 'wastageWt', 'pricePerGm', 'value'].includes(key) && isPartialDecimal(value)) {
-        return prev.map((item) => (item.id === id ? { ...item, [key]: value } : item));
+      if (['netWt', 'wastagePercent', 'wastageWt', 'pricePerGm', 'value'].includes(key) && isPartialDecimal(nextValue)) {
+        return prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item));
       }
 
       if (key === 'goldColour') {
-        const normalizedValue = normalizeLookupKey(value);
+        const normalizedValue = normalizeLookupKey(nextValue);
         const isDuplicate =
           normalizedValue.length > 0 &&
           prev.some(
@@ -5325,9 +5452,9 @@ const createDefaultVendorRow = (): VendorRow => ({
       return prev.map((item) => {
         if (item.id !== id) return item;
 
-        let updated: MetalRow = { ...item, [key]: value };
+        let updated: MetalRow = { ...item, [key]: nextValue };
         if (key === 'goldColour') {
-          const rate = getMetalRate(value);
+          const rate = getMetalRate(nextValue);
           const defaultWastage = getMetalDefaultWastage(value);
           updated = {
             ...updated,
@@ -5362,13 +5489,22 @@ const createDefaultVendorRow = (): VendorRow => ({
   };
 
   const updateGemRow = (id: string, key: keyof Omit<GemRow, 'id'>, value: string) => {
+    const numericFieldMode: Partial<Record<keyof Omit<GemRow, 'id'>, 'decimal' | 'integer'>> = {
+      wtPerPcs: 'decimal',
+      pcs: 'integer',
+      wtInCts: 'decimal',
+      pricePerCt: 'decimal',
+      amount: 'decimal',
+    };
+    const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
+
     setGemRows((prev) =>
       prev.map((item) => {
         if (item.id !== id) return item;
 
-        let updated: GemRow = { ...item, [key]: value };
+        let updated: GemRow = { ...item, [key]: nextValue };
 
-        if (['wtPerPcs', 'pcs', 'wtInCts', 'pricePerCt', 'amount'].includes(key) && isPartialDecimal(value)) {
+        if (['wtPerPcs', 'pcs', 'wtInCts', 'pricePerCt', 'amount'].includes(key) && isPartialDecimal(nextValue)) {
           return updated;
         }
 
@@ -5400,15 +5536,34 @@ const createDefaultVendorRow = (): VendorRow => ({
   };
 
   const updateLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
-    setLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+    const numericFieldMode: Partial<Record<keyof Omit<LaborRow, 'id'>, 'decimal' | 'integer'>> = {
+      laborPerUnit: 'decimal',
+      unitQty: 'decimal',
+      laborValue: 'decimal',
+    };
+    const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
+    setLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item)));
   };
 
   const updateVersionBuilderLaborRow = (id: string, key: keyof Omit<LaborRow, 'id'>, value: string) => {
-    setVersionBuilderLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+    const numericFieldMode: Partial<Record<keyof Omit<LaborRow, 'id'>, 'decimal' | 'integer'>> = {
+      laborPerUnit: 'decimal',
+      unitQty: 'decimal',
+      laborValue: 'decimal',
+    };
+    const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
+    setVersionBuilderLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item)));
   };
 
   const updateFindingRow = (id: string, key: keyof Omit<FindingRow, 'id'>, value: string) => {
-    setFindingRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: value } : item)));
+    const numericFieldMode: Partial<Record<keyof Omit<FindingRow, 'id'>, 'decimal' | 'integer'>> = {
+      pricePerUnit: 'decimal',
+      units: 'decimal',
+      totalWeight: 'decimal',
+      findingValue: 'decimal',
+    };
+    const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
+    setFindingRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item)));
   };
 
   const updateCostRow = (setter: React.Dispatch<React.SetStateAction<PricingRow[]>>, id: string, key: 'title' | 'qty' | 'rate', value: string) => {
@@ -7097,6 +7252,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     inputMode="decimal"
                                     className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                     value={rowState.metalWeights?.[purity] || '0'}
+                                    onFocus={handleNumericFieldFocus}
+                                    onMouseUp={handleNumericFieldMouseUp}
                                     onChange={(event) =>
                                       updateVersionBuilderSizeChartMetalWeight(
                                         versionBuilderChartCoverage,
@@ -7118,6 +7275,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="numeric"
                                         className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                         value={cell.count}
+                                        onFocus={handleNumericFieldFocus}
+                                        onMouseUp={handleNumericFieldMouseUp}
                                         onChange={(event) =>
                                           updateVersionBuilderSizeChartCell(
                                             versionBuilderChartCoverage,
@@ -7135,6 +7294,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="decimal"
                                         className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                         value={cell.ctPerStone}
+                                        onFocus={handleNumericFieldFocus}
+                                        onMouseUp={handleNumericFieldMouseUp}
                                         onChange={(event) =>
                                           updateVersionBuilderSizeChartCell(
                                             versionBuilderChartCoverage,
@@ -7229,6 +7390,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     className="w-full rounded border border-gray-300 px-2 py-1"
                                     value={item.laborPerUnit}
                                     onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborPerUnit', event.target.value)}
+                                    onFocus={handleNumericFieldFocus}
+                                    onMouseUp={handleNumericFieldMouseUp}
                                     placeholder="Price Per Quantity"
                                   />
                                 </td>
@@ -7237,6 +7400,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     className="w-full rounded border border-gray-300 px-2 py-1"
                                     value={item.unitQty}
                                     onChange={(event) => updateVersionBuilderLaborRow(item.id, 'unitQty', event.target.value)}
+                                    onFocus={handleNumericFieldFocus}
+                                    onMouseUp={handleNumericFieldMouseUp}
                                     placeholder="0"
                                   />
                                 </td>
@@ -7296,13 +7461,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                               <th className="px-2 py-2">##</th>
                               <th className="px-2 py-2">Overhead</th>
                               <th className="px-2 py-2">Mode</th>
+                              <th className="px-2 py-2">Configured</th>
                               <th className="px-2 py-2">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
                             {versionBuilderOverheadRows.length === 0 ? (
                               <tr>
-                                <td className="px-3 py-4 text-xs text-slate-500" colSpan={4}>
+                                <td className="px-3 py-4 text-xs text-slate-500" colSpan={5}>
                                   No overhead added yet.
                                 </td>
                               </tr>
@@ -7375,6 +7541,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                       </div>
                                     </td>
                                     <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                    <td className="px-2 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
                                     <td className="px-2 py-2">
                                       <button
                                         type="button"
@@ -7735,7 +7902,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                 Generated variants now reflect the full selected combination set.
                 {creatingVersions
                   ? ` Creating ${versionCreateProgress.done}/${versionCreateProgress.total}...`
-                  : ' Use Create Versions to generate actual design records.'}
+                  : !versionBuilderCanCreateFromCurrentStep
+                    ? ' Reach Generated after BOM to create versions.'
+                    : versionBuilderCreateValidation.isValid
+                      ? ' Use Create Versions to generate actual design records.'
+                      : ` ${versionBuilderCreateValidation.message}`}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -7766,7 +7937,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <Button
                   type="button"
                   onClick={createVersionBuilderVariants}
-                  disabled={creatingVersions || versionBuilderPendingCreateCount === 0}
+                  disabled={creatingVersions || !versionBuilderCanCreateFromCurrentStep || versionBuilderPendingCreateCount === 0 || !versionBuilderCreateValidation.isValid}
+                  title={!versionBuilderCanCreateFromCurrentStep ? 'Reach Generated after BOM to create versions.' : versionBuilderCreateValidation.isValid ? '' : versionBuilderCreateValidation.message}
                 >
                   {creatingVersions
                     ? `Creating ${versionCreateProgress.done}/${versionCreateProgress.total}`
@@ -8518,14 +8690,16 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 </button>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} placeholder="Net Wt" /></td>
-                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} placeholder="Wastage %" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.netWt} onChange={(event) => updateMetalRow(item.id, 'netWt', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Net Wt" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-24 rounded border border-gray-300 px-2 py-1" value={item.wastagePercent} onChange={(event) => updateMetalRow(item.id, 'wastagePercent', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Wastage %" /></td>
                             <td className="px-2 py-2">
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 className="w-28 rounded border border-gray-300 px-2 py-1 text-gray-900"
                                 value={item.wastageWt}
+                                onFocus={handleNumericFieldFocus}
+                                onMouseUp={handleNumericFieldMouseUp}
                                 onChange={(event) => updateMetalRow(item.id, 'wastageWt', event.target.value)}
                                 placeholder="Wastage Wt"
                               />
@@ -8540,7 +8714,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             </td>
                             <td className="px-2 py-2">
                               <div className="flex items-center gap-1">
-                                <input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} placeholder="Price" />
+                                <input type="text" inputMode="decimal" className="w-28 rounded border border-gray-300 px-2 py-1" value={item.pricePerGm} onChange={(event) => updateMetalRow(item.id, 'pricePerGm', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price" />
                                 <span className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">USD</span>
                               </div>
                             </td>
@@ -8550,6 +8724,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 inputMode="decimal"
                                 className="w-28 rounded border border-gray-300 px-2 py-1 font-semibold text-slate-900"
                                 value={item.value}
+                                onFocus={handleNumericFieldFocus}
+                                onMouseUp={handleNumericFieldMouseUp}
                                 onChange={(event) => updateMetalRow(item.id, 'value', event.target.value)}
                                 placeholder={getMetalValue(item).toFixed(2)}
                               />
@@ -8641,16 +8817,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 </p>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="text" inputMode="numeric" className="w-16 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} placeholder="Pcs" /></td>
-                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} placeholder="0.000" /></td>
-                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} placeholder="0.00" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtPerPcs} onChange={(event) => updateGemRow(item.id, 'wtPerPcs', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="numeric" className="w-16 rounded border border-gray-300 px-2 py-1" value={item.pcs} onChange={(event) => updateGemRow(item.id, 'pcs', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Pcs" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.wtInCts} onChange={(event) => updateGemRow(item.id, 'wtInCts', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.000" /></td>
+                            <td className="px-2 py-2"><input type="text" inputMode="decimal" className="w-20 rounded border border-gray-300 px-2 py-1" value={item.pricePerCt} onChange={(event) => updateGemRow(item.id, 'pricePerCt', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.00" /></td>
                             <td className="px-2 py-2">
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 className="w-20 rounded border border-gray-300 px-2 py-1"
                                 value={item.amount}
+                                onFocus={handleNumericFieldFocus}
+                                onMouseUp={handleNumericFieldMouseUp}
                                 onChange={(event) => updateGemRow(item.id, 'amount', event.target.value)}
                                 placeholder={getGemValue(item).toFixed(2)}
                               />
@@ -8659,7 +8837,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                          <td className="px-2 py-2 text-right" colSpan={3}>Total</td>
+                          <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
                           <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + parseNum(row.pcs), 0).toFixed(0)}</td>
                           <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + getGemWeight(row), 0).toFixed(3)}</td>
                           <td className="px-2 py-2"></td>
@@ -8725,8 +8903,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 </button>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} placeholder="Price Per Quantity" /></td>
-                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} placeholder="0" /></td>
+                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price Per Quantity" /></td>
+                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
                             <td className="px-2 py-2">
                               <input
                                 className="w-full cursor-not-allowed rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
@@ -8800,10 +8978,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   </button>
                                 </div>
                               </td>
-                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.pricePerUnit} onChange={(event) => updateFindingRow(item.id, 'pricePerUnit', event.target.value)} placeholder="0.00" /></td>
-                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.units} onChange={(event) => updateFindingRow(item.id, 'units', event.target.value)} placeholder="0" /></td>
-                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.totalWeight} onChange={(event) => updateFindingRow(item.id, 'totalWeight', event.target.value)} placeholder="0.000" /></td>
-                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.findingValue} onChange={(event) => updateFindingRow(item.id, 'findingValue', event.target.value)} placeholder="0.00" /></td>
+                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.pricePerUnit} onChange={(event) => updateFindingRow(item.id, 'pricePerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.00" /></td>
+                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.units} onChange={(event) => updateFindingRow(item.id, 'units', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
+                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.totalWeight} onChange={(event) => updateFindingRow(item.id, 'totalWeight', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.000" /></td>
+                              <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.findingValue} onChange={(event) => updateFindingRow(item.id, 'findingValue', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0.00" /></td>
                               <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setFindingRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                             </tr>
                           ))}
@@ -8832,6 +9010,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <th className="px-2 py-2">##</th>
                           <th className="px-2 py-2">Overhead</th>
                           <th className="px-2 py-2">Mode</th>
+                          <th className="px-2 py-2">Configured</th>
                           <th className="px-2 py-2">Overhead Value</th>
                           <th className="px-2 py-2">Action</th>
                         </tr>
@@ -8839,7 +9018,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <tbody className="divide-y divide-gray-200">
                         {overheadRows.length === 0 ? (
                           <tr>
-                            <td className="px-3 py-4 text-xs text-slate-500" colSpan={5}>
+                            <td className="px-3 py-4 text-xs text-slate-500" colSpan={6}>
                               No overhead added yet.
                             </td>
                           </tr>
@@ -8912,6 +9091,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   </div>
                                 </td>
                                 <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                <td className="px-2 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
                                 <td className="px-2 py-2">
                                   <input
                                     className="w-full cursor-not-allowed rounded border border-gray-300 bg-gray-50 px-2 py-1 text-gray-700"
@@ -9204,7 +9384,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       step="0.01"
                       className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={inlineDefaultWastagePercent}
-                      onChange={(event) => setInlineDefaultWastagePercent(event.target.value)}
+                      onFocus={handleNumericFieldFocus}
+                      onMouseUp={handleNumericFieldMouseUp}
+                      onChange={(event) => setInlineDefaultWastagePercent(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                       placeholder="0.00"
                     />
                     <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
@@ -9219,7 +9401,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       step="0.01"
                       className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={inlinePricePerUnit}
-                      onChange={(event) => setInlinePricePerUnit(event.target.value)}
+                      onFocus={handleNumericFieldFocus}
+                      onMouseUp={handleNumericFieldMouseUp}
+                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                       placeholder="Auto calculated (editable)"
                     />
                     <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
@@ -9271,7 +9455,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <input
                       className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={inlinePricePerUnit}
-                      onChange={(event) => setInlinePricePerUnit(event.target.value)}
+                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                       placeholder="Price/Unit"
                       required
                     />
@@ -9343,7 +9527,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                         step="0.01"
                         className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={inlineFlatAmount}
-                        onChange={(event) => setInlineFlatAmount(event.target.value)}
+                        onFocus={handleNumericFieldFocus}
+                        onMouseUp={handleNumericFieldMouseUp}
+                        onChange={(event) => setInlineFlatAmount(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                         placeholder="0.00"
                         required
                       />
@@ -9360,7 +9546,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                         step="0.01"
                         className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={inlineRatePercent}
-                        onChange={(event) => setInlineRatePercent(event.target.value)}
+                        onFocus={handleNumericFieldFocus}
+                        onMouseUp={handleNumericFieldMouseUp}
+                        onChange={(event) => setInlineRatePercent(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                         placeholder="0.00"
                         required
                       />
@@ -9415,7 +9603,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       step="0.01"
                       className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={inlinePricePerUnit}
-                      onChange={(event) => setInlinePricePerUnit(event.target.value)}
+                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
                       placeholder="Default Wastage %"
                     />
                   </div>
