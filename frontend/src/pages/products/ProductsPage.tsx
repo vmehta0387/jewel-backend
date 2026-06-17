@@ -1168,23 +1168,85 @@ function sanitizeNumericTextInput(value: string, mode: 'decimal' | 'integer' = '
   if (!trimmed) return '';
 
   if (mode === 'integer') {
-    const normalized = trimmed.replace(/^0+(?=\d)/, '');
+    const digitsOnly = trimmed.replace(/\D+/g, '');
+    if (!digitsOnly) return '';
+    const normalized = digitsOnly.replace(/^0+(?=\d)/, '');
     return normalized || '0';
   }
 
-  if (trimmed.endsWith('.')) {
-    const whole = trimmed.slice(0, -1).replace(/^0+(?=\d)/, '');
+  const cleaned = trimmed.replace(/[^0-9.]+/g, '');
+  if (!cleaned) return '';
+
+  const firstDotIndex = cleaned.indexOf('.');
+  const normalizedRaw =
+    firstDotIndex === -1
+      ? cleaned
+      : `${cleaned.slice(0, firstDotIndex)}.${cleaned
+          .slice(firstDotIndex + 1)
+          .replace(/\./g, '')}`;
+
+  if (normalizedRaw.endsWith('.')) {
+    const whole = normalizedRaw.slice(0, -1).replace(/^0+(?=\d)/, '');
     return `${whole || '0'}.`;
   }
 
-  if (trimmed.includes('.')) {
-    const [wholePart, decimalPart] = trimmed.split('.', 2);
+  if (normalizedRaw.includes('.')) {
+    const [wholePart, decimalPart] = normalizedRaw.split('.', 2);
     const normalizedWhole = wholePart.replace(/^0+(?=\d)/, '');
     return `${normalizedWhole || '0'}.${decimalPart || ''}`;
   }
 
-  const normalized = trimmed.replace(/^0+(?=\d)/, '');
+  const normalized = normalizedRaw.replace(/^0+(?=\d)/, '');
   return normalized || '0';
+}
+
+function handleNumericFieldKeyDown(
+  event: React.KeyboardEvent<HTMLInputElement>,
+  mode: 'decimal' | 'integer' = 'decimal',
+) {
+  const allowedControlKeys = new Set([
+    'Backspace',
+    'Delete',
+    'Tab',
+    'Enter',
+    'Escape',
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowUp',
+    'ArrowDown',
+    'Home',
+    'End',
+  ]);
+
+  if (event.ctrlKey || event.metaKey) {
+    return;
+  }
+
+  if (allowedControlKeys.has(event.key)) {
+    return;
+  }
+
+  if (/^\d$/.test(event.key)) {
+    return;
+  }
+
+  if (mode === 'decimal' && event.key === '.' && !event.currentTarget.value.includes('.')) {
+    return;
+  }
+
+  event.preventDefault();
+}
+
+function handleNumericFieldPaste(
+  event: React.ClipboardEvent<HTMLInputElement>,
+  mode: 'decimal' | 'integer' = 'decimal',
+) {
+  const pasted = event.clipboardData.getData('text');
+  const sanitized = sanitizeNumericTextInput(pasted, mode);
+  if (sanitized === pasted.trim()) {
+    return;
+  }
+  event.preventDefault();
 }
 
 function StatusBadge({ status, type }: { status: string; type: 'primary' | 'info' | 'success' | 'danger' }) {
@@ -3543,9 +3605,7 @@ export default function ProductsPage() {
               const value =
                 mode === 'FLAT'
                   ? flatAmount
-                  : mode === 'PERCENT_BOM_SUBTOTAL'
-                    ? ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100
-                    : ((breakdown.metal.cost + breakdown.totalStoneCost) * ratePercent) / 100;
+                  : ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100;
               return {
                 laborHead: `Overhead - ${label}`,
                 laborPerUnit: value,
@@ -4131,18 +4191,11 @@ export default function ProductsPage() {
         const mode = rule.overheadApplyMode || '';
         const ratePercent = Math.max(0, rule.ratePercent || 0);
         const flatAmount = Math.max(0, rule.flatAmount || 0);
-        const cost =
-          mode === 'FLAT'
-            ? flatAmount
-            : mode === 'PERCENT_BOM_SUBTOTAL'
-              ? (bomSubtotal * ratePercent) / 100
-              : (materialsSubtotal * ratePercent) / 100;
+        const cost = mode === 'FLAT' ? flatAmount : (bomSubtotal * ratePercent) / 100;
         const formula =
           mode === 'FLAT'
             ? formatMoney(flatAmount)
-            : `${ratePercent.toFixed(2)}% × ${
-                mode === 'PERCENT_BOM_SUBTOTAL' ? '(metal + stones + labor)' : '(metal + stones)'
-              }`;
+            : `${ratePercent.toFixed(2)}% × (metal + stones + labor)`;
         return {
           label: row.overheadHead.trim() || rule.value || 'Overhead',
           cost,
@@ -4691,11 +4744,8 @@ const createDefaultVendorRow = (): VendorRow => ({
     const ratePercent = Math.max(0, rule.ratePercent || 0);
     const flatAmount = Math.max(0, rule.flatAmount || 0);
     if (mode === 'FLAT') return flatAmount;
-    if (mode === 'PERCENT_BOM_SUBTOTAL') {
+    if (mode === 'PERCENT_BOM_SUBTOTAL' || mode === 'PERCENT_MATERIALS') {
       return (getSingleDesignOverheadContext.bomSubtotal * ratePercent) / 100;
-    }
-    if (mode === 'PERCENT_MATERIALS') {
-      return (getSingleDesignOverheadContext.materialsSubtotal * ratePercent) / 100;
     }
     return 0;
   };
@@ -7081,6 +7131,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="decimal"
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
                                         value={item.wtPerPcs}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                         disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
                                         onChange={(event) => updateVersionBuilderGemRow(item.id, 'wtPerPcs', event.target.value)}
                                       />
@@ -7092,6 +7144,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="numeric"
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
                                         value={item.pcs}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'integer')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'integer')}
                                         disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
                                         onChange={(event) => updateVersionBuilderGemRow(item.id, 'pcs', event.target.value)}
                                       />
@@ -7103,6 +7157,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="decimal"
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
                                         value={item.wtInCts}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                         disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
                                         onChange={(event) => updateVersionBuilderGemRow(item.id, 'wtInCts', event.target.value)}
                                       />
@@ -7114,6 +7170,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="decimal"
                                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
                                         value={item.pricePerCt}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                         disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
                                         onChange={(event) => updateVersionBuilderGemRow(item.id, 'pricePerCt', event.target.value)}
                                       />
@@ -7295,6 +7353,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     inputMode="decimal"
                                     className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                     value={rowState.metalWeights?.[purity] || '0'}
+                                    onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                    onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                     onFocus={handleNumericFieldFocus}
                                     onMouseUp={handleNumericFieldMouseUp}
                                     onChange={(event) =>
@@ -7318,6 +7378,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="numeric"
                                         className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                         value={cell.count}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'integer')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'integer')}
                                         onFocus={handleNumericFieldFocus}
                                         onMouseUp={handleNumericFieldMouseUp}
                                         onChange={(event) =>
@@ -7337,6 +7399,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         inputMode="decimal"
                                         className="mx-auto w-14 rounded-lg border border-[#ddd2c3] bg-[#fffdfa] px-2 py-1.5 text-center text-[11px] font-semibold text-[#2b241d]"
                                         value={cell.ctPerStone}
+                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                        onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                         onFocus={handleNumericFieldFocus}
                                         onMouseUp={handleNumericFieldMouseUp}
                                         onChange={(event) =>
@@ -7432,6 +7496,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   <input
                                     className="w-full rounded border border-gray-300 px-2 py-1"
                                     value={item.laborPerUnit}
+                                    onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                    onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                     onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborPerUnit', event.target.value)}
                                     onFocus={handleNumericFieldFocus}
                                     onMouseUp={handleNumericFieldMouseUp}
@@ -7442,6 +7508,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   <input
                                     className="w-full rounded border border-gray-300 px-2 py-1"
                                     value={item.unitQty}
+                                    onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                    onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
                                     onChange={(event) => updateVersionBuilderLaborRow(item.id, 'unitQty', event.target.value)}
                                     onFocus={handleNumericFieldFocus}
                                     onMouseUp={handleNumericFieldMouseUp}
