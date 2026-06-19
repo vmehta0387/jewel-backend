@@ -1383,8 +1383,10 @@ export class ProductsService {
     design.designNo = designNo;
     design.version = version;
     design.designNo = designNo;
+    const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
+    const shouldSyncFamilyName = design.isPrimary && dto.designName !== undefined;
     if (dto.designName !== undefined) {
-      design.designName = this.optionalText(dto.designName);
+      design.designName = design.isPrimary ? nextRequestedDesignName : design.designName;
     } else if (!this.optionalText(design.designName)) {
       design.designName = this.buildDefaultDesignName(design.jewelryGroup, designNo);
     }
@@ -1438,6 +1440,10 @@ export class ProductsService {
     design.updatedBy = requester.id;
 
     await this.designRepo.save(design);
+
+    if (shouldSyncFamilyName) {
+      await this.syncFamilyDesignName(design, design.designName, requester.id);
+    }
 
     if (dto.metals !== undefined) {
       await this.replaceMetalRows(id, normalizedMetals);
@@ -4256,6 +4262,69 @@ export class ProductsService {
   private normalizeBaseDesignNo(value: string): string {
     const normalized = this.normalizeDesignNo(value);
     return normalized.replace(/-V\d+$/i, '');
+  }
+
+  private getDesignFamilyKey(value: string): string {
+    const base = this.normalizeBaseDesignNo(value);
+    const parts = base.split('-').filter(Boolean);
+    if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
+      return `${parts[0]}-${parts[1]}`.toUpperCase();
+    }
+    return base;
+  }
+
+  private async syncFamilyDesignName(
+    design: Design,
+    designName: string | null,
+    requesterId: string,
+  ): Promise<void> {
+    const normalizedName = this.optionalText(designName);
+    const familyKey = this.getDesignFamilyKey(design.designNo);
+    const baseDesignNo = this.normalizeBaseDesignNo(design.designNo);
+
+    const familyRowsQuery = this.designRepo
+      .createQueryBuilder('design')
+      .where('design.id != :id', { id: design.id });
+
+    if (familyKey !== baseDesignNo) {
+      familyRowsQuery.andWhere('UPPER(design.designNo) LIKE :familyPattern', {
+        familyPattern: `${familyKey}-%`,
+      });
+    } else {
+      familyRowsQuery.andWhere(
+        new Brackets((where) => {
+          where
+            .where('UPPER(design.designNo) = :baseDesignNo', { baseDesignNo })
+            .orWhere('UPPER(design.designNo) LIKE :versionedPattern', {
+              versionedPattern: `${baseDesignNo}-V%`,
+            });
+        }),
+      );
+    }
+
+    if (design.companyId) {
+      familyRowsQuery.andWhere('design.companyId = :companyId', { companyId: design.companyId });
+    } else {
+      familyRowsQuery.andWhere('design.companyId IS NULL');
+    }
+
+    if (design.branchId) {
+      familyRowsQuery.andWhere('design.branchId = :branchId', { branchId: design.branchId });
+    } else {
+      familyRowsQuery.andWhere('design.branchId IS NULL');
+    }
+
+    const familyRows = await familyRowsQuery.getMany();
+    if (!familyRows.length) {
+      return;
+    }
+
+    familyRows.forEach((row) => {
+      row.designName = normalizedName;
+      row.updatedBy = requesterId;
+    });
+
+    await this.designRepo.save(familyRows);
   }
 
   private applyVersionToDesignNo(designNo: string, version: string): string {

@@ -583,7 +583,7 @@ function buildPacketNameFromForm(
 }
 
 function getMetalPurityDisplay(option: MasterOption): string {
-  return (option.aliasName || option.value || '').trim();
+  return (option.value || option.aliasName || '').trim();
 }
 
 function MasterModal({
@@ -1101,7 +1101,7 @@ function MasterModal({
                     <option value="">Select Metal Name</option>
                     {metalNameOptions.map((option) => (
                       <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
+                        {option.value}
                       </option>
                     ))}
                   </select>
@@ -1121,7 +1121,7 @@ function MasterModal({
                     <option value="">Select Metal Name</option>
                     {metalNameOptions.map((option) => (
                       <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
+                        {option.value}
                       </option>
                     ))}
                   </select>
@@ -1155,7 +1155,7 @@ function MasterModal({
                     <option value="">Select Metal Name</option>
                     {metalNameOptions.map((option) => (
                       <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
+                        {option.value}
                       </option>
                     ))}
                   </select>
@@ -1187,7 +1187,7 @@ function MasterModal({
                     <option value="">Select Metal Color</option>
                     {filteredMetalColors.map((option) => (
                       <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
+                        {option.value}
                       </option>
                     ))}
                   </select>
@@ -1657,14 +1657,17 @@ export default function DesignMastersPage() {
     if (formMetalName && formMetalPurity && formMetalColor) {
       const purityToken = selectedPurity ? getMetalPurityDisplay(selectedPurity) : formMetalPurity;
       const computedValue = `${purityToken}-${formMetalColor}-${formMetalName}`;
-      if (computedValue !== formValue) {
+      const shouldAutoFillValue = !editingRow || formValue.trim().length === 0;
+      const shouldAutoFillAlias = !editingRow || formAliasName.trim().length === 0;
+      if (shouldAutoFillValue && computedValue !== formValue) {
         setFormValue(computedValue);
       }
-      if (computedValue !== formAliasName) {
+      if (shouldAutoFillAlias && computedValue !== formAliasName) {
         setFormAliasName(computedValue);
       }
     }
   }, [
+    formAliasName,
     editingRow,
     formMetalColor,
     formLivePricePerGm,
@@ -1979,12 +1982,9 @@ export default function DesignMastersPage() {
     let aliasName = formAliasName.trim();
     if (selectedType === 'METAL_CARATAGE' && formMetalName && formMetalPurity && formMetalColor) {
       const autoValue = `${formMetalPurity}-${formMetalColor}-${formMetalName}`;
-      if (!value) {
-        value = autoValue;
-      }
-      if (!aliasName) {
-        aliasName = autoValue;
-      }
+      const userDisplayName = aliasName || value || autoValue;
+      value = autoValue;
+      aliasName = userDisplayName;
     }
     if (!value || !aliasName) {
       window.alert('Master name and alias name are required.');
@@ -2656,7 +2656,7 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.marketPricePerOunce !== null && row.marketPricePerOunce !== undefined ? Number(row.marketPricePerOunce).toFixed(2) : '-'}
@@ -2721,7 +2721,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
@@ -2842,7 +2842,7 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalPurity || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
