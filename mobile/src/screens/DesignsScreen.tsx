@@ -21,10 +21,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { fetchDesigns } from '../api/designs';
+import { fetchAllDesigns } from '../api/designs';
 import { fetchOrders, fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
 type ActivityItem = {
@@ -87,7 +88,6 @@ const getSearchableFields = (design: Design) =>
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
 
-const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
 type SortOption = 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
 type PriceBand = 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
 
@@ -173,12 +173,15 @@ const keepPrimaryDesignsOnly = (rows: Design[]) => {
   const hasExplicitPrimaryFlag = rows.some((row) => typeof row.isPrimary === 'boolean');
 
   if (hasExplicitPrimaryFlag) {
-    return rows.filter((row) => row.isPrimary === true);
+    const explicitPrimaryRows = rows.filter((row) => row.isPrimary === true);
+    if (explicitPrimaryRows.length > 0) {
+      return explicitPrimaryRows;
+    }
   }
 
   const primaryByBase = new Map<string, Design>();
   for (const row of rows) {
-    const base = normalizeBaseDesignNo(row.designNo);
+    const base = getDesignFamilyKey(row.designNo);
     if (!base) continue;
     const existing = primaryByBase.get(base);
     const isV1 = /^V1$/i.test(String(row.version || '').trim());
@@ -240,6 +243,19 @@ const PRESET_CATEGORY_TITLES: Record<CatalogPresetCategory, string> = {
   necklaces: 'Necklaces',
 };
 
+const matchesPresetCategory = (design: Design, presetCategory: CatalogPresetCategory) => {
+  const searchableText = [
+    design.jewelryGroup,
+    design.collection,
+    design.designName,
+    design.designNo,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return PRESET_CATEGORY_MATCH[presetCategory].some((hint) => searchableText.includes(hint));
+};
+
 // Keep helper at module scope so stale fast-refresh closures always find it.
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -275,9 +291,10 @@ const DesignsScreen = () => {
     if (!token) return;
     setLoading(true);
     setError(null);
+    let releasedLoadingEarly = false;
     try {
-      const response = await fetchDesigns(token);
-      const activeDesigns = (response.data || []).filter(isActiveDesign);
+      const allRows = await fetchAllDesigns(token, 200);
+      const activeDesigns = allRows.filter(isActiveDesign);
       const baseDesigns = keepPrimaryDesignsOnly(activeDesigns);
       // Render immediately so users don't wait for pricing preview round-trips.
       setDesigns(baseDesigns);
@@ -290,6 +307,9 @@ const DesignsScreen = () => {
       if (!shouldApplyPricing) {
         return;
       }
+
+      setLoading(false);
+      releasedLoadingEarly = true;
 
       const companyId = user.companyId as string;
       const branchId = user.branchId as string;
@@ -311,7 +331,9 @@ const DesignsScreen = () => {
     } catch (err: any) {
       setError(err?.message || 'Unable to load designs');
     } finally {
-      setLoading(false);
+      if (!releasedLoadingEarly) {
+        setLoading(false);
+      }
     }
   }, [token, user?.role, user?.companyId, user?.branchId]);
 
@@ -459,8 +481,10 @@ const DesignsScreen = () => {
 
   const filteredDesigns = useMemo(() => {
     const term = search.trim().toLowerCase();
+    const presetCategory = route.params?.presetCategory;
 
     const filtered = designs.filter((design) => {
+      const matchesPreset = !presetCategory || matchesPresetCategory(design, presetCategory);
       const matchesCategory =
         selectedCategory === 'All' || toLower(design.jewelryGroup) === toLower(selectedCategory);
       const matchesCollection =
@@ -480,6 +504,7 @@ const DesignsScreen = () => {
       const matchesSearch = !term || getSearchableFields(design).some((value) => value.includes(term));
 
       return (
+        matchesPreset &&
         matchesCategory &&
         matchesCollection &&
         matchesShape &&
@@ -514,6 +539,7 @@ const DesignsScreen = () => {
     selectedPriceBand,
     sortOption,
     user?.role,
+    route.params?.presetCategory,
   ]);
 
   const useCollectionRibbon = useMemo(
@@ -616,7 +642,12 @@ const DesignsScreen = () => {
       <TouchableOpacity
         activeOpacity={0.92}
         style={[styles.cardTouchable, numColumns > 1 ? styles.cardTouchableGrid : null]}
-        onPress={() => navigation.navigate('DesignDetail', { designId: item.id })}
+        onPress={() =>
+          navigation.navigate('DesignDetail', {
+            designId: item.id,
+            presetCategory: route.params?.presetCategory,
+          })
+        }
       >
         <View style={styles.designCard}>
           <View style={styles.imageShell}>

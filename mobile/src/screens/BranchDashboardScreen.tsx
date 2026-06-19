@@ -17,11 +17,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchSpiffSummary } from '../api/spiff';
-import { fetchDesigns } from '../api/designs';
+import { fetchAllDesigns } from '../api/designs';
 import { uploadMyPhoto } from '../api/auth';
 import { fetchBranchEmployees } from '../api/branchEmployees';
 import type { BranchEmployee, Design, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type ActivityItem = {
   id: string;
@@ -65,8 +66,6 @@ type NotificationEntry = {
   time: string;
   tone: NotificationTone;
 };
-
-const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim().toLowerCase();
 
 const FALLBACK_TRENDING_PRODUCTS: TrendingProduct[] = [
   { id: 'fallback-1', title: 'Oval Pave', subtitle: 'WG - Full-Lab', price: 3840, imageUrl: null },
@@ -147,7 +146,7 @@ const BranchDashboardScreen = () => {
       fetchOrderSummary(token),
       fetchOrderTrends(token),
       fetchOrders(token, 1, 100, 'ALL'),
-      fetchDesigns(token, 1, 40),
+      fetchAllDesigns(token, 200),
       fetchSpiffSummary(token),
       user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
     ]);
@@ -310,12 +309,12 @@ const BranchDashboardScreen = () => {
     }
 
     if (designsRes.status === 'fulfilled') {
-      const allDesigns = designsRes.value.data || [];
+      const allDesigns = designsRes.value || [];
       const uniqueDesigns: Design[] = [];
       const seenDesignKeys = new Set<string>();
       for (const design of allDesigns) {
         const key =
-          normalizeBaseDesignNo(design.designNo) ||
+          getDesignFamilyKey(design.designNo) ||
           String(design.designName || '').trim().toLowerCase() ||
           design.id;
         if (!key || seenDesignKeys.has(key)) continue;

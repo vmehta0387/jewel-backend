@@ -16,10 +16,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createOrder, fetchOrder, updateOrder } from '../api/orders';
-import { fetchDesign, fetchDesigns } from '../api/designs';
+import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import type { Design } from '../types';
 import type { QuoteSummaryPayload } from '../navigation/RootNavigator';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
@@ -73,7 +74,6 @@ const statusLabel = (status?: string) => {
 const normalizeStatus = (status?: string | null) => String(status || 'QUOTE').trim().toUpperCase();
 const compact = (value?: string | number | null) => String(value ?? '').trim();
 const KNOWN_SHAPES = ['oval', 'round', 'emerald', 'radiant', 'pear', 'marquise', 'princess', 'cushion', 'heart', 'asscher'];
-const normalizeBaseDesignNo = (designNo?: string | null) => compact(designNo).replace(/-V\d+$/i, '').toLowerCase();
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(compact(version));
   return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
@@ -154,10 +154,9 @@ const findDesignByOrderMeta = async (
   const designNo = compact(input.designNo);
   if (!designNo) return null;
 
-  const list = await fetchDesigns(token, 1, 400);
-  const rows = list.data || [];
-  const base = normalizeBaseDesignNo(designNo);
-  const direct = rows.filter((row) => normalizeBaseDesignNo(row.designNo) === base);
+  const rows = await fetchAllDesigns(token, 200);
+  const familyKey = getDesignFamilyKey(designNo);
+  const direct = rows.filter((row) => getDesignFamilyKey(row.designNo) === familyKey);
   const byExact = direct.length
     ? direct
     : rows.filter((row) => compact(row.designNo).toLowerCase() === designNo.toLowerCase());

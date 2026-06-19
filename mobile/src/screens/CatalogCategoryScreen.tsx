@@ -12,9 +12,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { fetchDesigns } from '../api/designs';
+import { fetchAllDesigns } from '../api/designs';
 import type { Design } from '../types';
 import type { CatalogPresetCategory } from '../navigation/RootNavigator';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type CategoryOption = {
   key: CatalogPresetCategory;
@@ -42,7 +43,13 @@ const CATEGORY_HINTS: Record<CatalogPresetCategory, string[]> = {
   necklaces: ['necklace', 'pendant', 'chain'],
 };
 
-const normalizeBaseDesignNo = (designNo?: string | null) => String(designNo || '').replace(/-V\d+$/i, '').trim();
+const matchesPresetCategory = (design: Design, categoryKey: CatalogPresetCategory) => {
+  const searchableText = [design.jewelryGroup, design.collection, design.designName, design.designNo]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return CATEGORY_HINTS[categoryKey].some((hint) => searchableText.includes(hint));
+};
 
 type CategoryCountStats = {
   designs: number;
@@ -98,17 +105,7 @@ const CatalogCategoryScreen = () => {
 
     setCountsLoading(true);
     try {
-      const limit = 200;
-      let page = 1;
-      let totalPages = 1;
-      const rows: Design[] = [];
-
-      do {
-        const response = await fetchDesigns(token, page, limit);
-        rows.push(...(response.data || []));
-        totalPages = response.totalPages || 1;
-        page += 1;
-      } while (page <= totalPages);
+      const rows = await fetchAllDesigns(token, 200);
 
       const uniqueByCategory: Record<CatalogPresetCategory, Set<string>> = {
         rings: new Set<string>(),
@@ -123,22 +120,20 @@ const CatalogCategoryScreen = () => {
         necklaces: 0,
       };
 
-      rows.forEach((design) => {
-        const searchableText = [
-          design.jewelryGroup,
-          design.collection,
-          design.designName,
-          design.designNo,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+      const activeRows = rows.filter((design) => {
+        const dynamicRow = design as Design & { isActive?: boolean; status?: string | null };
+        if (typeof dynamicRow.isActive === 'boolean') return dynamicRow.isActive;
+        return String(dynamicRow.status || 'ACTIVE').toUpperCase() === 'ACTIVE';
+      });
 
-        const uniqueKey = normalizeBaseDesignNo(design.designNo) || design.id;
+      activeRows.forEach((design) => {
+        const uniqueKey = getDesignFamilyKey(design.designNo) || design.id;
 
         (Object.keys(CATEGORY_HINTS) as CatalogPresetCategory[]).forEach((categoryKey) => {
-          if (CATEGORY_HINTS[categoryKey].some((hint) => searchableText.includes(hint))) {
-            uniqueByCategory[categoryKey].add(uniqueKey);
+          if (matchesPresetCategory(design, categoryKey)) {
+            if (design.isPrimary === true) {
+              uniqueByCategory[categoryKey].add(uniqueKey);
+            }
             versionCounts[categoryKey] += 1;
           }
         });

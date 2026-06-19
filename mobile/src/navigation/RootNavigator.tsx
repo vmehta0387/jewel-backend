@@ -92,7 +92,7 @@ export type QuoteSummaryPayload = {
 export type DesignsStackParamList = {
   CatalogCategories: undefined;
   Designs: { presetCategory?: CatalogPresetCategory; prefillSearch?: string } | undefined;
-  DesignDetail: { designId: string };
+  DesignDetail: { designId: string; presetCategory?: CatalogPresetCategory };
   QuoteBuilder: { draft: QuoteBuilderDraft };
   QuoteSummary: { summary: QuoteSummaryPayload };
 };

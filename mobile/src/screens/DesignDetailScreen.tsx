@@ -13,18 +13,19 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { StackActions, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { fetchDesign, fetchDesigns } from '../api/designs';
+import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatNumber } from '../utils/format';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type OptionVariant = 'default' | 'metal';
 
@@ -54,9 +55,6 @@ const compact = (value?: string | number | null) => String(value ?? '').trim();
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
-
-const normalizeBaseDesignNo = (designNo?: string | null) =>
-  String(designNo || '').replace(/-V\d+$/i, '').trim();
 
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(String(version || '').trim());
@@ -332,12 +330,10 @@ const DesignDetailScreen = () => {
   const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
 
   const handleBackToDesigns = useCallback(() => {
-    if (navigation.canGoBack()) {
-      navigation.dispatch(StackActions.popToTop());
-      return;
-    }
-    navigation.navigate('Designs');
-  }, [navigation]);
+    navigation.navigate('Designs', {
+      presetCategory: route.params?.presetCategory,
+    });
+  }, [navigation, route.params?.presetCategory]);
 
   const applyActiveDesignSelection = useCallback((design: Design) => {
     const next = getFilterValuesFromDesign(design);
@@ -358,13 +354,13 @@ const DesignDetailScreen = () => {
 
     try {
       const primary = await fetchDesign(token, route.params.designId);
-      const baseDesignNo = normalizeBaseDesignNo(primary.designNo);
+      const familyKey = getDesignFamilyKey(primary.designNo);
 
       let familyIds = [primary.id];
       try {
-        const list = await fetchDesigns(token, 1, 200);
-        const fromList = (list.data || [])
-          .filter((row) => normalizeBaseDesignNo(row.designNo) === baseDesignNo)
+        const rows = await fetchAllDesigns(token, 200);
+        const fromList = rows
+          .filter((row) => getDesignFamilyKey(row.designNo) === familyKey)
           .map((row) => row.id);
         familyIds = Array.from(new Set([primary.id, ...fromList]));
       } catch {
@@ -662,16 +658,8 @@ const DesignDetailScreen = () => {
   );
   const firstGem = activeDesign?.gemstones?.[0];
   const heroCaption = useMemo(
-    () =>
-      [
-        selectedShape || firstGem?.shape || 'Oval',
-        activeDesign?.designNo || '',
-        '* Best Seller',
-      ]
-        .filter(Boolean)
-        .join(' - ')
-        .toUpperCase(),
-    [activeDesign?.designNo, firstGem?.shape, selectedShape],
+    () => String(activeDesign?.designName || activeDesign?.designNo || '').trim(),
+    [activeDesign?.designName, activeDesign?.designNo],
   );
 
   const specRows = useMemo(

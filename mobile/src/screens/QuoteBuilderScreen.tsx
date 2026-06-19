@@ -18,10 +18,11 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { createOrder, fetchPricePreview, updateOrder } from '../api/orders';
-import { fetchDesign, fetchDesigns } from '../api/designs';
+import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
+import { getDesignFamilyKey } from '../utils/designFamily';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -55,9 +56,6 @@ const compact = (value?: string | number | null) => String(value ?? '').trim();
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
-
-const normalizeBaseDesignNo = (designNo?: string | null) =>
-  String(designNo || '').replace(/-V\d+$/i, '').trim();
 
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(String(version || '').trim());
@@ -268,13 +266,13 @@ const QuoteBuilderScreen = () => {
       setLoadingFamily(true);
       try {
         const primary = await fetchDesign(token, draft.designId);
-        const baseDesignNo = normalizeBaseDesignNo(primary.designNo);
+        const familyKey = getDesignFamilyKey(primary.designNo);
 
         let familyIds = [primary.id];
         try {
-          const list = await fetchDesigns(token, 1, 200);
-          const fromList = (list.data || [])
-            .filter((row) => normalizeBaseDesignNo(row.designNo) === baseDesignNo)
+          const rows = await fetchAllDesigns(token, 200);
+          const fromList = rows
+            .filter((row) => getDesignFamilyKey(row.designNo) === familyKey)
             .map((row) => row.id);
           familyIds = Array.from(new Set([primary.id, ...fromList]));
         } catch {
