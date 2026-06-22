@@ -1249,8 +1249,21 @@ export class ProductsService {
     const [data, total] = await qb.getManyAndCount();
 
     if (query.summaryOnly) {
+      const updatedByMap = await this.resolveUserNames(
+        data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+      );
+      const summaryData = await Promise.all(
+        data.map(async (design) => ({
+          ...design,
+          imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+          imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+          stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
+          updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+        })),
+      );
+
       return {
-        data,
+        data: summaryData,
         total,
         page,
         totalPages: Math.ceil(total / limit),

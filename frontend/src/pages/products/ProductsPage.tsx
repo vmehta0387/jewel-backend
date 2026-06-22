@@ -3338,6 +3338,30 @@ export default function ProductsPage() {
     return versionsByBaseDesign.get(base) || [];
   };
 
+  const getPreferredRowImage = useCallback(
+    (row: DesignRow): { url: string; key: string } | null => {
+      const ownUrl = row.imageUrls?.[0];
+      if (ownUrl) {
+        return {
+          url: ownUrl,
+          key: row.imageKeys?.[0] || `${row.id}-0`,
+        };
+      }
+
+      const familyRows = getVersionsForDesign(row.designNo);
+      const fallbackRow = familyRows.find((item) => item.imageUrls?.[0]);
+      if (fallbackRow?.imageUrls?.[0]) {
+        return {
+          url: fallbackRow.imageUrls[0],
+          key: fallbackRow.imageKeys?.[0] || `${fallbackRow.id}-0`,
+        };
+      }
+
+      return null;
+    },
+    [versionsByBaseDesign],
+  );
+
   const versionBuilderVersionRows = useMemo(
     () => (versionBuilderBaseDesign ? getVersionsForDesign(versionBuilderBaseDesign.designNo) : []),
     [versionBuilderBaseDesign, versionsByBaseDesign],
@@ -6482,6 +6506,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <tbody>
               {pagedRows.map((row, idx) => {
                 const versionRows = getVersionsForDesign(row.designNo);
+                const preferredImage = getPreferredRowImage(row);
                 const versionCount = versionRows.length || 1;
                 const versionsExpanded = isVersionsExpanded(row.designNo);
                 const columnCount = 2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length;
@@ -6504,7 +6529,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </td>
                   {isColumnVisible('media') ? (
                   <td className="app-table-cell">
-                    {row.imageUrls?.[0] ? (
+                    {preferredImage?.url ? (
                       <button
                         type="button"
                         className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-2"
@@ -6512,7 +6537,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         title="Open media viewer"
                       >
                         <MediaPreview
-                          url={row.imageUrls[0]}
+                          url={preferredImage.url}
                           alt={`${row.designNo} preview`}
                           className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm transition group-hover:border-slate-300 group-hover:shadow-md"
                         />
