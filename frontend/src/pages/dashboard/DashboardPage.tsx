@@ -430,7 +430,7 @@ export default function DashboardPage() {
 
     while (page <= totalPages) {
       const response = await api.get('/products', {
-        params: { page, limit, status: 'ALL' },
+        params: { page, limit, status: 'ALL', primaryOnly: true, summaryOnly: true },
       });
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       if (page === 1) {

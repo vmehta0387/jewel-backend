@@ -312,6 +312,7 @@ interface VersionBuilderGeneratedFilterState {
 }
 
 interface VersionBuilderGeneratedRow {
+  resultKey: string;
   designNo: string;
   version: string;
   metal: string;
@@ -326,7 +327,7 @@ interface VersionBuilderGeneratedRow {
 }
 
 interface VersionBuilderCreateResult {
-  status: 'created' | 'failed';
+  status: 'created' | 'failed' | 'skipped';
   message?: string;
 }
 
@@ -344,6 +345,41 @@ interface VersionBuilderSizeChartRowState {
   metalWeights: Record<string, string>;
   groups: Record<string, VersionBuilderSizeChartGroupCell>;
 }
+
+const formatCreateFailureMessage = (error: any) => {
+  const apiMessage = error?.response?.data?.message;
+  if (Array.isArray(apiMessage)) {
+    return apiMessage.map((item) => String(item).trim()).filter(Boolean).join(' | ');
+  }
+  if (apiMessage && typeof apiMessage === 'object') {
+    try {
+      return JSON.stringify(apiMessage);
+    } catch {
+      return 'Create failed';
+    }
+  }
+  const fallback = String(apiMessage || error?.message || 'Create failed').trim();
+  return fallback || 'Create failed';
+};
+
+const buildVersionBuilderCombinationKey = (input: {
+  designNo: string;
+  metal?: string;
+  coverage?: string;
+  diamondQuality?: string;
+  caratWeight?: string;
+  size?: string;
+}) => {
+  const familyKey = getDesignFamilyKey(input.designNo || '', input.designNo || '');
+  return [
+    familyKey,
+    normalizeLookupKey(input.metal || ''),
+    normalizeLookupKey(input.coverage || ''),
+    normalizeLookupKey(input.diamondQuality || ''),
+    normalizeLookupKey(input.caratWeight || ''),
+    normalizeLookupKey(input.size || ''),
+  ].join('|');
+};
 
 type VersionBuilderSizeChartState = Record<string, Record<string, VersionBuilderSizeChartRowState>>;
 
@@ -1649,6 +1685,7 @@ export default function ProductsPage() {
   const [versionBuilderCreateResults, setVersionBuilderCreateResults] = useState<
     Record<string, VersionBuilderCreateResult>
   >({});
+  const [allDesignRows, setAllDesignRows] = useState<DesignRow[]>([]);
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
@@ -2346,24 +2383,40 @@ export default function ProductsPage() {
       const limit = 200;
       let currentPage = 1;
       let totalPages = 1;
-      const allRows: ApiDesignRow[] = [];
+      const primaryRowsRaw: ApiDesignRow[] = [];
+      const summaryRowsRaw: ApiDesignRow[] = [];
 
       do {
-        const response = await api.get('/products', {
-          params: {
-            page: currentPage,
-            limit,
-            status: 'ALL',
-          },
-        });
-        const pageRows = (response.data?.data || []) as ApiDesignRow[];
-        allRows.push(...pageRows);
-        totalPages = Number(response.data?.totalPages || 1);
+        const [primaryResponse, summaryResponse] = await Promise.all([
+          api.get('/products', {
+            params: {
+              page: currentPage,
+              limit,
+              status: 'ALL',
+              primaryOnly: true,
+            },
+          }),
+          api.get('/products', {
+            params: {
+              page: currentPage,
+              limit,
+              status: 'ALL',
+              summaryOnly: true,
+            },
+          }),
+        ]);
+        const primaryPageRows = (primaryResponse.data?.data || []) as ApiDesignRow[];
+        const summaryPageRows = (summaryResponse.data?.data || []) as ApiDesignRow[];
+        primaryRowsRaw.push(...primaryPageRows);
+        summaryRowsRaw.push(...summaryPageRows);
+        totalPages = Number(summaryResponse.data?.totalPages || 1);
         currentPage += 1;
       } while (currentPage <= totalPages);
 
-      const mappedRows = allRows.map(mapApiDesignToRow);
+      const mappedRows = primaryRowsRaw.map(mapApiDesignToRow);
+      const mappedAllRows = summaryRowsRaw.map(mapApiDesignToRow);
       setRows(mappedRows);
+      setAllDesignRows(mappedAllRows);
       setSelectedId((current) => {
         if (preferredSelectedId && mappedRows.some((row) => row.id === preferredSelectedId)) {
           return preferredSelectedId;
@@ -2376,6 +2429,7 @@ export default function ProductsPage() {
     } catch (error: any) {
       setRowsError(error?.response?.data?.message || 'Unable to load designs from server.');
       setRows([]);
+      setAllDesignRows([]);
       setSelectedId('');
     } finally {
       setRowsLoading(false);
@@ -3199,7 +3253,7 @@ export default function ProductsPage() {
 
   const versionsByBaseDesign = useMemo(() => {
     const map = new Map<string, DesignRow[]>();
-    rows.forEach((row) => {
+    allDesignRows.forEach((row) => {
       const key = getDesignFamilyKey(row.designNo || '', row.designNo || row.id);
       if (!map.has(key)) {
         map.set(key, []);
@@ -3213,7 +3267,7 @@ export default function ProductsPage() {
       );
     });
     return map;
-  }, [rows]);
+  }, [allDesignRows]);
 
   const filteredBaseRows = useMemo(() => {
     const map = new Map<string, DesignRow>();
@@ -3533,9 +3587,10 @@ export default function ProductsPage() {
     if (creatingVersions) {
       return;
     }
-    const rowsToCreate = versionBuilderGeneratedRows.filter(
-      (row) => versionBuilderCreateResults[row.designNo]?.status !== 'created',
-    );
+    const rowsToCreate = versionBuilderGeneratedRows.filter((row) => {
+      const status = versionBuilderCreateResults[row.resultKey]?.status;
+      return status !== 'created' && status !== 'skipped';
+    });
     if (!rowsToCreate.length) {
       window.alert('No generated variants available to create.');
       return;
@@ -3575,11 +3630,51 @@ export default function ProductsPage() {
         }, {});
       }
 
+      const existingFamilyCombinationKeys = new Set(
+        rows
+          .filter(
+            (existingRow) =>
+              getDesignFamilyKey(existingRow.designNo || '', existingRow.id || '') ===
+              getDesignFamilyKey(versionBuilderBaseDesign.designNo || '', versionBuilderBaseDesign.id || ''),
+          )
+          .map((existingRow) =>
+            buildVersionBuilderCombinationKey({
+              designNo: existingRow.designNo || '',
+              metal: existingRow.goldColour || '',
+              coverage: existingRow.diamondSpread || '',
+              diamondQuality: existingRow.diamondQuality || '',
+              caratWeight: existingRow.diamondWeight || '',
+              size: existingRow.jewelrySize || '',
+            }),
+          ),
+      );
+
       const createdRows: DesignRow[] = [];
       const failures: string[] = [];
+      const skipped: string[] = [];
 
       for (let index = 0; index < rowsToCreate.length; index += 1) {
         const row = rowsToCreate[index];
+        const combinationKey = buildVersionBuilderCombinationKey({
+          designNo: row.designNo,
+          metal: row.metal,
+          coverage: row.coverage,
+          diamondQuality: row.diamondQuality,
+          caratWeight: row.caratWeight,
+          size: row.size,
+        });
+
+        if (existingFamilyCombinationKeys.has(combinationKey)) {
+          const message = 'Duplicate combination already exists';
+          skipped.push(`${row.designNo}: ${message}`);
+          setVersionBuilderCreateResults((prev) => ({
+            ...prev,
+            [row.resultKey]: { status: 'skipped', message },
+          }));
+          setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
+          continue;
+        }
+
         const selection: VersionBuilderBomSelection = {
           size: row.size,
           metal: row.metal,
@@ -3595,7 +3690,7 @@ export default function ProductsPage() {
           failures.push(`${row.designNo}: size chart missing`);
           setVersionBuilderCreateResults((prev) => ({
             ...prev,
-            [row.designNo]: { status: 'failed', message: 'Size chart missing' },
+            [row.resultKey]: { status: 'failed', message: 'Size chart missing' },
           }));
           setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
           continue;
@@ -3736,17 +3831,19 @@ export default function ProductsPage() {
 
         try {
           const response = await api.post('/products', payload);
-          createdRows.push(mapApiDesignToRow(response.data as ApiDesignRow));
+          const createdRow = mapApiDesignToRow(response.data as ApiDesignRow);
+          createdRows.push(createdRow);
+          existingFamilyCombinationKeys.add(combinationKey);
           setVersionBuilderCreateResults((prev) => ({
             ...prev,
-            [row.designNo]: { status: 'created', message: 'Version created successfully' },
+            [row.resultKey]: { status: 'created', message: 'Version created successfully' },
           }));
         } catch (error: any) {
-          const message = String(error?.response?.data?.message || error?.message || 'Create failed');
+          const message = formatCreateFailureMessage(error);
           failures.push(`${row.designNo}: ${message}`);
           setVersionBuilderCreateResults((prev) => ({
             ...prev,
-            [row.designNo]: { status: 'failed', message },
+            [row.resultKey]: { status: 'failed', message },
           }));
         } finally {
           setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
@@ -3754,19 +3851,23 @@ export default function ProductsPage() {
       }
 
       if (createdRows.length > 0) {
-        setRows((prev) => [...createdRows, ...prev]);
-        setSelectedId(createdRows[0].id);
+        setAllDesignRows((prev) => [...createdRows, ...prev]);
+        const createdPrimaryRows = createdRows.filter((item) => item.isPrimary);
+        if (createdPrimaryRows.length > 0) {
+          setRows((prev) => [...createdPrimaryRows, ...prev.filter((item) => !createdPrimaryRows.some((created) => created.id === item.id))]);
+          setSelectedId(createdPrimaryRows[0].id);
+        }
       }
 
-      if (failures.length > 0) {
+      if (failures.length > 0 || skipped.length > 0) {
         window.alert(
-          `Created ${createdRows.length} version(s). ${failures.length} failed.\n\n${failures.slice(0, 8).join('\n')}${
-            failures.length > 8 ? '\n...' : ''
-          }`,
+          `Created ${createdRows.length} version(s). ${skipped.length} skipped. ${failures.length} failed.\n\n${[
+            ...skipped.slice(0, 4),
+            ...failures.slice(0, 4),
+          ].join('\n')}${skipped.length + failures.length > 8 ? '\n...' : ''}`,
         );
       } else {
         window.alert(`Created ${createdRows.length} version(s) successfully.`);
-        closeVersionBuilderModal();
       }
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to create versions.');
@@ -4406,6 +4507,14 @@ export default function ProductsPage() {
                 .join(' + ');
 
               rows.push({
+                resultKey: buildVersionBuilderCombinationKey({
+                  designNo: versionBuilderBaseDesign.designNo,
+                  metal,
+                  coverage,
+                  diamondQuality: quality,
+                  caratWeight: weight,
+                  size,
+                }),
                 designNo: breakdown.variantSku || buildVersionedDesignNo(getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo, version),
                 version,
                 metal,
@@ -4474,8 +4583,54 @@ export default function ProductsPage() {
   const versionBuilderPendingCreateCount = useMemo(
     () =>
       versionBuilderGeneratedRows.filter(
-        (row) => versionBuilderCreateResults[row.designNo]?.status !== 'created',
+        (row) => !versionBuilderCreateResults[row.resultKey]?.status,
       ).length,
+    [versionBuilderCreateResults, versionBuilderGeneratedRows],
+  );
+
+  const versionBuilderCreatedCount = useMemo(
+    () => Object.values(versionBuilderCreateResults).filter((item) => item.status === 'created').length,
+    [versionBuilderCreateResults],
+  );
+
+  const versionBuilderSkippedCount = useMemo(
+    () => Object.values(versionBuilderCreateResults).filter((item) => item.status === 'skipped').length,
+    [versionBuilderCreateResults],
+  );
+
+  const versionBuilderFailedRows = useMemo(
+    () =>
+      versionBuilderGeneratedRows
+        .map((row) => ({
+          row,
+          result: versionBuilderCreateResults[row.resultKey],
+        }))
+        .filter(
+          (
+            item,
+          ): item is {
+            row: VersionBuilderGeneratedRow;
+            result: VersionBuilderCreateResult;
+          } => item.result?.status === 'failed',
+        ),
+    [versionBuilderCreateResults, versionBuilderGeneratedRows],
+  );
+
+  const versionBuilderSkippedRows = useMemo(
+    () =>
+      versionBuilderGeneratedRows
+        .map((row) => ({
+          row,
+          result: versionBuilderCreateResults[row.resultKey],
+        }))
+        .filter(
+          (
+            item,
+          ): item is {
+            row: VersionBuilderGeneratedRow;
+            result: VersionBuilderCreateResult;
+          } => item.result?.status === 'skipped',
+        ),
     [versionBuilderCreateResults, versionBuilderGeneratedRows],
   );
 
@@ -4914,7 +5069,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     } catch {
       // fall back to local calculation
     }
-    return getNextDesignVersion(trimmed, rows);
+    return getNextDesignVersion(trimmed, allDesignRows);
   };
 
   const loadDesignDetail = async (row: DesignRow, overrides?: Partial<DesignForm>) => {
@@ -5470,7 +5625,14 @@ const createDefaultVendorRow = (): VendorRow => ({
           try {
             const response = await api.put(`/products/${editingId}`, createPayload);
             const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-            setRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+            setAllDesignRows((prev) => prev.map((item) => (item.id === saved.id ? saved : item)));
+            setRows((prev) =>
+              saved.isPrimary
+                ? prev.some((item) => item.id === saved.id)
+                  ? prev.map((item) => (item.id === saved.id ? saved : item))
+                  : [saved, ...prev]
+                : prev.filter((item) => item.id !== saved.id),
+            );
             setSelectedId(saved.id);
             setDetailDesign(response.data);
           } catch (error: any) {
@@ -5482,7 +5644,10 @@ const createDefaultVendorRow = (): VendorRow => ({
             }
             const response = await api.post('/products', createPayload);
             const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-            setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+            setAllDesignRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+            if (saved.isPrimary) {
+              setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+            }
             setSelectedId(saved.id);
             setDetailDesign(response.data);
             if (options?.selectAfterCreate) {
@@ -5494,7 +5659,10 @@ const createDefaultVendorRow = (): VendorRow => ({
         } else {
           const response = await api.post('/products', createPayload);
           const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-          setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+          setAllDesignRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+          if (saved.isPrimary) {
+            setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+          }
           setSelectedId(saved.id);
           setDetailDesign(response.data);
           if (options?.selectAfterCreate) {
@@ -5506,7 +5674,10 @@ const createDefaultVendorRow = (): VendorRow => ({
       } else {
         const response = await api.post('/products', createPayload);
         const saved = mapApiDesignToRow(response.data as ApiDesignRow);
-        setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        setAllDesignRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        if (saved.isPrimary) {
+          setRows((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+        }
         setSelectedId(saved.id);
         setDetailDesign(response.data);
         if (options?.selectAfterCreate) {
@@ -8033,6 +8204,111 @@ const createDefaultVendorRow = (): VendorRow => ({
                   {versionBuilderGeneratedRows.length.toLocaleString('en-US')} matched rows.
                 </div>
 
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-2xl border border-[#e4d8c9] bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Created</p>
+                    <p className="mt-1 text-[22px] font-semibold text-[#2b241d]">
+                      {versionBuilderCreatedCount.toLocaleString('en-US')}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-[#e4d8c9] bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Skipped</p>
+                    <p className="mt-1 text-[22px] font-semibold text-[#b37b1a]">
+                      {versionBuilderSkippedCount.toLocaleString('en-US')}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-[#e4d8c9] bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Failed</p>
+                    <p className="mt-1 text-[22px] font-semibold text-[#c45858]">
+                      {versionBuilderFailedRows.length.toLocaleString('en-US')}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-[#e4d8c9] bg-white px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8c7b67]">Pending</p>
+                    <p className="mt-1 text-[22px] font-semibold text-[#8c7b67]">
+                      {versionBuilderPendingCreateCount.toLocaleString('en-US')}
+                    </p>
+                  </div>
+                </div>
+
+                {versionBuilderSkippedRows.length > 0 ? (
+                  <div className="mt-4 rounded-2xl border border-[#ecd7a9] bg-[#fffaf0]">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f0e2bf] px-4 py-3">
+                      <div>
+                        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#b37b1a]">
+                          Skipped Variants
+                        </p>
+                        <p className="mt-1 text-[12px] text-[#8c7350]">
+                          These variants were skipped because the same combination already exists in this design family.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="max-h-[220px] overflow-y-auto">
+                      <table className="min-w-full">
+                        <thead className="bg-[#fff5df]">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a7a3a]">SKU</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a7a3a]">Variant</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9a7a3a]">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {versionBuilderSkippedRows.map(({ row, result }) => (
+                            <tr key={`skipped-${row.designNo}`} className="border-t border-[#f3e6c8] align-top">
+                              <td className="px-4 py-3 text-[12px] font-semibold text-[#2b241d]">{row.designNo}</td>
+                              <td className="px-4 py-3 text-[12px] text-[#6f6358]">
+                                {[row.metal, row.coverage, row.diamondQuality, row.caratWeight, row.size]
+                                  .filter(Boolean)
+                                  .join(' / ')}
+                              </td>
+                              <td className="px-4 py-3 text-[12px] text-[#8c7350]">{result.message || 'Duplicate combination already exists'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+
+                {versionBuilderFailedRows.length > 0 ? (
+                  <div className="mt-4 rounded-2xl border border-[#f0c5c5] bg-[#fff6f6]">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f0d9d9] px-4 py-3">
+                      <div>
+                        <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-[#c45858]">
+                          Failed Variants
+                        </p>
+                        <p className="mt-1 text-[12px] text-[#8c5f5f]">
+                          These variants did not create. Review the exact reason below before retrying.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="max-h-[260px] overflow-y-auto">
+                      <table className="min-w-full">
+                        <thead className="bg-[#fff1f1]">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a76464]">SKU</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a76464]">Variant</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a76464]">Failure Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {versionBuilderFailedRows.map(({ row, result }) => (
+                            <tr key={`failed-${row.designNo}`} className="border-t border-[#f5dede] align-top">
+                              <td className="px-4 py-3 text-[12px] font-semibold text-[#2b241d]">{row.designNo}</td>
+                              <td className="px-4 py-3 text-[12px] text-[#6f6358]">
+                                {[row.metal, row.coverage, row.diamondQuality, row.caratWeight, row.size]
+                                  .filter(Boolean)
+                                  .join(' / ')}
+                              </td>
+                              <td className="px-4 py-3 text-[12px] text-[#9a4f4f]">{result.message || 'Create failed'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="app-table-scroll scrollbar-top mt-4 rounded-2xl border border-[#e4d8c9] bg-white">
                   <table className="min-w-full">
                     <thead className="bg-[#f8f1e6]">
@@ -8067,14 +8343,21 @@ const createDefaultVendorRow = (): VendorRow => ({
                               {formatMoney(previewRow.bomCost)}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              {versionBuilderCreateResults[previewRow.designNo]?.status === 'created' ? (
+                              {versionBuilderCreateResults[previewRow.resultKey]?.status === 'created' ? (
                                 <span className="rounded-full border border-[#b9dec1] bg-[#eef9f0] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2f8f67]">
                                   Created
                                 </span>
-                              ) : versionBuilderCreateResults[previewRow.designNo]?.status === 'failed' ? (
+                              ) : versionBuilderCreateResults[previewRow.resultKey]?.status === 'skipped' ? (
+                                <span
+                                  className="rounded-full border border-[#ecd7a9] bg-[#fff5df] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#b37b1a]"
+                                  title={versionBuilderCreateResults[previewRow.resultKey]?.message || 'Duplicate combination already exists'}
+                                >
+                                  Skipped
+                                </span>
+                              ) : versionBuilderCreateResults[previewRow.resultKey]?.status === 'failed' ? (
                                 <span
                                   className="rounded-full border border-[#f0c5c5] bg-[#fff1f1] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#c45858]"
-                                  title={versionBuilderCreateResults[previewRow.designNo]?.message || 'Create failed'}
+                                  title={versionBuilderCreateResults[previewRow.resultKey]?.message || 'Create failed'}
                                 >
                                   Failed
                                 </span>
@@ -8083,6 +8366,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   Pending
                                 </span>
                               )}
+                              {versionBuilderCreateResults[previewRow.resultKey]?.status === 'failed' ? (
+                                <p className="mt-1 max-w-[240px] text-[10px] leading-4 text-[#b06262]">
+                                  {versionBuilderCreateResults[previewRow.resultKey]?.message || 'Create failed'}
+                                </p>
+                              ) : versionBuilderCreateResults[previewRow.resultKey]?.status === 'skipped' ? (
+                                <p className="mt-1 max-w-[240px] text-[10px] leading-4 text-[#9a7a3a]">
+                                  {versionBuilderCreateResults[previewRow.resultKey]?.message || 'Duplicate combination already exists'}
+                                </p>
+                              ) : null}
                             </td>
                           </tr>
                         ))

@@ -586,6 +586,10 @@ function getMetalPurityDisplay(option: MasterOption): string {
   return (option.value || option.aliasName || '').trim();
 }
 
+function getMasterDisplayName(row: Pick<MasterRow, 'value' | 'aliasName'>): string {
+  return (row.aliasName || row.value || '').trim();
+}
+
 function MasterModal({
   open,
   title,
@@ -2656,7 +2660,7 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.marketPricePerOunce !== null && row.marketPricePerOunce !== undefined ? Number(row.marketPricePerOunce).toFixed(2) : '-'}
@@ -2721,7 +2725,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
@@ -2842,7 +2846,7 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.aliasName || row.value}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.metalPurity || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
@@ -3085,7 +3089,7 @@ export default function DesignMastersPage() {
                         {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
                           <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
                         ) : null}
-                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{getMasterDisplayName(row)}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell text-sm">
                           <span

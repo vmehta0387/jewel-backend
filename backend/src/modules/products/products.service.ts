@@ -1153,6 +1153,10 @@ export class ProductsService {
       });
     }
 
+    if (query.primaryOnly) {
+      qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+    }
+
     if (query.collection?.trim()) {
       qb.andWhere('design.collection LIKE :collection', {
         collection: `%${query.collection.trim()}%`,
@@ -1243,6 +1247,16 @@ export class ProductsService {
     }
 
     const [data, total] = await qb.getManyAndCount();
+
+    if (query.summaryOnly) {
+      return {
+        data,
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+      };
+    }
+
     const designIds = data.map((design) => design.id);
     const gemstones = designIds.length
       ? await this.gemstoneRepo.find({

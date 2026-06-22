@@ -652,6 +652,16 @@ export class FindProductsQueryDto {
   @IsOptional()
   limit?: number;
 
+  @Type(() => Boolean)
+  @IsBoolean()
+  @IsOptional()
+  primaryOnly?: boolean;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  @IsOptional()
+  summaryOnly?: boolean;
+
   @IsString()
   @IsOptional()
   search?: string;
