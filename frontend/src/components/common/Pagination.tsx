@@ -5,6 +5,7 @@ interface PaginationProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   className?: string;
+  alwaysShow?: boolean;
 }
 
 const buildPageItems = (page: number, totalPages: number): PageItem[] => {
@@ -28,8 +29,8 @@ const buildPageItems = (page: number, totalPages: number): PageItem[] => {
   return items;
 };
 
-export default function Pagination({ page, totalPages, onPageChange, className = '' }: PaginationProps) {
-  if (totalPages <= 1) return null;
+export default function Pagination({ page, totalPages, onPageChange, className = '', alwaysShow = false }: PaginationProps) {
+  if (totalPages <= 1 && !alwaysShow) return null;
 
   const items = buildPageItems(page, totalPages);
   const buttonBase =

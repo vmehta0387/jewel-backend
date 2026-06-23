@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
+import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import api from '../../services/api';
 
 interface BranchManagerOption {
@@ -12,6 +12,8 @@ interface BranchManagerOption {
   lastName: string;
   email: string;
 }
+
+const NEW_MANAGER_OPTION_VALUE = '__new_branch_manager__';
 
 export default function AddBranch() {
   const navigate = useNavigate();
@@ -24,7 +26,7 @@ export default function AddBranch() {
   const [showAddManager, setShowAddManager] = useState(false);
   const [newManager, setNewManager] = useState({ firstName: '', lastName: '', email: '', phone: '' });
   const [pendingManagerData, setPendingManagerData] = useState<any>(null);
-  const [slabs, setSlabs] = useState([
+  const [slabs, setSlabs] = useState<Slab[]>([
     { minCost: 0, maxCost: 500, multiplier: 3.5 },
     { minCost: 500.01, maxCost: 3000, multiplier: 3.0 },
   ]);
@@ -50,6 +52,7 @@ export default function AddBranch() {
     enableSlabPricing: false,
     branchManagerId: '',
   });
+  const managerSelectValue = pendingManagerData ? NEW_MANAGER_OPTION_VALUE : formData.branchManagerId;
 
   useEffect(() => {
     fetchCompanies();
@@ -337,11 +340,22 @@ export default function AddBranch() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Assign Existing Branch Manager</label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                  value={formData.branchManagerId}
-                  disabled={!formData.companyId || !!pendingManagerData}
-                  onChange={(event) => setFormData({ ...formData, branchManagerId: event.target.value })}
+                  value={managerSelectValue}
+                  disabled={!formData.companyId}
+                  onChange={(event) => {
+                    if (event.target.value === NEW_MANAGER_OPTION_VALUE) {
+                      return;
+                    }
+                    setPendingManagerData(null);
+                    setFormData({ ...formData, branchManagerId: event.target.value });
+                  }}
                 >
                   <option value="">None</option>
+                  {pendingManagerData && (
+                    <option value={NEW_MANAGER_OPTION_VALUE}>
+                      New: {pendingManagerData.firstName} {pendingManagerData.lastName} ({pendingManagerData.email})
+                    </option>
+                  )}
                   {branchManagers.map((manager) => (
                     <option key={manager.id} value={manager.id}>
                       {manager.firstName} {manager.lastName} ({manager.email})
@@ -353,12 +367,6 @@ export default function AddBranch() {
                 {showAddManager ? 'Cancel' : '+ New Manager'}
               </Button>
             </div>
-
-            {pendingManagerData && (
-              <div className="text-xs text-primary-700 bg-primary-50 border border-primary-100 rounded-lg px-3 py-2">
-                New manager ready: {pendingManagerData.firstName} {pendingManagerData.lastName} ({pendingManagerData.email})
-              </div>
-            )}
 
             {showAddManager && (
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
@@ -397,7 +405,12 @@ export default function AddBranch() {
                       if (!newManager.firstName || !newManager.lastName || !newManager.email) {
                         return;
                       }
-                      setPendingManagerData(newManager);
+                      setPendingManagerData({
+                        firstName: newManager.firstName.trim(),
+                        lastName: newManager.lastName.trim(),
+                        email: newManager.email.trim().toLowerCase(),
+                        phone: newManager.phone.trim(),
+                      });
                       setFormData({ ...formData, branchManagerId: '' });
                       setShowAddManager(false);
                     }}

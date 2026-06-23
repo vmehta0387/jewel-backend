@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import FloatingErrorToast from '../../components/common/FloatingErrorToast';
 import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
-import CollectionPricingTable from '../../components/forms/CollectionPricingTable';
+import CollectionPricingTable, {
+  type CollectionOverride,
+  validateCollectionOverrides,
+} from '../../components/forms/CollectionPricingTable';
 import api from '../../services/api';
+import { formatAddressLocation } from '../../utils/address';
 
 type QuickUserRole = 'COMPANY_ADMIN' | 'BRANCH_MANAGER' | 'SALES_REP';
 
@@ -19,9 +24,27 @@ function quickRoleNeedsBranch(role: QuickUserRole): boolean {
   return role === 'BRANCH_MANAGER' || role === 'SALES_REP';
 }
 
+function ManageActionContent() {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M7.5 12.5L12.5 7.5M9 4.5H4.5V9M11 15.5H15.5V11"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span>Manage</span>
+    </span>
+  );
+}
+
 export default function EditCompany() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     companyName: '',
@@ -57,7 +80,7 @@ export default function EditCompany() {
   const [companyBranches, setCompanyBranches] = useState<any[]>([]);
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
   const [slabs, setSlabs] = useState<any[]>([]);
-  const [collectionOverrides, setCollectionOverrides] = useState<any[]>([]);
+  const [collectionOverrides, setCollectionOverrides] = useState<CollectionOverride[]>([]);
   const [newBranchData, setNewBranchData] = useState({
     name: '',
     code: '',
@@ -86,6 +109,27 @@ export default function EditCompany() {
     fetchCompany();
     fetchAccountManagers();
   }, [id]);
+
+  const focusFirstError = (nextErrors: Record<string, string>) => {
+    const firstKey = [
+      'companyName',
+      'primaryEmail',
+      'defaultMultiplier',
+      'slabs',
+      'collections',
+    ].find((key) => nextErrors[key]);
+    const target = firstKey ? fieldRefs.current[firstKey] : null;
+
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => {
+      if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
+        target.focus({ preventScroll: true });
+        return;
+      }
+      target.querySelector<HTMLElement>('input, select, textarea, button')?.focus({ preventScroll: true });
+    }, 250);
+  };
 
   const fetchAccountManagers = async () => {
     try {
@@ -185,9 +229,23 @@ export default function EditCompany() {
         }
       }
     }
+    if (formData.enableCollectionPricing) {
+      if (collectionOverrides.length === 0) {
+        newErrors.collections = 'Add at least one collection override';
+      } else {
+        const collectionError = validateCollectionOverrides(collectionOverrides);
+        if (collectionError) {
+          newErrors.collections = collectionError;
+        }
+      }
+    }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (Object.keys(newErrors).length > 0) {
+      focusFirstError(newErrors);
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -397,22 +455,27 @@ export default function EditCompany() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {errors.submit && (
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
-            {errors.submit}
-          </div>
-        )}
+        <FloatingErrorToast
+          message={errors.submit}
+          onClose={() => setErrors((prev) => {
+            const next = { ...prev };
+            delete next.submit;
+            return next;
+          })}
+        />
 
         <Card title="Company Information">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Input
-              label="Company Name *"
-              value={formData.companyName}
-              onChange={(event) => setFormData({ ...formData, companyName: event.target.value })}
-              placeholder="Brilliant Jewelers Inc."
-              error={errors.companyName}
-              required
-            />
+            <div ref={(element) => { fieldRefs.current.companyName = element; }}>
+              <Input
+                label="Company Name *"
+                value={formData.companyName}
+                onChange={(event) => setFormData({ ...formData, companyName: event.target.value })}
+                placeholder="Brilliant Jewelers Inc."
+                error={errors.companyName}
+                required
+              />
+            </div>
             <Input
               label="Company Code"
               value={formData.companyCode}
@@ -437,14 +500,16 @@ export default function EditCompany() {
 
         <Card title="Contact Information">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Input
-              label="Primary Email"
-              type="email"
-              value={formData.primaryEmail}
-              onChange={(event) => setFormData({ ...formData, primaryEmail: event.target.value })}
-              placeholder="contact@company.com"
-              error={errors.primaryEmail}
-            />
+            <div ref={(element) => { fieldRefs.current.primaryEmail = element; }}>
+              <Input
+                label="Primary Email"
+                type="email"
+                value={formData.primaryEmail}
+                onChange={(event) => setFormData({ ...formData, primaryEmail: event.target.value })}
+                placeholder="contact@company.com"
+                error={errors.primaryEmail}
+              />
+            </div>
             <Input
               label="Primary Phone"
               value={formData.primaryPhone}
@@ -588,18 +653,22 @@ export default function EditCompany() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Default Mark-up *</label>
-              <Input
-                type="number"
-                step="0.01"
-                min="1"
-                max="10"
-                value={formData.defaultMultiplier}
-                onChange={(event) => setFormData({ ...formData, defaultMultiplier: parseFloat(event.target.value) || 0 })}
-                placeholder="1.5"
-                className="max-w-xs"
-                error={errors.defaultMultiplier}
-                required
-              />
+              <div ref={(element) => { fieldRefs.current.defaultMultiplier = element; }} className="max-w-xs">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  max="10"
+                  value={formData.defaultMultiplier}
+                  onChange={(event) => {
+                    if (event.target.value.startsWith('-')) return;
+                    setFormData({ ...formData, defaultMultiplier: parseFloat(event.target.value) || 0 });
+                  }}
+                  placeholder="1.5"
+                  error={errors.defaultMultiplier}
+                  required
+                />
+              </div>
               <p className="text-xs text-gray-500 mt-1">Base mark-up applied to all products (1.0 - 10.0)</p>
             </div>
 
@@ -617,8 +686,9 @@ export default function EditCompany() {
             </div>
 
             {formData.enableSlabPricing && (
-              <div className="ml-6 p-4 bg-gray-50 rounded-lg">
+              <div ref={(element) => { fieldRefs.current.slabs = element; }} className="ml-6 p-4 bg-gray-50 rounded-lg">
                 <PricingSlabTable slabs={slabs} setSlabs={setSlabs} />
+                {errors.slabs && <p className="text-sm text-red-600 mt-2">{errors.slabs}</p>}
               </div>
             )}
 
@@ -636,8 +706,9 @@ export default function EditCompany() {
             </div>
 
             {formData.enableCollectionPricing && (
-              <div className="ml-6 p-4 bg-gray-50 rounded-lg">
+              <div ref={(element) => { fieldRefs.current.collections = element; }} className="ml-6 p-4 bg-gray-50 rounded-lg">
                 <CollectionPricingTable overrides={collectionOverrides} setOverrides={setCollectionOverrides} />
+                {errors.collections && <p className="text-sm text-red-600 mt-2">{errors.collections}</p>}
               </div>
             )}
           </div>
@@ -740,6 +811,7 @@ export default function EditCompany() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="text-left px-4 py-2 font-medium text-gray-700">Branch</th>
+                    <th className="text-left px-4 py-2 font-medium text-gray-700">Location</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-700">Manager</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-700">Pricing</th>
                     <th className="text-left px-4 py-2 font-medium text-gray-700">Status</th>
@@ -749,7 +821,7 @@ export default function EditCompany() {
                 <tbody>
                   {companyBranches.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                      <td colSpan={6} className="px-4 py-6 text-center text-gray-500">
                         No branches created for this company yet.
                       </td>
                     </tr>
@@ -760,6 +832,7 @@ export default function EditCompany() {
                           <div className="font-medium text-gray-900">{branch.name}</div>
                           <div className="text-xs text-gray-500">{branch.code}</div>
                         </td>
+                        <td className="px-4 py-2">{formatAddressLocation(branch)}</td>
                         <td className="px-4 py-2">
                           {branch.branchManager ? `${branch.branchManager.firstName} ${branch.branchManager.lastName}` : '-'}
                         </td>
@@ -779,7 +852,7 @@ export default function EditCompany() {
                             onClick={() => navigate(`/branches/edit/${branch.id}`)}
                             className="text-primary-600 hover:text-primary-800 font-medium"
                           >
-                            Manage Branch
+                            <ManageActionContent />
                           </button>
                         </td>
                       </tr>
@@ -954,7 +1027,7 @@ export default function EditCompany() {
                             onClick={() => navigate(`/users/edit/${user.id}`)}
                             className="text-primary-600 hover:text-primary-800 font-medium"
                           >
-                            Edit
+                            <ManageActionContent />
                           </button>
                         </td>
                       </tr>

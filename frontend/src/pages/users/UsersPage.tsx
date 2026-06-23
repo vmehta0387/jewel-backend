@@ -47,6 +47,10 @@ export default function UsersPage() {
   }, [users, page, pageSize]);
   const showingFrom = users.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = Math.min(page * pageSize, users.length);
+  const usersWithSerial = pagedUsers.map((user, index) => ({
+    ...user,
+    serialNumber: showingFrom + index,
+  }));
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -209,6 +213,12 @@ export default function UsersPage() {
 
   const columns = useMemo(
     () => [
+      {
+        key: 'serialNumber',
+        label: '#',
+        headerClassName: 'w-16',
+        cellClassName: 'w-16 font-semibold text-slate-600',
+      },
       {
         key: 'name',
         label: 'User',
@@ -417,7 +427,7 @@ export default function UsersPage() {
           <div className="text-center py-12 text-gray-500">No users found for selected filters.</div>
         ) : (
           <>
-            <Table columns={columns} data={pagedUsers} />
+            <Table columns={columns} data={usersWithSerial} />
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </>
         )}

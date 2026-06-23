@@ -1,9 +1,9 @@
 import Button from '../common/Button';
 
 export interface Slab {
-  minCost: number;
-  maxCost: number;
-  multiplier: number;
+  minCost: number | '';
+  maxCost: number | '';
+  multiplier: number | '';
 }
 
 interface Props {
@@ -16,24 +16,39 @@ export const validatePricingSlabs = (slabs: Slab[]): string | null => {
     return null;
   }
 
-  const sorted = [...slabs].sort((a, b) => a.minCost - b.minCost);
+  const sorted = [...slabs].sort((a, b) => Number(a.minCost) - Number(b.minCost));
   for (let index = 0; index < sorted.length; index += 1) {
     const slab = sorted[index];
-    const values = [slab.minCost, slab.maxCost, slab.multiplier];
-    if (values.some((value) => Number.isNaN(value) || !Number.isFinite(value))) {
-      return 'Pricing slab values must be valid numbers';
+    const rowLabel = `Row ${index + 1}`;
+
+    if (slab.minCost === '' || Number.isNaN(slab.minCost) || !Number.isFinite(slab.minCost)) {
+      return `${rowLabel}: Min Cost is required and must be a valid number, 0 or greater`;
     }
-    if (slab.minCost < 0 || slab.maxCost < 0) {
-      return 'Pricing slab costs cannot be negative';
+    if (slab.maxCost === '' || Number.isNaN(slab.maxCost) || !Number.isFinite(slab.maxCost)) {
+      return `${rowLabel}: Max Cost is required and must be a valid number, 0 or greater`;
     }
-    if (slab.maxCost < slab.minCost) {
-      return 'Max Cost must be greater than or equal to Min Cost';
+    if (slab.multiplier === '' || Number.isNaN(slab.multiplier) || !Number.isFinite(slab.multiplier)) {
+      return `${rowLabel}: Mark-up is required and must be a valid number between 1 and 10`;
     }
-    if (slab.multiplier < 1 || slab.multiplier > 10) {
-      return 'Mark-up must be between 1 and 10';
+
+    const minCost = Number(slab.minCost);
+    const maxCost = Number(slab.maxCost);
+    const multiplier = Number(slab.multiplier);
+
+    if (minCost < 0) {
+      return `${rowLabel}: Min Cost cannot be negative`;
     }
-    if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
-      return 'Pricing slab ranges cannot overlap';
+    if (maxCost < 0) {
+      return `${rowLabel}: Max Cost cannot be negative`;
+    }
+    if (maxCost < minCost) {
+      return `${rowLabel}: Max Cost must be greater than or equal to Min Cost`;
+    }
+    if (multiplier < 1 || multiplier > 10) {
+      return `${rowLabel}: Mark-up must be between 1 and 10`;
+    }
+    if (index > 0 && minCost <= Number(sorted[index - 1].maxCost)) {
+      return `${rowLabel}: Min Cost overlaps with the previous range`;
     }
   }
 
@@ -42,10 +57,10 @@ export const validatePricingSlabs = (slabs: Slab[]): string | null => {
 
 export default function PricingSlabTable({ slabs, setSlabs }: Props) {
   const addSlab = () => {
-    setSlabs([...slabs, { minCost: 0, maxCost: 0, multiplier: 1.0 }]);
+    setSlabs([...slabs, { minCost: '', maxCost: '', multiplier: '' }]);
   };
 
-  const updateSlab = (index: number, field: keyof Slab, value: number) => {
+  const updateSlab = (index: number, field: keyof Slab, value: number | '') => {
     const updated = [...slabs];
     updated[index][field] = value;
     setSlabs(updated);
@@ -74,26 +89,38 @@ export default function PricingSlabTable({ slabs, setSlabs }: Props) {
                   <td className="app-table-cell">
                     <input
                       type="number"
+                      min="0"
                       className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
                       value={slab.minCost}
-                      onChange={(e) => updateSlab(idx, 'minCost', parseFloat(e.target.value))}
+                      onChange={(e) => {
+                        if (e.target.value.startsWith('-')) return;
+                        updateSlab(idx, 'minCost', e.target.value === '' ? '' : parseFloat(e.target.value));
+                      }}
                     />
                   </td>
                   <td className="app-table-cell">
                     <input
                       type="number"
+                      min="0"
                       className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
                       value={slab.maxCost}
-                      onChange={(e) => updateSlab(idx, 'maxCost', parseFloat(e.target.value))}
+                      onChange={(e) => {
+                        if (e.target.value.startsWith('-')) return;
+                        updateSlab(idx, 'maxCost', e.target.value === '' ? '' : parseFloat(e.target.value));
+                      }}
                     />
                   </td>
                   <td className="app-table-cell">
                     <input
                       type="number"
+                      min="1"
                       step="0.1"
                       className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
                       value={slab.multiplier}
-                      onChange={(e) => updateSlab(idx, 'multiplier', parseFloat(e.target.value))}
+                      onChange={(e) => {
+                        if (e.target.value.startsWith('-')) return;
+                        updateSlab(idx, 'multiplier', e.target.value === '' ? '' : parseFloat(e.target.value));
+                      }}
                     />
                   </td>
                   <td className="app-table-cell text-right">

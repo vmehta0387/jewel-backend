@@ -263,6 +263,12 @@ export default function AddUser() {
     }
   };
 
+  const handleDeletePhoto = () => {
+    setFormData((prev) => ({ ...prev, photoUrl: '' }));
+    setPhotoPreviewUrl('');
+    setErrors((prev) => ({ ...prev, photoUrl: '' }));
+  };
+
   return (
     <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
@@ -343,6 +349,16 @@ export default function AddUser() {
                     onChange={handlePhotoFileChange}
                   />
                 </label>
+                {formData.photoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDeletePhoto}
+                    disabled={uploadingPhoto}
+                    className="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Delete Photo
+                  </button>
+                )}
               </div>
               {errors.photoUrl && <p className="mt-1 text-sm text-red-600">{errors.photoUrl}</p>}
             </div>
