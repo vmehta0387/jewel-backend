@@ -118,7 +118,7 @@ function parseOptionalNumber(value: string): number | null {
 function DashboardStatIcon({
   kind,
 }: {
-  kind: 'companies' | 'branches' | 'designs' | 'revenue';
+  kind: 'companies' | 'branches' | 'designs' | 'variants' | 'revenue';
 }) {
   const svgProps = {
     className: 'h-5 w-5',
@@ -157,6 +157,17 @@ function DashboardStatIcon({
       <svg {...svgProps}>
         <path d="M12 3.75 19.5 8.25v7.5L12 20.25 4.5 15.75v-7.5L12 3.75Z" />
         <path d="M12 9v6M8.75 12h6.5" />
+      </svg>
+    );
+  }
+
+  if (kind === 'variants') {
+    return (
+      <svg {...svgProps}>
+        <rect x="4.5" y="4.5" width="6.5" height="6.5" rx="1.5" />
+        <rect x="13" y="4.5" width="6.5" height="6.5" rx="1.5" />
+        <rect x="4.5" y="13" width="6.5" height="6.5" rx="1.5" />
+        <rect x="13" y="13" width="6.5" height="6.5" rx="1.5" />
       </svg>
     );
   }
@@ -312,12 +323,12 @@ export default function DashboardPage() {
     companies: number | null;
     branches: number | null;
     designs: number | null;
-    totalValue: number | null;
+    versions: number | null;
   }>({
     companies: null,
     branches: null,
     designs: null,
-    totalValue: null,
+    versions: null,
   });
   const [orderSummary, setOrderSummary] = useState<{
     activeOrders: number | null;
@@ -421,33 +432,29 @@ export default function DashboardPage() {
     return Array.isArray(response.data?.data) ? response.data.data.length : 0;
   };
 
-  const fetchDesignSummary = async (): Promise<{ designs: number; totalValue: number }> => {
-    let page = 1;
-    const limit = 200;
-    let totalDesigns = 0;
-    let totalValue = 0;
-    let totalPages = 1;
+  const fetchDesignSummary = async (): Promise<{ designs: number; versions: number }> => {
+    const [primaryResponse, totalResponse] = await Promise.all([
+      api.get('/products', {
+        params: { page: 1, limit: 1, status: 'ALL', primaryOnly: true, summaryOnly: true },
+      }),
+      api.get('/products', {
+        params: { page: 1, limit: 1, status: 'ALL', summaryOnly: true },
+      }),
+    ]);
 
-    while (page <= totalPages) {
-      const response = await api.get('/products', {
-        params: { page, limit, status: 'ALL', primaryOnly: true, summaryOnly: true },
-      });
-      const data = Array.isArray(response.data?.data) ? response.data.data : [];
-      if (page === 1) {
-        totalDesigns = Number(response.data?.total ?? data.length);
-        totalPages = Number(
-          response.data?.totalPages ?? (totalDesigns > 0 ? Math.ceil(totalDesigns / limit) : 1),
-        );
-      }
-      totalValue += data.reduce((sum: number, row: any) => sum + Number(row?.totalValue ?? 0), 0);
+    const primaryCount = Number(
+      primaryResponse.data?.total ??
+        (Array.isArray(primaryResponse.data?.data) ? primaryResponse.data.data.length : 0),
+    );
+    const totalCount = Number(
+      totalResponse.data?.total ??
+        (Array.isArray(totalResponse.data?.data) ? totalResponse.data.data.length : 0),
+    );
 
-      if (data.length < limit && !response.data?.totalPages) {
-        totalPages = page;
-      }
-      page += 1;
-    }
-
-    return { designs: totalDesigns, totalValue };
+    return {
+      designs: primaryCount,
+      versions: Math.max(totalCount - primaryCount, 0),
+    };
   };
 
   const fetchOrderSummary = async () => {
@@ -481,10 +488,10 @@ export default function DashboardPage() {
           designsResult.status === 'fulfilled'
             ? designsResult.value.designs
             : statsData.designs,
-        totalValue:
+        versions:
           designsResult.status === 'fulfilled'
-            ? designsResult.value.totalValue
-            : statsData.totalValue,
+            ? designsResult.value.versions
+            : statsData.versions,
       };
 
       setStatsData(nextStats);
@@ -767,12 +774,12 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-sm font-bold tracking-wider text-violet-700">
-                Designs
+                Design Families
               </p>
               <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
                 {statsLoading && statsData.designs === null ? '--' : formatCount(statsData.designs)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">All design entries</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Primary designs only</p>
             </div>
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 border border-violet-100 text-violet-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="designs" />
@@ -784,15 +791,15 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-sm font-bold tracking-wider text-emerald-700">
-                Design Value
+                Versions
               </p>
               <p className="mt-3 text-3xl font-bold tracking-tight text-slate-800">
-                {statsLoading && statsData.totalValue === null ? '--' : formatCurrency(statsData.totalValue)}
+                {statsLoading && statsData.versions === null ? '--' : formatCount(statsData.versions)}
               </p>
-              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Aggregate estimated value</p>
+              <p className="mt-2 text-xs font-medium text-slate-500 tracking-wide">Generated variant entries</p>
             </div>
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-sm transition-transform group-hover:scale-110">
-              <DashboardStatIcon kind="revenue" />
+              <DashboardStatIcon kind="variants" />
             </span>
           </div>
         </Card>
