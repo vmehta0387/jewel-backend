@@ -584,6 +584,12 @@ function getMetalPurityDisplay(option: MasterOption): string {
   return (option.value || option.aliasName || '').trim();
 }
 
+function buildMetalCaratageName(metalName: string, metalPurity: string, metalColor: string, purityOption?: MasterOption | null): string {
+  const purityToken = purityOption ? getMetalPurityDisplay(purityOption) : metalPurity.trim();
+  const parts = [purityToken, metalColor.trim(), metalName.trim()].filter((part) => part.length > 0);
+  return parts.join('-');
+}
+
 function getMasterDisplayName(row: Pick<MasterRow, 'value' | 'aliasName'>): string {
   return (row.aliasName || row.value || '').trim();
 }
@@ -1588,6 +1594,7 @@ export default function DesignMastersPage() {
   const [formFlatAmount, setFormFlatAmount] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
+  const [metalCaratageCombinationChanged, setMetalCaratageCombinationChanged] = useState(false);
   const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
   const [metalMasterOptions, setMetalMasterOptions] = useState<MetalMasterOptions>(emptyMetalMasterOptions);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -1704,15 +1711,13 @@ export default function DesignMastersPage() {
       }
     }
 
-    if (formMetalName && formMetalPurity && formMetalColor) {
-      const purityToken = selectedPurity ? getMetalPurityDisplay(selectedPurity) : formMetalPurity;
-      const computedValue = `${purityToken}-${formMetalColor}-${formMetalName}`;
-      const shouldAutoFillValue = !editingRow || formValue.trim().length === 0;
-      const shouldAutoFillAlias = !editingRow || formAliasName.trim().length === 0;
-      if (shouldAutoFillValue && computedValue !== formValue) {
+    const shouldSyncCaratageName = !editingRow || metalCaratageCombinationChanged;
+    if (shouldSyncCaratageName && formMetalName && formMetalPurity && formMetalColor) {
+      const computedValue = buildMetalCaratageName(formMetalName, formMetalPurity, formMetalColor, selectedPurity);
+      if (computedValue !== formValue) {
         setFormValue(computedValue);
       }
-      if (shouldAutoFillAlias && computedValue !== formAliasName) {
+      if (computedValue !== formAliasName) {
         setFormAliasName(computedValue);
       }
     }
@@ -1725,10 +1730,25 @@ export default function DesignMastersPage() {
     formMetalPurity,
     formPurityPercentage,
     formValue,
+    metalCaratageCombinationChanged,
     metalMasterOptions.metalNames,
     metalMasterOptions.metalPurities,
     selectedType,
   ]);
+
+  const handleMetalNameChange = useCallback((value: string) => {
+    setFormMetalName(value);
+    if (selectedType === 'METAL_CARATAGE') {
+      setMetalCaratageCombinationChanged(true);
+    }
+  }, [selectedType]);
+
+  const handleMetalColorChange = useCallback((value: string) => {
+    setFormMetalColor(value);
+    if (selectedType === 'METAL_CARATAGE') {
+      setMetalCaratageCombinationChanged(true);
+    }
+  }, [selectedType]);
 
   const handleMetalPurityChange = useCallback((value: string) => {
     setFormMetalPurity(value);
@@ -1736,6 +1756,8 @@ export default function DesignMastersPage() {
     if (selectedType !== 'METAL_CARATAGE') {
       return;
     }
+
+    setMetalCaratageCombinationChanged(true);
 
     const selectedPurity = metalMasterOptions.metalPurities.find(
       (row) => row.value === value && (!formMetalName || row.metalName === formMetalName),
@@ -1869,6 +1891,7 @@ export default function DesignMastersPage() {
     setFormFlatAmount('');
     setPacketForm(defaultPacketForm);
     setPacketNameManuallyEdited(false);
+    setMetalCaratageCombinationChanged(false);
   };
 
   const openCreate = () => {
@@ -1879,6 +1902,7 @@ export default function DesignMastersPage() {
   const openEditMaster = (row: MasterRow) => {
     setEditingPacket(null);
     setEditingRow(row);
+    setMetalCaratageCombinationChanged(false);
     setFormValue(row.value || '');
     setFormAliasName(row.aliasName || row.value || '');
     setFormDescription(row.description || '');
@@ -2055,11 +2079,26 @@ export default function DesignMastersPage() {
 
     let value = formValue.trim();
     let aliasName = formAliasName.trim();
-    if (selectedType === 'METAL_CARATAGE' && formMetalName && formMetalPurity && formMetalColor) {
-      const autoValue = `${formMetalPurity}-${formMetalColor}-${formMetalName}`;
-      const userDisplayName = aliasName || value || autoValue;
+    if (
+      selectedType === 'METAL_CARATAGE' &&
+      formMetalName &&
+      formMetalPurity &&
+      formMetalColor &&
+      (!editingRow || metalCaratageCombinationChanged)
+    ) {
+      const selectedPurityOptionForName = metalMasterOptions.metalPurities.find(
+        (option) =>
+          option.value === formMetalPurity &&
+          (!formMetalName || option.metalName === formMetalName),
+      );
+      const autoValue = buildMetalCaratageName(
+        formMetalName,
+        formMetalPurity,
+        formMetalColor,
+        selectedPurityOptionForName,
+      );
       value = autoValue;
-      aliasName = userDisplayName;
+      aliasName = autoValue;
     }
     if (!value || !aliasName) {
       window.alert('Master name and alias name are required.');
@@ -2276,7 +2315,7 @@ export default function DesignMastersPage() {
       }
       setShowModal(false);
       resetModalState();
-      fetchRows();
+      void fetchRows();
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to save master value.');
     } finally {
@@ -3356,8 +3395,8 @@ export default function DesignMastersPage() {
           onChangeFindingNo={setFormFindingNo}
           onChangeJewelryGroupId={setFormJewelryGroupId}
           onChangeMetalCaratage={setFormMetalCaratage}
-          onChangeMetalName={setFormMetalName}
-          onChangeMetalColor={setFormMetalColor}
+          onChangeMetalName={handleMetalNameChange}
+          onChangeMetalColor={handleMetalColorChange}
           onChangeMetalPurity={handleMetalPurityChange}
           onChangePurityPercentage={setFormPurityPercentage}
           onChangeMarketPricePerOunce={setFormMarketPricePerOunce}

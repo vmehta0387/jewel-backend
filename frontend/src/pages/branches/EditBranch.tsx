@@ -6,6 +6,20 @@ import Button from '../../components/common/Button';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import api from '../../services/api';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BRANCH_ERROR_ORDER = [
+  'companyId',
+  'name',
+  'code',
+  'email',
+  'shipStreetAddress',
+  'branchManagerId',
+  'branchMultiplier',
+  'pricingSlabs',
+];
+const NEW_MANAGER_ERROR_ORDER = ['newManagerFirstName', 'newManagerLastName', 'newManagerEmail'];
+const SALES_REP_ERROR_ORDER = ['salesFirstName', 'salesLastName', 'salesEmail', 'salesPassword'];
+
 interface BranchManagerOption {
   id: string;
   firstName: string;
@@ -24,6 +38,19 @@ interface SalesRepUser {
 }
 
 const NEW_MANAGER_OPTION_VALUE = '__new_branch_manager__';
+
+const focusFirstError = (nextErrors: Record<string, string>, errorOrder: string[]) => {
+  const firstErrorKey = errorOrder.find((key) => nextErrors[key]);
+  if (!firstErrorKey) return;
+
+  window.setTimeout(() => {
+    const element = document.getElementById(firstErrorKey);
+    if (!element) return;
+
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.focus({ preventScroll: true });
+  }, 0);
+};
 
 export default function EditBranch() {
   const navigate = useNavigate();
@@ -184,7 +211,7 @@ export default function EditBranch() {
     if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
       newErrors.branchMultiplier = 'Mark-up must be between 1 and 10';
     }
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email && !EMAIL_REGEX.test(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
     if (formData.enableSlabPricing && slabs.length === 0) {
@@ -203,7 +230,27 @@ export default function EditBranch() {
     }
 
     setErrors(newErrors);
+    focusFirstError(newErrors, BRANCH_ERROR_ORDER);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const validateNewManager = () => {
+    const nextErrors: Record<string, string> = {};
+    if (!newManager.firstName.trim()) nextErrors.newManagerFirstName = 'First name is required';
+    if (!newManager.lastName.trim()) nextErrors.newManagerLastName = 'Last name is required';
+    if (!newManager.email.trim()) {
+      nextErrors.newManagerEmail = 'Email is required';
+    } else if (!EMAIL_REGEX.test(newManager.email)) {
+      nextErrors.newManagerEmail = 'Invalid email format';
+    }
+
+    setErrors((prev) => {
+      const updated = { ...prev };
+      NEW_MANAGER_ERROR_ORDER.forEach((key) => delete updated[key]);
+      return { ...updated, ...nextErrors };
+    });
+    focusFirstError(nextErrors, NEW_MANAGER_ERROR_ORDER);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const validateSalesRepForm = () => {
@@ -211,14 +258,19 @@ export default function EditBranch() {
     if (!salesRepForm.firstName.trim()) nextErrors.salesFirstName = 'First name is required';
     if (!salesRepForm.lastName.trim()) nextErrors.salesLastName = 'Last name is required';
     if (!salesRepForm.email.trim()) nextErrors.salesEmail = 'Email is required';
-    if (salesRepForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(salesRepForm.email)) {
+    if (salesRepForm.email && !EMAIL_REGEX.test(salesRepForm.email)) {
       nextErrors.salesEmail = 'Invalid email format';
     }
     if (!salesRepForm.password.trim()) nextErrors.salesPassword = 'Password is required';
     if (salesRepForm.password.trim().length > 0 && salesRepForm.password.trim().length < 8) {
       nextErrors.salesPassword = 'Password must be at least 8 characters';
     }
-    setErrors((prev) => ({ ...prev, ...nextErrors }));
+    setErrors((prev) => {
+      const updated = { ...prev };
+      SALES_REP_ERROR_ORDER.forEach((key) => delete updated[key]);
+      return { ...updated, ...nextErrors };
+    });
+    focusFirstError(nextErrors, SALES_REP_ERROR_ORDER);
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -304,7 +356,7 @@ export default function EditBranch() {
         <h1 className="text-2xl font-bold text-gray-900">Edit Branch</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         {errors.submit && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">{errors.submit}</div>
         )}
@@ -314,6 +366,7 @@ export default function EditBranch() {
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
               <select
+                id="companyId"
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
                   errors.companyId ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -334,6 +387,7 @@ export default function EditBranch() {
             </div>
 
             <Input
+              id="name"
               label="Branch Name *"
               value={formData.name}
               onChange={(event) => setFormData({ ...formData, name: event.target.value })}
@@ -342,6 +396,7 @@ export default function EditBranch() {
               required
             />
             <Input
+              id="code"
               label="Branch Code *"
               value={formData.code}
               onChange={(event) => setFormData({ ...formData, code: event.target.value.toUpperCase().replace(/\s+/g, '') })}
@@ -350,6 +405,7 @@ export default function EditBranch() {
               required
             />
             <Input
+              id="email"
               label="Branch Email"
               type="email"
               value={formData.email}
@@ -397,6 +453,7 @@ export default function EditBranch() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
+                    id="shipStreetAddress"
                     label="Street Address"
                     value={formData.shipStreetAddress}
                     onChange={(e) => setFormData({ ...formData, shipStreetAddress: e.target.value })}
@@ -484,6 +541,7 @@ export default function EditBranch() {
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Assign Existing Branch Manager</label>
                 <select
+                  id="branchManagerId"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                   value={managerSelectValue}
                   disabled={!formData.companyId}
@@ -538,23 +596,29 @@ export default function EditBranch() {
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
+                    id="newManagerFirstName"
                     label="First Name *"
                     value={newManager.firstName}
                     onChange={(event) => setNewManager({ ...newManager, firstName: event.target.value })}
                     placeholder="Ava"
+                    error={errors.newManagerFirstName}
                   />
                   <Input
+                    id="newManagerLastName"
                     label="Last Name *"
                     value={newManager.lastName}
                     onChange={(event) => setNewManager({ ...newManager, lastName: event.target.value })}
                     placeholder="Patel"
+                    error={errors.newManagerLastName}
                   />
                   <Input
+                    id="newManagerEmail"
                     label="Email *"
                     type="email"
                     value={newManager.email}
                     onChange={(event) => setNewManager({ ...newManager, email: event.target.value })}
                     placeholder="ava.patel@company.com"
+                    error={errors.newManagerEmail}
                   />
                   <Input
                     label="Phone"
@@ -568,7 +632,7 @@ export default function EditBranch() {
                     type="button"
                     size="sm"
                     onClick={() => {
-                      if (!newManager.firstName || !newManager.lastName || !newManager.email) {
+                      if (!validateNewManager()) {
                         return;
                       }
                       setPendingManagerData({
@@ -605,6 +669,7 @@ export default function EditBranch() {
         <Card title="Branch Pricing">
           <div className="space-y-4">
             <Input
+              id="branchMultiplier"
               label="Default Branch Mark-up *"
               type="number"
               min="1"
@@ -627,7 +692,7 @@ export default function EditBranch() {
             </label>
 
             {formData.enableSlabPricing && (
-              <div className="p-4 bg-gray-50 rounded-lg">
+              <div id="pricingSlabs" tabIndex={-1} className="p-4 bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <PricingSlabTable slabs={slabs} setSlabs={setSlabs} />
                 {errors.pricingSlabs && <p className="text-sm text-red-600 mt-2">{errors.pricingSlabs}</p>}
               </div>
@@ -639,18 +704,21 @@ export default function EditBranch() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Input
+                id="salesFirstName"
                 label="First Name *"
                 value={salesRepForm.firstName}
                 onChange={(event) => setSalesRepForm({ ...salesRepForm, firstName: event.target.value })}
                 error={errors.salesFirstName}
               />
               <Input
+                id="salesLastName"
                 label="Last Name *"
                 value={salesRepForm.lastName}
                 onChange={(event) => setSalesRepForm({ ...salesRepForm, lastName: event.target.value })}
                 error={errors.salesLastName}
               />
               <Input
+                id="salesEmail"
                 label="Email *"
                 type="email"
                 value={salesRepForm.email}
@@ -658,6 +726,7 @@ export default function EditBranch() {
                 error={errors.salesEmail}
               />
               <Input
+                id="salesPassword"
                 label="Temporary Password *"
                 type="password"
                 value={salesRepForm.password}

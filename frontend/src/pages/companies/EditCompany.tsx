@@ -12,6 +12,24 @@ import CollectionPricingTable, {
 import api from '../../services/api';
 import { formatAddressLocation } from '../../utils/address';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const COMPANY_ERROR_ORDER = [
+  'companyName',
+  'primaryEmail',
+  'shipStreetAddress',
+  'defaultMultiplier',
+  'slabs',
+  'collections',
+];
+const NEW_BRANCH_ERROR_ORDER = ['newBranchName', 'newBranchCode', 'newBranchEmail', 'newBranchMultiplier'];
+const NEW_USER_ERROR_ORDER = [
+  'newUserFirstName',
+  'newUserLastName',
+  'newUserEmail',
+  'newUserPassword',
+  'newUserBranch',
+];
+
 type QuickUserRole = 'COMPANY_ADMIN' | 'BRANCH_MANAGER' | 'SALES_REP';
 
 const QUICK_USER_ROLE_OPTIONS: { value: QuickUserRole; label: string }[] = [
@@ -110,15 +128,9 @@ export default function EditCompany() {
     fetchAccountManagers();
   }, [id]);
 
-  const focusFirstError = (nextErrors: Record<string, string>) => {
-    const firstKey = [
-      'companyName',
-      'primaryEmail',
-      'defaultMultiplier',
-      'slabs',
-      'collections',
-    ].find((key) => nextErrors[key]);
-    const target = firstKey ? fieldRefs.current[firstKey] : null;
+  const focusFirstError = (nextErrors: Record<string, string>, errorOrder = COMPANY_ERROR_ORDER) => {
+    const firstKey = errorOrder.find((key) => nextErrors[key]);
+    const target = firstKey ? fieldRefs.current[firstKey] || document.getElementById(firstKey) : null;
 
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -213,8 +225,11 @@ export default function EditCompany() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
-    if (formData.primaryEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.primaryEmail)) {
+    if (formData.primaryEmail && !EMAIL_REGEX.test(formData.primaryEmail)) {
       newErrors.primaryEmail = 'Invalid email format';
+    }
+    if (formData.shipToType === 'CUSTOM' && !formData.shipStreetAddress.trim()) {
+      newErrors.shipStreetAddress = 'Shipping address is required for custom shipping';
     }
     if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
       newErrors.defaultMultiplier = 'Mark-up must be between 1 and 10';
@@ -301,17 +316,18 @@ export default function EditCompany() {
     if (newBranchData.branchMultiplier < 1 || newBranchData.branchMultiplier > 10) {
       nextErrors.newBranchMultiplier = 'Mark-up must be between 1 and 10';
     }
-    if (newBranchData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newBranchData.email)) {
+    if (newBranchData.email && !EMAIL_REGEX.test(newBranchData.email)) {
       nextErrors.newBranchEmail = 'Invalid email format';
     }
 
     setErrors((prev) => {
       const next = { ...prev };
-      ['newBranchName', 'newBranchCode', 'newBranchMultiplier', 'newBranchEmail', 'newBranchSubmit'].forEach((key) => {
+      [...NEW_BRANCH_ERROR_ORDER, 'newBranchSubmit'].forEach((key) => {
         delete next[key];
       });
       return { ...next, ...nextErrors };
     });
+    focusFirstError(nextErrors, NEW_BRANCH_ERROR_ORDER);
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -321,7 +337,7 @@ export default function EditCompany() {
     if (!newUserData.firstName.trim()) nextErrors.newUserFirstName = 'First name is required';
     if (!newUserData.lastName.trim()) nextErrors.newUserLastName = 'Last name is required';
     if (!newUserData.email.trim()) nextErrors.newUserEmail = 'Email is required';
-    if (newUserData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUserData.email)) {
+    if (newUserData.email && !EMAIL_REGEX.test(newUserData.email)) {
       nextErrors.newUserEmail = 'Invalid email format';
     }
     if (!newUserData.password.trim()) {
@@ -335,11 +351,12 @@ export default function EditCompany() {
 
     setErrors((prev) => {
       const next = { ...prev };
-      ['newUserFirstName', 'newUserLastName', 'newUserEmail', 'newUserPassword', 'newUserBranch', 'newUserSubmit'].forEach((key) => {
+      [...NEW_USER_ERROR_ORDER, 'newUserSubmit'].forEach((key) => {
         delete next[key];
       });
       return { ...next, ...nextErrors };
     });
+    focusFirstError(nextErrors, NEW_USER_ERROR_ORDER);
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -454,7 +471,7 @@ export default function EditCompany() {
         <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         <FloatingErrorToast
           message={errors.submit}
           onClose={() => setErrors((prev) => {
@@ -468,6 +485,7 @@ export default function EditCompany() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div ref={(element) => { fieldRefs.current.companyName = element; }}>
               <Input
+                id="companyName"
                 label="Company Name *"
                 value={formData.companyName}
                 onChange={(event) => setFormData({ ...formData, companyName: event.target.value })}
@@ -502,6 +520,7 @@ export default function EditCompany() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div ref={(element) => { fieldRefs.current.primaryEmail = element; }}>
               <Input
+                id="primaryEmail"
                 label="Primary Email"
                 type="email"
                 value={formData.primaryEmail}
@@ -614,10 +633,12 @@ export default function EditCompany() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
+                    id="shipStreetAddress"
                     label="Street Address"
                     value={formData.shipStreetAddress}
                     onChange={(event) => setFormData({ ...formData, shipStreetAddress: event.target.value })}
                     placeholder="456 Shipping Lane"
+                    error={errors.shipStreetAddress}
                   />
                 </div>
                 <Input
@@ -656,6 +677,7 @@ export default function EditCompany() {
               <div ref={(element) => { fieldRefs.current.defaultMultiplier = element; }} className="max-w-xs">
                 <Input
                   type="number"
+                  id="defaultMultiplier"
                   step="0.01"
                   min="1"
                   max="10"
@@ -686,7 +708,12 @@ export default function EditCompany() {
             </div>
 
             {formData.enableSlabPricing && (
-              <div ref={(element) => { fieldRefs.current.slabs = element; }} className="ml-6 p-4 bg-gray-50 rounded-lg">
+              <div
+                id="slabs"
+                ref={(element) => { fieldRefs.current.slabs = element; }}
+                tabIndex={-1}
+                className="ml-6 p-4 bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
                 <PricingSlabTable slabs={slabs} setSlabs={setSlabs} />
                 {errors.slabs && <p className="text-sm text-red-600 mt-2">{errors.slabs}</p>}
               </div>
@@ -706,7 +733,12 @@ export default function EditCompany() {
             </div>
 
             {formData.enableCollectionPricing && (
-              <div ref={(element) => { fieldRefs.current.collections = element; }} className="ml-6 p-4 bg-gray-50 rounded-lg">
+              <div
+                id="collections"
+                ref={(element) => { fieldRefs.current.collections = element; }}
+                tabIndex={-1}
+                className="ml-6 p-4 bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
                 <CollectionPricingTable overrides={collectionOverrides} setOverrides={setCollectionOverrides} />
                 {errors.collections && <p className="text-sm text-red-600 mt-2">{errors.collections}</p>}
               </div>
@@ -732,6 +764,7 @@ export default function EditCompany() {
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
+                    id="newBranchName"
                     label="Branch Name *"
                     value={newBranchData.name}
                     onChange={(event) => setNewBranchData({ ...newBranchData, name: event.target.value })}
@@ -739,6 +772,7 @@ export default function EditCompany() {
                     placeholder="Downtown Branch"
                   />
                   <Input
+                    id="newBranchCode"
                     label="Branch Code *"
                     value={newBranchData.code}
                     onChange={(event) => setNewBranchData({ ...newBranchData, code: event.target.value.toUpperCase().replace(/\s+/g, '') })}
@@ -746,6 +780,7 @@ export default function EditCompany() {
                     placeholder="DOWNTOWN"
                   />
                   <Input
+                    id="newBranchEmail"
                     label="Branch Email"
                     type="email"
                     value={newBranchData.email}
@@ -760,6 +795,7 @@ export default function EditCompany() {
                     placeholder="+1-555-0100"
                   />
                   <Input
+                    id="newBranchMultiplier"
                     label="Branch Mark-up *"
                     type="number"
                     min="1"
@@ -882,6 +918,7 @@ export default function EditCompany() {
               <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
+                    id="newUserFirstName"
                     label="First Name *"
                     value={newUserData.firstName}
                     onChange={(event) => setNewUserData({ ...newUserData, firstName: event.target.value })}
@@ -889,6 +926,7 @@ export default function EditCompany() {
                     placeholder="John"
                   />
                   <Input
+                    id="newUserLastName"
                     label="Last Name *"
                     value={newUserData.lastName}
                     onChange={(event) => setNewUserData({ ...newUserData, lastName: event.target.value })}
@@ -896,6 +934,7 @@ export default function EditCompany() {
                     placeholder="Doe"
                   />
                   <Input
+                    id="newUserEmail"
                     label="Email *"
                     type="email"
                     value={newUserData.email}
@@ -904,6 +943,7 @@ export default function EditCompany() {
                     placeholder="john@company.com"
                   />
                   <Input
+                    id="newUserPassword"
                     label="Temporary Password *"
                     type="password"
                     value={newUserData.password}
@@ -943,6 +983,7 @@ export default function EditCompany() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
                       <select
+                        id="newUserBranch"
                         className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
                           errors.newUserBranch ? 'border-red-500' : 'border-gray-300'
                         }`}

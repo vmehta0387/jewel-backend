@@ -6,6 +6,19 @@ import Button from '../../components/common/Button';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import api from '../../services/api';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BRANCH_ERROR_ORDER = [
+  'companyId',
+  'name',
+  'code',
+  'email',
+  'shipStreetAddress',
+  'branchManagerId',
+  'branchMultiplier',
+  'pricingSlabs',
+];
+const NEW_MANAGER_ERROR_ORDER = ['newManagerFirstName', 'newManagerLastName', 'newManagerEmail'];
+
 interface BranchManagerOption {
   id: string;
   firstName: string;
@@ -14,6 +27,19 @@ interface BranchManagerOption {
 }
 
 const NEW_MANAGER_OPTION_VALUE = '__new_branch_manager__';
+
+const focusFirstError = (nextErrors: Record<string, string>, errorOrder: string[]) => {
+  const firstErrorKey = errorOrder.find((key) => nextErrors[key]);
+  if (!firstErrorKey) return;
+
+  window.setTimeout(() => {
+    const element = document.getElementById(firstErrorKey);
+    if (!element) return;
+
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.focus({ preventScroll: true });
+  }, 0);
+};
 
 export default function AddBranch() {
   const navigate = useNavigate();
@@ -97,7 +123,7 @@ export default function AddBranch() {
     if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
       newErrors.branchMultiplier = 'Mark-up must be between 1 and 10';
     }
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+    if (formData.email && !EMAIL_REGEX.test(formData.email)) {
       newErrors.email = 'Invalid email format';
     }
     if (formData.enableSlabPricing && slabs.length === 0) {
@@ -116,7 +142,27 @@ export default function AddBranch() {
     }
 
     setErrors(newErrors);
+    focusFirstError(newErrors, BRANCH_ERROR_ORDER);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const validateNewManager = () => {
+    const nextErrors: Record<string, string> = {};
+    if (!newManager.firstName.trim()) nextErrors.newManagerFirstName = 'First name is required';
+    if (!newManager.lastName.trim()) nextErrors.newManagerLastName = 'Last name is required';
+    if (!newManager.email.trim()) {
+      nextErrors.newManagerEmail = 'Email is required';
+    } else if (!EMAIL_REGEX.test(newManager.email)) {
+      nextErrors.newManagerEmail = 'Invalid email format';
+    }
+
+    setErrors((prev) => {
+      const updated = { ...prev };
+      NEW_MANAGER_ERROR_ORDER.forEach((key) => delete updated[key]);
+      return { ...updated, ...nextErrors };
+    });
+    focusFirstError(nextErrors, NEW_MANAGER_ERROR_ORDER);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -159,7 +205,7 @@ export default function AddBranch() {
         <h1 className="text-2xl font-bold text-gray-900">Add New Branch</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6" noValidate>
         {errors.submit && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">{errors.submit}</div>
         )}
@@ -169,6 +215,7 @@ export default function AddBranch() {
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
               <select
+                id="companyId"
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
                   errors.companyId ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -189,6 +236,7 @@ export default function AddBranch() {
             </div>
 
             <Input
+              id="name"
               label="Branch Name *"
               value={formData.name}
               onChange={(event) => setFormData({ ...formData, name: event.target.value })}
@@ -197,6 +245,7 @@ export default function AddBranch() {
               required
             />
             <Input
+              id="code"
               label="Branch Code *"
               value={formData.code}
               onChange={(event) => setFormData({ ...formData, code: event.target.value.toUpperCase().replace(/\s+/g, '') })}
@@ -205,6 +254,7 @@ export default function AddBranch() {
               required
             />
             <Input
+              id="email"
               label="Branch Email"
               type="email"
               value={formData.email}
@@ -252,6 +302,7 @@ export default function AddBranch() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mt-4 p-4 bg-gray-50 rounded-lg">
                 <div className="col-span-2">
                   <Input
+                    id="shipStreetAddress"
                     label="Street Address"
                     value={formData.shipStreetAddress}
                     onChange={(e) => setFormData({ ...formData, shipStreetAddress: e.target.value })}
@@ -339,6 +390,7 @@ export default function AddBranch() {
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Assign Existing Branch Manager</label>
                 <select
+                  id="branchManagerId"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                   value={managerSelectValue}
                   disabled={!formData.companyId}
@@ -372,23 +424,29 @@ export default function AddBranch() {
               <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
+                    id="newManagerFirstName"
                     label="First Name *"
                     value={newManager.firstName}
                     onChange={(event) => setNewManager({ ...newManager, firstName: event.target.value })}
                     placeholder="Ava"
+                    error={errors.newManagerFirstName}
                   />
                   <Input
+                    id="newManagerLastName"
                     label="Last Name *"
                     value={newManager.lastName}
                     onChange={(event) => setNewManager({ ...newManager, lastName: event.target.value })}
                     placeholder="Patel"
+                    error={errors.newManagerLastName}
                   />
                   <Input
+                    id="newManagerEmail"
                     label="Email *"
                     type="email"
                     value={newManager.email}
                     onChange={(event) => setNewManager({ ...newManager, email: event.target.value })}
                     placeholder="ava.patel@company.com"
+                    error={errors.newManagerEmail}
                   />
                   <Input
                     label="Phone"
@@ -402,7 +460,7 @@ export default function AddBranch() {
                     type="button"
                     size="sm"
                     onClick={() => {
-                      if (!newManager.firstName || !newManager.lastName || !newManager.email) {
+                      if (!validateNewManager()) {
                         return;
                       }
                       setPendingManagerData({
@@ -439,6 +497,7 @@ export default function AddBranch() {
         <Card title="Branch Pricing">
           <div className="space-y-4">
             <Input
+              id="branchMultiplier"
               label="Default Branch Mark-up *"
               type="number"
               min="1"
@@ -461,7 +520,7 @@ export default function AddBranch() {
             </label>
 
             {formData.enableSlabPricing && (
-              <div className="p-4 bg-gray-50 rounded-lg">
+              <div id="pricingSlabs" tabIndex={-1} className="p-4 bg-gray-50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <PricingSlabTable slabs={slabs} setSlabs={setSlabs} />
                 {errors.pricingSlabs && <p className="text-sm text-red-600 mt-2">{errors.pricingSlabs}</p>}
               </div>

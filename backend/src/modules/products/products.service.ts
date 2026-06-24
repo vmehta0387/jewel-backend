@@ -3020,6 +3020,12 @@ export class ProductsService {
     if (!master) {
       throw new NotFoundException('Master value not found');
     }
+    const previousMetalCaratageValue =
+      master.masterType === DesignMasterType.METAL_CARATAGE ? master.value : null;
+    const previousMetalCaratageRate =
+      master.masterType === DesignMasterType.METAL_CARATAGE
+        ? this.toNumber(master.livePricePerGm)
+        : null;
 
     const value = dto.value !== undefined ? this.normalizeMasterValue(dto.value) : master.value;
     const normalizedValue = value.toLowerCase();
@@ -3184,7 +3190,16 @@ export class ProductsService {
       );
       await this.recalculateDesignsForDependencies({ metalCaratages: affectedMetalCaratages });
     } else if (savedMaster.masterType === DesignMasterType.METAL_CARATAGE) {
-      await this.recalculateDesignsForDependencies({ metalCaratages: [savedMaster.value] });
+      const nextMetalCaratageRate = this.toNumber(savedMaster.livePricePerGm);
+      if (previousMetalCaratageRate !== nextMetalCaratageRate) {
+        void this.recalculateDesignsForDependencies({
+          metalCaratages: Array.from(
+            new Set([previousMetalCaratageValue, savedMaster.value].filter(Boolean) as string[]),
+          ),
+        }).catch((error) => {
+          console.error('Failed to recalculate designs for metal caratage update', error);
+        });
+      }
     }
 
     return savedMaster;
