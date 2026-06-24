@@ -1620,6 +1620,7 @@ export default function ProductsPage() {
   const [inlineMasterValue, setInlineMasterValue] = useState('');
   const [inlineMasterAliasName, setInlineMasterAliasName] = useState('');
   const [inlineMasterDescription, setInlineMasterDescription] = useState('');
+  const [inlineVendorEmail, setInlineVendorEmail] = useState('');
   const [inlineFindingNo, setInlineFindingNo] = useState('');
   const [inlineJewelryGroupId, setInlineJewelryGroupId] = useState('');
   const [inlineMetalCaratage, setInlineMetalCaratage] = useState('');
@@ -2712,6 +2713,7 @@ export default function ProductsPage() {
     setInlineMasterValue('');
     setInlineMasterAliasName('');
     setInlineMasterDescription('');
+    setInlineVendorEmail('');
     setInlineFindingNo('');
     setInlineJewelryGroupId('');
     setInlineMetalCaratage('');
@@ -2817,6 +2819,7 @@ export default function ProductsPage() {
     setInlineMasterValue('');
     setInlineMasterAliasName('');
     setInlineMasterDescription('');
+    setInlineVendorEmail('');
     setInlineFindingNo('');
     setInlineJewelryGroupId(selectedJewelryGroupId);
     setInlineMetalCaratage('');
@@ -2918,6 +2921,12 @@ export default function ProductsPage() {
                 : null,
           }
         : null;
+    const vendorPayload =
+      inlineMasterType === 'VENDOR_NAME'
+        ? {
+            vendorEmail: inlineVendorEmail.trim() || null,
+          }
+        : null;
     const descriptionPayload = inlineMasterType === 'FINDING_HEAD' ? null : inlineMasterDescription.trim() || null;
 
     if (inlineMasterType === 'FINDING_HEAD') {
@@ -2970,6 +2979,7 @@ export default function ProductsPage() {
         ...(defaultWastagePayload || {}),
         ...(metalCaratagePayload || {}),
         ...(overheadRulePayload || {}),
+        ...(vendorPayload || {}),
       });
 
       const masterValue = response.data?.value || value;
@@ -9816,7 +9826,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             {inlineMasterType !== 'FINDING_HEAD' &&
             inlineMasterType !== 'METAL_CARATAGE' &&
             inlineMasterType !== 'JEWELRY_SIZE' &&
-            inlineMasterType !== 'COLLECTION' ? (
+            inlineMasterType !== 'COLLECTION' &&
+            inlineMasterType !== 'VENDOR_NAME' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
@@ -9836,6 +9847,50 @@ const createDefaultVendorRow = (): VendorRow => ({
                     onChange={(event) => setInlineMasterAliasName(event.target.value)}
                     placeholder="Alias Name"
                     required
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {inlineMasterType === 'VENDOR_NAME' ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterValue}
+                    onChange={(event) => setInlineMasterValue(event.target.value)}
+                    placeholder={masterTypeLabelMap[inlineMasterType]}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                  <input
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterAliasName}
+                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
+                    placeholder="Alias Name"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Vendor Email</label>
+                  <input
+                    type="email"
+                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineVendorEmail}
+                    onChange={(event) => setInlineVendorEmail(event.target.value)}
+                    placeholder="vendor@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                  <textarea
+                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={inlineMasterDescription}
+                    onChange={(event) => setInlineMasterDescription(event.target.value)}
+                    placeholder="Description"
                   />
                 </div>
               </div>
@@ -10109,7 +10164,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             {inlineMasterType !== 'FINDING_HEAD' &&
             inlineMasterType !== 'METAL_CARATAGE' &&
             inlineMasterType !== 'JEWELRY_SIZE' &&
-            inlineMasterType !== 'OVERHEAD_RULE' ? (
+            inlineMasterType !== 'OVERHEAD_RULE' &&
+            inlineMasterType !== 'VENDOR_NAME' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>

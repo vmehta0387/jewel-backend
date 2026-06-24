@@ -231,13 +231,6 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     hint: 'Labor line item heads',
   },
   {
-    value: 'LABOR_RULE',
-    label: 'Labor Master',
-    icon: 'LR',
-    accentClass: 'bg-violet-50 text-violet-700 ring-violet-200',
-    hint: 'Flat, per-stone, per-gram and per-group labor rules',
-  },
-  {
     value: 'OVERHEAD_RULE',
     label: 'Overhead Master',
     icon: 'OH',
@@ -1291,7 +1284,7 @@ function MasterModal({
                 </div>
               ) : null}
 
-              {!isCategoryScopedType ? (
+              {!isCategoryScopedType && !isVendorType && !isLaborRuleType && !isOverheadRuleType ? (
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
                 <textarea
