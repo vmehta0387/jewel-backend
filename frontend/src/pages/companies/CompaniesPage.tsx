@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
+import { formatAddressLocation } from '../../utils/address';
 
 export default function CompaniesPage() {
   const navigate = useNavigate();
@@ -17,24 +18,39 @@ export default function CompaniesPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const pageSize = 15;
-  const totalPages = Math.max(1, Math.ceil(companies.length / pageSize));
-  const pagedCompanies = companies.slice((page - 1) * pageSize, page * pageSize);
-  const showingFrom = companies.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const showingTo = Math.min(page * pageSize, companies.length);
+  const showingFrom = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min((page - 1) * pageSize + companies.length, totalRecords);
+  const companiesWithSerial = companies.map((company, index) => ({
+    ...company,
+    serialNumber: showingFrom + index,
+  }));
 
   const fetchCompanies = async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number> = {
+        page,
+        limit: pageSize,
+      };
 
       if (searchTerm) params.search = searchTerm;
 
       const response = await api.get('/companies', { params });
-      setCompanies(response.data.data || []);
+      const nextCompanies = response.data.data || [];
+      const nextTotalRecords = Number(response.data.total ?? nextCompanies.length);
+      const nextTotalPages = Math.max(1, Number(response.data.totalPages ?? Math.ceil(nextTotalRecords / pageSize)));
+
+      setCompanies(nextCompanies);
+      setTotalRecords(nextTotalRecords);
+      setTotalPages(nextTotalPages);
     } catch {
       setCompanies([]);
+      setTotalRecords(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -42,29 +58,33 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     fetchCompanies();
-  }, [searchTerm]);
+  }, [searchTerm, page]);
 
   useEffect(() => {
-    setPage(1);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    if (page > totalPages) {
+    if (!loading && page > totalPages) {
       setPage(totalPages);
     }
-  }, [page, totalPages]);
+  }, [loading, page, totalPages]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setPage(1);
     setSearchTerm(searchInput.trim());
   };
 
   const handleClearSearch = () => {
     setSearchInput('');
+    setPage(1);
     setSearchTerm('');
   };
 
   const columns = [
+    {
+      key: 'serialNumber',
+      label: '#',
+      headerClassName: 'w-16',
+      cellClassName: 'w-16 font-semibold text-slate-600',
+    },
     { key: 'companyCode', label: 'Code' },
     { key: 'companyName', label: 'Company Name' },
     {
@@ -77,7 +97,7 @@ export default function CompaniesPage() {
     {
       key: 'city',
       label: 'Location',
-      render: (val: string, row: any) => <span>{val ? `${val}, ${row.country || ''}` : '-'}</span>,
+      render: (_: string, row: any) => <span>{formatAddressLocation(row)}</span>,
     },
     {
       key: 'defaultMultiplier',
@@ -176,7 +196,7 @@ export default function CompaniesPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">Company Directory</h2>
           <span className="text-xs text-gray-600">
-            Showing {showingFrom}–{showingTo} of {companies.length} record{companies.length === 1 ? '' : 's'}
+            Showing {showingFrom}–{showingTo} of {totalRecords} record{totalRecords === 1 ? '' : 's'}
           </span>
         </div>
         {loading ? (
@@ -185,8 +205,8 @@ export default function CompaniesPage() {
           <div className="text-center py-12 text-gray-500">No companies found for selected filters.</div>
         ) : (
           <>
-            <Table columns={columns} data={pagedCompanies} />
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            <Table columns={columns} data={companiesWithSerial} />
+            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
           </>
         )}
       </Card>

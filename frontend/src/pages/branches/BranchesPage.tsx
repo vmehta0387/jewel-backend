@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
+import { formatAddressLocation } from '../../utils/address';
 
 export default function BranchesPage() {
   const navigate = useNavigate();
@@ -19,24 +20,39 @@ export default function BranchesPage() {
   const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const pageSize = 15;
-  const totalPages = Math.max(1, Math.ceil(branches.length / pageSize));
-  const pagedBranches = branches.slice((page - 1) * pageSize, page * pageSize);
-  const showingFrom = branches.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const showingTo = Math.min(page * pageSize, branches.length);
+  const showingFrom = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
+  const showingTo = Math.min((page - 1) * pageSize + branches.length, totalRecords);
+  const branchesWithSerial = branches.map((branch, index) => ({
+    ...branch,
+    serialNumber: showingFrom + index,
+  }));
 
   const fetchBranches = async () => {
     setLoading(true);
     try {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number> = {
+        page,
+        limit: pageSize,
+      };
 
       if (searchTerm) params.search = searchTerm;
 
       const response = await api.get('/branches', { params });
-      setBranches(response.data.data || []);
+      const nextBranches = response.data.data || [];
+      const nextTotalRecords = Number(response.data.total ?? nextBranches.length);
+      const nextTotalPages = Math.max(1, Number(response.data.totalPages ?? Math.ceil(nextTotalRecords / pageSize)));
+
+      setBranches(nextBranches);
+      setTotalRecords(nextTotalRecords);
+      setTotalPages(nextTotalPages);
     } catch {
       setBranches([]);
+      setTotalRecords(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -44,29 +60,33 @@ export default function BranchesPage() {
 
   useEffect(() => {
     fetchBranches();
-  }, [searchTerm]);
+  }, [searchTerm, page]);
 
   useEffect(() => {
-    setPage(1);
-  }, [searchTerm]);
-
-  useEffect(() => {
-    if (page > totalPages) {
+    if (!loading && page > totalPages) {
       setPage(totalPages);
     }
-  }, [page, totalPages]);
+  }, [loading, page, totalPages]);
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setPage(1);
     setSearchTerm(searchInput.trim());
   };
 
   const handleClearSearch = () => {
     setSearchInput('');
+    setPage(1);
     setSearchTerm('');
   };
 
   const columns = [
+    {
+      key: 'serialNumber',
+      label: '#',
+      headerClassName: 'w-16',
+      cellClassName: 'w-16 font-semibold text-slate-600',
+    },
     { key: 'code', label: 'Code' },
     { key: 'name', label: 'Branch Name' },
     {
@@ -77,7 +97,7 @@ export default function BranchesPage() {
     {
       key: 'city',
       label: 'Location',
-      render: (val: string, row: any) => <span>{val ? `${val}, ${row.country || ''}` : '-'}</span>,
+      render: (_: string, row: any) => <span>{formatAddressLocation(row)}</span>,
     },
     {
       key: 'branchManager',
@@ -181,7 +201,7 @@ export default function BranchesPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">Branch Directory</h2>
           <span className="text-xs text-gray-600">
-            Showing {showingFrom}–{showingTo} of {branches.length} record{branches.length === 1 ? '' : 's'}
+            Showing {showingFrom}–{showingTo} of {totalRecords} record{totalRecords === 1 ? '' : 's'}
           </span>
         </div>
         {loading ? (
@@ -190,7 +210,7 @@ export default function BranchesPage() {
           <div className="text-center py-12 text-gray-500">No branches found for selected filters.</div>
         ) : (
           <>
-            <Table columns={columns} data={pagedBranches} />
+            <Table columns={columns} data={branchesWithSerial} tableClassName="min-w-[1100px]" />
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </>
         )}

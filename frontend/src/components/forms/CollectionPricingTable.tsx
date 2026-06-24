@@ -1,8 +1,8 @@
 import Button from '../common/Button';
 
-interface CollectionOverride {
+export interface CollectionOverride {
   collectionType: string;
-  multiplier: number;
+  multiplier: number | '';
 }
 
 interface Props {
@@ -17,9 +17,39 @@ const collectionTypes = [
   { value: 'WEDDING_BANDS', label: 'Wedding Bands' },
 ];
 
+export function validateCollectionOverrides(overrides: CollectionOverride[]): string | null {
+  const seen = new Map<string, number>();
+
+  for (let index = 0; index < overrides.length; index += 1) {
+    const override = overrides[index];
+    const rowLabel = `Row ${index + 1}`;
+
+    if (!override.collectionType) {
+      return `${rowLabel}: Select a collection type`;
+    }
+
+    if (override.multiplier === '' || Number.isNaN(override.multiplier)) {
+      return `${rowLabel}: Mark-up is required and must be a valid number between 1 and 10`;
+    }
+
+    if (override.multiplier < 1 || override.multiplier > 10) {
+      return `${rowLabel}: Mark-up must be between 1 and 10`;
+    }
+
+    const key = override.collectionType.trim();
+    const duplicateRow = seen.get(key);
+    if (duplicateRow !== undefined) {
+      return `${rowLabel}: Collection Type already exists in Row ${duplicateRow + 1}`;
+    }
+    seen.set(key, index);
+  }
+
+  return null;
+}
+
 export default function CollectionPricingTable({ overrides, setOverrides }: Props) {
   const addOverride = () => {
-    setOverrides([...overrides, { collectionType: 'ENGAGEMENT', multiplier: 1.0 }]);
+    setOverrides([...overrides, { collectionType: '', multiplier: '' }]);
   };
 
   const updateOverride = <K extends keyof CollectionOverride>(
@@ -57,6 +87,7 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
                       value={override.collectionType}
                       onChange={(e) => updateOverride(idx, 'collectionType', e.target.value)}
                     >
+                      <option value="">Select Collection Type</option>
                       {collectionTypes.map((type) => (
                         <option key={type.value} value={type.value}>
                           {type.label}
@@ -67,10 +98,14 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
                   <td className="app-table-cell">
                     <input
                       type="number"
+                      min="1"
                       step="0.1"
                       className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
                       value={override.multiplier}
-                      onChange={(e) => updateOverride(idx, 'multiplier', parseFloat(e.target.value))}
+                      onChange={(e) => {
+                        if (e.target.value.startsWith('-')) return;
+                        updateOverride(idx, 'multiplier', e.target.value === '' ? '' : parseFloat(e.target.value));
+                      }}
                     />
                   </td>
                   <td className="app-table-cell text-right">

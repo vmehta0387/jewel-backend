@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
@@ -1730,6 +1730,27 @@ export default function DesignMastersPage() {
     selectedType,
   ]);
 
+  const handleMetalPurityChange = useCallback((value: string) => {
+    setFormMetalPurity(value);
+
+    if (selectedType !== 'METAL_CARATAGE') {
+      return;
+    }
+
+    const selectedPurity = metalMasterOptions.metalPurities.find(
+      (row) => row.value === value && (!formMetalName || row.metalName === formMetalName),
+    );
+    const purityPercent = selectedPurity?.purityPercentage;
+    if (purityPercent !== undefined && purityPercent !== null) {
+      setFormPurityPercentage(String(purityPercent));
+    }
+
+    const basePricePerGm = metalMasterOptions.metalNames.find((row) => row.value === formMetalName)?.marketPricePerGm ?? 0;
+    if (basePricePerGm > 0 && purityPercent !== undefined && purityPercent !== null && purityPercent > 0) {
+      setFormLivePricePerGm(((basePricePerGm * purityPercent) / 100).toFixed(2));
+    }
+  }, [formMetalName, metalMasterOptions.metalNames, metalMasterOptions.metalPurities, selectedType]);
+
   const fetchRows = async () => {
     setLoading(true);
     try {
@@ -2629,7 +2650,6 @@ export default function DesignMastersPage() {
                     <th className="app-table-head-cell">Size</th>
                     <th className="app-table-head-cell">Color</th>
                     <th className="app-table-head-cell">Quality</th>
-                    <th className="app-table-head-cell">Pieces</th>
                     <th className="app-table-head-cell">Weight</th>
                     <th className="app-table-head-cell">Unit</th>
                     <th className="app-table-head-cell">Created</th>
@@ -2640,13 +2660,13 @@ export default function DesignMastersPage() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={14} className="app-table-empty">
+                      <td colSpan={13} className="app-table-empty">
                         Loading records...
                       </td>
                     </tr>
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={14} className="app-table-empty">
+                      <td colSpan={13} className="app-table-empty">
                         No records found.
                       </td>
                     </tr>
@@ -2661,7 +2681,6 @@ export default function DesignMastersPage() {
                         <td className="app-table-cell text-sm text-slate-700">{row.size || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.color || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.quality || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.pieces}</td>
                         <td className="app-table-cell text-sm text-slate-700">{Number(row.weight || 0).toFixed(3)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.weightUnit}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
@@ -3339,7 +3358,7 @@ export default function DesignMastersPage() {
           onChangeMetalCaratage={setFormMetalCaratage}
           onChangeMetalName={setFormMetalName}
           onChangeMetalColor={setFormMetalColor}
-          onChangeMetalPurity={setFormMetalPurity}
+          onChangeMetalPurity={handleMetalPurityChange}
           onChangePurityPercentage={setFormPurityPercentage}
           onChangeMarketPricePerOunce={setFormMarketPricePerOunce}
           onChangeMarketPricePerGm={setFormMarketPricePerGm}
