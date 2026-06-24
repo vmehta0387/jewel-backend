@@ -41,6 +41,7 @@ interface MasterOption {
   id: string;
   value: string;
   aliasName?: string;
+  vendorEmail?: string | null;
   jewelryGroupId?: string;
   jewelryGroup?: string;
   metalName?: string;
@@ -59,6 +60,7 @@ interface MasterRow {
   jewelryGroupId?: string | null;
   jewelryGroup?: string | null;
   description?: string | null;
+  vendorEmail?: string | null;
   findingNo?: string | null;
   metalCaratage?: string | null;
   priceIn?: FindingPriceIn | null;
@@ -398,8 +400,10 @@ interface MasterModalProps {
   formValue: string;
   formAliasName: string;
   formDescription: string;
+  vendorEmail: string;
   isCategoryScopedType: boolean;
   isFindingType: boolean;
+  isVendorType: boolean;
   isMetalNameType: boolean;
   isMetalColorType: boolean;
   isMetalPurityType: boolean;
@@ -438,6 +442,7 @@ interface MasterModalProps {
   onChangeValue: (value: string) => void;
   onChangeAliasName: (value: string) => void;
   onChangeDescription: (value: string) => void;
+  onChangeVendorEmail: (value: string) => void;
   onChangeFindingNo: (value: string) => void;
   onChangeJewelryGroupId: (value: string) => void;
   onChangeMetalCaratage: (value: string) => void;
@@ -599,8 +604,10 @@ function MasterModal({
   formValue,
   formAliasName,
   formDescription,
+  vendorEmail,
   isCategoryScopedType,
   isFindingType,
+  isVendorType,
   isMetalNameType,
   isMetalColorType,
   isMetalPurityType,
@@ -639,6 +646,7 @@ function MasterModal({
   onChangeValue,
   onChangeAliasName,
   onChangeDescription,
+  onChangeVendorEmail,
   onChangeFindingNo,
   onChangeJewelryGroupId,
   onChangeMetalCaratage,
@@ -785,7 +793,7 @@ function MasterModal({
             </div>
           ) : null}
 
-          {!isFindingType && !isMetalCaratageType && !isCategoryScopedType ? (
+          {!isFindingType && !isMetalCaratageType && !isCategoryScopedType && !isVendorType ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
@@ -805,6 +813,50 @@ function MasterModal({
                   onChange={(event) => onChangeAliasName(event.target.value)}
                   placeholder="Alias Name"
                   required
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {isVendorType ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">{valueLabel}*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formValue}
+                  onChange={(event) => onChangeValue(event.target.value)}
+                  placeholder={valueLabel}
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                <input
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formAliasName}
+                  onChange={(event) => onChangeAliasName(event.target.value)}
+                  placeholder="Alias Name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Vendor Email</label>
+                <input
+                  type="email"
+                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={vendorEmail}
+                  onChange={(event) => onChangeVendorEmail(event.target.value)}
+                  placeholder="vendor@example.com"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+                <textarea
+                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  value={formDescription}
+                  onChange={(event) => onChangeDescription(event.target.value)}
+                  placeholder="Description"
                 />
               </div>
             </div>
@@ -1516,6 +1568,7 @@ export default function DesignMastersPage() {
   const [formValue, setFormValue] = useState('');
   const [formAliasName, setFormAliasName] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formVendorEmail, setFormVendorEmail] = useState('');
   const [formFindingNo, setFormFindingNo] = useState('');
   const [formJewelryGroupId, setFormJewelryGroupId] = useState('');
   const [formMetalCaratage, setFormMetalCaratage] = useState('');
@@ -1775,6 +1828,8 @@ export default function DesignMastersPage() {
     setFormValue('');
     setFormAliasName('');
     setFormDescription('');
+    setFormVendorEmail('');
+    setFormVendorEmail('');
     setFormFindingNo('');
     setFormJewelryGroupId('');
     setFormMetalCaratage('');
@@ -1813,6 +1868,8 @@ export default function DesignMastersPage() {
     setFormValue(row.value || '');
     setFormAliasName(row.aliasName || row.value || '');
     setFormDescription(row.description || '');
+    setFormVendorEmail(row.vendorEmail || '');
+    setFormVendorEmail(row.vendorEmail || '');
     setFormFindingNo(row.findingNo || '');
     setFormJewelryGroupId(
       row.jewelryGroupId ||
@@ -2079,6 +2136,12 @@ export default function DesignMastersPage() {
           }
         : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
+    const vendorPayload =
+      selectedType === 'VENDOR_NAME'
+        ? {
+            vendorEmail: formVendorEmail.trim() || null,
+          }
+        : null;
 
     if (selectedType === 'FINDING_HEAD') {
       if (!findingPayload?.findingNo || !findingPayload?.metalCaratage) {
@@ -2174,6 +2237,7 @@ export default function DesignMastersPage() {
           value,
           aliasName,
           description: descriptionPayload,
+          ...(vendorPayload || {}),
           ...(categoryScopedPayload || {}),
           ...(laborRulePayload || {}),
           ...(overheadRulePayload || {}),
@@ -2187,6 +2251,7 @@ export default function DesignMastersPage() {
           value,
           aliasName,
           description: descriptionPayload,
+          ...(vendorPayload || {}),
           ...(categoryScopedPayload || {}),
           ...(laborRulePayload || {}),
           ...(overheadRulePayload || {}),
@@ -3045,6 +3110,74 @@ export default function DesignMastersPage() {
                   )}
                 </tbody>
               </table>
+            ) : selectedType === 'VENDOR_NAME' ? (
+              <table className="app-table app-table-compact min-w-[1200px] w-full">
+                <thead>
+                  <tr>
+                    <th className="app-table-head-cell">#</th>
+                    <th className="app-table-head-cell">Vendor Name</th>
+                    <th className="app-table-head-cell">Alias Name</th>
+                    <th className="app-table-head-cell">Vendor Email</th>
+                    <th className="app-table-head-cell">Description</th>
+                    <th className="app-table-head-cell">Status</th>
+                    <th className="app-table-head-cell">Created</th>
+                    <th className="app-table-head-cell">Modified</th>
+                    <th className="app-table-head-cell">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="app-table-empty">Loading records...</td>
+                    </tr>
+                  ) : rowsCount === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="app-table-empty">No records found.</td>
+                    </tr>
+                  ) : (
+                    pagedMasterRows.map((row, index) => (
+                      <tr key={row.id} className="app-table-row">
+                        <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
+                        <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{getMasterDisplayName(row)}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.vendorEmail || '-'}</td>
+                        <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
+                        <td className="app-table-cell text-sm">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              row.isActive
+                                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                                : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+                            }`}
+                          >
+                            {row.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
+                        <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.updatedAt).toLocaleString()}</td>
+                        <td className="app-table-cell text-sm">
+                          <div className="flex gap-2">
+                            <button type="button" className="app-table-action" onClick={() => openEditMaster(row)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className={`app-table-action ${
+                                row.isActive
+                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                              }`}
+                              onClick={() => handleToggleStatus(row)}
+                            >
+                              {row.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             ) : (
               <table className="app-table app-table-compact min-w-[1100px] w-full">
                 <thead>
@@ -3162,8 +3295,10 @@ export default function DesignMastersPage() {
           formValue={formValue}
           formAliasName={formAliasName}
           formDescription={formDescription}
+          vendorEmail={formVendorEmail}
           isCategoryScopedType={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION'}
           isFindingType={selectedType === 'FINDING_HEAD'}
+          isVendorType={selectedType === 'VENDOR_NAME'}
           isMetalNameType={selectedType === 'METAL_NAME'}
           isMetalColorType={selectedType === 'METAL_COLOR'}
           isMetalPurityType={selectedType === 'METAL_PURITY'}
@@ -3205,6 +3340,7 @@ export default function DesignMastersPage() {
           onChangeValue={setFormValue}
           onChangeAliasName={setFormAliasName}
           onChangeDescription={setFormDescription}
+          onChangeVendorEmail={setFormVendorEmail}
           onChangeFindingNo={setFormFindingNo}
           onChangeJewelryGroupId={setFormJewelryGroupId}
           onChangeMetalCaratage={setFormMetalCaratage}

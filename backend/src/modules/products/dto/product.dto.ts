@@ -1058,6 +1058,10 @@ export class CreateDesignMasterDto {
 
   @IsString()
   @IsOptional()
+  vendorEmail?: string;
+
+  @IsString()
+  @IsOptional()
   findingNo?: string;
 
   @IsString()
@@ -1187,6 +1191,10 @@ export class UpdateDesignMasterDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorEmail?: string;
 
   @IsString()
   @IsOptional()

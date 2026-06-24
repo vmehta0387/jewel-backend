@@ -2762,6 +2762,7 @@ export class ProductsService {
     const aliasName = this.normalizeMasterAlias(dto.aliasName, value);
     const description = this.optionalText(dto.description);
     const masterType = dto.masterType as unknown as DesignMasterType;
+    const vendorEmail = this.normalizeVendorEmail(masterType, dto.vendorEmail);
     const normalizedValue = value.toLowerCase();
     const normalizedAlias = aliasName.toLowerCase();
     const findingFields =
@@ -2854,6 +2855,7 @@ export class ProductsService {
         valueMatch.aliasName = aliasName;
         valueMatch.normalizedAlias = normalizedAlias;
         valueMatch.description = description;
+        valueMatch.vendorEmail = vendorEmail;
         valueMatch.findingNo = findingFields.findingNo;
         valueMatch.metalCaratage = findingFields.metalCaratage;
         valueMatch.scopeKey = jewelrySizeFields.scopeKey;
@@ -2893,6 +2895,7 @@ export class ProductsService {
         aliasMatch.normalizedValue = normalizedValue;
         aliasMatch.aliasName = aliasName;
         aliasMatch.description = description;
+        aliasMatch.vendorEmail = vendorEmail;
         aliasMatch.findingNo = findingFields.findingNo;
         aliasMatch.metalCaratage = findingFields.metalCaratage;
         aliasMatch.scopeKey = jewelrySizeFields.scopeKey;
@@ -2936,6 +2939,7 @@ export class ProductsService {
           findingNoMatch.aliasName = aliasName;
           findingNoMatch.normalizedAlias = normalizedAlias;
           findingNoMatch.description = description;
+          findingNoMatch.vendorEmail = vendorEmail;
           findingNoMatch.findingNo = findingFields.findingNo;
           findingNoMatch.metalCaratage = findingFields.metalCaratage;
           findingNoMatch.scopeKey = jewelrySizeFields.scopeKey;
@@ -2979,6 +2983,7 @@ export class ProductsService {
       jewelryGroupId: jewelrySizeFields.jewelryGroupId,
       jewelryGroup: jewelrySizeFields.jewelryGroup,
       description,
+      vendorEmail,
       findingNo: findingFields.findingNo,
       metalCaratage: findingFields.metalCaratage,
       priceIn: findingFields.priceIn,
@@ -3025,6 +3030,10 @@ export class ProductsService {
     const normalizedAlias = aliasName.toLowerCase();
     const description =
       dto.description !== undefined ? this.optionalText(dto.description) : master.description;
+    const vendorEmail =
+      dto.vendorEmail !== undefined
+        ? this.normalizeVendorEmail(master.masterType, dto.vendorEmail)
+        : master.vendorEmail;
     const findingFields =
       master.masterType === DesignMasterType.FINDING_HEAD
         ? this.normalizeFindingMasterFields({
@@ -3141,6 +3150,7 @@ export class ProductsService {
     master.jewelryGroupId = jewelrySizeFields.jewelryGroupId;
     master.jewelryGroup = jewelrySizeFields.jewelryGroup;
     master.description = description;
+    master.vendorEmail = vendorEmail;
     master.findingNo = findingFields.findingNo;
     master.metalCaratage = findingFields.metalCaratage;
     master.priceIn = findingFields.priceIn;
@@ -6317,6 +6327,13 @@ export class ProductsService {
       throw new BadRequestException('packetName is required');
     }
     return normalized;
+  }
+
+  private normalizeVendorEmail(masterType: DesignMasterType, value?: string | null): string | null {
+    if (masterType !== DesignMasterType.VENDOR_NAME) {
+      return null;
+    }
+    return this.optionalText(value);
   }
 
   private normalizeStonePacketBarcode(value?: string | null): string | null {

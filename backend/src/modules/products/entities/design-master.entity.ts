@@ -94,6 +94,9 @@ export class DesignMaster {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ name: 'vendor_email', length: 255, nullable: true })
+  vendorEmail: string | null;
+
   @Column({ name: 'finding_no', length: 100, nullable: true })
   findingNo: string | null;
 
@@ -205,6 +208,10 @@ export class DesignMaster {
     if (this.description !== undefined && this.description !== null) {
       const normalizedDescription = this.description.trim();
       this.description = normalizedDescription.length > 0 ? normalizedDescription : null;
+    }
+    if (this.vendorEmail !== undefined && this.vendorEmail !== null) {
+      const normalizedVendorEmail = this.vendorEmail.trim();
+      this.vendorEmail = normalizedVendorEmail.length > 0 ? normalizedVendorEmail : null;
     }
     if (this.scopeKey !== undefined && this.scopeKey !== null) {
       this.scopeKey = this.scopeKey.trim();
