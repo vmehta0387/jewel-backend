@@ -50,10 +50,17 @@ interface BranchOption {
 interface DesignOption {
   id: string;
   designNo: string;
+  designName?: string | null;
   version?: string;
   jewelryGroup?: string | null;
+  collection?: string | null;
+  jewelrySize?: string | null;
+  goldColour?: string | null;
+  designStatus?: string | null;
+  stoneInfo?: string | null;
   isPrimary?: boolean;
   createdAt?: string;
+  imageUrls?: string[];
 }
 
 interface DesignMetal {
@@ -62,9 +69,11 @@ interface DesignMetal {
   goldColour?: string | null;
   netWt?: number | null;
   wastagePercent?: number | null;
+  wastageWt?: number | null;
   totalWt?: number | null;
   pricePerGm?: number | null;
   value?: number | null;
+  components?: number | null;
 }
 
 interface DesignGemstone {
@@ -114,6 +123,13 @@ interface OrderFormState {
   customerEmail: string;
   purchaseOrderNumber: string;
   notes: string;
+}
+
+interface OrderFormErrors {
+  deliveryDate?: string;
+  price?: string;
+  quantity?: string;
+  totalAmount?: string;
 }
 
 const defaultForm: OrderFormState = {
@@ -169,6 +185,23 @@ const isVideoUrl = (url: string): boolean => {
 
 const formatMoney = (value: number): string =>
   `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const calculateTotalAmount = (price: number | string | null | undefined, quantity: number | string | null | undefined): number =>
+  Number(price || 0) * Number(quantity || 0);
+const formatDisplayDate = (value?: string | null): string => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US');
+};
+const formatNumberInput = (value: number): string => {
+  if (!Number.isFinite(value)) return '';
+  return Number(value.toFixed(2)).toString();
+};
+const toDateInputValue = (value?: string | Date | null): string => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 const formatWeight = (value?: number | null): string => Number(value || 0).toFixed(3);
 const formatDesignLabel = (designNo?: string | null, version?: string | null): string => {
   const safeNo = String(designNo || '').trim();
@@ -275,6 +308,7 @@ export default function OrdersPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const [totalPages, setTotalPages] = useState(1);
   const [totalOrders, setTotalOrders] = useState(0);
 
@@ -282,9 +316,12 @@ export default function OrdersPage() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
+  const [activeToggleOrderId, setActiveToggleOrderId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
+  const [formErrors, setFormErrors] = useState<OrderFormErrors>({});
+  const [deliveryDateMin, setDeliveryDateMin] = useState(() => toDateInputValue());
   const [orderNumber, setOrderNumber] = useState('');
   const [editingDesignNo, setEditingDesignNo] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
@@ -292,9 +329,18 @@ export default function OrdersPage() {
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
   const [designDetail, setDesignDetail] = useState<DesignDetail | null>(null);
+  const [designMediaUrls, setDesignMediaUrls] = useState<string[]>([]);
+  const [showDesignFilters, setShowDesignFilters] = useState(false);
+  const [designFilters, setDesignFilters] = useState({
+    search: '',
+    jewelryGroup: '',
+    collection: '',
+    metal: '',
+  });
   const [packetLookup, setPacketLookup] = useState<Record<string, string>>({});
   const [viewOrder, setViewOrder] = useState<OrderRow | null>(null);
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
+  const [viewMediaUrls, setViewMediaUrls] = useState<string[]>([]);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ from: string; to: string } | null>(null);
   const [filters, setFilters] = useState({
     orderStatus: '',
@@ -304,9 +350,20 @@ export default function OrdersPage() {
   });
 
   const isEditing = Boolean(editingOrderId);
-  const listTableColumnCount = isSuperAdmin ? 12 : 11;
+  const listTableColumnCount = isSuperAdmin ? 13 : 12;
 
-  const pageOffset = (page - 1) * 15;
+  const pageOffset = (page - 1) * pageSize;
+  const hasActiveFilters = Boolean(filters.orderStatus || filters.companyId || filters.deliveryFrom || filters.deliveryTo);
+  const formTotalAmount = useMemo(
+    () => calculateTotalAmount(form.price, form.quantity),
+    [form.price, form.quantity],
+  );
+  const updatePriceFromTotalAmount = (totalAmount: string) => {
+    const quantity = Number(form.quantity || 0);
+    const nextPrice = quantity > 0 ? Number(totalAmount || 0) / quantity : 0;
+    setPriceManuallyEdited(true);
+    setForm((prev) => ({ ...prev, price: formatNumberInput(nextPrice) }));
+  };
 
   const loadOrders = async () => {
     if (!canViewOrders) return;
@@ -316,7 +373,7 @@ export default function OrdersPage() {
       const response = await api.get('/orders', {
         params: {
           page,
-          limit: 15,
+          limit: pageSize,
           status: showInactive ? 'INACTIVE' : 'ACTIVE',
           orderStatus: filters.orderStatus || undefined,
           companyId: filters.companyId || undefined,
@@ -392,9 +449,49 @@ export default function OrdersPage() {
     }
   };
 
+  const uniqueMediaUrls = (urls: Array<string | null | undefined>): string[] => {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    urls.forEach((rawUrl) => {
+      const url = String(rawUrl || '').trim();
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      unique.push(url);
+    });
+    return unique;
+  };
+
+  const loadDesignFamilyMedia = async (design: DesignDetail | null): Promise<string[]> => {
+    if (!design?.designNo) {
+      return uniqueMediaUrls(design?.imageUrls || []);
+    }
+
+    const baseDesignNo = getBaseDesignNo(design.designNo);
+    const currentMedia = uniqueMediaUrls(design.imageUrls || []);
+
+    try {
+      const response = await api.get('/products', {
+        params: {
+          search: baseDesignNo,
+          limit: 200,
+          status: 'ALL',
+          summaryOnly: true,
+        },
+      });
+      const rows: DesignOption[] = response.data?.data || [];
+      const familyMedia = rows
+        .filter((row) => getBaseDesignNo(row.designNo) === baseDesignNo)
+        .flatMap((row) => row.imageUrls || []);
+
+      return uniqueMediaUrls([...currentMedia, ...familyMedia]);
+    } catch {
+      return currentMedia;
+    }
+  };
+
   useEffect(() => {
     loadOrders();
-  }, [page, filters, canViewOrders, showInactive]);
+  }, [page, pageSize, filters, canViewOrders, showInactive]);
 
   useEffect(() => {
     if (!canViewOrders) return;
@@ -432,6 +529,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!showAddModal) return;
+    if (editingOrderId) return;
     if (!form.designId || !form.companyId || !form.branchId) {
       if (!priceManuallyEdited) {
         setForm((prev) => ({ ...prev, price: '' }));
@@ -457,28 +555,61 @@ export default function OrdersPage() {
       }
     };
     fetchPrice();
-  }, [form.designId, form.companyId, form.branchId, showAddModal, priceManuallyEdited]);
+  }, [form.designId, form.companyId, form.branchId, showAddModal, editingOrderId, priceManuallyEdited]);
 
   useEffect(() => {
     const designId = form.designId;
     if (!designId) {
       setDesignDetail(null);
+      setDesignMediaUrls([]);
       return;
     }
 
+    let cancelled = false;
     const fetchDetail = async () => {
       try {
         const response = await api.get(`/products/${designId}`);
-        setDesignDetail(response.data || null);
+        const detail = response.data || null;
+        if (cancelled) return;
+        setDesignDetail(detail);
+        const familyMedia = await loadDesignFamilyMedia(detail);
+        if (cancelled) return;
+        setDesignMediaUrls(familyMedia);
       } catch {
+        if (cancelled) return;
         setDesignDetail(null);
+        setDesignMediaUrls([]);
       }
     };
 
     fetchDetail();
+    return () => {
+      cancelled = true;
+    };
   }, [form.designId]);
 
   const handleSaveOrder = async () => {
+    const nextErrors: OrderFormErrors = {};
+    if (!form.deliveryDate) {
+      nextErrors.deliveryDate = 'Delivery date is required.';
+    } else if (deliveryDateMin && form.deliveryDate < deliveryDateMin) {
+      nextErrors.deliveryDate = 'Delivery date cannot be before order creation date.';
+    }
+    if (!form.price || Number(form.price) <= 0) {
+      nextErrors.price = 'Price @ is required.';
+    }
+    if (!form.quantity || Number(form.quantity) <= 0) {
+      nextErrors.quantity = 'No. of Pcs is required.';
+    }
+    if (calculateTotalAmount(form.price, form.quantity) <= 0) {
+      nextErrors.totalAmount = 'TOTAL AMOUNT is required.';
+    }
+
+    setFormErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      return;
+    }
+
     try {
       setSavingOrder(true);
       const payload = {
@@ -489,12 +620,12 @@ export default function OrdersPage() {
         status: form.status || undefined,
         price: Number(form.price || 0),
         quantity: Number(form.quantity || 1),
-        shortDescription: form.shortDescription?.trim() || undefined,
-        customerName: form.customerName?.trim() || undefined,
-        customerPhone: form.customerPhone?.trim() || undefined,
-        customerEmail: form.customerEmail?.trim() || undefined,
-        purchaseOrderNumber: form.purchaseOrderNumber?.trim() || undefined,
-        notes: form.notes?.trim() || undefined,
+        shortDescription: form.shortDescription?.trim() || '',
+        customerName: form.customerName?.trim() || '',
+        customerPhone: form.customerPhone?.trim() || '',
+        customerEmail: form.customerEmail?.trim() || '',
+        purchaseOrderNumber: form.purchaseOrderNumber?.trim() || '',
+        notes: form.notes?.trim() || '',
       };
 
       if (editingOrderId) {
@@ -506,8 +637,11 @@ export default function OrdersPage() {
       setEditingOrderId(null);
       setEditingDesignNo('');
       setForm(defaultForm);
+      setFormErrors({});
+      setDeliveryDateMin(toDateInputValue());
       setDesignDetail(null);
-      loadOrders();
+      setDesignMediaUrls([]);
+      await loadOrders();
     } catch (err: any) {
       const message =
         err?.response?.data?.message ||
@@ -540,12 +674,17 @@ export default function OrdersPage() {
     try {
       const { detail, design } = await fetchOrderWithDesign(order.id);
       setViewOrder(detail);
-      await loadPackets();
+      const [familyMedia] = await Promise.all([
+        loadDesignFamilyMedia(design),
+        loadPackets(),
+      ]);
       setViewDesign(design);
+      setViewMediaUrls(familyMedia);
       setShowViewModal(true);
     } catch {
       setViewOrder(null);
       setViewDesign(null);
+      setViewMediaUrls([]);
       setShowViewModal(true);
     }
   };
@@ -554,6 +693,8 @@ export default function OrdersPage() {
     setEditingOrderId(order.id);
     setEditingDesignNo(order.designNo || '');
     setPriceManuallyEdited(false);
+    setFormErrors({});
+    setDeliveryDateMin(toDateInputValue(order.createdAt));
     setForm({
       companyId: order.companyId || '',
       branchId: order.branchId || '',
@@ -571,6 +712,7 @@ export default function OrdersPage() {
     });
     setOrderNumber(order.orderNumber || '');
     setDesignDetail(null);
+    setDesignMediaUrls([]);
     if (order.companyId) {
       loadBranches(order.companyId);
     }
@@ -595,11 +737,54 @@ export default function OrdersPage() {
   }, [selectedDesignLabel, editingDesignNo, designOptions, form.designId]);
   const designSelectOptions = useMemo(
     () =>
-      designOptions.map((option) => ({
+      designOptions
+        .filter((option) => {
+          const search = designFilters.search.trim().toLowerCase();
+          const haystack = [
+            option.designNo,
+            option.version,
+            option.designName,
+            option.jewelryGroup,
+            option.collection,
+            option.jewelrySize,
+            option.goldColour,
+            option.designStatus,
+            option.stoneInfo,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          if (search && !haystack.includes(search)) return false;
+          if (designFilters.jewelryGroup && option.jewelryGroup !== designFilters.jewelryGroup) return false;
+          if (designFilters.collection && option.collection !== designFilters.collection) return false;
+          if (designFilters.metal && option.goldColour !== designFilters.metal) return false;
+          return true;
+        })
+        .map((option) => ({
         value: option.id,
         label: formatDesignLabel(option.designNo, option.version),
       })),
-    [designOptions],
+    [designOptions, designFilters],
+  );
+  const designFilterOptions = useMemo(() => {
+    const uniqueSorted = (values: Array<string | null | undefined>) =>
+      Array.from(new Set(values.map((value) => String(value || '').trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b),
+      );
+
+    return {
+      jewelryGroups: uniqueSorted(designOptions.map((option) => option.jewelryGroup)),
+      collections: uniqueSorted(
+        designOptions
+          .filter((option) => !designFilters.jewelryGroup || option.jewelryGroup === designFilters.jewelryGroup)
+          .map((option) => option.collection),
+      ),
+      metals: uniqueSorted(designOptions.map((option) => option.goldColour)),
+    };
+  }, [designOptions, designFilters.jewelryGroup]);
+  const hasActiveDesignFilters = Boolean(
+    designFilters.search || designFilters.jewelryGroup || designFilters.collection || designFilters.metal,
   );
 
   const metalsDisplay = useMemo(() => {
@@ -608,8 +793,8 @@ export default function OrdersPage() {
   }, [designDetail]);
 
   const mediaUrls = useMemo(() => {
-    return (designDetail?.imageUrls || []).filter((url) => url && url.trim());
-  }, [designDetail]);
+    return designMediaUrls.filter((url) => url && url.trim());
+  }, [designMediaUrls]);
 
   const resolvePacketName = (packetId?: string | null): string => {
     if (!packetId) return '-';
@@ -625,13 +810,13 @@ export default function OrdersPage() {
     if (!confirmed) return;
 
     try {
-      setUpdatingOrderId(order.id);
+      setActiveToggleOrderId(order.id);
       await api.patch(`/orders/${order.id}/active`, { isActive: nextActive });
       await loadOrders();
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to update order status.');
     } finally {
-      setUpdatingOrderId(null);
+      setActiveToggleOrderId(null);
     }
   };
 
@@ -727,7 +912,7 @@ export default function OrdersPage() {
 
   const printOrder = async (order: OrderRow) => {
     try {
-      setUpdatingOrderId(order.id);
+      setPrintingOrderId(order.id);
       const [packetNames, { detail, design }] = await Promise.all([
         loadPackets(),
         fetchOrderWithDesign(order.id),
@@ -762,7 +947,7 @@ export default function OrdersPage() {
     } catch (error: any) {
       window.alert(error?.response?.data?.message || 'Unable to print order.');
     } finally {
-      setUpdatingOrderId(null);
+      setPrintingOrderId(null);
     }
   };
 
@@ -802,7 +987,10 @@ export default function OrdersPage() {
               setEditingOrderId(null);
               setEditingDesignNo('');
               setForm(defaultForm);
+              setFormErrors({});
+              setDeliveryDateMin(toDateInputValue());
               setDesignDetail(null);
+              setDesignMediaUrls([]);
               setBranches([]);
               setPriceManuallyEdited(false);
               setShowAddModal(true);
@@ -814,7 +1002,7 @@ export default function OrdersPage() {
       </div>
 
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-4">
+        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
           <div>
             <label className="text-xs font-semibold text-slate-600">Status</label>
             <select
@@ -859,13 +1047,28 @@ export default function OrdersPage() {
               onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, deliveryTo: event.target.value })); }}
             />
           </div>
-        </div>
-        <div className="mb-3 text-xs text-slate-600">
-          Showing {orders.length ? pageOffset + 1 : 0} - {pageOffset + orders.length} of {totalOrders} orders
+          <div className="flex items-end">
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={!hasActiveFilters}
+              onClick={() => {
+                setPage(1);
+                setFilters({
+                  orderStatus: '',
+                  companyId: '',
+                  deliveryFrom: '',
+                  deliveryTo: '',
+                });
+              }}
+            >
+              Reset Filters
+            </Button>
+          </div>
         </div>
         <div className="app-table-shell">
           <div className="app-table-scroll scrollbar-top">
-            <table className="app-table app-table-compact min-w-[900px]">
+            <table className="app-table app-table-compact min-w-[1000px]">
               <thead>
                 <tr>
                   <th className="app-table-head-cell">#</th>
@@ -877,6 +1080,7 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">Qty</th>
                   {isSuperAdmin && <th className="app-table-head-cell">Cost Price</th>}
                   <th className="app-table-head-cell">Price</th>
+                  <th className="app-table-head-cell">TOTAL AMOUNT</th>
                   <th className="app-table-head-cell">Status</th>
                   <th className="app-table-head-cell">Created</th>
                   <th className="app-table-head-cell">Action</th>
@@ -900,7 +1104,7 @@ export default function OrdersPage() {
                     <td className="app-table-cell text-sm text-slate-700">{formatDesignLabel(order.designNo, order.designVersion)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.companyName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
-                    <td className="app-table-cell text-sm text-slate-700">{order.deliveryDate || '-'}</td>
+                    <td className="app-table-cell text-sm text-slate-700">{formatDisplayDate(order.deliveryDate)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{Number(order.quantity || 0)}</td>
                     {isSuperAdmin && (
                       <td className="app-table-cell text-sm text-slate-700">
@@ -908,6 +1112,9 @@ export default function OrdersPage() {
                       </td>
                     )}
                     <td className="app-table-cell text-sm font-semibold text-slate-800">{formatMoney(Number(order.price || 0))}</td>
+                    <td className="app-table-cell text-sm font-semibold text-slate-800">
+                      {formatMoney(calculateTotalAmount(order.price, order.quantity))}
+                    </td>
                     <td className="app-table-cell text-sm text-slate-700">{order.status}</td>
                     <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">
                       {order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}
@@ -935,9 +1142,9 @@ export default function OrdersPage() {
                         <OrderActionIconButton
                           title="Print Order"
                           onClick={() => printOrder(order)}
-                          disabled={updatingOrderId === order.id}
+                          disabled={printingOrderId === order.id}
                         >
-                          {updatingOrderId === order.id ? (
+                          {printingOrderId === order.id ? (
                             <span className="text-[10px] font-semibold">...</span>
                           ) : (
                             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -952,9 +1159,9 @@ export default function OrdersPage() {
                             title="Suspend Order"
                             onClick={() => toggleOrderActive(order, false)}
                             className="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={updatingOrderId === order.id}
+                            disabled={activeToggleOrderId === order.id}
                           >
-                            {updatingOrderId === order.id ? (
+                            {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
                             ) : (
                               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -968,9 +1175,9 @@ export default function OrdersPage() {
                             title="Resume Order"
                             onClick={() => toggleOrderActive(order, true)}
                             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={updatingOrderId === order.id}
+                            disabled={activeToggleOrderId === order.id}
                           >
-                            {updatingOrderId === order.id ? (
+                            {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
                             ) : (
                               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -988,7 +1195,35 @@ export default function OrdersPage() {
           </div>
         </div>
         {ordersError && <div className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{ordersError}</div>}
-        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <span>
+              Showing {orders.length ? pageOffset + 1 : 0} - {pageOffset + orders.length} of {totalOrders} orders
+            </span>
+            <label className="flex items-center gap-2 font-semibold text-slate-700">
+              Rows
+              <select
+                className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                value={pageSize}
+                onChange={(event) => {
+                  setPage(1);
+                  setPageSize(Number(event.target.value));
+                }}
+              >
+                {[10, 15, 25, 50].map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            alwaysShow
+            className="mt-0"
+          />
+        </div>
       </Card>
 
       {showAddModal && (
@@ -998,6 +1233,9 @@ export default function OrdersPage() {
             setShowAddModal(false);
             setEditingOrderId(null);
             setEditingDesignNo('');
+            setFormErrors({});
+            setDeliveryDateMin(toDateInputValue());
+            setDesignMediaUrls([]);
           }}
           size="max-w-6xl"
         >
@@ -1013,8 +1251,19 @@ export default function OrdersPage() {
               </div>
               <div className="space-y-4 p-4">
                 <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Design No*</label>
+                  <div className={!isEditing && showDesignFilters ? 'md:col-span-3 xl:col-span-4' : ''}>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium text-slate-700">Design No*</label>
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-primary-700 hover:text-primary-800"
+                          onClick={() => setShowDesignFilters((prev) => !prev)}
+                        >
+                          {showDesignFilters ? 'Hide filters' : 'Advanced filter'}
+                        </button>
+                      )}
+                    </div>
                     {isEditing ? (
                       <input
                         type="text"
@@ -1034,6 +1283,74 @@ export default function OrdersPage() {
                         options={designSelectOptions}
                         placeholder="Select Design"
                       />
+                    )}
+                    {!isEditing && showDesignFilters && (
+                      <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600">Search</label>
+                            <input
+                              type="text"
+                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              value={designFilters.search}
+                              placeholder="Design, version, stone..."
+                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, search: event.target.value }))}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600">Category</label>
+                            <select
+                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              value={designFilters.jewelryGroup}
+                              onChange={(event) =>
+                                setDesignFilters((prev) => ({ ...prev, jewelryGroup: event.target.value, collection: '' }))
+                              }
+                            >
+                              <option value="">All Categories</option>
+                              {designFilterOptions.jewelryGroups.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600">Collection</label>
+                            <select
+                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              value={designFilters.collection}
+                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, collection: event.target.value }))}
+                            >
+                              <option value="">All Collections</option>
+                              {designFilterOptions.collections.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-slate-600">Metal</label>
+                            <select
+                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              value={designFilters.metal}
+                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, metal: event.target.value }))}
+                            >
+                              <option value="">All Metals</option>
+                              {designFilterOptions.metals.map((value) => (
+                                <option key={value} value={value}>{value}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                          <span>{designSelectOptions.length} matching design{designSelectOptions.length === 1 ? '' : 's'}</span>
+                          <Button
+                            variant="secondary"
+                            type="button"
+                            disabled={!hasActiveDesignFilters}
+                            onClick={() => setDesignFilters({ search: '', jewelryGroup: '', collection: '', metal: '' })}
+                          >
+                            Reset Design Filters
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
 
@@ -1161,13 +1478,37 @@ export default function OrdersPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-slate-700">Delivery Date</label>
+                    <label className="text-sm font-medium text-slate-700">Delivery Date*</label>
                     <input
                       type="date"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                        formErrors.deliveryDate
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                      }`}
                       value={form.deliveryDate}
-                      onChange={(event) => setForm((prev) => ({ ...prev, deliveryDate: event.target.value }))}
+                      min={deliveryDateMin}
+                      required
+                      aria-invalid={Boolean(formErrors.deliveryDate)}
+                      aria-describedby={formErrors.deliveryDate ? 'delivery-date-error' : undefined}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setForm((prev) => ({ ...prev, deliveryDate: value }));
+                        if (value && deliveryDateMin && value < deliveryDateMin) {
+                          setFormErrors((prev) => ({
+                            ...prev,
+                            deliveryDate: 'Delivery date cannot be before order creation date.',
+                          }));
+                        } else if (value) {
+                          setFormErrors((prev) => ({ ...prev, deliveryDate: undefined }));
+                        }
+                      }}
                     />
+                    {formErrors.deliveryDate && (
+                      <p id="delivery-date-error" className="mt-1 text-xs font-medium text-rose-600">
+                        {formErrors.deliveryDate}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1283,30 +1624,96 @@ export default function OrdersPage() {
                   Order Pricing & Notes
                 </div>
                 <div className="space-y-4 p-4">
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Price</label>
+                      <label className="text-sm font-medium text-slate-700">Price @</label>
                       <div className="mt-1 flex">
                         <input
                           type="number"
-                          className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          className={`w-full rounded-l border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                            formErrors.price
+                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                          }`}
                           value={form.price}
+                          required
+                          min="0.01"
+                          aria-invalid={Boolean(formErrors.price)}
+                          aria-describedby={formErrors.price ? 'price-error' : undefined}
                           onChange={(event) => {
+                            const value = event.target.value;
                             setPriceManuallyEdited(true);
-                            setForm((prev) => ({ ...prev, price: event.target.value }));
+                            setForm((prev) => ({ ...prev, price: value }));
+                            if (Number(value || 0) > 0) {
+                              setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
+                            }
                           }}
                         />
                         <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
                       </div>
+                      {formErrors.price && (
+                        <p id="price-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.price}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-sm font-medium text-slate-700">No. of Pcs</label>
                       <input
                         type="number"
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                          formErrors.quantity
+                            ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                            : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                        }`}
                         value={form.quantity}
-                        onChange={(event) => setForm((prev) => ({ ...prev, quantity: event.target.value }))}
+                        required
+                        min="1"
+                        aria-invalid={Boolean(formErrors.quantity)}
+                        aria-describedby={formErrors.quantity ? 'quantity-error' : undefined}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setForm((prev) => ({ ...prev, quantity: value }));
+                          if (Number(value || 0) > 0) {
+                            setFormErrors((prev) => ({ ...prev, quantity: undefined, totalAmount: undefined }));
+                          }
+                        }}
                       />
+                      {formErrors.quantity && (
+                        <p id="quantity-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.quantity}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT</label>
+                      <div className="mt-1 flex">
+                        <input
+                          type="number"
+                          className={`w-full rounded-l border px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 ${
+                            formErrors.totalAmount
+                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                          }`}
+                          value={formatNumberInput(formTotalAmount)}
+                          required
+                          min="0.01"
+                          aria-invalid={Boolean(formErrors.totalAmount)}
+                          aria-describedby={formErrors.totalAmount ? 'total-amount-error' : undefined}
+                          onChange={(event) => {
+                            updatePriceFromTotalAmount(event.target.value);
+                            if (Number(event.target.value || 0) > 0) {
+                              setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
+                            }
+                          }}
+                        />
+                        <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                      </div>
+                      {formErrors.totalAmount && (
+                        <p id="total-amount-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.totalAmount}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1341,6 +1748,9 @@ export default function OrdersPage() {
                 setShowAddModal(false);
                 setEditingOrderId(null);
                 setEditingDesignNo('');
+                setFormErrors({});
+                setDeliveryDateMin(toDateInputValue());
+                setDesignMediaUrls([]);
               }}
             >
               Close
@@ -1466,6 +1876,12 @@ export default function OrdersPage() {
                 {formatMoney(Number(viewOrder?.price || 0))}
               </div>
             </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Total Amount</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
+              </div>
+            </div>
             {isSuperAdmin && (
               <div>
                 <label className="text-sm font-medium text-slate-700">Cost Price</label>
@@ -1505,6 +1921,24 @@ export default function OrdersPage() {
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.purchaseOrderNumber || '-'}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-slate-200">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
+            <div className="flex min-h-[54px] flex-wrap items-center gap-2 bg-white px-4 py-3">
+              {viewDesign?.metals?.length ? (
+                viewDesign.metals.map((metal, index) => {
+                  const label = metal.metalCaratage || metal.goldColour || '-';
+                  return (
+                    <span key={metal.id || `${label}-${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {label}
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="text-sm text-slate-500">No metal information</span>
+              )}
             </div>
           </div>
 
@@ -1555,10 +1989,10 @@ export default function OrdersPage() {
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
             <div>
               <div className="text-sm font-semibold text-slate-800 mb-2">Images & Videos</div>
-              {viewDesign?.imageUrls?.length ? (
+              {viewMediaUrls.length ? (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {viewDesign.imageUrls.map((url, index) => (
-                    <MediaPreview key={`${url}-${index}`} url={url} alt={`${viewDesign.designNo}-${index}`} />
+                  {viewMediaUrls.map((url, index) => (
+                    <MediaPreview key={`${url}-${index}`} url={url} alt={`${viewDesign?.designNo || 'order-media'}-${index}`} />
                   ))}
                 </div>
               ) : (
