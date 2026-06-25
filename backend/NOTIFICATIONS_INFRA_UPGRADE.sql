@@ -21,6 +21,5 @@ CREATE TABLE IF NOT EXISTS notifications (
   PRIMARY KEY (id),
   KEY idx_notifications_user_created (recipient_user_id, created_at),
   KEY idx_notifications_user_unread (recipient_user_id, is_read),
-  KEY idx_notifications_entity (entity_type, entity_id),
-  CONSTRAINT fk_notifications_user FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE
+  KEY idx_notifications_entity (entity_type, entity_id)
 );

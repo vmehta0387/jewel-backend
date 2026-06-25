@@ -1,7 +1,7 @@
-import { Controller, Get, Param, Patch, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
-import { FindNotificationsQueryDto } from './dto/notification.dto';
+import { FindNotificationsQueryDto, MarkNotificationReadDto } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
 @UseGuards(JwtAuthGuard)
@@ -25,7 +25,11 @@ export class NotificationsController {
   }
 
   @Patch(':id/read')
-  markRead(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    return this.notificationsService.markRead(id, req.user, true);
+  markRead(
+    @Param('id') id: string,
+    @Body() body: MarkNotificationReadDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.notificationsService.markRead(id, req.user, body?.isRead ?? true);
   }
 }
