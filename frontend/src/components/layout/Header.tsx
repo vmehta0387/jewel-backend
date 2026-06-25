@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import {
+  fetchNotifications,
+  fetchUnreadNotificationCount,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../../services/notifications';
+import type { NotificationItem } from '../../types/notification.types';
 import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
 import Avatar from '../common/Avatar';
 import BlitzBrand from '../common/BlitzBrand';
@@ -11,10 +18,110 @@ interface HeaderProps {
 
 export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(getStoredUser());
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const notificationsPanelRef = useRef<HTMLDivElement | null>(null);
+  const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+
+  const formatNotificationTime = useCallback((value?: string | null) => {
+    if (!value) return 'Just now';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Just now';
+
+    const diffMs = Date.now() - parsed.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return parsed.toLocaleDateString();
+  }, []);
+
+  const getNotificationToneClasses = useCallback((item: NotificationItem) => {
+    const type = String(item.type || '').toUpperCase();
+    if (item.priority === 'P0' || type.includes('CANCELLED') || type.includes('REJECTED') || type.includes('HOLD')) {
+      return {
+        card: 'border-[#f0d1d1] bg-[#fff5f5] hover:bg-[#fff0f0]',
+        dot: 'bg-[#d55b5b]',
+      };
+    }
+    if (type.includes('APPROVAL') || type.includes('APPROVED')) {
+      return {
+        card: 'border-[#e8d4af] bg-[#fff8ee] hover:bg-[#fff5e7]',
+        dot: 'bg-[#c89d5a]',
+      };
+    }
+    if (type.includes('SHIPPED') || type.includes('FULFILLED') || type.includes('COMPLETED')) {
+      return {
+        card: 'border-[#d7e5fb] bg-[#f5f9ff] hover:bg-[#edf5ff]',
+        dot: 'bg-[#6f8fce]',
+      };
+    }
+    return {
+      card: 'border-[#e7ded2] bg-white hover:bg-[#faf7f2]',
+      dot: 'bg-[#8d8174]',
+    };
+  }, []);
+
+  const resolveNotificationPath = useCallback((item: NotificationItem) => {
+    const actionUrl = String(item.actionUrl || '').trim().toLowerCase();
+    if (actionUrl.startsWith('/orders')) return '/orders';
+    if (actionUrl.startsWith('/spiff')) return '/spiff';
+    if (actionUrl.startsWith('/users')) return '/users';
+    if (actionUrl.startsWith('/products')) return '/products';
+    if (actionUrl.startsWith('/branches')) return '/branches';
+    if (actionUrl.startsWith('/companies')) return '/companies';
+
+    const entityType = String(item.entityType || '').trim().toUpperCase();
+    if (entityType === 'ORDER') return '/orders';
+    if (entityType === 'SPIFF_CLAIM') return '/spiff';
+    if (entityType === 'USER') return '/users';
+    return '/dashboard';
+  }, []);
+
+  const loadUnreadCount = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setUnreadCount(0);
+      return;
+    }
+
+    try {
+      const response = await fetchUnreadNotificationCount();
+      setUnreadCount(response.unreadCount || 0);
+    } catch (error) {
+      console.error('Failed to load unread notification count', error);
+    }
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    const token = getToken();
+    if (!token) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    try {
+      const response = await fetchNotifications(1, 20, false);
+      setNotifications(response.data || []);
+      setUnreadCount(response.unreadCount || 0);
+    } catch (error) {
+      console.error('Failed to load notifications', error);
+      setNotifications([]);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
 
   const refreshCurrentUser = useCallback(async () => {
     const token = getToken();
@@ -32,9 +139,11 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
 
   useEffect(() => {
     void refreshCurrentUser();
+    void loadUnreadCount();
 
     const onFocus = () => {
       void refreshCurrentUser();
+      void loadUnreadCount();
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -45,6 +154,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
 
     const intervalId = window.setInterval(() => {
       void refreshCurrentUser();
+      void loadUnreadCount();
     }, 120000);
 
     window.addEventListener('focus', onFocus);
@@ -55,7 +165,29 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('storage', onStorage);
     };
-  }, [refreshCurrentUser]);
+  }, [loadUnreadCount, refreshCurrentUser]);
+
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (
+        notificationsPanelRef.current?.contains(target ?? null) ||
+        notificationsButtonRef.current?.contains(target ?? null)
+      ) {
+        return;
+      }
+      setNotificationsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [notificationsOpen]);
 
   const handleLogout = () => {
     clearAuthSession();
@@ -87,6 +219,56 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     }
   };
 
+  const handleOpenNotifications = async () => {
+    const nextOpen = !notificationsOpen;
+    setNotificationsOpen(nextOpen);
+    if (nextOpen) {
+      await loadNotifications();
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      setNotifications((prev) =>
+        prev.map((item) => ({
+          ...item,
+          isRead: true,
+          readAt: new Date().toISOString(),
+        })),
+      );
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Failed to mark all notifications as read', error);
+    }
+  };
+
+  const handleNotificationClick = async (item: NotificationItem) => {
+    try {
+      if (!item.isRead) {
+        await markNotificationRead(item.id, true);
+        setNotifications((prev) =>
+          prev.map((entry) => (entry.id === item.id ? { ...entry, isRead: true, readAt: new Date().toISOString() } : entry)),
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('Failed to mark notification as read', error);
+    }
+
+    setNotificationsOpen(false);
+    navigate(resolveNotificationPath(item));
+  };
+
+  const groupedNotifications = useMemo(() => {
+    const alerts = notifications.filter((item) => {
+      const type = String(item.type || '').toUpperCase();
+      return item.priority === 'P0' || type.includes('CANCELLED') || type.includes('REJECTED') || type.includes('HOLD') || type.includes('APPROVAL');
+    });
+    const updates = notifications.filter((item) => !alerts.includes(item));
+    return { alerts, updates };
+  }, [notifications]);
+
   return (
     <header className="sticky top-0 z-30 w-full glass-panel border-b border-[#e7ded2] h-16 transition-all duration-300">
       <div className="flex h-full items-center justify-between px-4 sm:px-8">
@@ -106,6 +288,120 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
         </div>
         
         <div className="flex items-center gap-4 sm:gap-6">
+          <div className="relative">
+            <button
+              ref={notificationsButtonRef}
+              type="button"
+              onClick={handleOpenNotifications}
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#e1d6c7] bg-[#fbf8f2] text-[#766b5f] shadow-sm transition-all hover:border-[#d5c5af] hover:bg-[#f8f1e5] hover:text-[#9f7534]"
+              aria-label="Open notifications"
+            >
+              <svg className="h-[1.1rem] w-[1.1rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
+                <path d="M9 17a3 3 0 0 0 6 0" />
+              </svg>
+              {unreadCount > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex min-h-[1.2rem] min-w-[1.2rem] items-center justify-center rounded-full bg-[#cf534f] px-1 text-[0.62rem] font-bold text-white shadow-sm">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              ) : null}
+            </button>
+
+            {notificationsOpen ? (
+              <div
+                ref={notificationsPanelRef}
+                className="absolute right-0 top-12 z-50 w-[24rem] rounded-[1.6rem] border border-[#e8dccd] bg-white/95 p-3 shadow-[0_24px_70px_rgba(42,34,27,0.16)] backdrop-blur-xl"
+              >
+                <div className="flex items-center justify-between px-1 pb-2">
+                  <div>
+                    <p className="text-sm font-bold text-[#2a221b]">Notifications</p>
+                    <p className="text-[0.7rem] uppercase tracking-[0.22em] text-[#ab8b57]">{unreadCount} unread</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    className="text-xs font-semibold text-[#9f7534] transition-colors hover:text-[#7f5c28]"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+
+                <div className="max-h-[28rem] overflow-y-auto pr-1">
+                  {notificationsLoading ? (
+                    <div className="flex items-center justify-center py-10 text-sm text-[#8a7f72]">
+                      Loading notifications...
+                    </div>
+                  ) : notifications.length ? (
+                    <div className="space-y-4">
+                      {groupedNotifications.alerts.length ? (
+                        <div className="space-y-2">
+                          <p className="px-1 text-[0.7rem] font-bold uppercase tracking-[0.24em] text-[#ab8b57]">Alerts</p>
+                          {groupedNotifications.alerts.map((item) => {
+                            const tone = getNotificationToneClasses(item);
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => void handleNotificationClick(item)}
+                                className={`w-full rounded-[1.2rem] border px-3 py-3 text-left transition-all ${tone.card} ${item.isRead ? 'opacity-80' : ''}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className={`mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${tone.dot}`} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <p className="truncate text-sm font-semibold text-[#2a221b]">{item.title}</p>
+                                      {!item.isRead ? <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-[#c89d5a]" /> : null}
+                                    </div>
+                                    <p className="mt-1 text-xs leading-5 text-[#6f6356]">{item.message}</p>
+                                    <p className="mt-2 text-[0.72rem] font-medium text-[#9b8f82]">{formatNotificationTime(item.createdAt)}</p>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {groupedNotifications.updates.length ? (
+                        <div className="space-y-2">
+                          <p className="px-1 text-[0.7rem] font-bold uppercase tracking-[0.24em] text-[#ab8b57]">Updates</p>
+                          {groupedNotifications.updates.map((item) => {
+                            const tone = getNotificationToneClasses(item);
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => void handleNotificationClick(item)}
+                                className={`w-full rounded-[1.2rem] border px-3 py-3 text-left transition-all ${tone.card} ${item.isRead ? 'opacity-80' : ''}`}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <span className={`mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${tone.dot}`} />
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <p className="truncate text-sm font-semibold text-[#2a221b]">{item.title}</p>
+                                      {!item.isRead ? <span className="mt-0.5 h-2 w-2 flex-shrink-0 rounded-full bg-[#c89d5a]" /> : null}
+                                    </div>
+                                    <p className="mt-1 text-xs leading-5 text-[#6f6356]">{item.message}</p>
+                                    <p className="mt-2 text-[0.72rem] font-medium text-[#9b8f82]">{formatNotificationTime(item.createdAt)}</p>
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-[1.2rem] border border-dashed border-[#e4d7c6] bg-[#fcfaf6] px-4 py-10 text-center">
+                      <p className="text-sm font-semibold text-[#4a4037]">No notifications yet</p>
+                      <p className="mt-1 text-xs text-[#8a7f72]">Order, SPIFF, and account updates will show up here.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <div className="flex items-center gap-3 cursor-default">
             <div className="flex flex-col items-end">
               <span className="hidden text-sm font-bold text-[#2a221b] sm:block leading-tight">{displayName}</span>
