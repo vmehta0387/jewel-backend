@@ -12,6 +12,8 @@ import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.dto';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffService } from '../spiff/spiff.service';
 
 @Injectable()
@@ -28,6 +30,7 @@ export class OrdersService {
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly spiffService: SpiffService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getNextOrderNumber(): Promise<{ orderNumber: string }> {
@@ -223,6 +226,7 @@ export class OrdersService {
       try {
         const saved = await this.orderRepo.save(order);
         await this.safeTrackOrderCreated(saved);
+        await this.safeNotifyOrderCreated(saved, requester);
         return saved;
       } catch (error: any) {
         const isDuplicate =
@@ -326,6 +330,7 @@ export class OrdersService {
 
     const saved = await this.orderRepo.save(order);
     await this.safeTrackOrderTransition(saved, previousStatus);
+    await this.safeNotifyOrderTransition(saved, previousStatus, requester);
     return saved;
   }
 
@@ -944,5 +949,217 @@ export class OrdersService {
         `SPIFF transition tracking skipped for order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
       );
     }
+  }
+
+  private async safeNotifyOrderCreated(order: Order, requester: AuthUser): Promise<void> {
+    try {
+      const context = await this.loadOrderNotificationContext(order.id);
+      if (!context) return;
+
+      const orderLabel = context.orderNumber || 'order';
+      const designLabel = context.design?.designName || context.design?.designNo || 'design';
+      const salesRepName = this.getSalesRepDisplayName(context) || 'A sales rep';
+
+      if (context.salesRepId) {
+        await this.notificationsService.createForUser({
+          userId: context.salesRepId,
+          companyId: context.companyId,
+          branchId: context.branchId,
+          type: 'ORDER_CREATED',
+          priority: NotificationPriority.P2,
+          title: `Order ${orderLabel} created`,
+          message:
+            context.status === OrderStatus.PENDING_APPROVAL
+              ? `Your order ${orderLabel} for ${designLabel} was submitted for approval.`
+              : `Your order ${orderLabel} for ${designLabel} was created successfully.`,
+          entityType: 'ORDER',
+          entityId: context.id,
+          actionUrl: `/orders/${context.id}`,
+          metadata: {
+            orderId: context.id,
+            orderNumber: context.orderNumber,
+            status: context.status,
+            designNo: context.design?.designNo ?? null,
+          },
+        });
+      }
+
+      if (context.status === OrderStatus.PENDING_APPROVAL) {
+        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
+        if (approverIds.length) {
+          await this.notificationsService.createForUsers(approverIds, {
+            companyId: context.companyId,
+            branchId: context.branchId,
+            type: 'ORDER_APPROVAL_REQUIRED',
+            priority: NotificationPriority.P1,
+            title: `Approval needed for ${orderLabel}`,
+            message: `${salesRepName} submitted ${orderLabel} for approval.`,
+            entityType: 'ORDER',
+            entityId: context.id,
+            actionUrl: `/orders/${context.id}`,
+            metadata: {
+              orderId: context.id,
+              orderNumber: context.orderNumber,
+              status: context.status,
+              designNo: context.design?.designNo ?? null,
+            },
+          });
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Order notification skipped for new order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async safeNotifyOrderTransition(
+    order: Order,
+    previousStatus: OrderStatus | string | undefined,
+    requester: AuthUser,
+  ): Promise<void> {
+    try {
+      const previous = this.normalizeOrderStatus(previousStatus);
+      const context = await this.loadOrderNotificationContext(order.id);
+      if (!context) return;
+
+      const current = this.normalizeOrderStatus(context.status);
+      if (current === previous) return;
+
+      const orderLabel = context.orderNumber || 'order';
+      const designLabel = context.design?.designName || context.design?.designNo || 'design';
+      const salesRepName = this.getSalesRepDisplayName(context) || 'A sales rep';
+      const metadata = {
+        orderId: context.id,
+        orderNumber: context.orderNumber,
+        status: current,
+        previousStatus: previous,
+        designNo: context.design?.designNo ?? null,
+      };
+
+      if (current === OrderStatus.PENDING_APPROVAL) {
+        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
+        if (approverIds.length) {
+          await this.notificationsService.createForUsers(approverIds, {
+            companyId: context.companyId,
+            branchId: context.branchId,
+            type: 'ORDER_APPROVAL_REQUIRED',
+            priority: NotificationPriority.P1,
+            title: `Approval needed for ${orderLabel}`,
+            message: `${salesRepName} moved ${orderLabel} back to pending approval.`,
+            entityType: 'ORDER',
+            entityId: context.id,
+            actionUrl: `/orders/${context.id}`,
+            metadata,
+          });
+        }
+      }
+
+      if (!context.salesRepId) return;
+
+      const transitionMessages: Partial<Record<OrderStatus, { type: string; priority: NotificationPriority; title: string; message: string }>> = {
+        [OrderStatus.APPROVED]: {
+          type: 'ORDER_APPROVED',
+          priority: NotificationPriority.P1,
+          title: `Order ${orderLabel} approved`,
+          message: `${orderLabel} for ${designLabel} was approved.`,
+        },
+        [OrderStatus.IN_PRODUCTION]: {
+          type: 'ORDER_IN_PRODUCTION',
+          priority: NotificationPriority.P2,
+          title: `${orderLabel} moved to production`,
+          message: `${orderLabel} for ${designLabel} is now in production.`,
+        },
+        [OrderStatus.SHIPPED]: {
+          type: 'ORDER_SHIPPED',
+          priority: NotificationPriority.P1,
+          title: `${orderLabel} shipped`,
+          message: `${orderLabel} for ${designLabel} has been shipped.`,
+        },
+        [OrderStatus.COMPLETED]: {
+          type: 'ORDER_COMPLETED',
+          priority: NotificationPriority.P2,
+          title: `${orderLabel} completed`,
+          message: `${orderLabel} for ${designLabel} is complete.`,
+        },
+        [OrderStatus.CANCELLED]: {
+          type: 'ORDER_CANCELLED',
+          priority: NotificationPriority.P1,
+          title: `${orderLabel} cancelled`,
+          message: `${orderLabel} for ${designLabel} was cancelled.`,
+        },
+      };
+
+      const transition = transitionMessages[current];
+      if (!transition) return;
+
+      await this.notificationsService.createForUser({
+        userId: context.salesRepId,
+        companyId: context.companyId,
+        branchId: context.branchId,
+        type: transition.type,
+        priority: transition.priority,
+        title: transition.title,
+        message: transition.message,
+        entityType: 'ORDER',
+        entityId: context.id,
+        actionUrl: `/orders/${context.id}`,
+        metadata: {
+          ...metadata,
+          updatedByUserId: requester.id,
+        },
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Order transition notification skipped for order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async loadOrderNotificationContext(orderId: string): Promise<Order | null> {
+    return this.orderRepo.findOne({
+      where: { id: orderId },
+      relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
+    });
+  }
+
+  private async getApproverUserIdsForOrder(order: Order, excludeIds: Array<string | null | undefined> = []): Promise<string[]> {
+    const excluded = new Set(
+      excludeIds.map((value) => String(value || '').trim()).filter((value) => value.length > 0),
+    );
+    const ids = new Set<string>();
+
+    const branchManagerId = String(order.branch?.branchManager?.id || '').trim();
+    if (branchManagerId && !excluded.has(branchManagerId)) {
+      ids.add(branchManagerId);
+    }
+
+    if (order.companyId) {
+      const companyAdmins = await this.userRepo.find({
+        where: {
+          companyId: order.companyId,
+          role: UserRole.COMPANY_ADMIN,
+          isActive: true,
+        },
+        select: ['id'],
+      });
+
+      companyAdmins.forEach((user) => {
+        const userId = String(user.id || '').trim();
+        if (userId && !excluded.has(userId)) {
+          ids.add(userId);
+        }
+      });
+    }
+
+    return Array.from(ids);
+  }
+
+  private normalizeOrderStatus(value: OrderStatus | string | undefined | null): OrderStatus {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (Object.values(OrderStatus).includes(normalized as OrderStatus)) {
+      return normalized as OrderStatus;
+    }
+    return OrderStatus.QUOTE;
   }
 }

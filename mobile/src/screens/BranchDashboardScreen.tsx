@@ -15,6 +15,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
+import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchSpiffSummary } from '../api/spiff';
 import { fetchAllDesigns } from '../api/designs';
@@ -22,6 +23,7 @@ import { uploadMyPhoto } from '../api/auth';
 import { fetchBranchEmployees } from '../api/branchEmployees';
 import type { BranchEmployee, Design, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { mapNotificationsToActivityItems } from '../utils/appNotifications';
 import { getDesignFamilyKey } from '../utils/designFamily';
 
 type ActivityItem = {
@@ -343,76 +345,45 @@ const BranchDashboardScreen = () => {
       setTrendingProducts(result.slice(0, 2));
     }
 
-    const items: ActivityItem[] = [];
-    const activityRows =
-      user?.role === 'BRANCH_MANAGER'
-        ? orderRows.filter((order) => ['PENDING_APPROVAL', 'APPROVED', 'CANCELLED'].includes(String(order.status || '').toUpperCase()))
-        : orderRows.filter((order) => (user?.id ? order.salesRepId === user.id : false));
-
-    for (const order of activityRows.slice(0, 15)) {
-      const date = order.createdAt ? new Date(order.createdAt) : new Date();
-      const salesPerson = order.salesRepName || order.salesRepEmail || 'Sales rep';
-      const managerName = order.branchManagerName || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Manager';
-      const normalizedStatus = String(order.status || '').toUpperCase();
-
-      let title = '';
-      let subtitle = order.designNo || 'No design';
-
-      if (user?.role === 'BRANCH_MANAGER') {
-        if (normalizedStatus === 'PENDING_APPROVAL') {
-          title = `Order #${order.orderNumber} came for approval`;
-          subtitle = `From sales rep ${salesPerson}`;
-        } else if (normalizedStatus === 'APPROVED') {
-          title = `Order #${order.orderNumber} approved`;
-          subtitle = `For sales rep ${salesPerson}`;
-        } else if (normalizedStatus === 'CANCELLED') {
-          title = `Order #${order.orderNumber} cancelled`;
-          subtitle = `For sales rep ${salesPerson}`;
-        } else {
-          title = `Order #${order.orderNumber} updated`;
-          subtitle = `${order.designNo || 'No design'} - ${salesPerson}`;
-        }
-      } else {
-        if (normalizedStatus === 'PENDING_APPROVAL') {
-          title = `Order #${order.orderNumber} sent for approval`;
-          subtitle = `To manager ${managerName}`;
-        } else if (normalizedStatus === 'APPROVED') {
-          title = `Order #${order.orderNumber} approved`;
-          subtitle = `By manager ${managerName}`;
-        } else if (normalizedStatus === 'CANCELLED') {
-          title = `Order #${order.orderNumber} cancelled`;
-          subtitle = `By manager ${managerName}`;
-        } else {
-          title = `Order #${order.orderNumber} updated`;
-          subtitle = order.designNo || 'No design';
-        }
-      }
-
-      items.push({
-        id: `order-${order.id}-${normalizedStatus}`,
-        icon: statusIcon(order.status),
-        title,
-        subtitle,
-        time: formatRelativeTime(date),
-        sortDate: date,
-      });
-    }
-
-    items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
-    setActivity(items);
-    setNotificationCount(items.length > 0 ? items.length : 0);
   }, [token, user?.id, user?.role, user?.firstName, user?.lastName]);
+
+  const loadNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await fetchNotifications(token, 1, 25, false);
+      const items = mapNotificationsToActivityItems(response.data || []).map((item) => ({
+        ...item,
+        icon: 'notifications-outline' as keyof typeof Ionicons.glyphMap,
+      }));
+      items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
+      setActivity(items);
+      setNotificationCount(response.unreadCount || 0);
+    } catch {
+      setActivity([]);
+      setNotificationCount(0);
+    }
+  }, [token]);
 
   useFocusEffect(
     useCallback(() => {
       loadDashboard();
-    }, [loadDashboard]),
+      loadNotifications();
+    }, [loadDashboard, loadNotifications]),
   );
 
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
-    setNotificationCount(0);
   }, []);
+
+  const handleMarkAllRead = useCallback(async () => {
+    if (!token) return;
+    try {
+      await markAllNotificationsRead(token);
+      await loadNotifications();
+    } catch {
+      // ignore notification mark-all failures in the sheet
+    }
+  }, [loadNotifications, token]);
 
   const handleChangePhoto = useCallback(async () => {
     if (!token) return;
@@ -883,7 +854,7 @@ const BranchDashboardScreen = () => {
                 <View style={styles.notificationsWindow}>
                   <View style={styles.notificationsHeaderRow}>
                     <Text style={styles.notificationsTitle}>Notifications</Text>
-                    <TouchableOpacity onPress={() => setNotificationCount(0)}>
+                    <TouchableOpacity onPress={handleMarkAllRead}>
                       <Text style={styles.markReadText}>Mark all read</Text>
                     </TouchableOpacity>
                   </View>

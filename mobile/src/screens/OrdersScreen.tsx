@@ -19,20 +19,23 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '../api/notifications';
 import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders';
 import type { Order } from '../types';
 import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
+import {
+  getOrderIdFromNotification,
+  type NotificationFeedEntry,
+  type NotificationTone,
+  mapNotificationsToEntries,
+} from '../utils/appNotifications';
 
 type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED';
-type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
-type NotificationEntry = {
-  id: string;
-  orderId: string;
-  title: string;
-  subtitle: string;
-  time: string;
-  tone: NotificationTone;
-};
+type NotificationEntry = NotificationFeedEntry & { orderId?: string | null };
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'QUOTE', label: 'Quotes' },
@@ -214,6 +217,7 @@ const OrdersScreen = () => {
   const [actingOrderId, setActingOrderId] = useState<string | null>(null);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationEntries, setNotificationEntries] = useState<NotificationEntry[]>([]);
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -238,12 +242,6 @@ const OrdersScreen = () => {
       setLoading(false);
     }
   }, [token, user?.role]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadOrders();
-    }, [loadOrders]),
-  );
 
   const countsByFilter = useMemo(() => {
     const initial: Record<FilterKey, number> = {
@@ -286,75 +284,6 @@ const OrdersScreen = () => {
     });
   }, [orders, search, selectedFilter]);
 
-  const notificationEntries = useMemo<NotificationEntry[]>(() => {
-    const rows = [...orders].sort((a, b) => {
-      const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-      const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return bTime - aTime;
-    });
-
-    return rows.slice(0, 24).map((order) => {
-      const status = normalizeStatus(order.status);
-      const orderLabel = order.orderNumber || order.id;
-      const detail = safeText(order.designNo, 'Order update');
-      const customer = safeText(order.customerName, 'Customer');
-      const subtitle = `${detail} - ${customer}`;
-
-      if (status === 'PENDING_APPROVAL') {
-        return {
-          id: `notify-${order.id}-pending`,
-          orderId: order.id,
-          title: `Approval needed: ${orderLabel}`,
-          subtitle,
-          time: formatRelativeTime(order.updatedAt || order.createdAt),
-          tone: 'alertGold',
-        };
-      }
-
-      if (status === 'CANCELLED') {
-        return {
-          id: `notify-${order.id}-cancelled`,
-          orderId: order.id,
-          title: `Cancelled: ${orderLabel}`,
-          subtitle,
-          time: formatRelativeTime(order.updatedAt || order.createdAt),
-          tone: 'alertRed',
-        };
-      }
-
-      if (status === 'SHIPPED' || status === 'COMPLETED') {
-        return {
-          id: `notify-${order.id}-shipped`,
-          orderId: order.id,
-          title: `Shipped: ${orderLabel}`,
-          subtitle,
-          time: formatRelativeTime(order.updatedAt || order.createdAt),
-          tone: 'info',
-        };
-      }
-
-      if (status === 'QUOTE') {
-        return {
-          id: `notify-${order.id}-quote`,
-          orderId: order.id,
-          title: `Quote draft: ${orderLabel}`,
-          subtitle,
-          time: formatRelativeTime(order.updatedAt || order.createdAt),
-          tone: 'promo',
-        };
-      }
-
-      return {
-        id: `notify-${order.id}-activity`,
-        orderId: order.id,
-        title: `${statusLabel(status)}: ${orderLabel}`,
-        subtitle,
-        time: formatRelativeTime(order.updatedAt || order.createdAt),
-        tone: 'neutral',
-      };
-    });
-  }, [orders]);
-
   const alerts = useMemo(
     () => notificationEntries.filter((entry) => entry.tone === 'alertGold' || entry.tone === 'alertRed').slice(0, 5),
     [notificationEntries],
@@ -379,17 +308,34 @@ const OrdersScreen = () => {
     return FILTERS;
   }, [isBranchManager, isCompanyAdmin]);
 
-  useEffect(() => {
-    if (!notificationsVisible) {
-      setNotificationCount(notificationEntries.length);
+  const loadNotifications = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await fetchNotifications(token, 1, 25, false);
+      const entries = mapNotificationsToEntries(response.data || []).map((entry) => ({
+        ...entry,
+        orderId: getOrderIdFromNotification(entry),
+      }));
+      setNotificationEntries(entries);
+      setNotificationCount(response.unreadCount || 0);
+    } catch {
+      setNotificationEntries([]);
+      setNotificationCount(0);
     }
-  }, [notificationEntries.length, notificationsVisible]);
+  }, [token]);
 
   useEffect(() => {
     if ((isBranchManager || isCompanyAdmin) && selectedFilter === 'QUOTE') {
       setSelectedFilter('PENDING_APPROVAL');
     }
   }, [isBranchManager, isCompanyAdmin, selectedFilter]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadOrders();
+      loadNotifications();
+    }, [loadOrders, loadNotifications]),
+  );
 
   const openOrderSummary = useCallback(
     (order: Order) => {
@@ -706,7 +652,6 @@ const OrdersScreen = () => {
 
   const openNotifications = useCallback(() => {
     setNotificationsVisible(true);
-    setNotificationCount(0);
   }, []);
 
   const closeNotifications = useCallback(() => {
@@ -714,15 +659,45 @@ const OrdersScreen = () => {
   }, []);
 
   const openFromNotification = useCallback(
-    (entry: NotificationEntry) => {
+    async (entry: NotificationEntry) => {
+      if (token && !entry.isRead) {
+        try {
+          await markNotificationRead(token, entry.notificationId, true);
+        } catch {
+          // ignore mark-read errors in UI tap path
+        }
+      }
       setNotificationsVisible(false);
       const targetOrder = orders.find((order) => order.id === entry.orderId);
       if (targetOrder) {
         openOrderSummary(targetOrder);
+        loadNotifications();
+        return;
       }
+
+      if (entry.orderId) {
+        navigation.navigate('OrderDetail', { orderId: entry.orderId });
+        loadNotifications();
+        return;
+      }
+
+      if (String(entry.entityType || '').toUpperCase() === 'SPIFF_CLAIM') {
+        (navigation as any).navigate('DashboardTab', { screen: 'SpiffRewards' });
+      }
+      loadNotifications();
     },
-    [orders, openOrderSummary],
+    [loadNotifications, navigation, openOrderSummary, orders, token],
   );
+
+  const handleMarkAllRead = useCallback(async () => {
+    if (!token) return;
+    try {
+      await markAllNotificationsRead(token);
+      await loadNotifications();
+    } catch {
+      // ignore mark-all failures in notification sheet
+    }
+  }, [loadNotifications, token]);
 
   const getNotificationCardStyle = useCallback((tone: NotificationTone) => {
     if (tone === 'alertGold') return [styles.notificationCardBase, styles.notificationCardGold];
@@ -831,7 +806,7 @@ const OrdersScreen = () => {
               <View style={styles.notificationsWindow}>
                 <View style={styles.notificationsHeaderRow}>
                   <Text style={styles.notificationsTitle}>Notifications</Text>
-                  <TouchableOpacity onPress={() => setNotificationCount(0)}>
+                  <TouchableOpacity onPress={handleMarkAllRead}>
                     <Text style={styles.markReadText}>Mark all read</Text>
                   </TouchableOpacity>
                 </View>

@@ -11,6 +11,7 @@ import { GiftbitService } from './giftbit.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
 import { SpiffSetting } from './entities/spiff-setting.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { SpiffSetting } from './entities/spiff-setting.entity';
       Branch,
     ]),
     AuthModule,
+    NotificationsModule,
   ],
   controllers: [SpiffController],
   providers: [SpiffService, GiftbitService],

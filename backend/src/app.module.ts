@@ -10,6 +10,7 @@ import { PricingModule } from './modules/pricing/pricing.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SpiffModule } from './modules/spiff/spiff.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { SpiffModule } from './modules/spiff/spiff.module';
     OrdersModule,
     AiModule,
     SpiffModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

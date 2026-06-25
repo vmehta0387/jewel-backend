@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { fetchOrders } from '../api/orders';
+import { fetchUnreadNotificationCount } from '../api/notifications';
 import LoginScreen from '../screens/LoginScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
 import DesignsScreen from '../screens/DesignsScreen';
@@ -25,8 +25,6 @@ import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import PricingScreen from '../screens/PricingScreen';
 import type { BranchEmployee, UserRole } from '../types';
-import { buildOrderNotifications } from '../utils/orderNotifications';
-import { loadSeenNotificationIds } from '../utils/notificationReadState';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -198,11 +196,8 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
     }
 
     try {
-      const response = await fetchOrders(token, 1, 100, 'ALL');
-      const summary = buildOrderNotifications(response.data || [], user);
-      const seen = await loadSeenNotificationIds(user.id);
-      const unread = summary.items.filter((item) => !seen.has(item.id)).length;
-      setOrdersBadgeCount(unread);
+      const response = await fetchUnreadNotificationCount(token);
+      setOrdersBadgeCount(response.unreadCount || 0);
     } catch {
       setOrdersBadgeCount(0);
     }

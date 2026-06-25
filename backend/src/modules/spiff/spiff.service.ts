@@ -2,6 +2,7 @@
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -14,6 +15,8 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { GiftbitService } from './giftbit.service';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
 import { SpiffSetting } from './entities/spiff-setting.entity';
@@ -43,6 +46,7 @@ type WalletSummary = {
 @Injectable()
 export class SpiffService {
   private static readonly SETTINGS_KEY_POINTS_PER_DOLLAR = 'POINTS_PER_DOLLAR';
+  private readonly logger = new Logger(SpiffService.name);
 
   constructor(
     @InjectRepository(SpiffPointLedger)
@@ -60,6 +64,7 @@ export class SpiffService {
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
     private readonly giftbitService: GiftbitService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getConfig() {
@@ -513,6 +518,7 @@ export class SpiffService {
 
       try {
         const saved = await this.claimRepo.save(claim);
+        await this.safeNotifyClaimCreated(saved, requester);
         return {
           claim: this.serializeClaim(saved),
           wallet: await this.computeWallet(requester.id),
@@ -561,6 +567,7 @@ export class SpiffService {
       claim.approvedById = requester.id;
       claim.approvedAt = new Date();
       const saved = await this.claimRepo.save(claim);
+      await this.safeNotifyClaimReviewed(saved, requester);
       return this.serializeClaim(saved);
     }
 
@@ -575,6 +582,7 @@ export class SpiffService {
       claim.approvedById = requester.id;
       claim.approvedAt = new Date();
       const saved = await this.claimRepo.save(claim);
+      await this.safeNotifyClaimReviewed(saved, requester);
       return this.serializeClaim(saved);
     }
 
@@ -618,6 +626,7 @@ export class SpiffService {
     }
 
     const saved = await this.claimRepo.save(claim);
+    await this.safeNotifyClaimReviewed(saved, requester);
     return this.serializeClaim(saved);
   }
 
@@ -655,7 +664,232 @@ export class SpiffService {
     }
 
     const saved = await this.claimRepo.save(claim);
+    await this.safeNotifyClaimFulfilled(saved, requester);
     return this.serializeClaim(saved);
+  }
+
+  private async safeNotifyClaimCreated(claim: SpiffRedemptionClaim, requester: AuthUser): Promise<void> {
+    try {
+      const context = await this.loadClaimNotificationContext(claim.id);
+      if (!context) return;
+
+      const claimLabel = context.claimNumber || 'SPIFF claim';
+      const requestedAmount = this.roundMoney(context.requestedAmountCents / 100);
+
+      await this.notificationsService.createForUser({
+        userId: context.userId,
+        companyId: context.companyId,
+        branchId: context.branchId,
+        type: 'SPIFF_CLAIM_SUBMITTED',
+        priority: NotificationPriority.P2,
+        title: `${claimLabel} submitted`,
+        message: `Your redemption claim ${claimLabel} for $${requestedAmount.toFixed(2)} was submitted for review.`,
+        entityType: 'SPIFF_CLAIM',
+        entityId: context.id,
+        actionUrl: `/spiff`,
+        metadata: {
+          claimId: context.id,
+          claimNumber: context.claimNumber,
+          status: context.status,
+          requestedPoints: context.requestedPoints,
+          requestedAmount,
+        },
+      });
+
+      const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
+      if (managerIds.length) {
+        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
+          || context.user?.email
+          || 'A user';
+        await this.notificationsService.createForUsers(managerIds, {
+          companyId: context.companyId,
+          branchId: context.branchId,
+          type: 'SPIFF_CLAIM_REVIEW_REQUIRED',
+          priority: NotificationPriority.P1,
+          title: `Review needed for ${claimLabel}`,
+          message: `${requestorName} submitted ${claimLabel} for ${context.requestedPoints} points.`,
+          entityType: 'SPIFF_CLAIM',
+          entityId: context.id,
+          actionUrl: `/spiff`,
+          metadata: {
+            claimId: context.id,
+            claimNumber: context.claimNumber,
+            status: context.status,
+            requestedPoints: context.requestedPoints,
+            requestedAmount,
+          },
+        });
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF notification skipped for new claim ${claim?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async safeNotifyClaimReviewed(claim: SpiffRedemptionClaim, requester: AuthUser): Promise<void> {
+    try {
+      const context = await this.loadClaimNotificationContext(claim.id);
+      if (!context) return;
+
+      const requestedAmount = this.roundMoney(context.requestedAmountCents / 100);
+      const baseMetadata = {
+        claimId: context.id,
+        claimNumber: context.claimNumber,
+        status: context.status,
+        requestedPoints: context.requestedPoints,
+        requestedAmount,
+        reviewedByUserId: requester.id,
+      };
+
+      const byStatus: Partial<
+        Record<
+          SpiffClaimStatus,
+          { type: string; priority: NotificationPriority; title: string; message: string }
+        >
+      > = {
+        [SpiffClaimStatus.REJECTED]: {
+          type: 'SPIFF_CLAIM_REJECTED',
+          priority: NotificationPriority.P1,
+          title: `${context.claimNumber} rejected`,
+          message: `Your redemption claim ${context.claimNumber} was rejected.`,
+        },
+        [SpiffClaimStatus.HOLD]: {
+          type: 'SPIFF_CLAIM_ON_HOLD',
+          priority: NotificationPriority.P1,
+          title: `${context.claimNumber} on hold`,
+          message: `Your redemption claim ${context.claimNumber} was placed on hold.`,
+        },
+        [SpiffClaimStatus.APPROVED]: {
+          type: 'SPIFF_CLAIM_APPROVED',
+          priority: NotificationPriority.P1,
+          title: `${context.claimNumber} approved`,
+          message: `Your redemption claim ${context.claimNumber} was approved.`,
+        },
+        [SpiffClaimStatus.FULFILLED]: {
+          type: 'SPIFF_CLAIM_FULFILLED',
+          priority: NotificationPriority.P1,
+          title: `${context.claimNumber} fulfilled`,
+          message: context.giftbitLinkUrl
+            ? `Your redemption claim ${context.claimNumber} was fulfilled. Your reward link is ready.`
+            : `Your redemption claim ${context.claimNumber} was fulfilled.`,
+        },
+      };
+
+      const payload = byStatus[context.status];
+      if (!payload) return;
+
+      await this.notificationsService.createForUser({
+        userId: context.userId,
+        companyId: context.companyId,
+        branchId: context.branchId,
+        type: payload.type,
+        priority: payload.priority,
+        title: payload.title,
+        message: payload.message,
+        entityType: 'SPIFF_CLAIM',
+        entityId: context.id,
+        actionUrl: `/spiff`,
+        metadata: {
+          ...baseMetadata,
+          rewardLink: context.giftbitLinkUrl ?? null,
+        },
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF review notification skipped for claim ${claim?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async safeNotifyClaimFulfilled(claim: SpiffRedemptionClaim, requester: AuthUser): Promise<void> {
+    try {
+      const context = await this.loadClaimNotificationContext(claim.id);
+      if (!context) return;
+
+      await this.notificationsService.createForUser({
+        userId: context.userId,
+        companyId: context.companyId,
+        branchId: context.branchId,
+        type: 'SPIFF_CLAIM_FULFILLED',
+        priority: NotificationPriority.P1,
+        title: `${context.claimNumber} fulfilled`,
+        message: context.giftbitLinkUrl
+          ? `Your redemption claim ${context.claimNumber} was fulfilled. Open the reward link to redeem it.`
+          : `Your redemption claim ${context.claimNumber} was fulfilled.`,
+        entityType: 'SPIFF_CLAIM',
+        entityId: context.id,
+        actionUrl: `/spiff`,
+        metadata: {
+          claimId: context.id,
+          claimNumber: context.claimNumber,
+          status: context.status,
+          requestedPoints: context.requestedPoints,
+          requestedAmount: this.roundMoney(context.requestedAmountCents / 100),
+          rewardLink: context.giftbitLinkUrl ?? null,
+          fulfilledByUserId: requester.id,
+        },
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF fulfill notification skipped for claim ${claim?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
+    }
+  }
+
+  private async loadClaimNotificationContext(claimId: string): Promise<SpiffRedemptionClaim | null> {
+    return this.claimRepo.findOne({
+      where: { id: claimId },
+      relations: ['user', 'company', 'branch', 'approvedBy'],
+    });
+  }
+
+  private async getClaimManagerUserIds(
+    claim: SpiffRedemptionClaim,
+    excludeIds: Array<string | null | undefined> = [],
+  ): Promise<string[]> {
+    const excluded = new Set(
+      excludeIds.map((value) => String(value || '').trim()).filter((value) => value.length > 0),
+    );
+    const ids = new Set<string>();
+
+    if (!claim.companyId && !claim.branchId) {
+      return [];
+    }
+
+    const qb = this.userRepo
+      .createQueryBuilder('user')
+      .select('user.id', 'id')
+      .where('user.isActive = :isActive', { isActive: true });
+
+    qb.andWhere(
+      new Brackets((subQb) => {
+        if (claim.companyId) {
+          subQb.orWhere('(user.companyId = :companyId AND user.role = :companyAdminRole)', {
+            companyId: claim.companyId,
+            companyAdminRole: UserRole.COMPANY_ADMIN,
+          });
+        }
+
+        if (claim.branchId) {
+          subQb.orWhere('(user.branchId = :branchId AND user.role = :branchManagerRole)', {
+            branchId: claim.branchId,
+            branchManagerRole: UserRole.BRANCH_MANAGER,
+          });
+        }
+      }),
+    );
+
+    const users = await qb.getRawMany<{ id: string }>();
+
+    users.forEach((user) => {
+      const userId = String(user.id || '').trim();
+      if (userId && !excluded.has(userId)) {
+        ids.add(userId);
+      }
+    });
+
+    return Array.from(ids);
   }
 
   async handleOrderCreated(order: Order): Promise<void> {
