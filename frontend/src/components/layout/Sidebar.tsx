@@ -6,6 +6,7 @@ import BlitzBrand from '../common/BlitzBrand';
 
 type MenuIconName =
   | 'dashboard'
+  | 'notifications'
   | 'companies'
   | 'branches'
   | 'users'
@@ -52,6 +53,7 @@ const navigation: NavigationItem[] = [
     permission: 'USER_MANAGEMENT',
     allowedRoles: ['SUPER_ADMIN', 'COMPANY_ADMIN'],
   },
+  { name: 'Notifications', path: '/notifications', icon: 'notifications' },
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES' },
   { name: 'Orders', path: '/orders', icon: 'orders', permission: 'ORDER_ENTRIES' },
@@ -102,6 +104,13 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
       <>
         <circle cx="12" cy="8" r="4" />
         <path d="M5 20a7 7 0 0114 0" />
+      </>
+    );
+  } else if (name === 'notifications') {
+    iconBody = (
+      <>
+        <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" />
+        <path d="M9 17a3 3 0 0 0 6 0" />
       </>
     );
   } else if (name === 'designs') {

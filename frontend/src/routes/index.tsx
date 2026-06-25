@@ -12,6 +12,7 @@ import ProductsPage from '../pages/products/ProductsPage';
 import DesignMastersPage from '../pages/masters/DesignMastersPage';
 import OrdersPage from '../pages/orders/OrdersPage';
 import SpiffPage from '../pages/spiff/SpiffPage';
+import NotificationsPage from '../pages/notifications/NotificationsPage';
 import ProtectedRoute from '../components/auth/ProtectedRoute';
 import UsersPage from '../pages/users/UsersPage';
 import AddUser from '../pages/users/AddUser';
@@ -95,6 +96,9 @@ export const router = createBrowserRouter([
           {
             element: <ProtectedRoute requiredTaskPermissions={['ORDER_ENTRIES']} />,
             children: [{ path: '/spiff', element: <SpiffPage /> }],
+          },
+          {
+            children: [{ path: '/notifications', element: <NotificationsPage /> }],
           },
         ],
       },

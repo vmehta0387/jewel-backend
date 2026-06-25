@@ -9,6 +9,12 @@ import {
 } from '../../services/notifications';
 import type { NotificationItem } from '../../types/notification.types';
 import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
+import {
+  formatNotificationTime,
+  getNotificationSection,
+  getNotificationToneClasses,
+  resolveNotificationPath,
+} from '../../utils/notifications';
 import Avatar from '../common/Avatar';
 import BlitzBrand from '../common/BlitzBrand';
 
@@ -29,63 +35,6 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const notificationsPanelRef = useRef<HTMLDivElement | null>(null);
   const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
-
-  const formatNotificationTime = useCallback((value?: string | null) => {
-    if (!value) return 'Just now';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return 'Just now';
-
-    const diffMs = Date.now() - parsed.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return parsed.toLocaleDateString();
-  }, []);
-
-  const getNotificationToneClasses = useCallback((item: NotificationItem) => {
-    const type = String(item.type || '').toUpperCase();
-    if (item.priority === 'P0' || type.includes('CANCELLED') || type.includes('REJECTED') || type.includes('HOLD')) {
-      return {
-        card: 'border-[#f0d1d1] bg-[#fff5f5] hover:bg-[#fff0f0]',
-        dot: 'bg-[#d55b5b]',
-      };
-    }
-    if (type.includes('APPROVAL') || type.includes('APPROVED')) {
-      return {
-        card: 'border-[#e8d4af] bg-[#fff8ee] hover:bg-[#fff5e7]',
-        dot: 'bg-[#c89d5a]',
-      };
-    }
-    if (type.includes('SHIPPED') || type.includes('FULFILLED') || type.includes('COMPLETED')) {
-      return {
-        card: 'border-[#d7e5fb] bg-[#f5f9ff] hover:bg-[#edf5ff]',
-        dot: 'bg-[#6f8fce]',
-      };
-    }
-    return {
-      card: 'border-[#e7ded2] bg-white hover:bg-[#faf7f2]',
-      dot: 'bg-[#8d8174]',
-    };
-  }, []);
-
-  const resolveNotificationPath = useCallback((item: NotificationItem) => {
-    const actionUrl = String(item.actionUrl || '').trim().toLowerCase();
-    if (actionUrl.startsWith('/orders')) return '/orders';
-    if (actionUrl.startsWith('/spiff')) return '/spiff';
-    if (actionUrl.startsWith('/users')) return '/users';
-    if (actionUrl.startsWith('/products')) return '/products';
-    if (actionUrl.startsWith('/branches')) return '/branches';
-    if (actionUrl.startsWith('/companies')) return '/companies';
-
-    const entityType = String(item.entityType || '').trim().toUpperCase();
-    if (entityType === 'ORDER') return '/orders';
-    if (entityType === 'SPIFF_CLAIM') return '/spiff';
-    if (entityType === 'USER') return '/users';
-    return '/dashboard';
-  }, []);
 
   const loadUnreadCount = useCallback(async () => {
     const token = getToken();
@@ -145,6 +94,12 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
       void refreshCurrentUser();
       void loadUnreadCount();
     };
+    const onNotificationsChanged = () => {
+      void loadUnreadCount();
+      if (notificationsOpen) {
+        void loadNotifications();
+      }
+    };
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === 'auth_user') {
@@ -158,14 +113,16 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     }, 120000);
 
     window.addEventListener('focus', onFocus);
+    window.addEventListener('notifications:changed', onNotificationsChanged);
     window.addEventListener('storage', onStorage);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('notifications:changed', onNotificationsChanged);
       window.removeEventListener('storage', onStorage);
     };
-  }, [loadUnreadCount, refreshCurrentUser]);
+  }, [loadNotifications, loadUnreadCount, notificationsOpen, refreshCurrentUser]);
 
   useEffect(() => {
     setNotificationsOpen(false);
@@ -261,10 +218,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   };
 
   const groupedNotifications = useMemo(() => {
-    const alerts = notifications.filter((item) => {
-      const type = String(item.type || '').toUpperCase();
-      return item.priority === 'P0' || type.includes('CANCELLED') || type.includes('REJECTED') || type.includes('HOLD') || type.includes('APPROVAL');
-    });
+    const alerts = notifications.filter((item) => getNotificationSection(item) === 'ALERTS');
     const updates = notifications.filter((item) => !alerts.includes(item));
     return { alerts, updates };
   }, [notifications]);
@@ -397,6 +351,18 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
                       <p className="mt-1 text-xs text-[#8a7f72]">Order, SPIFF, and account updates will show up here.</p>
                     </div>
                   )}
+                </div>
+                <div className="mt-3 border-t border-[#eee6db] pt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      navigate('/notifications');
+                    }}
+                    className="w-full rounded-[1.1rem] border border-[#e1d6c7] bg-[#fbf8f2] px-4 py-2.5 text-sm font-semibold text-[#4b4035] transition hover:border-[#d4c2aa] hover:bg-[#f7f0e4]"
+                  >
+                    View all notifications
+                  </button>
                 </div>
               </div>
             ) : null}

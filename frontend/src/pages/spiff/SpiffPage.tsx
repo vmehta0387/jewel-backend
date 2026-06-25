@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import api from '../../services/api';
@@ -170,6 +171,7 @@ const getScopeOptionsForRole = (
 };
 
 export default function SpiffPage() {
+  const [searchParams] = useSearchParams();
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
@@ -209,6 +211,8 @@ export default function SpiffPage() {
     user?.role === 'BRANCH_MANAGER';
 
   const canCreateClaim = user?.role === 'SALES_REP';
+  const deepLinkedClaimId = searchParams.get('claimId');
+  const deepLinkedClaimNumber = searchParams.get('claimNumber');
   const scopeOptions = useMemo(() => getScopeOptionsForRole(user?.role), [user?.role]);
   const canViewGlobalRepLeaderboard =
     scope === 'GLOBAL' && (isSuperAdmin || isCompanyAdmin);
@@ -281,6 +285,19 @@ export default function SpiffPage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!deepLinkedClaimId && !deepLinkedClaimNumber) {
+      return;
+    }
+
+    setClaimStatus('ALL');
+    setClaimPage(1);
+
+    const nextSearch = String(deepLinkedClaimNumber || '').trim();
+    setClaimSearchInput(nextSearch);
+    setClaimSearch(nextSearch);
+  }, [deepLinkedClaimId, deepLinkedClaimNumber]);
 
   useEffect(() => {
     if (!canViewGlobalRepLeaderboard && leaderboardEntity === 'REPS') {
@@ -719,9 +736,19 @@ export default function SpiffPage() {
                 const statusStyle = STATUS_STYLES[claim.status] || 'bg-slate-100 text-slate-700 border border-slate-200';
                 const actionable = canManageClaims && ['PENDING_REVIEW', 'HOLD', 'APPROVED'].includes(claim.status);
                 const canRetryGiftbit = claim.status === 'APPROVED' && !claim.giftbitLinkUrl;
+                const isDeepLinkedClaim =
+                  (deepLinkedClaimId && claim.id === deepLinkedClaimId) ||
+                  (deepLinkedClaimNumber && claim.claimNumber === deepLinkedClaimNumber);
 
                 return (
-                  <div key={claim.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div
+                    key={claim.id}
+                    className={`rounded-xl border bg-white px-4 py-3 shadow-sm transition ${
+                      isDeepLinkedClaim
+                        ? 'border-[#c89d5a] ring-2 ring-[#ead7b5]'
+                        : 'border-slate-200'
+                    }`}
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Pagination from '../../components/common/Pagination';
@@ -264,6 +265,8 @@ function Modal({
 }
 
 export default function OrdersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkedOrderRef = useRef<string | null>(null);
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const canViewOrders = useMemo(() => {
@@ -549,6 +552,41 @@ export default function OrdersPage() {
       setShowViewModal(true);
     }
   };
+
+  useEffect(() => {
+    const deepLinkedOrderId = searchParams.get('open');
+    if (!deepLinkedOrderId) {
+      deepLinkedOrderRef.current = null;
+      return;
+    }
+
+    if (deepLinkedOrderRef.current === deepLinkedOrderId) {
+      return;
+    }
+
+    deepLinkedOrderRef.current = deepLinkedOrderId;
+
+    const openDeepLinkedOrder = async () => {
+      try {
+        const { detail, design } = await fetchOrderWithDesign(deepLinkedOrderId);
+        setViewOrder(detail);
+        await loadPackets();
+        setViewDesign(design);
+        setShowViewModal(true);
+      } catch (error) {
+        console.error('Failed to open deep-linked order', error);
+        setViewOrder(null);
+        setViewDesign(null);
+        setShowViewModal(true);
+      } finally {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('open');
+        setSearchParams(nextParams, { replace: true });
+      }
+    };
+
+    void openDeepLinkedOrder();
+  }, [searchParams, setSearchParams]);
 
   const openEditModal = async (order: OrderRow) => {
     setEditingOrderId(order.id);
