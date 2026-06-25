@@ -1410,6 +1410,97 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+function SkeletonLine({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-slate-200 ${className}`} />;
+}
+
+function DesignInfoSkeleton() {
+  const infoRows = Array.from({ length: 11 });
+  const summaryCards = Array.from({ length: FINDING_FEATURE_ENABLED ? 6 : 5 });
+  const tableSections = [
+    { title: 'Metal Information', columns: 7, rows: 2 },
+    { title: 'Gemstone Information', columns: 11, rows: 2 },
+    { title: 'Labor Information', columns: 4, rows: 2 },
+    { title: 'Overhead Information', columns: 2, rows: 2 },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+        <div className="rounded border border-gray-200">
+          <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3">
+            <SkeletonLine className="h-4 w-40" />
+          </div>
+          <div className="divide-y divide-gray-200">
+            {infoRows.map((_, index) => (
+              <div key={index} className="grid grid-cols-4 gap-3 px-3 py-2">
+                <SkeletonLine className="h-4 w-24" />
+                <SkeletonLine className="h-4 w-32" />
+                <SkeletonLine className="h-4 w-24" />
+                <SkeletonLine className="h-4 w-32" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-4">
+          {['Gallery Media', '3D STL Model', 'iJewel 3D Model'].map((title, index) => (
+            <div key={title} className="rounded border border-gray-200">
+              <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3">
+                <SkeletonLine className="h-4 w-36" />
+              </div>
+              <div className="space-y-3 p-3">
+                <SkeletonLine className={index === 1 ? 'h-72 w-full' : 'h-36 w-full'} />
+                <SkeletonLine className="h-10 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className={`grid grid-cols-1 gap-3 ${FINDING_FEATURE_ENABLED ? 'md:grid-cols-6' : 'md:grid-cols-5'}`}>
+        {summaryCards.map((_, index) => (
+          <div key={index} className="rounded border border-gray-200 bg-gray-50 p-2">
+            <SkeletonLine className="mb-2 h-3 w-20" />
+            <SkeletonLine className="h-5 w-24" />
+          </div>
+        ))}
+      </div>
+
+      {tableSections.map((section) => (
+        <div key={section.title} className="rounded border border-slate-200">
+          <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3">
+            <SkeletonLine className="h-4 w-40" />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-gray-200 bg-white">
+                <tr>
+                  {Array.from({ length: section.columns }).map((_, index) => (
+                    <th key={index} className="px-3 py-2">
+                      <SkeletonLine className="h-3 w-20" />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {Array.from({ length: section.rows }).map((_, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {Array.from({ length: section.columns }).map((__, cellIndex) => (
+                      <td key={cellIndex} className="px-3 py-3">
+                        <SkeletonLine className="h-4 w-24" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MediaPreview({
   url,
   alt,
@@ -1613,6 +1704,7 @@ export default function ProductsPage() {
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [stlItem, setStlItem] = useState<StlItem | null>(null);
+  const [stlRemoved, setStlRemoved] = useState(false);
   const [stlUploading, setStlUploading] = useState(false);
   const [showGalleryPicker, setShowGalleryPicker] = useState(false);
   const [showInlineMasterModal, setShowInlineMasterModal] = useState(false);
@@ -1709,6 +1801,9 @@ export default function ProductsPage() {
 
   const selected = useMemo(() => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const detailInfo = detailDesign ?? selected;
+  const isInfoDetailReady = Boolean(detailDesign && selectedId && String(detailDesign.id || '') === String(selectedId));
+  const infoModalTitleDesign = isInfoDetailReady ? detailDesign : selected;
+  const shouldShowInfoSkeleton = !isInfoDetailReady && (detailDesignLoading || !detailDesignError);
   const primaryMetalValue = metalRows[0]?.goldColour || '';
   const structuredMetalOptions = useMemo(
     () => (masterOptions.metalCaratages.length > 0 ? masterOptions.metalCaratages : masterOptions.goldColours),
@@ -2048,6 +2143,7 @@ export default function ProductsPage() {
     }
 
     let active = true;
+    setDetailDesign(null);
     setDetailDesignLoading(true);
     setDetailDesignError(null);
     void (async () => {
@@ -2365,6 +2461,7 @@ export default function ProductsPage() {
         window.alert('No STL files were uploaded.');
       } else {
         setStlItem(uploaded[0]);
+        setStlRemoved(false);
       }
 
       if (stlFiles.length !== files.length) {
@@ -5059,6 +5156,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setTagPicker('');
     setGalleryItems([]);
     setStlItem(null);
+    setStlRemoved(false);
     setShowGalleryPicker(false);
     setMetalRows([createMetalRow('')]);
     setGemRows([{
@@ -5181,6 +5279,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           ? metals.map((item: any) => {
               const metalCaratage = item.metalCaratage || item.goldColour || '';
               const masterRate = getMetalRate(metalCaratage);
+              const savedPricePerGm = asInput(item.pricePerGm);
               return {
                 id: item.id || makeId(),
                 goldColour: metalCaratage,
@@ -5189,7 +5288,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 wastageWt: asInput(item.wastageWt),
                 totalWt: asInput(item.totalWt),
                 pricePerGm:
-                  masterRate !== undefined ? masterRate.toFixed(2) : asInput(item.pricePerGm),
+                  savedPricePerGm.trim().length > 0 ? savedPricePerGm : masterRate !== undefined ? masterRate.toFixed(2) : '',
                 value: asInput(item.value),
               };
             })
@@ -5326,6 +5425,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             }
           : null,
       );
+      setStlRemoved(false);
       setShowGalleryPicker(false);
       setShowAddModal(true);
     } catch {
@@ -5374,6 +5474,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       setTagPicker('');
       setGalleryItems(buildGalleryItems(row.imageUrls || [], row.imageKeys || row.imageUrls || []));
       setStlItem(null);
+      setStlRemoved(false);
       setVendorRows([createDefaultVendorRow()]);
       setShowGalleryPicker(false);
       setShowAddModal(true);
@@ -5461,6 +5562,11 @@ const createDefaultVendorRow = (): VendorRow => ({
     const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, resolvedVersion);
 
     const usedMetalKeys = new Set<string>();
+    if (!metalRows.some((row) => row.goldColour.trim())) {
+      window.alert('Please add at least one Metal Caratage in Metal Information before saving the design.');
+      return;
+    }
+
     for (const row of metalRows) {
       if (!row.goldColour.trim()) {
         window.alert('Metal Caratage is required for all Metal rows.');
@@ -5559,7 +5665,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       remarks: form.remarks.trim() || undefined,
       tags: selectedTags,
       imageUrls: galleryKeys,
-      stlFileUrl: stlItem?.key || stlItem?.url || undefined,
+      stlFileUrl: stlRemoved ? null : stlItem?.key || stlItem?.url || undefined,
       ijewelModelId: form.ijewelModelId.trim(),
       ijewelBaseName: form.ijewelBaseName.trim(),
     };
@@ -5725,6 +5831,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       setEditingDesignIsPrimary(false);
       setIsDesignNoManual(false);
       setShowGalleryPicker(false);
+      setStlRemoved(false);
       setShowAddModal(false);
       if (shouldShowFamilyNameSyncNotice) {
         showDesignSaveNotice('Design name synced across all versions');
@@ -8475,7 +8582,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       ) : null}
 
       {showAddModal && (
-        <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); }}>
+        <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>
           <div className="space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
@@ -8986,7 +9093,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <button
                             type="button"
                             className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                            onClick={() => setStlItem(null)}
+                            onClick={() => { setStlItem(null); setStlRemoved(true); }}
                           >
                             Remove STL
                           </button>
@@ -9674,7 +9781,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <Button type="button" onClick={() => saveDesign()} disabled={savingDesign}>
                 {savingDesign ? 'Saving...' : 'Save'}
               </Button>
-              <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); }}>Close</Button>
+              <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>Close</Button>
             </div>
           </div>
         </Modal>
@@ -10164,6 +10271,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             {inlineMasterType !== 'FINDING_HEAD' &&
             inlineMasterType !== 'METAL_CARATAGE' &&
             inlineMasterType !== 'JEWELRY_SIZE' &&
+            inlineMasterType !== 'COLLECTION' &&
             inlineMasterType !== 'OVERHEAD_RULE' &&
             inlineMasterType !== 'VENDOR_NAME' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -10484,14 +10592,15 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {modal === 'info' && detailInfo && (
-        <Modal title={`DESIGN DETAILS (${detailInfo.designNo || ''})`} onClose={() => { setShowStlViewerModal(false); setModal(null); }} size="max-w-7xl">
+        <Modal title={`DESIGN DETAILS (${infoModalTitleDesign?.designNo || ''})`} onClose={() => { setShowStlViewerModal(false); setModal(null); }} size="max-w-7xl">
           <div className="space-y-4">
-            {detailDesignLoading ? (
-              <p className="text-sm text-blue-700">Loading design details...</p>
-            ) : null}
             {detailDesignError ? (
               <p className="text-sm text-red-600">{detailDesignError}</p>
             ) : null}
+            {shouldShowInfoSkeleton ? (
+              <DesignInfoSkeleton />
+            ) : isInfoDetailReady ? (
+              <>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
               <div className="rounded border border-gray-200">
                 <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Design Information</div>
@@ -10793,6 +10902,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </table>
               </div>
             </div>
+              </>
+            ) : null}
           </div>
         </Modal>
       )}
