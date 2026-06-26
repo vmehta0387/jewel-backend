@@ -1122,6 +1122,17 @@ export class ProductsService {
           WHERE dg.design_id = design.id)`,
         'stoneInfoAgg',
       )
+      .addSelect(
+        `(SELECT COUNT(1)
+          FROM designs family_design
+          WHERE family_design.company_id <=> design.company_id
+            AND (family_design.branch_id <=> design.branch_id OR (family_design.branch_id IS NULL AND design.branch_id IS NULL))
+            AND (
+              family_design.design_no = REGEXP_REPLACE(design.design_no, '-V[0-9]+$', '')
+              OR family_design.design_no LIKE CONCAT(REGEXP_REPLACE(design.design_no, '-V[0-9]+$', ''), '-V%')
+            ))`,
+        'versionCount',
+      )
       .orderBy('design.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -1154,8 +1165,32 @@ export class ProductsService {
             .orWhere('design.designStatus LIKE :search', { search })
             .orWhere('design.goldColour LIKE :search', { search })
             .orWhere('design.stoneInfo LIKE :search', { search })
+            .orWhere(
+              'EXISTS (SELECT 1 FROM design_metals dm_search WHERE dm_search.design_id = design.id AND dm_search.gold_colour LIKE :search)',
+              { search },
+            )
+            .orWhere(
+              `EXISTS (
+                SELECT 1
+                FROM design_gemstones dg_search
+                WHERE dg_search.design_id = design.id
+                  AND (dg_search.stone LIKE :search OR dg_search.stone_type LIKE :search)
+              )`,
+              { search },
+            )
             .orWhere('CAST(design.tags AS CHAR) LIKE :search', { search });
         }),
+      );
+    }
+
+    if (query.familyDesignNo?.trim()) {
+      const baseDesignNo = this.normalizeBaseDesignNo(query.familyDesignNo.trim());
+      qb.andWhere(
+        '(design.designNo = :familyBaseDesignNo OR design.designNo LIKE :familyVersionedDesignNo)',
+        {
+          familyBaseDesignNo: baseDesignNo,
+          familyVersionedDesignNo: `${baseDesignNo}-V%`,
+        },
       );
     }
 
@@ -1187,6 +1222,12 @@ export class ProductsService {
 
     if (query.stage?.trim()) {
       qb.andWhere('design.stage LIKE :stage', { stage: `%${query.stage.trim()}%` });
+    }
+
+    if (query.designStatus?.trim()) {
+      qb.andWhere('design.designStatus LIKE :designStatus', {
+        designStatus: `%${query.designStatus.trim()}%`,
+      });
     }
 
     if (query.goldColour?.trim()) {
@@ -1260,7 +1301,7 @@ export class ProductsService {
 
     const total = await qb.getCount();
     const { entities: data, raw } = await qb.getRawAndEntities();
-    const listSummariesByDesign = new Map<string, { metalInfo: string | null; stoneInfo: string | null }>();
+    const listSummariesByDesign = new Map<string, { metalInfo: string | null; stoneInfo: string | null; versionCount: number }>();
     raw.forEach((row) => {
       const designId = this.optionalText(row.design_id || row.designId || row.design_id_0);
       if (!designId) {
@@ -1269,6 +1310,7 @@ export class ProductsService {
       listSummariesByDesign.set(designId, {
         metalInfo: this.optionalText(row.metalInfo),
         stoneInfo: this.optionalText(row.stoneInfoAgg),
+        versionCount: Math.max(1, Math.trunc(this.toNumber(row.versionCount))),
       });
     });
     const designIds = data.map((design) => design.id);
@@ -1310,6 +1352,7 @@ export class ProductsService {
             ...design,
             goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
             stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
+            versionCount: listSummary?.versionCount || 1,
             metals: designMetals,
             gemstones: designGemstones,
             imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
@@ -1340,6 +1383,7 @@ export class ProductsService {
           ...design,
           goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
           stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
+          versionCount: listSummary?.versionCount || 1,
           metals: designMetals,
           gemstones: designGemstones,
           imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],

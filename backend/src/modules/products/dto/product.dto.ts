@@ -666,6 +666,10 @@ export class FindProductsQueryDto {
   @IsOptional()
   search?: string;
 
+  @IsString()
+  @IsOptional()
+  familyDesignNo?: string;
+
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
   @IsOptional()
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
@@ -721,6 +725,10 @@ export class FindProductsQueryDto {
   @IsString()
   @IsOptional()
   stage?: string;
+
+  @IsString()
+  @IsOptional()
+  designStatus?: string;
 
   @IsString()
   @IsOptional()

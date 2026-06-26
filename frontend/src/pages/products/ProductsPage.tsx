@@ -82,6 +82,7 @@ interface DesignRow {
   remarks: string;
   isActive: boolean;
   isPrimary?: boolean;
+  versionCount?: number;
   imageUrls?: string[];
   imageKeys?: string[];
   ijewelModelId?: string | null;
@@ -139,6 +140,7 @@ interface ApiDesignRow {
   ijewelBaseName?: string | null;
   isActive?: boolean;
   isPrimary?: boolean;
+  versionCount?: number | string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
   updatedByName?: string | null;
@@ -447,7 +449,19 @@ const DEFAULT_DESIGN_LIST_COLUMNS: DesignListColumnKey[] = [
   'price',
 ];
 
+const DESIGN_LIST_PAGE_SIZE = 15;
+const VERSION_LIST_PAGE_SIZE = 10;
 const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v2';
+
+interface VersionFamilyListState {
+  rows: DesignRow[];
+  page: number;
+  total: number;
+  totalPages: number;
+  search: string;
+  loading: boolean;
+  error: string | null;
+}
 
 interface PacketOption {
   id: string;
@@ -798,6 +812,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     remarks: design.remarks || '',
     isActive: design.isActive !== false,
     isPrimary: design.isPrimary === true,
+    versionCount: Math.max(1, Math.trunc(parseNumericValue(design.versionCount || 1))),
     imageUrls,
     imageKeys,
     ijewelModelId: design.ijewelModelId ?? null,
@@ -1391,9 +1406,24 @@ function Tag({ text }: { text: string }) {
   );
 }
 
-function Action({ label, onClick }: { label: string; onClick: () => void }) {
+function Action({
+  label,
+  onClick,
+  loading = false,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}) {
   const icon =
-    label === 'View' ? (
+    loading ? (
+      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" />
+        <path className="opacity-75" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    ) : label === 'View' ? (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
         <circle cx="12" cy="12" r="3" />
@@ -1441,6 +1471,7 @@ function Action({ label, onClick }: { label: string; onClick: () => void }) {
       aria-label={label}
       className="app-table-icon-action"
       onClick={onClick}
+      disabled={disabled || loading}
     >
       {icon}
     </button>
@@ -1631,6 +1662,8 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
   const [rowsError, setRowsError] = useState<string | null>(null);
+  const [listTotal, setListTotal] = useState(0);
+  const [listTotalPages, setListTotalPages] = useState(1);
   const [savingDesign, setSavingDesign] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDesignIds, setSelectedDesignIds] = useState<string[]>([]);
@@ -1818,6 +1851,7 @@ export default function ProductsPage() {
   >({});
   const [allDesignRows, setAllDesignRows] = useState<DesignRow[]>([]);
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
+  const [versionFamilies, setVersionFamilies] = useState<Record<string, VersionFamilyListState>>({});
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
   const [mediaLibraryRows, setMediaLibraryRows] = useState<MediaLibraryItem[]>([]);
@@ -2516,43 +2550,33 @@ export default function ProductsPage() {
     setRowsLoading(true);
     setRowsError(null);
     try {
-      const limit = 200;
-      let currentPage = 1;
-      let totalPages = 1;
-      const primaryRowsRaw: ApiDesignRow[] = [];
-      const summaryRowsRaw: ApiDesignRow[] = [];
-
-      do {
-        const [primaryResponse, summaryResponse] = await Promise.all([
-          api.get('/products', {
-            params: {
-              page: currentPage,
-              limit,
-              status: 'ALL',
-              primaryOnly: true,
-            },
-          }),
-          api.get('/products', {
-            params: {
-              page: currentPage,
-              limit,
-              status: 'ALL',
-              summaryOnly: true,
-            },
-          }),
-        ]);
-        const primaryPageRows = (primaryResponse.data?.data || []) as ApiDesignRow[];
-        const summaryPageRows = (summaryResponse.data?.data || []) as ApiDesignRow[];
-        primaryRowsRaw.push(...primaryPageRows);
-        summaryRowsRaw.push(...summaryPageRows);
-        totalPages = Number(summaryResponse.data?.totalPages || 1);
-        currentPage += 1;
-      } while (currentPage <= totalPages);
-
-      const mappedRows = primaryRowsRaw.map(mapApiDesignToRow);
-      const mappedAllRows = summaryRowsRaw.map(mapApiDesignToRow);
+      const response = await api.get('/products', {
+        params: {
+          page,
+          limit: DESIGN_LIST_PAGE_SIZE,
+          status: showInactive ? 'INACTIVE' : 'ACTIVE',
+          primaryOnly: true,
+          search: search.trim() || undefined,
+          jewelryGroup: filters.jewelryGroup || undefined,
+          collection: filters.collection || undefined,
+          jewelrySize: filters.jewelrySize || undefined,
+          tags: filters.tags || undefined,
+          designStatus: filters.status || undefined,
+          goldColour: filters.goldColour || undefined,
+          stone: filters.stonePacket || undefined,
+        },
+      });
+      const mappedRows = ((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow);
+      const total = Number(response.data?.total || mappedRows.length || 0);
+      const nextTotalPages = Math.max(1, Number(response.data?.totalPages || Math.ceil(total / DESIGN_LIST_PAGE_SIZE) || 1));
       setRows(mappedRows);
-      setAllDesignRows(mappedAllRows);
+      setListTotal(total);
+      setListTotalPages(nextTotalPages);
+      setAllDesignRows((prev) => {
+        const currentPageIds = new Set(mappedRows.map((row) => row.id));
+        const retained = prev.filter((row) => !currentPageIds.has(row.id));
+        return [...mappedRows, ...retained];
+      });
       setSelectedId((current) => {
         if (preferredSelectedId && mappedRows.some((row) => row.id === preferredSelectedId)) {
           return preferredSelectedId;
@@ -2565,7 +2589,8 @@ export default function ProductsPage() {
     } catch (error: any) {
       setRowsError(error?.response?.data?.message || 'Unable to load designs from server.');
       setRows([]);
-      setAllDesignRows([]);
+      setListTotal(0);
+      setListTotalPages(1);
       setSelectedId('');
     } finally {
       setRowsLoading(false);
@@ -3217,10 +3242,13 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    fetchDesignRows();
     fetchMasterOptions();
     fetchPacketOptions();
   }, []);
+
+  useEffect(() => {
+    fetchDesignRows();
+  }, [page, search, showInactive, filters]);
 
   useEffect(() => {
     if (!showMediaLibraryModal) {
@@ -3475,12 +3503,90 @@ export default function ProductsPage() {
     });
   };
 
-  const toggleVersionsForDesign = (designNo: string) => {
+  const fetchVersionsForDesign = async (
+    designNo: string,
+    options?: { page?: number; search?: string },
+  ): Promise<DesignRow[]> => {
+    const base = getDesignFamilyKey(designNo || '');
+    if (!base) return [];
+    const currentState = versionFamilies[base];
+    const nextPage = Math.max(1, options?.page || currentState?.page || 1);
+    const nextSearch = options?.search ?? currentState?.search ?? '';
+
+    setVersionFamilies((prev) => ({
+      ...prev,
+      [base]: {
+        rows: prev[base]?.rows || [],
+        page: nextPage,
+        total: prev[base]?.total || 0,
+        totalPages: prev[base]?.totalPages || 1,
+        search: nextSearch,
+        loading: true,
+        error: null,
+      },
+    }));
+    try {
+      const response = await api.get('/products', {
+        params: {
+          page: nextPage,
+          limit: VERSION_LIST_PAGE_SIZE,
+          status: 'ALL',
+          summaryOnly: true,
+          familyDesignNo: designNo,
+          search: nextSearch.trim() || undefined,
+        },
+      });
+      const versionRows = (((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow));
+      const total = Number(response.data?.total || versionRows.length || 0);
+      const totalPages = Math.max(1, Number(response.data?.totalPages || Math.ceil(total / VERSION_LIST_PAGE_SIZE) || 1));
+
+      setAllDesignRows((prev) => {
+        const loadedIds = new Set(versionRows.map((row) => row.id));
+        const next = prev.filter((row) => getDesignFamilyKey(row.designNo || '', row.designNo || row.id) !== base || loadedIds.has(row.id));
+        const retainedIds = new Set(next.map((row) => row.id));
+        return [...next, ...versionRows.filter((row) => !retainedIds.has(row.id))];
+      });
+      setVersionFamilies((prev) => ({
+        ...prev,
+        [base]: {
+          rows: versionRows,
+          page: nextPage,
+          total,
+          totalPages,
+          search: nextSearch,
+          loading: false,
+          error: null,
+        },
+      }));
+      return versionRows;
+    } catch (error: any) {
+      const message = error?.response?.data?.message || 'Unable to load design versions.';
+      setVersionFamilies((prev) => ({
+        ...prev,
+        [base]: {
+          rows: prev[base]?.rows || [],
+          page: nextPage,
+          total: prev[base]?.total || 0,
+          totalPages: prev[base]?.totalPages || 1,
+          search: nextSearch,
+          loading: false,
+          error: message,
+        },
+      }));
+      window.alert(message);
+      return [];
+    }
+  };
+
+  const toggleVersionsForDesign = async (designNo: string) => {
     const base = getDesignFamilyKey(designNo || '');
     if (!base) return;
-    setExpandedBaseDesigns((prev) =>
-      prev.includes(base) ? prev.filter((item) => item !== base) : [...prev, base],
-    );
+    if (expandedBaseDesigns.includes(base)) {
+      setExpandedBaseDesigns((prev) => prev.filter((item) => item !== base));
+      return;
+    }
+    setExpandedBaseDesigns((prev) => (prev.includes(base) ? prev : [...prev, base]));
+    await fetchVersionsForDesign(designNo, { page: versionFamilies[base]?.page || 1 });
   };
 
   const isVersionsExpanded = (designNo: string) => {
@@ -3491,6 +3597,9 @@ export default function ProductsPage() {
   const getVersionsForDesign = (designNo: string): DesignRow[] => {
     const base = getDesignFamilyKey(designNo || '');
     if (!base) return [];
+    if (versionFamilies[base]) {
+      return versionFamilies[base].rows;
+    }
     return versionsByBaseDesign.get(base) || [];
   };
 
@@ -3515,12 +3624,12 @@ export default function ProductsPage() {
 
       return null;
     },
-    [versionsByBaseDesign],
+    [versionsByBaseDesign, versionFamilies],
   );
 
   const versionBuilderVersionRows = useMemo(
     () => (versionBuilderBaseDesign ? getVersionsForDesign(versionBuilderBaseDesign.designNo) : []),
-    [versionBuilderBaseDesign, versionsByBaseDesign],
+    [versionBuilderBaseDesign, versionsByBaseDesign, versionFamilies],
   );
 
   const versionBuilderOptionGroups = useMemo<VersionBuilderOptionGroup[]>(() => {
@@ -3574,7 +3683,7 @@ export default function ProductsPage() {
     });
   }, [masterOptions, versionBuilderBaseDesign]);
 
-  const openVersionBuilder = (row: DesignRow) => {
+  const openVersionBuilder = async (row: DesignRow) => {
     setVersionBuilderBaseDesign(row);
 
     setVersionBuilderSelections({
@@ -3601,6 +3710,7 @@ export default function ProductsPage() {
     setVersionBuilderOverheadRows([]);
     setVersionBuilderGemError(null);
     setShowVersionBuilderModal(true);
+    void fetchVersionsForDesign(row.designNo);
     void loadVersionBuilderGemstoneTemplate(row);
   };
 
@@ -4958,17 +5068,15 @@ export default function ProductsPage() {
     versionBuilderSizeChartCoverages,
   ]);
 
-  const pageSize = 15;
   const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(filteredBaseRows.length / pageSize)),
-    [filteredBaseRows.length],
+    () => listTotalPages,
+    [listTotalPages],
   );
   const pagedRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredBaseRows.slice(start, start + pageSize);
-  }, [filteredBaseRows, page, pageSize]);
-  const showingFrom = filteredBaseRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const showingTo = Math.min(page * pageSize, filteredBaseRows.length);
+    return filteredBaseRows;
+  }, [filteredBaseRows]);
+  const showingFrom = listTotal === 0 ? 0 : (page - 1) * DESIGN_LIST_PAGE_SIZE + 1;
+  const showingTo = Math.min(page * DESIGN_LIST_PAGE_SIZE, listTotal);
 
   const visibleRowIds = useMemo(() => pagedRows.map((row) => row.id), [pagedRows]);
   const selectedVisibleCount = useMemo(
@@ -6697,10 +6805,13 @@ const createDefaultVendorRow = (): VendorRow => ({
               </thead>
               <tbody>
               {pagedRows.map((row, idx) => {
-                const versionRows = getVersionsForDesign(row.designNo);
+                const versionBase = getDesignFamilyKey(row.designNo || '');
+                const versionState = versionBase ? versionFamilies[versionBase] : undefined;
+                const versionRows = versionState?.rows || getVersionsForDesign(row.designNo);
                 const preferredImage = getPreferredRowImage(row);
-                const versionCount = versionRows.length || 1;
+                const versionCount = row.versionCount || versionState?.total || versionRows.length || 1;
                 const versionsExpanded = isVersionsExpanded(row.designNo);
+                const versionsLoading = Boolean(versionState?.loading);
                 const columnCount = 2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length;
                 const versionsLabel = versionsExpanded ? 'Hide Versions' : 'Versions';
                 const primaryVersionId = resolvePrimaryVersionId(versionRows);
@@ -6811,7 +6922,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <div className="flex items-center justify-start gap-1.5">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
-                      <Action label={versionsLabel} onClick={() => toggleVersionsForDesign(row.designNo)} />
+                      <Action
+                        label={versionsLabel}
+                        onClick={() => toggleVersionsForDesign(row.designNo)}
+                        loading={versionsLoading}
+                      />
                       {canCreateDesign ? (
                         <Action label="Version Builder" onClick={() => openVersionBuilder(row)} />
                       ) : null}
@@ -6865,43 +6980,110 @@ const createDefaultVendorRow = (): VendorRow => ({
                 {versionsExpanded ? (
                   <tr className="bg-slate-50/70">
                     <td className="app-table-cell" colSpan={columnCount}>
-                      <div className="rounded-xl border border-slate-200 bg-white p-3">
-                        {versionRows.length <= 1 ? (
-                          <p className="text-xs text-slate-500">No additional versions for this design.</p>
+                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Versions</p>
+                            <p className="text-xs text-slate-500">
+                              Showing {versionState?.total ? ((versionState.page - 1) * VERSION_LIST_PAGE_SIZE) + 1 : 0}
+                              -{Math.min((versionState?.page || 1) * VERSION_LIST_PAGE_SIZE, versionState?.total || 0)}
+                              {' '}of {versionState?.total || 0}
+                            </p>
+                          </div>
+                          <form
+                            className="flex min-w-[280px] flex-1 items-center justify-end gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void fetchVersionsForDesign(row.designNo, { page: 1, search: versionState?.search || '' });
+                            }}
+                          >
+                            <input
+                              type="search"
+                              value={versionState?.search || ''}
+                              onChange={(event) => {
+                                const nextSearch = event.target.value;
+                                if (!versionBase) return;
+                                setVersionFamilies((prev) => ({
+                                  ...prev,
+                                  [versionBase]: {
+                                    rows: prev[versionBase]?.rows || [],
+                                    page: prev[versionBase]?.page || 1,
+                                    total: prev[versionBase]?.total || 0,
+                                    totalPages: prev[versionBase]?.totalPages || 1,
+                                    search: nextSearch,
+                                    loading: prev[versionBase]?.loading || false,
+                                    error: prev[versionBase]?.error || null,
+                                  },
+                                }));
+                              }}
+                              placeholder="Search versions..."
+                              className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                            />
+                            <button
+                              type="submit"
+                              className="h-9 rounded-lg border border-slate-200 bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={versionsLoading}
+                            >
+                              Search
+                            </button>
+                            <button
+                              type="button"
+                              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={versionsLoading || !(versionState?.search || '').trim()}
+                              onClick={() => fetchVersionsForDesign(row.designNo, { page: 1, search: '' })}
+                            >
+                              Clear
+                            </button>
+                          </form>
+                        </div>
+                        {versionsLoading ? (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">Loading versions...</p>
+                        ) : versionState?.error ? (
+                          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">{versionState.error}</p>
+                        ) : versionRows.length <= 1 && !(versionState?.search || '').trim() ? (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No additional versions for this design.</p>
+                        ) : versionRows.length === 0 ? (
+                          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No versions match this search.</p>
                         ) : (
                           <div className="space-y-2">
                             {versionRows.map((versionRow) => {
                               const isPrimaryVersion = versionRow.id === primaryVersionId;
                               return (
-                              <div key={versionRow.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <span className="font-semibold text-slate-900">{versionRow.designNo}</span>
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{versionRow.version || 'V1'}</span>
-                                  {isPrimaryVersion ? (
-                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                      Primary
-                                    </span>
-                                  ) : null}
-                                  <span className="text-slate-600">{versionRow.stage || '-'}</span>
-                                  <span className="text-slate-600">{versionRow.status || (versionRow.isActive ? 'Active' : 'Inactive')}</span>
-                                  <span className="text-slate-500">Updated: {versionRow.modifiedAt || '-'}</span>
+                                <div key={versionRow.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="font-semibold text-slate-900">{versionRow.designNo}</span>
+                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{versionRow.version || 'V1'}</span>
+                                    {isPrimaryVersion ? (
+                                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                        Primary
+                                      </span>
+                                    ) : null}
+                                    <span className="text-slate-600">{versionRow.stage || '-'}</span>
+                                    <span className="text-slate-600">{versionRow.status || (versionRow.isActive ? 'Active' : 'Inactive')}</span>
+                                    <span className="text-slate-500">Updated: {versionRow.modifiedAt || '-'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Action label="View" onClick={() => { setSelectedId(versionRow.id); setModal('info'); }} />
+                                    {canModifyExistingDesigns ? (
+                                      <>
+                                        <Action label="Edit" onClick={() => openEdit(versionRow)} />
+                                        {!isPrimaryVersion ? (
+                                          <Action label="Set Primary" onClick={() => setPrimaryDesignVersion(versionRow)} />
+                                        ) : null}
+                                      </>
+                                    ) : null}
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Action label="View" onClick={() => { setSelectedId(versionRow.id); setModal('info'); }} />
-                                  {canModifyExistingDesigns ? (
-                                    <>
-                                      <Action label="Edit" onClick={() => openEdit(versionRow)} />
-                                      {!isPrimaryVersion ? (
-                                        <Action label="Set Primary" onClick={() => setPrimaryDesignVersion(versionRow)} />
-                                      ) : null}
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
                               );
                             })}
                           </div>
                         )}
+                        <Pagination
+                          page={versionState?.page || 1}
+                          totalPages={versionState?.totalPages || 1}
+                          onPageChange={(nextPage) => fetchVersionsForDesign(row.designNo, { page: nextPage })}
+                          className="mt-2"
+                        />
                       </div>
                     </td>
                   </tr>
@@ -6915,7 +7097,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         </div>
 
         <div className="mt-3 space-y-1 text-sm text-gray-600">
-          <p>Showing {showingFrom}-{showingTo} of {filteredBaseRows.length} entries</p>
+          <p>Showing {showingFrom}-{showingTo} of {listTotal} entries</p>
           <p className="text-xs text-blue-700">
             {canModifyExistingDesigns
               ? 'Tip: Click a Design No or use the Edit button in Action to edit an existing design.'
