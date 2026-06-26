@@ -210,9 +210,9 @@ export class OrdersService {
         branchId: scope.branchId ?? null,
         designId: dto.designId ?? null,
         salesRepId: requester.id,
-        deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate),
+        deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date()),
         quantity: dto.quantity ?? 1,
-        price: pricing.finalPrice,
+        price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
         customerName: dto.customerName?.trim() || null,
         customerPhone: dto.customerPhone?.trim() || null,
@@ -255,7 +255,15 @@ export class OrdersService {
   }
 
   async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {
-    const order = await this.findOne(id, requester);
+    const order = await this.orderRepo.findOne({
+      where: { id },
+      relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
+    });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    this.assertReadScope(order, requester);
+
     const previousStatus = order.status;
     const scope = this.resolveScope(requester, dto.companyId ?? order.companyId ?? undefined, dto.branchId ?? order.branchId ?? undefined);
 
@@ -295,7 +303,7 @@ export class OrdersService {
       order.branchId = scope.branchId ?? null;
     }
     if (dto.deliveryDate !== undefined) {
-      order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate);
+      order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate, order.createdAt);
     }
     if (dto.quantity !== undefined) {
       order.quantity = dto.quantity;
@@ -305,7 +313,7 @@ export class OrdersService {
       companyId: order.companyId ?? undefined,
       branchId: order.branchId ?? undefined,
     });
-    order.price = pricing.finalPrice;
+    order.price = dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
       order.shortDescription = dto.shortDescription?.trim() || null;
     }
@@ -716,7 +724,7 @@ export class OrdersService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  private normalizeFutureDeliveryDate(value?: string | null): string | null {
+  private normalizeFutureDeliveryDate(value?: string | null, minDate?: Date): string | null {
     const trimmed = value?.trim();
     if (!trimmed) {
       return null;
@@ -752,11 +760,11 @@ export class OrdersService {
     }
 
     parsed.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const minimumDate = minDate ? new Date(minDate) : new Date();
+    minimumDate.setHours(0, 0, 0, 0);
 
-    if (parsed.getTime() < today.getTime()) {
-      throw new BadRequestException('Expected delivery date cannot be in the past');
+    if (parsed.getTime() < minimumDate.getTime()) {
+      throw new BadRequestException('Delivery date cannot be before order creation date');
     }
 
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
