@@ -267,6 +267,7 @@ function Modal({
 export default function OrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkedOrderRef = useRef<string | null>(null);
+  const orderRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const canViewOrders = useMemo(() => {
@@ -297,6 +298,7 @@ export default function OrdersPage() {
   const [designDetail, setDesignDetail] = useState<DesignDetail | null>(null);
   const [packetLookup, setPacketLookup] = useState<Record<string, string>>({});
   const [viewOrder, setViewOrder] = useState<OrderRow | null>(null);
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ from: string; to: string } | null>(null);
   const [filters, setFilters] = useState({
@@ -565,6 +567,7 @@ export default function OrdersPage() {
     }
 
     deepLinkedOrderRef.current = deepLinkedOrderId;
+    setHighlightedOrderId(deepLinkedOrderId);
 
     const openDeepLinkedOrder = async () => {
       try {
@@ -587,6 +590,16 @@ export default function OrdersPage() {
 
     void openDeepLinkedOrder();
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!highlightedOrderId) return;
+    const targetRow = orderRowRefs.current[highlightedOrderId];
+    if (!targetRow) return;
+
+    targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timeoutId = window.setTimeout(() => setHighlightedOrderId((current) => (current === highlightedOrderId ? null : current)), 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedOrderId, orders]);
 
   const openEditModal = async (order: OrderRow) => {
     setEditingOrderId(order.id);
@@ -932,7 +945,13 @@ export default function OrdersPage() {
                   </tr>
                 )}
                 {!ordersLoading && orders.map((order, index) => (
-                  <tr key={order.id} className="app-table-row">
+                  <tr
+                    key={order.id}
+                    ref={(node) => {
+                      orderRowRefs.current[order.id] = node;
+                    }}
+                    className={`app-table-row transition-colors ${highlightedOrderId === order.id ? 'bg-amber-50/70 ring-2 ring-[#ead7b5]' : ''}`}
+                  >
                     <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                     <td className="app-table-cell text-sm font-semibold text-slate-900">{order.orderNumber}</td>
                     <td className="app-table-cell text-sm text-slate-700">{formatDesignLabel(order.designNo, order.designVersion)}</td>

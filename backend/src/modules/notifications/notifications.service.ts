@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
 import { FindNotificationsQueryDto } from './dto/notification.dto';
@@ -47,6 +47,35 @@ export class NotificationsService {
 
     if (query.unreadOnly) {
       qb.andWhere('notification.is_read = :isRead', { isRead: false });
+    }
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((subQb) => {
+          subQb
+            .where('notification.title LIKE :search', { search })
+            .orWhere('notification.message LIKE :search', { search })
+            .orWhere('notification.type LIKE :search', { search })
+            .orWhere('notification.entity_type LIKE :search', { search });
+        }),
+      );
+    }
+
+    const alertParams = {
+      p0: NotificationPriority.P0,
+      approval: '%APPROVAL%',
+      cancelled: '%CANCELLED%',
+      rejected: '%REJECTED%',
+      hold: '%HOLD%',
+    };
+    const alertCondition =
+      '(notification.priority = :p0 OR UPPER(notification.type) LIKE :approval OR UPPER(notification.type) LIKE :cancelled OR UPPER(notification.type) LIKE :rejected OR UPPER(notification.type) LIKE :hold)';
+
+    if (query.section === 'ALERTS') {
+      qb.andWhere(alertCondition, alertParams);
+    } else if (query.section === 'UPDATES') {
+      qb.andWhere(`NOT ${alertCondition}`, alertParams);
     }
 
     const [data, total] = await qb.getManyAndCount();

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import Pagination from '../../components/common/Pagination';
 import {
-  fetchNotifications,
+  fetchNotificationsWithFilters,
+  fetchUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../services/notifications';
@@ -16,6 +18,15 @@ import {
 } from '../../utils/notifications';
 
 type NotificationFilter = 'ALL' | 'UNREAD' | 'ALERTS' | 'UPDATES';
+
+type NotificationCounts = {
+  all: number;
+  unread: number;
+  alerts: number;
+  updates: number;
+};
+
+const DEFAULT_LIMIT = 20;
 const broadcastNotificationsChanged = () => window.dispatchEvent(new Event('notifications:changed'));
 
 export default function NotificationsPage() {
@@ -24,60 +35,81 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<NotificationFilter>('ALL');
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [counts, setCounts] = useState<NotificationCounts>({ all: 0, unread: 0, alerts: 0, updates: 0 });
   const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
+
+  const backendSection = useMemo(() => {
+    if (filter === 'ALERTS') return 'ALERTS' as const;
+    if (filter === 'UPDATES') return 'UPDATES' as const;
+    return undefined;
+  }, [filter]);
+
+  const loadCounts = useCallback(async () => {
+    try {
+      const [allRes, unreadRes, alertsRes, updatesRes] = await Promise.all([
+        fetchNotificationsWithFilters(1, 1, false),
+        fetchUnreadNotificationCount(),
+        fetchNotificationsWithFilters(1, 1, false, '', 'ALERTS'),
+        fetchNotificationsWithFilters(1, 1, false, '', 'UPDATES'),
+      ]);
+
+      setCounts({
+        all: Number(allRes.total || 0),
+        unread: Number(unreadRes.unreadCount || 0),
+        alerts: Number(alertsRes.total || 0),
+        updates: Number(updatesRes.total || 0),
+      });
+    } catch (err) {
+      console.error('Failed to load notification counts', err);
+    }
+  }, []);
 
   const loadNotifications = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchNotifications(1, 100, false);
+      const response = await fetchNotificationsWithFilters(
+        page,
+        limit,
+        filter === 'UNREAD',
+        searchTerm,
+        backendSection,
+      );
       setNotifications(response.data || []);
+      setTotal(Number(response.total || 0));
+      setTotalPages(Math.max(1, Number(response.totalPages || 1)));
     } catch (err: any) {
       const message = err?.response?.data?.message;
       setError(Array.isArray(message) ? message.join(', ') : message || 'Unable to load notifications');
       setNotifications([]);
+      setTotal(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [backendSection, filter, limit, page, searchTerm]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadNotifications(), loadCounts()]);
+  }, [loadCounts, loadNotifications]);
 
   useEffect(() => {
     void loadNotifications();
   }, [loadNotifications]);
 
-  const unreadCount = useMemo(() => notifications.filter((item) => !item.isRead).length, [notifications]);
-  const alertsCount = useMemo(
-    () => notifications.filter((item) => getNotificationSection(item) === 'ALERTS').length,
-    [notifications],
-  );
-  const updatesCount = useMemo(
-    () => notifications.filter((item) => getNotificationSection(item) === 'UPDATES').length,
-    [notifications],
-  );
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts]);
 
-  const filteredNotifications = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return notifications.filter((item) => {
-      const matchesFilter =
-        filter === 'ALL'
-          ? true
-          : filter === 'UNREAD'
-            ? !item.isRead
-            : filter === 'ALERTS'
-              ? getNotificationSection(item) === 'ALERTS'
-              : getNotificationSection(item) === 'UPDATES';
-
-      if (!matchesFilter) return false;
-      if (!term) return true;
-
-      const haystack = [item.title, item.message, item.type, item.entityType]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [filter, notifications, search]);
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchTerm, limit]);
 
   const setProcessing = (id: string, next: boolean) => {
     setProcessingIds((prev) => {
@@ -88,14 +120,22 @@ export default function NotificationsPage() {
     });
   };
 
+  const applySearch = () => {
+    setSearchTerm(searchInput.trim());
+    setPage(1);
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    setSearchTerm('');
+    setPage(1);
+  };
+
   const handleOpenNotification = async (item: NotificationItem) => {
     try {
       if (!item.isRead) {
         setProcessing(item.id, true);
         await markNotificationRead(item.id, true);
-        setNotifications((prev) =>
-          prev.map((entry) => (entry.id === item.id ? { ...entry, isRead: true, readAt: new Date().toISOString() } : entry)),
-        );
         broadcastNotificationsChanged();
       }
     } catch (error) {
@@ -104,6 +144,7 @@ export default function NotificationsPage() {
       setProcessing(item.id, false);
     }
 
+    void loadCounts();
     navigate(resolveNotificationPath(item));
   };
 
@@ -111,14 +152,8 @@ export default function NotificationsPage() {
     try {
       setProcessing(item.id, true);
       await markNotificationRead(item.id, !item.isRead);
-      setNotifications((prev) =>
-        prev.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, isRead: !entry.isRead, readAt: !entry.isRead ? new Date().toISOString() : null }
-            : entry,
-        ),
-      );
       broadcastNotificationsChanged();
+      await refreshAll();
     } catch (error) {
       console.error('Failed to toggle notification read state', error);
     } finally {
@@ -129,18 +164,15 @@ export default function NotificationsPage() {
   const handleMarkAllRead = async () => {
     try {
       await markAllNotificationsRead();
-      setNotifications((prev) =>
-        prev.map((item) => ({
-          ...item,
-          isRead: true,
-          readAt: item.readAt || new Date().toISOString(),
-        })),
-      );
       broadcastNotificationsChanged();
+      await refreshAll();
     } catch (error) {
       console.error('Failed to mark all notifications as read', error);
     }
   };
+
+  const rangeStart = total ? (page - 1) * limit + 1 : 0;
+  const rangeEnd = total ? Math.min(page * limit, total) : 0;
 
   return (
     <div className="space-y-6">
@@ -153,10 +185,10 @@ export default function NotificationsPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => void loadNotifications()}>
+          <Button type="button" variant="secondary" onClick={() => void refreshAll()}>
             Refresh
           </Button>
-          <Button type="button" onClick={handleMarkAllRead} disabled={!unreadCount}>
+          <Button type="button" onClick={handleMarkAllRead} disabled={!counts.unread}>
             Mark All Read
           </Button>
         </div>
@@ -165,29 +197,29 @@ export default function NotificationsPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <Card>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ab8b57]">All</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{notifications.length}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{counts.all}</p>
           <p className="mt-1 text-xs text-slate-500">Total notifications</p>
         </Card>
         <Card>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ab8b57]">Unread</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{unreadCount}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{counts.unread}</p>
           <p className="mt-1 text-xs text-slate-500">Needs attention</p>
         </Card>
         <Card>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ab8b57]">Alerts</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{alertsCount}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{counts.alerts}</p>
           <p className="mt-1 text-xs text-slate-500">Approval and critical items</p>
         </Card>
         <Card>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#ab8b57]">Updates</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{updatesCount}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-900">{counts.updates}</p>
           <p className="mt-1 text-xs text-slate-500">Status and workflow updates</p>
         </Card>
       </div>
 
       <Card title="Notification Feed">
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap gap-2">
               {([
                 { key: 'ALL', label: 'All' },
@@ -213,14 +245,42 @@ export default function NotificationsPage() {
               })}
             </div>
 
-            <input
-              type="text"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search title, message, or type..."
-              className="w-full rounded-[1rem] border border-[#dfd3c4] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#c9a971] lg:max-w-md"
-            />
+            <div className="flex w-full flex-col gap-2 sm:flex-row xl:max-w-2xl">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    applySearch();
+                  }
+                }}
+                placeholder="Search title, message, or type..."
+                className="w-full rounded-[1rem] border border-[#dfd3c4] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#c9a971]"
+              />
+              <select
+                value={limit}
+                onChange={(event) => setLimit(Number(event.target.value))}
+                className="rounded-[1rem] border border-[#dfd3c4] bg-white px-4 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#c9a971]"
+              >
+                <option value={10}>10 / page</option>
+                <option value={20}>20 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+              <Button type="button" variant="secondary" onClick={applySearch}>
+                Search
+              </Button>
+              <Button type="button" variant="secondary" onClick={clearSearch} disabled={!searchInput && !searchTerm}>
+                Clear
+              </Button>
+            </div>
           </div>
+
+          {(searchTerm || filter !== 'ALL') ? (
+            <div className="rounded-xl border border-[#e8dccd] bg-[#faf7f2] px-4 py-2 text-xs font-medium text-[#6f6356]">
+              Showing {rangeStart}-{rangeEnd} of {total} {filter === 'ALL' ? 'notifications' : filter.toLowerCase()} {searchTerm ? `for "${searchTerm}"` : ''}
+            </div>
+          ) : null}
 
           {error ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
@@ -232,9 +292,9 @@ export default function NotificationsPage() {
             <div className="rounded-[1.2rem] border border-dashed border-[#e4d7c6] bg-[#fcfaf6] px-4 py-12 text-center text-sm text-[#8a7f72]">
               Loading notifications...
             </div>
-          ) : filteredNotifications.length ? (
+          ) : notifications.length ? (
             <div className="space-y-3">
-              {filteredNotifications.map((item) => {
+              {notifications.map((item) => {
                 const tone = getNotificationToneClasses(item);
                 const processing = Boolean(processingIds[item.id]);
                 return (
@@ -293,6 +353,8 @@ export default function NotificationsPage() {
                   </div>
                 );
               })}
+
+              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
             </div>
           ) : (
             <div className="rounded-[1.2rem] border border-dashed border-[#e4d7c6] bg-[#fcfaf6] px-4 py-12 text-center">

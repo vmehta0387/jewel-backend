@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
   createSpiffClaim,
@@ -24,6 +24,7 @@ import {
   reviewSpiffClaim,
   type SpiffClaim,
 } from '../api/spiff';
+import type { DashboardStackParamList } from '../navigation/RootNavigator';
 
 const formatPoints = (value: number | null | undefined) => {
   const amount = Number(value || 0);
@@ -103,6 +104,7 @@ const formatClaimAge = (value: string | null | undefined) => {
 
 const SpiffRewardsScreen = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<DashboardStackParamList, 'SpiffRewards'>>();
   const { token, user } = useAuth();
   const isSalesRep = user?.role === 'SALES_REP';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
@@ -124,6 +126,15 @@ const SpiffRewardsScreen = () => {
   const [branchManagerPanel, setBranchManagerPanel] = useState<BranchManagerPanel>('BRANCH_BOARD');
   const [companyFilter, setCompanyFilter] = useState<CompanyAdminClaimFilter>('ALL');
   const [claimActionId, setClaimActionId] = useState<string | null>(null);
+  const deepLinkedClaimId = route.params?.claimId;
+  const deepLinkedClaimNumber = route.params?.claimNumber;
+
+  const isDeepLinkedClaim = useCallback(
+    (claim: Pick<SpiffClaim, 'id' | 'claimNumber'>) =>
+      (deepLinkedClaimId && claim.id === deepLinkedClaimId) ||
+      (deepLinkedClaimNumber && claim.claimNumber === deepLinkedClaimNumber),
+    [deepLinkedClaimId, deepLinkedClaimNumber],
+  );
 
   const load = useCallback(async (silent = false) => {
     if (!token) return;
@@ -193,6 +204,16 @@ const SpiffRewardsScreen = () => {
     setRefreshing(true);
     load(true);
   }, [load]);
+
+  React.useEffect(() => {
+    if (!deepLinkedClaimId && !deepLinkedClaimNumber) return;
+    if (isSalesRep) {
+      setSalesRepPanel('ACTIVITY');
+    }
+    if (isCompanyAdmin) {
+      setCompanyFilter('ALL');
+    }
+  }, [deepLinkedClaimId, deepLinkedClaimNumber, isCompanyAdmin, isSalesRep]);
 
   const submitClaim = useCallback(async () => {
     if (!token) return;
@@ -578,7 +599,7 @@ const SpiffRewardsScreen = () => {
               {salesRepPanel === 'ACTIVITY' ? (
                 claims.length ? (
                   claims.map((claim) => (
-                    <View key={claim.id} style={styles.claimCard}>
+                    <View key={claim.id} style={[styles.claimCard, isDeepLinkedClaim(claim) ? styles.claimCardHighlighted : null]}>
                       <View style={styles.claimTopRow}>
                         <Text style={styles.claimNumber}>{claim.claimNumber}</Text>
                         <View
@@ -768,7 +789,7 @@ const SpiffRewardsScreen = () => {
                 const repPoints = repPointsByUserId.get(String(claim.userId || '').trim()) || claim.requestedPoints || 0;
 
                 return (
-                  <View key={claim.id} style={[styles.caClaimCard, canReview ? styles.caClaimCardPending : null]}>
+                  <View key={claim.id} style={[styles.caClaimCard, canReview ? styles.caClaimCardPending : null, isDeepLinkedClaim(claim) ? styles.caClaimCardHighlighted : null]}>
                     <View style={styles.caClaimTopRow}>
                       <View style={styles.caClaimAvatar}>
                         <Text allowFontScaling={false} style={styles.caClaimAvatarText}>
@@ -977,7 +998,7 @@ const SpiffRewardsScreen = () => {
             <Text style={styles.sectionTitle}>My Claims</Text>
             {claims.length ? (
               claims.map((claim) => (
-                <View key={claim.id} style={styles.claimCard}>
+                <View key={claim.id} style={[styles.claimCard, isDeepLinkedClaim(claim) ? styles.claimCardHighlighted : null]}>
                   <View style={styles.claimTopRow}>
                     <Text style={styles.claimNumber}>{claim.claimNumber}</Text>
                     <View
@@ -1134,6 +1155,10 @@ const styles = StyleSheet.create({
     borderColor: '#E9DED0',
     paddingHorizontal: 11,
     paddingVertical: 11,
+  },
+  caClaimCardHighlighted: {
+    borderColor: '#C89D5A',
+    borderWidth: 2,
   },
   caClaimCardPending: {
     borderLeftColor: '#BE9446',
@@ -1803,6 +1828,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
     marginTop: 8,
+  },
+  claimCardHighlighted: {
+    borderColor: '#C89D5A',
+    borderWidth: 2,
+    shadowColor: '#C89D5A',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   claimTopRow: {
     flexDirection: 'row',

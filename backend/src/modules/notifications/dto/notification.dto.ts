@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+
+export type NotificationSectionFilter = 'ALERTS' | 'UPDATES';
 
 export class FindNotificationsQueryDto {
   @IsOptional()
@@ -19,6 +21,14 @@ export class FindNotificationsQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   unreadOnly?: boolean;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @IsIn(['ALERTS', 'UPDATES'])
+  section?: NotificationSectionFilter;
 }
 
 export class MarkNotificationReadDto {

@@ -103,7 +103,7 @@ export type OrdersStackParamList = {
 
 export type DashboardStackParamList = {
   DashboardHome: undefined;
-  SpiffRewards: undefined;
+  SpiffRewards: { claimId?: string; claimNumber?: string } | undefined;
 };
 
 export type TeamStackParamList = {

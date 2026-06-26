@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -172,6 +172,7 @@ const getScopeOptionsForRole = (
 
 export default function SpiffPage() {
   const [searchParams] = useSearchParams();
+  const claimCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
@@ -310,6 +311,23 @@ export default function SpiffPage() {
       setClaimPage(claimsTotalPages);
     }
   }, [claimPage, claimsTotalPages]);
+
+  useEffect(() => {
+    if (!claims.length || (!deepLinkedClaimId && !deepLinkedClaimNumber)) {
+      return;
+    }
+
+    const matchedClaim = claims.find((claim) =>
+      (deepLinkedClaimId && claim.id === deepLinkedClaimId) ||
+      (deepLinkedClaimNumber && claim.claimNumber === deepLinkedClaimNumber),
+    );
+
+    if (!matchedClaim) return;
+
+    window.requestAnimationFrame(() => {
+      claimCardRefs.current[matchedClaim.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [claims, deepLinkedClaimId, deepLinkedClaimNumber]);
 
   const submitClaim = async () => {
     const requestedPoints = Math.floor(Number(claimPoints || 0));
@@ -743,6 +761,9 @@ export default function SpiffPage() {
                 return (
                   <div
                     key={claim.id}
+                    ref={(node) => {
+                      claimCardRefs.current[claim.id] = node;
+                    }}
                     className={`rounded-xl border bg-white px-4 py-3 shadow-sm transition ${
                       isDeepLinkedClaim
                         ? 'border-[#c89d5a] ring-2 ring-[#ead7b5]'

@@ -86,3 +86,21 @@ export const getOrderIdFromNotification = (entry: Pick<NotificationFeedEntry, 'e
   }
   return null;
 };
+
+export const getSpiffClaimTargetFromNotification = (
+  entry: Pick<NotificationFeedEntry, 'entityType' | 'entityId' | 'metadata'>,
+) => {
+  if (String(entry.entityType || '').toUpperCase() !== 'SPIFF_CLAIM') {
+    return null;
+  }
+
+  const metadata = (entry.metadata as Record<string, unknown> | null) || null;
+  const claimId = String(entry.entityId || metadata?.claimId || '').trim() || undefined;
+  const claimNumber = String(metadata?.claimNumber || '').trim() || undefined;
+
+  if (!claimId && !claimNumber) {
+    return null;
+  }
+
+  return { claimId, claimNumber };
+};

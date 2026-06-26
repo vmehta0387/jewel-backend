@@ -28,6 +28,7 @@ import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders
 import type { Order } from '../types';
 import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import {
+  getSpiffClaimTargetFromNotification,
   getOrderIdFromNotification,
   type NotificationFeedEntry,
   type NotificationTone,
@@ -681,8 +682,12 @@ const OrdersScreen = () => {
         return;
       }
 
-      if (String(entry.entityType || '').toUpperCase() === 'SPIFF_CLAIM') {
-        (navigation as any).navigate('DashboardTab', { screen: 'SpiffRewards' });
+      const spiffTarget = getSpiffClaimTargetFromNotification(entry);
+      if (spiffTarget) {
+        (navigation as any).navigate('DashboardTab', {
+          screen: 'SpiffRewards',
+          params: spiffTarget,
+        });
       }
       loadNotifications();
     },

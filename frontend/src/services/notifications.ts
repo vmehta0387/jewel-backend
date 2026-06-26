@@ -6,6 +6,16 @@ import type {
 } from '../types/notification.types';
 
 export const fetchNotifications = async (page = 1, limit = 20, unreadOnly = false) => {
+  return fetchNotificationsWithFilters(page, limit, unreadOnly);
+};
+
+export const fetchNotificationsWithFilters = async (
+  page = 1,
+  limit = 20,
+  unreadOnly = false,
+  search = '',
+  section?: 'ALERTS' | 'UPDATES',
+) => {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -13,6 +23,14 @@ export const fetchNotifications = async (page = 1, limit = 20, unreadOnly = fals
 
   if (unreadOnly) {
     params.set('unreadOnly', 'true');
+  }
+
+  if (search.trim()) {
+    params.set('search', search.trim());
+  }
+
+  if (section) {
+    params.set('section', section);
   }
 
   const response = await api.get<NotificationListResponse>(`/notifications?${params.toString()}`);
