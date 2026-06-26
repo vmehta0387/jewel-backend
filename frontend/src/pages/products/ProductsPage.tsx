@@ -40,6 +40,7 @@ interface MasterOption {
   id: string;
   value: string;
   aliasName?: string;
+  isActive?: boolean;
   jewelryGroupId?: string;
   jewelryGroup?: string;
   metalName?: string;
@@ -132,6 +133,8 @@ interface ApiDesignRow {
   remarks?: string | null;
   imageUrls?: unknown;
   imageKeys?: unknown;
+  metals?: unknown;
+  gemstones?: unknown;
   ijewelModelId?: string | null;
   ijewelBaseName?: string | null;
   isActive?: boolean;
@@ -140,6 +143,40 @@ interface ApiDesignRow {
   updatedAt?: string | null;
   updatedByName?: string | null;
 }
+
+const getDesignMetalSummary = (design: ApiDesignRow): string => {
+  const metals = Array.isArray(design.metals)
+    ? design.metals
+        .map((item: any) => String(item?.metalCaratage || item?.goldColour || '').trim())
+        .filter(Boolean)
+    : [];
+  if (metals.length > 0) {
+    return metals.join(', ');
+  }
+  return String(design.goldColour || '').trim();
+};
+
+const getDesignStoneSummary = (design: ApiDesignRow): string => {
+  const stones = Array.isArray(design.gemstones)
+    ? design.gemstones
+        .map((item: any) =>
+          String(
+            item?.stone ||
+              item?.stoneName ||
+              item?.stoneType ||
+              item?.packetName ||
+              item?.packet?.stone ||
+              item?.packet?.packetName ||
+              '',
+          ).trim(),
+        )
+        .filter(Boolean)
+    : [];
+  if (stones.length > 0) {
+    return stones.join(', ');
+  }
+  return String(design.stoneInfo || '').trim();
+};
 
 interface GalleryItem {
   key: string;
@@ -751,9 +788,9 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     diamondSpread: design.diamondSpread || '-',
     diamondWeight: design.diamondWeight || '',
     diamondQuality: design.diamondQuality || '',
-    goldColour: design.goldColour || 'N/A',
+    goldColour: getDesignMetalSummary(design) || 'N/A',
     collection: design.collection || 'General',
-    stoneInfo: design.stoneInfo || 'N/A',
+    stoneInfo: getDesignStoneSummary(design) || 'N/A',
     price: parseNumericValue(design.totalValue),
     tags,
     stage: design.stage || '',
@@ -1743,6 +1780,7 @@ export default function ProductsPage() {
   const [versionBuilderGemMode, setVersionBuilderGemMode] = useState<VersionBuilderGemMode>('OVERRIDE_BLOCK');
   const [, setVersionBuilderGemApplyScope] = useState<VersionBuilderGemApplyScope>('ALL_COMBINATIONS');
   const [versionBuilderWorkflowStep, setVersionBuilderWorkflowStep] = useState<VersionBuilderWorkflowStep>('INFO');
+  const [showVersionBuilderDiamondQualityValidation, setShowVersionBuilderDiamondQualityValidation] = useState(false);
   const [versionBuilderMetalImageMap, setVersionBuilderMetalImageMap] = useState<Record<string, string[]>>({});
   const [versionBuilderActiveMetal, setVersionBuilderActiveMetal] = useState('');
   const [versionBuilderUploadedImageUrls, setVersionBuilderUploadedImageUrls] = useState<string[]>([]);
@@ -3382,7 +3420,18 @@ export default function ProductsPage() {
       const key = getDesignFamilyKey(row.designNo || '', row.designNo || row.id);
       if (map.has(key)) return;
       const versions = versionsByBaseDesign.get(key) || [row];
-      map.set(key, pickPrimaryDesignRow(versions));
+      const primaryVersion = pickPrimaryDesignRow(versions);
+      map.set(
+        key,
+        primaryVersion?.id === row.id
+          ? {
+              ...primaryVersion,
+              ...row,
+              goldColour: primaryVersion.goldColour || row.goldColour,
+              stoneInfo: primaryVersion.stoneInfo || row.stoneInfo,
+            }
+          : row,
+      );
     });
     return Array.from(map.values());
   }, [filteredRows, versionsByBaseDesign]);
@@ -3488,10 +3537,17 @@ export default function ProductsPage() {
         })
         .map((option) => option.value) || [];
 
+    const activeMetalCaratageValues = uniqueNonEmptyValues([
+      ...masterOptions.metalCaratages
+        .filter((option) => option.isActive !== false)
+        .map((option) => option.aliasName || option.value),
+    ]);
+    const baseMetalIsActive = activeMetalCaratageValues.some(
+      (value) => normalizeLookupKey(value) === normalizeLookupKey(versionBuilderBaseDesign.goldColour),
+    );
     const metals = uniqueNonEmptyValues([
-      ...masterOptions.metalCaratages.map((option) => option.aliasName || option.value),
-      ...masterOptions.goldColours.map((option) => option.aliasName || option.value),
-      versionBuilderBaseDesign.goldColour,
+      ...activeMetalCaratageValues,
+      ...(baseMetalIsActive ? [versionBuilderBaseDesign.goldColour] : []),
     ]);
     const coverages = uniqueNonEmptyValues([
       ...masterOptions.diamondSpreads.map((option) => option.value),
@@ -3532,6 +3588,7 @@ export default function ProductsPage() {
     setVersionBuilderGemMode('OVERRIDE_BLOCK');
     setVersionBuilderGemApplyScope('ALL_COMBINATIONS');
     setVersionBuilderWorkflowStep('INFO');
+    setShowVersionBuilderDiamondQualityValidation(false);
     setVersionBuilderMetalImageMap({});
     setVersionBuilderActiveMetal(uniqueNonEmptyValues([row.goldColour])[0] || '');
     setVersionBuilderUploadedImageUrls([]);
@@ -3560,6 +3617,7 @@ export default function ProductsPage() {
     setVersionCreateProgress({ done: 0, total: 0 });
     setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
     setVersionBuilderOverheadRows([]);
+    setShowVersionBuilderDiamondQualityValidation(false);
     setShowVersionBuilderModal(false);
   };
 
@@ -3716,6 +3774,15 @@ export default function ProductsPage() {
       return;
     }
     if (creatingVersions) {
+      return;
+    }
+    if (!versionBuilderSelections.diamondQualities.length) {
+      setShowVersionBuilderDiamondQualityValidation(true);
+      setVersionBuilderWorkflowStep('DIMENSIONS');
+      return;
+    }
+    if (!versionBuilderCreateValidation.isValid) {
+      window.alert(versionBuilderCreateValidation.message || 'Please complete required Version Builder fields.');
       return;
     }
     const rowsToCreate = versionBuilderGeneratedRows.filter((row) => {
@@ -4071,14 +4138,21 @@ export default function ProductsPage() {
     setVersionBuilderSelections((prev) => {
       const current = prev[groupId];
       const exists = current.includes(value);
+      const nextValues = exists ? current.filter((item) => item !== value) : [...current, value];
+      if (groupId === 'diamondQualities' && nextValues.length > 0) {
+        setShowVersionBuilderDiamondQualityValidation(false);
+      }
       return {
         ...prev,
-        [groupId]: exists ? current.filter((item) => item !== value) : [...current, value],
+        [groupId]: nextValues,
       };
     });
   };
 
   const setAllVersionBuilderValues = (groupId: keyof VersionBuilderSelections, values: string[]) => {
+    if (groupId === 'diamondQualities' && values.length > 0) {
+      setShowVersionBuilderDiamondQualityValidation(false);
+    }
     setVersionBuilderSelections((prev) => ({
       ...prev,
       [groupId]: values,
@@ -5517,6 +5591,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     const versionedDesignNo = buildVersionedDesignNo(baseDesignNo, nextVersion);
     await loadDesignDetail(row, { version: nextVersion, designNo: versionedDesignNo });
   };
+  void openNewVersion;
 
   const saveDesign = async (options?: { forceCreate?: boolean; overrideVersion?: string; selectAfterCreate?: boolean; overrideDesignNo?: string }) => {
     const forceCreate = Boolean(options?.forceCreate);
@@ -6685,15 +6760,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                   {isColumnVisible('jewelrySize') ? <td className="py-4 px-3 whitespace-nowrap text-sm font-medium text-slate-700">{row.jewelrySize}</td> : null}
                   {isColumnVisible('metalInfo') ? (
                     <td className="py-4 px-3 whitespace-nowrap text-sm font-medium text-slate-700">
-                      {getMetalCaratageDisplay(row.goldColour || '', masterOptions.metalCaratages) || row.goldColour || '-'}
+                      {row.goldColour || '-'}
                     </td>
                   ) : null}
                   {isColumnVisible('collection') ? <td className="py-4 px-3 whitespace-nowrap text-sm font-medium text-slate-700">{row.collection}</td> : null}
                   {isColumnVisible('stoneInfo') ? (
-                    <td className="py-4 px-3">
-                      <span className="inline-flex items-center rounded-full bg-cyan-50 px-2 py-1 text-[11px] font-bold text-cyan-700 ring-1 ring-inset ring-cyan-700/10">
-                        {row.stoneInfo}
-                      </span>
+                    <td className="py-4 px-3 whitespace-nowrap text-sm font-medium text-slate-700">
+                      {row.stoneInfo || '-'}
                     </td>
                   ) : null}
                   {isColumnVisible('price') ? <td className="py-4 px-3 whitespace-nowrap text-sm font-bold text-slate-900">{formatMoney(row.price)}</td> : null}
@@ -6742,9 +6815,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       {canCreateDesign ? (
                         <Action label="Version Builder" onClick={() => openVersionBuilder(row)} />
                       ) : null}
-                      {canCreateDesign ? (
+                      {/* {canCreateDesign ? (
                         <Action label="New Version" onClick={() => openNewVersion(row)} />
-                      ) : null}
+                      ) : null} */}
                       {canModifyExistingDesigns ? (
                         <>
                           <Action label="Edit" onClick={() => openEdit(row)} />
@@ -7024,7 +7097,19 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <button
                       key={step.id}
                       type="button"
-                      onClick={() => setVersionBuilderWorkflowStep(step.id)}
+                      onClick={() => {
+                        const targetStepIndex = versionBuilderStepOrder.indexOf(step.id);
+                        const dimensionsStepIndex = versionBuilderStepOrder.indexOf('DIMENSIONS');
+                        if (
+                          targetStepIndex > dimensionsStepIndex &&
+                          !versionBuilderSelections.diamondQualities.length
+                        ) {
+                          setShowVersionBuilderDiamondQualityValidation(true);
+                          setVersionBuilderWorkflowStep('DIMENSIONS');
+                          return;
+                        }
+                        setVersionBuilderWorkflowStep(step.id);
+                      }}
                       className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
                         active ? 'border-[#bf944d] text-[#1f1914]'
                           : 'border-transparent text-[#8e8276] hover:text-[#4d433a]'
@@ -7099,8 +7184,17 @@ const createDefaultVendorRow = (): VendorRow => ({
                   {versionBuilderOptionGroups.map((group) => {
                     const selectedValues = versionBuilderSelections[group.id];
                     const hasValues = group.values.length > 0;
+                    const showDiamondQualityValidation =
+                      group.id === 'diamondQualities' &&
+                      selectedValues.length === 0 &&
+                      showVersionBuilderDiamondQualityValidation;
                     return (
-                      <div key={group.id} className="rounded-2xl border border-[#e6ddd2] bg-[#fffdf9] px-5 py-4">
+                      <div
+                        key={group.id}
+                        className={`rounded-2xl border bg-[#fffdf9] px-5 py-4 ${
+                          showDiamondQualityValidation ? 'border-red-300 ring-1 ring-red-100' : 'border-[#e6ddd2]'
+                        }`}
+                      >
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
                             <p className="text-[14px] font-bold text-[#2b241d]">{group.label}</p>
@@ -7128,6 +7222,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                         </div>
 
                         <p className="mb-3 text-[12px] text-slate-500">{group.helper}</p>
+                        {showDiamondQualityValidation ? (
+                          <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] font-semibold text-red-700">
+                            Select at least one diamond quality to generate versions.
+                          </p>
+                        ) : null}
 
                         {!hasValues ? (
                           <div className="rounded-xl border border-dashed border-[#ddd2c3] bg-[#faf7f2] px-4 py-3 text-xs text-slate-500">
@@ -7381,7 +7480,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   </div>
                                   <div>
                                     <p className="text-[14px] font-bold text-[#2b241d]">
-                                      Group {groupLabel} ? {item.shape || packet?.shape || 'Stone group'}
+                                      Group-{groupLabel} {item.shape || packet?.shape || 'Stone group'}
                                     </p>
                                     <p className="text-[12px] text-slate-500">
                                       {groupMode === 'varies' ? 'Count varies per ring size' : 'Fixed per piece'}
@@ -7415,11 +7514,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   </div>
                                   <button
                                     type="button"
-                                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#ece2d5] bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 disabled:opacity-40"
+                                    className="grid h-8 w-8 place-items-center rounded-lg border border-[#ece2d5] bg-white text-red-500 transition hover:bg-red-50 hover:text-red-700 disabled:text-slate-400 disabled:opacity-40 disabled:hover:bg-white"
                                     disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || versionBuilderGemRows.length <= 1}
                                     onClick={() => removeVersionBuilderGemRow(item.id)}
                                   >
-                                    ?                                   </button>
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M3 6h18" />
+                                      <path d="M8 6V4h8v2" />
+                                      <path d="M19 6l-1 14H6L5 6" />
+                                      <path d="M10 11v5" />
+                                      <path d="M14 11v5" />
+                                    </svg>
+                                  </button>
                                 </div>
                               </div>
 
@@ -8555,6 +8661,16 @@ const createDefaultVendorRow = (): VendorRow => ({
                   variant="secondary"
                   onClick={() => {
                     const nextStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex + 1];
+                    const dimensionsStepIndex = versionBuilderStepOrder.indexOf('DIMENSIONS');
+                    if (
+                      nextStep &&
+                      versionBuilderStepOrder.indexOf(nextStep) > dimensionsStepIndex &&
+                      !versionBuilderSelections.diamondQualities.length
+                    ) {
+                      setShowVersionBuilderDiamondQualityValidation(true);
+                      setVersionBuilderWorkflowStep('DIMENSIONS');
+                      return;
+                    }
                     if (nextStep) setVersionBuilderWorkflowStep(nextStep);
                   }}
                   disabled={versionBuilderCurrentStepIndex >= versionBuilderStepOrder.length - 1 || creatingVersions}
@@ -8567,7 +8683,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <Button
                   type="button"
                   onClick={createVersionBuilderVariants}
-                  disabled={creatingVersions || !versionBuilderCanCreateFromCurrentStep || versionBuilderPendingCreateCount === 0 || !versionBuilderCreateValidation.isValid}
+                  disabled={
+                    creatingVersions ||
+                    !versionBuilderCanCreateFromCurrentStep ||
+                    (versionBuilderCreateValidation.isValid && versionBuilderPendingCreateCount === 0)
+                  }
                   title={!versionBuilderCanCreateFromCurrentStep ? 'Reach Generated after BOM to create versions.' : versionBuilderCreateValidation.isValid ? '' : versionBuilderCreateValidation.message}
                 >
                   {creatingVersions
@@ -8641,9 +8761,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
                     <div className="flex gap-2">
                       <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
+                          editingId ? 'bg-slate-50 text-slate-500' : ''
+                        }`}
                         value={form.jewelryGroup}
                         onChange={(event) => handleJewelryGroupChange(event.target.value)}
+                        disabled={Boolean(editingId)}
                       >
                         <option value="">Select Category</option>
                         {masterOptions.jewelryGroups.map((option) => (
@@ -8655,7 +8778,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <button
                         type="button"
                         className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'JEWELRY_GROUP'}
+                        disabled={Boolean(editingId) || creatingMasterType === 'JEWELRY_GROUP'}
                         onClick={() => addMasterFromDesign('JEWELRY_GROUP')}
                       >
                         +
@@ -8666,10 +8789,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <label className="mb-1 block text-sm font-medium text-slate-700">Sub Category</label>
                     <div className="flex gap-2">
                       <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
+                          editingId ? 'bg-slate-50 text-slate-500' : ''
+                        }`}
                         value={form.collection}
                         onChange={(event) => setForm((prev) => ({ ...prev, collection: event.target.value }))}
-                        disabled={!form.jewelryGroup}
+                        disabled={Boolean(editingId) || !form.jewelryGroup}
                       >
                         <option value="">Select Sub Category</option>
                         {filteredSubCategoryOptions.map((option) => (
@@ -8681,7 +8806,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <button
                         type="button"
                         className={inlineMasterAddButtonClass}
-                        disabled={creatingMasterType === 'COLLECTION'}
+                        disabled={Boolean(editingId) || creatingMasterType === 'COLLECTION'}
                         onClick={() => addMasterFromDesign('COLLECTION')}
                       >
                         +

@@ -412,8 +412,8 @@ export class ProductsService {
       diamondWeight: this.optionalText(dto.diamondWeight),
       diamondQuality: this.optionalText(dto.diamondQuality),
       designStatus: this.optionalText(dto.designStatus),
-      goldColour: normalizedMetals[0]?.goldColour || null,
-      stoneInfo: normalizedGemstones[0]?.stone || null,
+      goldColour: this.summarizeMetalRows(normalizedMetals),
+      stoneInfo: this.summarizeGemstoneRows(normalizedGemstones),
       tags: this.normalizeTags(dto.tags),
       drawerLocation: this.optionalText(dto.drawerLocation),
       otherWeight: dto.otherWeight ?? null,
@@ -1110,6 +1110,18 @@ export class ProductsService {
       .createQueryBuilder('design')
       .leftJoinAndSelect('design.company', 'company')
       .leftJoinAndSelect('design.branch', 'branch')
+      .addSelect(
+        `(SELECT GROUP_CONCAT(NULLIF(TRIM(dm.gold_colour), '') ORDER BY dm.sort_order SEPARATOR ', ')
+          FROM design_metals dm
+          WHERE dm.design_id = design.id)`,
+        'metalInfo',
+      )
+      .addSelect(
+        `(SELECT GROUP_CONCAT(COALESCE(NULLIF(TRIM(dg.stone), ''), NULLIF(TRIM(dg.stone_type), '')) ORDER BY dg.sort_order SEPARATOR ', ')
+          FROM design_gemstones dg
+          WHERE dg.design_id = design.id)`,
+        'stoneInfoAgg',
+      )
       .orderBy('design.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -1246,20 +1258,66 @@ export class ProductsService {
       });
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const total = await qb.getCount();
+    const { entities: data, raw } = await qb.getRawAndEntities();
+    const listSummariesByDesign = new Map<string, { metalInfo: string | null; stoneInfo: string | null }>();
+    raw.forEach((row) => {
+      const designId = this.optionalText(row.design_id || row.designId || row.design_id_0);
+      if (!designId) {
+        return;
+      }
+      listSummariesByDesign.set(designId, {
+        metalInfo: this.optionalText(row.metalInfo),
+        stoneInfo: this.optionalText(row.stoneInfoAgg),
+      });
+    });
+    const designIds = data.map((design) => design.id);
+    const [metals, gemstones] = designIds.length
+      ? await Promise.all([
+          this.metalRepo.find({
+            where: { designId: In(designIds) },
+            order: { sortOrder: 'ASC' },
+          }),
+          this.gemstoneRepo.find({
+            where: { designId: In(designIds) },
+            order: { sortOrder: 'ASC' },
+          }),
+        ])
+      : [[], []];
+    const metalsByDesign = new Map<string, DesignMetal[]>();
+    for (const metal of metals) {
+      const group = metalsByDesign.get(metal.designId) || [];
+      group.push(metal);
+      metalsByDesign.set(metal.designId, group);
+    }
+    const gemstonesByDesign = new Map<string, DesignGemstone[]>();
+    for (const gemstone of gemstones) {
+      const group = gemstonesByDesign.get(gemstone.designId) || [];
+      group.push(gemstone);
+      gemstonesByDesign.set(gemstone.designId, group);
+    }
 
     if (query.summaryOnly) {
       const updatedByMap = await this.resolveUserNames(
         data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
       );
       const summaryData = await Promise.all(
-        data.map(async (design) => ({
-          ...design,
-          imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-          imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
-          stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
-          updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
-        })),
+        data.map(async (design) => {
+          const listSummary = listSummariesByDesign.get(design.id);
+          const designMetals = metalsByDesign.get(design.id) || [];
+          const designGemstones = gemstonesByDesign.get(design.id) || [];
+          return {
+            ...design,
+            goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
+            stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
+            metals: designMetals,
+            gemstones: designGemstones,
+            imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+            imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+            stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
+            updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+          };
+        }),
       );
 
       return {
@@ -1270,31 +1328,26 @@ export class ProductsService {
       };
     }
 
-    const designIds = data.map((design) => design.id);
-    const gemstones = designIds.length
-      ? await this.gemstoneRepo.find({
-          where: { designId: In(designIds) },
-          order: { sortOrder: 'ASC' },
-        })
-      : [];
-    const gemstonesByDesign = new Map<string, DesignGemstone[]>();
-    for (const gemstone of gemstones) {
-      const group = gemstonesByDesign.get(gemstone.designId) || [];
-      group.push(gemstone);
-      gemstonesByDesign.set(gemstone.designId, group);
-    }
     const updatedByMap = await this.resolveUserNames(
       data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
     );
     const enrichedData = await Promise.all(
-      data.map(async (design) => ({
-        ...design,
-        gemstones: gemstonesByDesign.get(design.id) || [],
-        imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
-        stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
-        updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
-      })),
+      data.map(async (design) => {
+        const listSummary = listSummariesByDesign.get(design.id);
+        const designMetals = metalsByDesign.get(design.id) || [];
+        const designGemstones = gemstonesByDesign.get(design.id) || [];
+        return {
+          ...design,
+          goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
+          stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
+          metals: designMetals,
+          gemstones: designGemstones,
+          imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+          imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+          stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
+          updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+        };
+      }),
     );
 
     return {
@@ -1436,8 +1489,8 @@ export class ProductsService {
       design.diamondQuality = this.optionalText(dto.diamondQuality);
     }
     if (dto.designStatus !== undefined) design.designStatus = this.optionalText(dto.designStatus);
-    design.goldColour = normalizedMetals[0]?.goldColour || null;
-    design.stoneInfo = normalizedGemstones[0]?.stone || null;
+    design.goldColour = this.summarizeMetalRows(normalizedMetals);
+    design.stoneInfo = this.summarizeGemstoneRows(normalizedGemstones);
     if (dto.tags !== undefined) design.tags = this.normalizeTags(dto.tags);
     if (dto.drawerLocation !== undefined) design.drawerLocation = this.optionalText(dto.drawerLocation);
     if (dto.otherWeight !== undefined) design.otherWeight = dto.otherWeight ?? null;
@@ -3880,8 +3933,8 @@ export class ProductsService {
       design.totalValue = summary.totalValue;
       design.grossWeight = summary.grossWeight;
       design.livePrice = summary.totalValue;
-      design.goldColour = metals[0]?.goldColour || design.goldColour || null;
-      design.stoneInfo = gemstones[0]?.stone || design.stoneInfo || null;
+      design.goldColour = this.summarizeMetalRows(metals);
+      design.stoneInfo = this.summarizeGemstoneRows(gemstones);
 
       await this.designRepo.save(design);
       updatedDesigns += 1;
@@ -3993,6 +4046,22 @@ export class ProductsService {
     const grossWeight = metals.reduce((sum, row) => sum + row.totalWt, 0);
 
     return { metalValue, gemValue, laborValue, findingValue, totalValue, grossWeight };
+  }
+
+  private summarizeMetalRows(rows: Array<{ goldColour?: string | null; metalCaratage?: string | null }>): string | null {
+    const values = rows
+      .map((row) => this.optionalText(row.metalCaratage) || this.optionalText(row.goldColour))
+      .filter((value): value is string => Boolean(value));
+
+    return values.length > 0 ? Array.from(new Set(values)).join(', ') : null;
+  }
+
+  private summarizeGemstoneRows(rows: Array<{ stone?: string | null; stoneType?: string | null }>): string | null {
+    const values = rows
+      .map((row) => this.optionalText(row.stone) || this.optionalText(row.stoneType))
+      .filter((value): value is string => Boolean(value));
+
+    return values.length > 0 ? values.join(', ') : null;
   }
 
   private async replaceMetalRows(designId: string, rows: NormalizedMetalRow[]): Promise<void> {

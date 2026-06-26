@@ -1558,7 +1558,7 @@ export default function DesignMastersPage() {
   const [masterRows, setMasterRows] = useState<MasterRow[]>([]);
   const [packetRows, setPacketRows] = useState<PacketRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [, setImporting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingRow, setEditingRow] = useState<MasterRow | null>(null);
   const [editingPacket, setEditingPacket] = useState<PacketRow | null>(null);
@@ -2608,14 +2608,14 @@ export default function DesignMastersPage() {
             >
               Export Excel
             </button>
-            <button
+            {/* <button
               type="button"
               disabled={importing}
               onClick={() => importInputRef.current?.click()}
               className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {importing ? 'Importing...' : 'Import Excel'}
-            </button>
+            </button> */}
             <button
               type="button"
               onClick={() => setViewInactive((prev) => !prev)}
