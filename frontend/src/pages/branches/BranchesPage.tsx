@@ -204,16 +204,14 @@ export default function BranchesPage() {
             Showing {showingFrom}–{showingTo} of {totalRecords} record{totalRecords === 1 ? '' : 's'}
           </span>
         </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+        {loading || branches.length > 0 ? (
+          <>
+            <Table columns={columns} data={branchesWithSerial} tableClassName="min-w-[1100px]" loading={loading} loadingLabel="Loading branches..." />
+            {!loading ? <Pagination page={page} totalPages={totalPages} onPageChange={setPage} /> : null}
+          </>
         ) : branches.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No branches found for selected filters.</div>
-        ) : (
-          <>
-            <Table columns={columns} data={branchesWithSerial} tableClassName="min-w-[1100px]" />
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-          </>
-        )}
+        ) : null}
       </Card>
     </div>
   );

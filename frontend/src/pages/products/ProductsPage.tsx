@@ -6,6 +6,7 @@ import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
 import Avatar from '../../components/common/Avatar';
+import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
 
@@ -6770,9 +6771,6 @@ const createDefaultVendorRow = (): VendorRow => ({
             </div>
           </div>
         )}
-        {rowsLoading ? (
-          <p className="mb-3 text-sm text-blue-700">Loading designs...</p>
-        ) : null}
         {rowsError ? (
           <p className="mb-3 text-sm text-red-600">{rowsError}</p>
         ) : null}
@@ -6812,7 +6810,9 @@ const createDefaultVendorRow = (): VendorRow => ({
               </tr>
               </thead>
               <tbody>
-              {pagedRows.map((row, idx) => {
+              {rowsLoading ? (
+                <TableLoadingRow colSpan={2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length} label="Loading designs..." />
+              ) : pagedRows.map((row, idx) => {
                 const versionBase = getDesignFamilyKey(row.designNo || '');
                 const versionState = versionBase ? versionFamilies[versionBase] : undefined;
                 const versionRows = versionState?.rows || getVersionsForDesign(row.designNo);
@@ -7045,7 +7045,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                           </form>
                         </div>
                         {versionsLoading ? (
-                          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">Loading versions...</p>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4">
+                            <div className="flex items-center justify-center gap-3 text-xs font-medium text-slate-500">
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" aria-hidden="true" />
+                              <span>Loading versions...</span>
+                            </div>
+                          </div>
                         ) : versionState?.error ? (
                           <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">{versionState.error}</p>
                         ) : versionRows.length <= 1 && !(versionState?.search || '').trim() ? (
@@ -7196,11 +7201,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </thead>
                   <tbody>
                     {mediaLibraryLoading ? (
-                      <tr>
-                        <td className="app-table-cell text-sm text-slate-500" colSpan={6}>
-                          Loading media library...
-                        </td>
-                      </tr>
+                      <TableLoadingRow colSpan={6} label="Loading media library..." />
                     ) : mediaLibraryRows.length === 0 ? (
                       <tr>
                         <td className="app-table-cell text-sm text-slate-500" colSpan={6}>
@@ -11374,11 +11375,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Date Time</th></tr></thead>
               <tbody>
                 {historyLoading ? (
-                  <tr className="border-t border-gray-200">
-                    <td className="px-3 py-4 text-center text-sm text-gray-600" colSpan={4}>
-                      Loading history...
-                    </td>
-                  </tr>
+                  <TableLoadingRow colSpan={4} label="Loading history..." />
                 ) : historyError ? (
                   <tr className="border-t border-gray-200">
                     <td className="px-3 py-4 text-center text-sm text-red-600" colSpan={4}>

@@ -199,16 +199,14 @@ export default function CompaniesPage() {
             Showing {showingFrom}–{showingTo} of {totalRecords} record{totalRecords === 1 ? '' : 's'}
           </span>
         </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+        {loading || companies.length > 0 ? (
+          <>
+            <Table columns={columns} data={companiesWithSerial} loading={loading} loadingLabel="Loading companies..." />
+            {!loading ? <Pagination page={page} totalPages={totalPages} onPageChange={setPage} alwaysShow /> : null}
+          </>
         ) : companies.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No companies found for selected filters.</div>
-        ) : (
-          <>
-            <Table columns={columns} data={companiesWithSerial} />
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} alwaysShow />
-          </>
-        )}
+        ) : null}
       </Card>
     </div>
   );

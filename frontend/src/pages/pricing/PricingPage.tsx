@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
 
 type PriceCategory = 'METAL' | 'DIAMOND';
@@ -360,10 +361,7 @@ export default function PricingPage() {
           </select>
         </div>
 
-        {loading ? (
-          <div className="py-6 text-sm text-gray-600">Loading base prices...</div>
-        ) : (
-          <>
+        <>
             <div className="app-table-shell">
               <div className="app-table-scroll scrollbar-top">
                 <table className="app-table">
@@ -380,7 +378,9 @@ export default function PricingPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedRows.map((row) => (
+                    {loading ? (
+                      <TableLoadingRow colSpan={8} label="Loading base prices..." />
+                    ) : pagedRows.map((row) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell">{row.category}</td>
                         <td className="app-table-cell">{row.referenceValue}</td>
@@ -416,7 +416,7 @@ export default function PricingPage() {
                         </td>
                       </tr>
                     ))}
-                    {filteredRows.length === 0 ? (
+                    {!loading && filteredRows.length === 0 ? (
                       <tr>
                         <td className="app-table-empty" colSpan={8}>
                           No base prices found.
@@ -432,7 +432,6 @@ export default function PricingPage() {
             </div>
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </>
-        )}
       </Card>
     </div>
   );

@@ -5,6 +5,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Pagination from '../../components/common/Pagination';
 import SearchableSelect from '../../components/common/SearchableSelect';
+import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
 import { getStoredUser, hasTaskPermission } from '../../utils/auth';
 
@@ -1139,9 +1140,7 @@ export default function OrdersPage() {
               </thead>
               <tbody>
                 {ordersLoading && (
-                  <tr>
-                    <td colSpan={listTableColumnCount} className="app-table-empty">Loading orders...</td>
-                  </tr>
+                  <TableLoadingRow colSpan={listTableColumnCount} label="Loading orders..." />
                 )}
                 {!ordersLoading && orders.length === 0 && (
                   <tr>

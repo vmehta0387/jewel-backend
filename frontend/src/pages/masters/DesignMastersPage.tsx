@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
 
 type DesignMasterType =
@@ -2698,11 +2699,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={13} className="app-table-empty">
-                        Loading records...
-                      </td>
-                    </tr>
+                    <TableLoadingRow colSpan={13} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={13} className="app-table-empty">
@@ -2765,9 +2762,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={10} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={10} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={10} className="app-table-empty">No records found.</td>
@@ -2829,9 +2824,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={8} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={8} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={8} className="app-table-empty">No records found.</td>
@@ -2886,9 +2879,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={9} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={9} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={9} className="app-table-empty">No records found.</td>
@@ -2951,9 +2942,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={12} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={12} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={12} className="app-table-empty">No records found.</td>
@@ -3025,9 +3014,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={12} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={12} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={12} className="app-table-empty">No records found.</td>
@@ -3105,9 +3092,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={10} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={10} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={10} className="app-table-empty">No records found.</td>
@@ -3178,9 +3163,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td colSpan={9} className="app-table-empty">Loading records...</td>
-                    </tr>
+                    <TableLoadingRow colSpan={9} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td colSpan={9} className="app-table-empty">No records found.</td>
@@ -3248,14 +3231,7 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr>
-                      <td
-                        colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 9 : 8}
-                        className="app-table-empty"
-                      >
-                        Loading records...
-                      </td>
-                    </tr>
+                    <TableLoadingRow colSpan={selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? 9 : 8} />
                   ) : rowsCount === 0 ? (
                     <tr>
                       <td

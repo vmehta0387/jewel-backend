@@ -1,3 +1,5 @@
+import TableLoadingRow from './TableLoadingRow';
+
 interface Column {
   key: string;
   label: string;
@@ -13,6 +15,9 @@ interface TableProps {
   compact?: boolean;
   wrapperClassName?: string;
   tableClassName?: string;
+  loading?: boolean;
+  loadingLabel?: string;
+  emptyLabel?: string;
 }
 
 export default function Table({
@@ -22,6 +27,9 @@ export default function Table({
   compact = false,
   wrapperClassName = '',
   tableClassName = '',
+  loading = false,
+  loadingLabel,
+  emptyLabel,
 }: TableProps) {
   const tableDensityClass = compact ? 'app-table app-table-compact' : 'app-table';
 
@@ -42,7 +50,13 @@ export default function Table({
             </tr>
           </thead>
           <tbody>
-            {data.map((row, idx) => (
+            {loading ? (
+              <TableLoadingRow colSpan={columns.length} label={loadingLabel} />
+            ) : data.length === 0 && emptyLabel ? (
+              <tr>
+                <td className="app-table-empty" colSpan={columns.length}>{emptyLabel}</td>
+              </tr>
+            ) : data.map((row, idx) => (
               <tr
                 key={idx}
                 onClick={() => onRowClick?.(row)}

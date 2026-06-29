@@ -421,16 +421,14 @@ export default function UsersPage() {
             Showing {showingFrom}–{showingTo} of {users.length} record{users.length === 1 ? '' : 's'}
           </span>
         </div>
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
+        {loading || users.length > 0 ? (
+          <>
+            <Table columns={columns} data={usersWithSerial} loading={loading} loadingLabel="Loading users..." />
+            {!loading ? <Pagination page={page} totalPages={totalPages} onPageChange={setPage} /> : null}
+          </>
         ) : users.length === 0 ? (
           <div className="text-center py-12 text-gray-500">No users found for selected filters.</div>
-        ) : (
-          <>
-            <Table columns={columns} data={usersWithSerial} />
-            <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-          </>
-        )}
+        ) : null}
       </Card>
     </div>
   );
