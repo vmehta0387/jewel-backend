@@ -32,6 +32,9 @@ export class Design {
   @Column({ name: 'design_no' })
   designNo: string;
 
+  @Column({ name: 'family_design_id', nullable: true })
+  familyDesignId: string | null;
+
   @Column({ name: 'design_name', nullable: true })
   designName: string | null;
 

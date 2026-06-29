@@ -276,6 +276,10 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  familyDesignId?: string;
+
+  @IsString()
+  @IsOptional()
   designName?: string;
 
   @IsString()
@@ -668,7 +672,7 @@ export class FindProductsQueryDto {
 
   @IsString()
   @IsOptional()
-  familyDesignNo?: string;
+  familyDesignId?: string;
 
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
   @IsOptional()

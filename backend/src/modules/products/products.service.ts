@@ -396,9 +396,11 @@ export class ProductsService {
     const ijewelBaseName = this.optionalText(dto.ijewelBaseName);
     const resolvedIjewelBase =
       ijewelModelId && /^https?:\/\//i.test(ijewelModelId) ? null : ijewelBaseName;
+    const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
 
     const design = this.designRepo.create({
       designNo,
+      familyDesignId,
       designName: this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo),
       version,
       companyId: scope.companyId,
@@ -436,7 +438,11 @@ export class ProductsService {
       updatedBy: requester.id,
     });
 
-    const saved = await this.designRepo.save(design);
+    let saved = await this.designRepo.save(design);
+    if (!saved.familyDesignId) {
+      saved.familyDesignId = saved.id;
+      saved = await this.designRepo.save(saved);
+    }
 
     await this.replaceMetalRows(saved.id, normalizedMetals);
     await this.replaceGemstoneRows(saved.id, normalizedGemstones);
@@ -1128,8 +1134,13 @@ export class ProductsService {
           WHERE family_design.company_id <=> design.company_id
             AND (family_design.branch_id <=> design.branch_id OR (family_design.branch_id IS NULL AND design.branch_id IS NULL))
             AND (
-              family_design.design_no = REGEXP_REPLACE(design.design_no, '-V[0-9]+$', '')
-              OR family_design.design_no LIKE CONCAT(REGEXP_REPLACE(design.design_no, '-V[0-9]+$', ''), '-V%')
+              COALESCE(family_design.family_design_id, family_design.id)
+                = COALESCE(design.family_design_id, design.id)
+              OR family_design.family_design_id = design.id
+              OR family_design.id = design.family_design_id
+              OR REGEXP_REPLACE(family_design.design_no, '-V[0-9]+$', '') = REGEXP_REPLACE(design.design_no, '-V[0-9]+$', '')
+              OR REGEXP_REPLACE(family_design.design_no, '-V[0-9]+$', '') LIKE CONCAT(REGEXP_REPLACE(design.design_no, '-V[0-9]+$', ''), '-%')
+              OR REGEXP_REPLACE(design.design_no, '-V[0-9]+$', '') LIKE CONCAT(REGEXP_REPLACE(family_design.design_no, '-V[0-9]+$', ''), '-%')
             ))`,
         'versionCount',
       )
@@ -1183,14 +1194,11 @@ export class ProductsService {
       );
     }
 
-    if (query.familyDesignNo?.trim()) {
-      const baseDesignNo = this.normalizeBaseDesignNo(query.familyDesignNo.trim());
+    if (query.familyDesignId?.trim()) {
+      const familyDesignId = query.familyDesignId.trim();
       qb.andWhere(
-        '(design.designNo = :familyBaseDesignNo OR design.designNo LIKE :familyVersionedDesignNo)',
-        {
-          familyBaseDesignNo: baseDesignNo,
-          familyVersionedDesignNo: `${baseDesignNo}-V%`,
-        },
+        '(design.family_design_id = :familyDesignId OR design.id = :familyDesignId)',
+        { familyDesignId },
       );
     }
 
@@ -1506,7 +1514,7 @@ export class ProductsService {
 
     design.designNo = designNo;
     design.version = version;
-    design.designNo = designNo;
+    design.familyDesignId = design.familyDesignId || await this.resolveFamilyDesignId(undefined, designNo, scope) || design.id;
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
     const shouldSyncFamilyName = design.isPrimary && dto.designName !== undefined;
     if (dto.designName !== undefined) {
@@ -4431,11 +4439,46 @@ export class ProductsService {
 
   private getDesignFamilyKey(value: string): string {
     const base = this.normalizeBaseDesignNo(value);
-    const parts = base.split('-').filter(Boolean);
-    if (parts.length >= 2 && /^\d+$/.test(parts[1])) {
-      return `${parts[0]}-${parts[1]}`.toUpperCase();
-    }
     return base;
+  }
+
+  private async resolveFamilyDesignId(
+    inputId: string | undefined,
+    designNo: string,
+    scope: ScopeResult,
+  ): Promise<string | null> {
+    const normalizedInputId = this.optionalText(inputId);
+    if (normalizedInputId) {
+      return normalizedInputId;
+    }
+
+    const baseDesignNo = this.normalizeBaseDesignNo(designNo);
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select('design.id')
+      .where('REGEXP_REPLACE(design.designNo, :versionSuffix, :empty) = :baseDesignNo', {
+        versionSuffix: '-V[0-9]+$',
+        empty: '',
+        baseDesignNo,
+      })
+      .orderBy('design.isPrimary', 'DESC')
+      .addOrderBy("design.version = 'V1'", 'DESC')
+      .addOrderBy('design.createdAt', 'ASC');
+
+    if (scope.companyId) {
+      qb.andWhere('design.companyId = :companyId', { companyId: scope.companyId });
+    } else {
+      qb.andWhere('design.companyId IS NULL');
+    }
+
+    if (scope.branchId) {
+      qb.andWhere('design.branchId = :branchId', { branchId: scope.branchId });
+    } else {
+      qb.andWhere('design.branchId IS NULL');
+    }
+
+    const parent = await qb.getOne();
+    return parent?.id || null;
   }
 
   private async syncFamilyDesignName(

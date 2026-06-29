@@ -1860,6 +1860,7 @@ export default function ProductsPage() {
   const designImportInputRef = useRef<HTMLInputElement | null>(null);
   const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
+  const [sourceDesignId, setSourceDesignId] = useState('');
   const inlineMasterCreatedHandlerRef = useRef<((masterValue: string, createdMaster?: { id?: string; value?: string }) => void) | null>(null);
   const galleryUploadInputRef = useRef<HTMLInputElement | null>(null);
   const stlUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -3505,7 +3506,7 @@ export default function ProductsPage() {
 
   const fetchVersionsForDesign = async (
     designNo: string,
-    options?: { page?: number; search?: string },
+    options?: { page?: number; search?: string; familyDesignId?: string },
   ): Promise<DesignRow[]> => {
     const base = getDesignFamilyKey(designNo || '');
     if (!base) return [];
@@ -3532,7 +3533,7 @@ export default function ProductsPage() {
           limit: VERSION_LIST_PAGE_SIZE,
           status: 'ALL',
           summaryOnly: true,
-          familyDesignNo: designNo,
+          familyDesignId: options?.familyDesignId,
           search: nextSearch.trim() || undefined,
         },
       });
@@ -3578,7 +3579,8 @@ export default function ProductsPage() {
     }
   };
 
-  const toggleVersionsForDesign = async (designNo: string) => {
+  const toggleVersionsForDesign = async (row: DesignRow) => {
+    const designNo = row.designNo;
     const base = getDesignFamilyKey(designNo || '');
     if (!base) return;
     if (expandedBaseDesigns.includes(base)) {
@@ -3586,7 +3588,7 @@ export default function ProductsPage() {
       return;
     }
     setExpandedBaseDesigns((prev) => (prev.includes(base) ? prev : [...prev, base]));
-    await fetchVersionsForDesign(designNo, { page: versionFamilies[base]?.page || 1 });
+    await fetchVersionsForDesign(designNo, { page: versionFamilies[base]?.page || 1, familyDesignId: row.id });
   };
 
   const isVersionsExpanded = (designNo: string) => {
@@ -3710,7 +3712,7 @@ export default function ProductsPage() {
     setVersionBuilderOverheadRows([]);
     setVersionBuilderGemError(null);
     setShowVersionBuilderModal(true);
-    void fetchVersionsForDesign(row.designNo);
+    void fetchVersionsForDesign(row.designNo, { familyDesignId: row.id });
     void loadVersionBuilderGemstoneTemplate(row);
   };
 
@@ -4067,6 +4069,7 @@ export default function ProductsPage() {
 
         const payload = {
           designNo: row.designNo,
+          familyDesignId: versionBuilderBaseDesign.id,
           designName: String(detail?.designName || versionBuilderBaseDesign.designName || row.designNo || '').trim() || row.designNo,
           version: row.version,
           companyId: detail?.companyId || undefined,
@@ -5315,6 +5318,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setIsDesignNameManual(false);
     setStructuredSerialOverride('');
     setSourceDesignNo('');
+    setSourceDesignId('');
     designNoRequestSeqRef.current += 1;
     setForm({
       ...defaultForm,
@@ -5429,6 +5433,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
       const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
       setSourceDesignNo(getBaseDesignNo(detail.designNo || row.designNo));
+      setSourceDesignId(row.id);
 
       const baseForm: DesignForm = {
         designNo: detail.designNo || row.designNo,
@@ -5635,6 +5640,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         ijewelBaseName: row.ijewelBaseName ? String(row.ijewelBaseName) : '',
       };
       setSourceDesignNo(getBaseDesignNo(row.designNo));
+      setSourceDesignId(row.id);
       setForm({ ...fallbackForm, ...(overrides || {}) });
       setMetalRows([createMetalRow(row.goldColour)]);
       setGemRows([{
@@ -5695,6 +5701,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setSelectedId(row.id);
     const baseDesignNo = getBaseDesignNo(row.designNo);
     setSourceDesignNo(baseDesignNo);
+    setSourceDesignId(row.id);
     const nextVersion = await fetchNextVersionFromServer(baseDesignNo);
     const versionedDesignNo = buildVersionedDesignNo(baseDesignNo, nextVersion);
     await loadDesignDetail(row, { version: nextVersion, designNo: versionedDesignNo });
@@ -5831,6 +5838,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const basePayload = {
       designNo: shouldSendDesignNo ? versionedDesignNo : undefined,
+      familyDesignId: sourceDesignId || undefined,
       designName: form.designName.trim() || undefined,
       version: resolvedVersion,
       jewelryGroup: form.jewelryGroup.trim(),
@@ -6809,7 +6817,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 const versionState = versionBase ? versionFamilies[versionBase] : undefined;
                 const versionRows = versionState?.rows || getVersionsForDesign(row.designNo);
                 const preferredImage = getPreferredRowImage(row);
-                const versionCount = row.versionCount || versionState?.total || versionRows.length || 1;
+                const versionCount = Math.max(row.versionCount || 0, versionState?.total || 0, versionRows.length || 0, 1);
                 const versionsExpanded = isVersionsExpanded(row.designNo);
                 const versionsLoading = Boolean(versionState?.loading);
                 const columnCount = 2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length;
@@ -6862,7 +6870,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         {row.designNo}
                       </button>
                       <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 ring-1 ring-inset ring-slate-500/10">
-                        {versionCount} {versionCount === 1 ? 'Vers.' : 'Vers.'}
+                        {versionCount} {versionCount === 1 ? 'Ver.' : 'Vers.'}
                       </span>
                     </div>
                   </td>
@@ -6924,7 +6932,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       <Action
                         label={versionsLabel}
-                        onClick={() => toggleVersionsForDesign(row.designNo)}
+                        onClick={() => toggleVersionsForDesign(row)}
                         loading={versionsLoading}
                       />
                       {canCreateDesign ? (
@@ -6994,7 +7002,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             className="flex min-w-[280px] flex-1 items-center justify-end gap-2"
                             onSubmit={(event) => {
                               event.preventDefault();
-                              void fetchVersionsForDesign(row.designNo, { page: 1, search: versionState?.search || '' });
+                              void fetchVersionsForDesign(row.designNo, { page: 1, search: versionState?.search || '', familyDesignId: row.id });
                             }}
                           >
                             <input
@@ -7030,7 +7038,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               type="button"
                               className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={versionsLoading || !(versionState?.search || '').trim()}
-                              onClick={() => fetchVersionsForDesign(row.designNo, { page: 1, search: '' })}
+                              onClick={() => fetchVersionsForDesign(row.designNo, { page: 1, search: '', familyDesignId: row.id })}
                             >
                               Clear
                             </button>
@@ -7081,7 +7089,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         <Pagination
                           page={versionState?.page || 1}
                           totalPages={versionState?.totalPages || 1}
-                          onPageChange={(nextPage) => fetchVersionsForDesign(row.designNo, { page: nextPage })}
+                          onPageChange={(nextPage) => fetchVersionsForDesign(row.designNo, { page: nextPage, familyDesignId: row.id })}
                           className="mt-2"
                         />
                       </div>
