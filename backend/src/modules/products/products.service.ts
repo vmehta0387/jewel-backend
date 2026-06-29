@@ -1112,6 +1112,10 @@ export class ProductsService {
     const limit = query.limit || 10;
     const skip = (page - 1) * limit;
 
+    if (query.summaryOnly && query.familyDesignId?.trim()) {
+      return this.findFamilyVersionSummaries(query, requester, page, limit, skip);
+    }
+
     const qb = this.designRepo
       .createQueryBuilder('design')
       .leftJoinAndSelect('design.company', 'company')
@@ -1407,6 +1411,68 @@ export class ProductsService {
       total,
       page,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  private async findFamilyVersionSummaries(
+    query: FindProductsQueryDto,
+    requester: AuthUser,
+    page: number,
+    limit: number,
+    skip: number,
+  ): Promise<any> {
+    const familyDesignId = query.familyDesignId?.trim();
+    if (!familyDesignId) {
+      return { data: [], total: 0, page, totalPages: 1 };
+    }
+
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
+      .orderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC')
+      .addOrderBy('design.createdAt', 'ASC')
+      .skip(skip)
+      .take(limit);
+
+    this.applyScopeFilter(qb, requester, query.companyId, query.branchId);
+
+    const status = query.status || 'ACTIVE';
+    if (status === 'ACTIVE') {
+      qb.andWhere('design.isActive = :isActive', { isActive: true });
+    } else if (status === 'INACTIVE') {
+      qb.andWhere('design.isActive = :isActive', { isActive: false });
+    }
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((sqb) => {
+          sqb
+            .where('design.designNo LIKE :search', { search })
+            .orWhere('design.designName LIKE :search', { search })
+            .orWhere('design.version LIKE :search', { search })
+            .orWhere('design.stage LIKE :search', { search })
+            .orWhere('design.designStatus LIKE :search', { search });
+        }),
+      );
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data: data.map((design) => ({
+        ...design,
+        versionCount: total,
+        metals: [],
+        gemstones: [],
+        imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+        imageUrls: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+        stlFileUrl: design.stlFileUrl || null,
+        updatedByName: null,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit) || 1,
     };
   }
 
