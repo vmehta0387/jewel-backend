@@ -428,6 +428,7 @@ export default function OrdersPage() {
           page: nextPage,
           limit: DESIGN_DROPDOWN_PAGE_SIZE,
           status: 'ACTIVE',
+          selectorOnly: true,
           search: trimmedSearch || undefined,
         },
       });

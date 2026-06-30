@@ -666,6 +666,11 @@ export class FindProductsQueryDto {
   @IsOptional()
   summaryOnly?: boolean;
 
+  @Type(() => Boolean)
+  @IsBoolean()
+  @IsOptional()
+  selectorOnly?: boolean;
+
   @IsString()
   @IsOptional()
   search?: string;

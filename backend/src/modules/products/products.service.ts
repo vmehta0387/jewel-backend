@@ -1116,6 +1116,10 @@ export class ProductsService {
       return this.findFamilyVersionSummaries(query, requester, page, limit, skip);
     }
 
+    if (query.selectorOnly) {
+      return this.findDesignSelectorOptions(query, requester, page, limit, skip);
+    }
+
     const qb = this.designRepo
       .createQueryBuilder('design')
       .leftJoinAndSelect('design.company', 'company')
@@ -1473,6 +1477,104 @@ export class ProductsService {
       total,
       page,
       totalPages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  private async findDesignSelectorOptions(
+    query: FindProductsQueryDto,
+    requester: AuthUser,
+    page: number,
+    limit: number,
+    skip: number,
+  ): Promise<any> {
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select([
+        'design.id',
+        'design.designNo',
+        'design.version',
+        'design.designName',
+        'design.jewelryGroup',
+        'design.collection',
+        'design.jewelrySize',
+        'design.goldColour',
+        'design.designStatus',
+        'design.stoneInfo',
+        'design.isPrimary',
+        'design.createdAt',
+      ])
+      .orderBy('design.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit);
+
+    this.applyScopeFilter(qb, requester, query.companyId, query.branchId);
+
+    const status = query.status || 'ACTIVE';
+    if (status === 'ACTIVE') {
+      qb.andWhere('design.isActive = :isActive', { isActive: true });
+    } else if (status === 'INACTIVE') {
+      qb.andWhere('design.isActive = :isActive', { isActive: false });
+    }
+
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((sqb) => {
+          sqb
+            .where('design.designNo LIKE :search', { search })
+            .orWhere('design.designName LIKE :search', { search })
+            .orWhere('design.version LIKE :search', { search })
+            .orWhere('design.jewelryGroup LIKE :search', { search })
+            .orWhere('design.collection LIKE :search', { search })
+            .orWhere('design.jewelrySize LIKE :search', { search })
+            .orWhere('design.designStatus LIKE :search', { search })
+            .orWhere('design.goldColour LIKE :search', { search })
+            .orWhere('design.stoneInfo LIKE :search', { search });
+        }),
+      );
+    }
+
+    if (query.jewelryGroup?.trim()) {
+      qb.andWhere('design.jewelryGroup LIKE :jewelryGroup', {
+        jewelryGroup: `%${query.jewelryGroup.trim()}%`,
+      });
+    }
+
+    if (query.primaryOnly) {
+      qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+    }
+
+    if (query.collection?.trim()) {
+      qb.andWhere('design.collection LIKE :collection', {
+        collection: `%${query.collection.trim()}%`,
+      });
+    }
+
+    if (query.jewelrySize?.trim()) {
+      qb.andWhere('design.jewelrySize LIKE :jewelrySize', {
+        jewelrySize: `%${query.jewelrySize.trim()}%`,
+      });
+    }
+
+    if (query.designStatus?.trim()) {
+      qb.andWhere('design.designStatus LIKE :designStatus', {
+        designStatus: `%${query.designStatus.trim()}%`,
+      });
+    }
+
+    if (query.goldColour?.trim()) {
+      qb.andWhere('design.goldColour LIKE :goldColour', {
+        goldColour: `%${query.goldColour.trim()}%`,
+      });
+    }
+
+    const [data, total] = await qb.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
