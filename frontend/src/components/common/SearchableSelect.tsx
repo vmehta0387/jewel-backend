@@ -14,6 +14,13 @@ interface SearchableSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  filterOptions?: boolean;
+  hasMore?: boolean;
+  loading?: boolean;
+  loadingText?: string;
+  onOpen?: () => void;
+  onSearchChange?: (search: string) => void;
+  onLoadMore?: () => void;
 }
 
 export default function SearchableSelect({
@@ -23,6 +30,13 @@ export default function SearchableSelect({
   placeholder = 'Select...',
   className = '',
   disabled = false,
+  filterOptions = true,
+  hasMore = false,
+  loading = false,
+  loadingText = 'Loading...',
+  onOpen,
+  onSearchChange,
+  onLoadMore,
 }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -35,6 +49,7 @@ export default function SearchableSelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionsListRef = useRef<HTMLDivElement>(null);
 
   const updateDropdownPosition = () => {
     if (!containerRef.current) return;
@@ -83,14 +98,14 @@ export default function SearchableSelect({
 
   // Filter options based on search query
   const filteredOptions = useMemo(() => {
-    if (!search) return options;
+    if (!filterOptions || !search) return options;
     const lowerSearch = search.toLowerCase();
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(lowerSearch) ||
         opt.value.toLowerCase().includes(lowerSearch)
     );
-  }, [options, search]);
+  }, [filterOptions, options, search]);
 
   const selectedOption = options.find((opt) => opt.value === value);
 
@@ -101,14 +116,30 @@ export default function SearchableSelect({
     if (nextOpen) {
       updateDropdownPosition();
       setSearch('');
+      onOpen?.();
       // focus input asynchronously after render
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   };
 
+  const handleSearchChange = (nextSearch: string) => {
+    setSearch(nextSearch);
+    optionsListRef.current?.scrollTo({ top: 0 });
+    onSearchChange?.(nextSearch);
+  };
+
   const handleSelect = (val: string) => {
     onChange(val);
     setIsOpen(false);
+  };
+
+  const handleOptionsScroll = () => {
+    const list = optionsListRef.current;
+    if (!list || !onLoadMore || loading || !hasMore) return;
+    const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+    if (distanceFromBottom <= 48) {
+      onLoadMore();
+    }
   };
 
   const optionsListMaxHeight = Math.max(140, dropdownStyle.maxHeight - 72);
@@ -158,7 +189,7 @@ export default function SearchableSelect({
                 className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 pl-8 text-sm placeholder-slate-400 transition-colors focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 placeholder="Search..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
               />
               <svg
@@ -172,8 +203,10 @@ export default function SearchableSelect({
             </div>
           </div>
           <div
+            ref={optionsListRef}
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1"
             style={{ maxHeight: optionsListMaxHeight, WebkitOverflowScrolling: 'touch' }}
+            onScroll={handleOptionsScroll}
             onWheel={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
           >
@@ -189,26 +222,31 @@ export default function SearchableSelect({
               </button>
             )}
             {filteredOptions.length === 0 ? (
-              <div className="px-3 py-4 text-center text-sm text-slate-500">No options found.</div>
+              <div className="px-3 py-4 text-center text-sm text-slate-500">
+                {loading ? loadingText : 'No options found.'}
+              </div>
             ) : (
-              filteredOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  disabled={opt.disabled}
-                  className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${
-                    opt.value === value
-                      ? 'bg-indigo-50 font-semibold text-indigo-700'
-                      : opt.disabled
-                        ? 'cursor-not-allowed text-slate-300 hover:bg-transparent'
-                        : 'text-slate-700'
-                  }`}
-                  onClick={() => handleSelect(opt.value)}
-                >
-                  {opt.label}
-                  {opt.disabled ? ' (Used)' : ''}
-                </button>
-              ))
+              <>
+                {filteredOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    disabled={opt.disabled}
+                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-slate-100 ${
+                      opt.value === value
+                        ? 'bg-indigo-50 font-semibold text-indigo-700'
+                        : opt.disabled
+                          ? 'cursor-not-allowed text-slate-300 hover:bg-transparent'
+                          : 'text-slate-700'
+                    }`}
+                    onClick={() => handleSelect(opt.value)}
+                  >
+                    {opt.label}
+                    {opt.disabled ? ' (Used)' : ''}
+                  </button>
+                ))}
+                {loading && <div className="px-3 py-2 text-center text-xs text-slate-500">{loadingText}</div>}
+              </>
             )}
           </div>
         </div>,

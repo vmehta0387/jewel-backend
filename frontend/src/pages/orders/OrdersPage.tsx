@@ -150,6 +150,8 @@ const defaultForm: OrderFormState = {
   notes: '',
 };
 
+const DESIGN_DROPDOWN_PAGE_SIZE = 50;
+
 const orderStatusOptions = [
   'QUOTE',
   'PENDING_APPROVAL',
@@ -333,6 +335,10 @@ export default function OrdersPage() {
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
+  const [designOptionsLoading, setDesignOptionsLoading] = useState(false);
+  const [designOptionsPage, setDesignOptionsPage] = useState(0);
+  const [designOptionsTotalPages, setDesignOptionsTotalPages] = useState(1);
+  const [designDropdownSearch, setDesignDropdownSearch] = useState('');
   const [designDetail, setDesignDetail] = useState<DesignDetail | null>(null);
   const [designMediaUrls, setDesignMediaUrls] = useState<string[]>([]);
   const [showDesignFilters, setShowDesignFilters] = useState(false);
@@ -354,6 +360,8 @@ export default function OrdersPage() {
     deliveryFrom: '',
     deliveryTo: '',
   });
+  const designSearchDebounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const designRequestSeqRef = useRef(0);
 
   const isEditing = Boolean(editingOrderId);
   const listTableColumnCount = isSuperAdmin ? 13 : 12;
@@ -404,21 +412,71 @@ export default function OrdersPage() {
     setCompanies(response.data?.data || []);
   };
 
-  const loadDesigns = async () => {
-    if (designOptions.length) return;
+  const loadDesigns = async ({
+    page: nextPage = 1,
+    search = designDropdownSearch,
+    reset = false,
+  }: { page?: number; search?: string; reset?: boolean } = {}) => {
+    if (designOptionsLoading) return;
+    const requestSeq = designRequestSeqRef.current + 1;
+    designRequestSeqRef.current = requestSeq;
+    setDesignOptionsLoading(true);
     try {
-      const response = await api.get('/products', { params: { limit: 200, status: 'ACTIVE' } });
-      const allRows: DesignOption[] = response.data?.data || [];
-      const sorted = [...allRows].sort((a, b) => {
-        const aBase = getBaseDesignNo(a.designNo);
-        const bBase = getBaseDesignNo(b.designNo);
-        if (aBase !== bBase) return aBase.localeCompare(bBase);
-        return (a.version || '').localeCompare(b.version || '', undefined, { numeric: true, sensitivity: 'base' });
+      const trimmedSearch = search.trim();
+      const response = await api.get('/products', {
+        params: {
+          page: nextPage,
+          limit: DESIGN_DROPDOWN_PAGE_SIZE,
+          status: 'ACTIVE',
+          search: trimmedSearch || undefined,
+        },
       });
-      setDesignOptions(sorted);
+      if (requestSeq !== designRequestSeqRef.current) return;
+
+      const rows: DesignOption[] = response.data?.data || [];
+      setDesignOptions((prev) => {
+        if (reset) return rows;
+        const byId = new Map(prev.map((row) => [row.id, row]));
+        rows.forEach((row) => byId.set(row.id, row));
+        return Array.from(byId.values());
+      });
+      setDesignOptionsPage(response.data?.page || nextPage);
+      setDesignOptionsTotalPages(response.data?.totalPages || 1);
     } catch {
-      setDesignOptions([]);
+      if (reset) {
+        setDesignOptions([]);
+        setDesignOptionsPage(0);
+        setDesignOptionsTotalPages(1);
+      }
+    } finally {
+      if (requestSeq === designRequestSeqRef.current) {
+        setDesignOptionsLoading(false);
+      }
     }
+  };
+
+  const openDesignDropdown = () => {
+    if (designSearchDebounceRef.current) {
+      window.clearTimeout(designSearchDebounceRef.current);
+      designSearchDebounceRef.current = null;
+    }
+    setDesignDropdownSearch('');
+    loadDesigns({ page: 1, search: '', reset: true });
+  };
+
+  const handleDesignDropdownSearch = (search: string) => {
+    setDesignDropdownSearch(search);
+    if (designSearchDebounceRef.current) {
+      window.clearTimeout(designSearchDebounceRef.current);
+    }
+    designSearchDebounceRef.current = window.setTimeout(() => {
+      loadDesigns({ page: 1, search, reset: true });
+    }, 300);
+  };
+
+  const loadMoreDesigns = () => {
+    if (designOptionsLoading || designOptionsPage >= designOptionsTotalPages) return;
+    loadDesigns({ page: designOptionsPage + 1, search: designDropdownSearch, reset: false });
   };
 
   const loadPackets = async (): Promise<Record<string, string>> => {
@@ -506,12 +564,20 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!showAddModal) return;
-    loadDesigns();
     if (!editingOrderId) {
       loadOrderNumber();
     }
     loadPackets();
   }, [showAddModal, editingOrderId]);
+
+  useEffect(
+    () => () => {
+      if (designSearchDebounceRef.current) {
+        window.clearTimeout(designSearchDebounceRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!showViewModal) return;
@@ -1338,6 +1404,13 @@ export default function OrdersPage() {
                         }}
                         options={designSelectOptions}
                         placeholder="Select Design"
+                        filterOptions={false}
+                        loading={designOptionsLoading}
+                        loadingText="Loading designs..."
+                        hasMore={designOptionsPage < designOptionsTotalPages}
+                        onOpen={openDesignDropdown}
+                        onSearchChange={handleDesignDropdownSearch}
+                        onLoadMore={loadMoreDesigns}
                       />
                     )}
                     {!isEditing && showDesignFilters && (
