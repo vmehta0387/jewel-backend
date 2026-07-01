@@ -29,11 +29,23 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const isDevLocalOrigin = (origin?: string) =>
+    !origin ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+    /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin);
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    origin: (origin, callback) => {
+      if (allowedOrigins.includes(origin || '') || (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS origin not allowed: ${origin || 'unknown'}`));
+    },
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.listen(process.env.PORT || 3000, '0.0.0.0');
