@@ -27,8 +27,9 @@ async function bootstrap() {
 
   const allowedOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
+  const normalizeOrigin = (origin?: string) => origin?.replace(/\/$/, '');
   const isDevLocalOrigin = (origin?: string) =>
     !origin ||
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
@@ -37,7 +38,16 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
   app.enableCors({
     origin: (origin, callback) => {
-      if (allowedOrigins.includes(origin || '') || (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const requestOrigin = normalizeOrigin(origin);
+      if (
+        (requestOrigin && allowedOrigins.includes(requestOrigin)) ||
+        (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))
+      ) {
         callback(null, true);
         return;
       }
