@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import * as express from 'express';
 import { existsSync, mkdirSync } from 'fs';
 import { access, writeFile } from 'fs/promises';
@@ -7,6 +7,7 @@ import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
   const uploadsRoot = process.env.UPLOADS_ROOT || join(process.cwd(), 'uploads');
   if (!existsSync(uploadsRoot)) {
@@ -29,6 +30,7 @@ async function bootstrap() {
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
+  const allowedOriginSet = new Set(allowedOrigins);
   const normalizeOrigin = (origin?: string) => origin?.replace(/\/$/, '');
   const isDevLocalOrigin = (origin?: string) =>
     !origin ||
@@ -45,13 +47,15 @@ async function bootstrap() {
 
       const requestOrigin = normalizeOrigin(origin);
       if (
-        (requestOrigin && allowedOrigins.includes(requestOrigin)) ||
+        (requestOrigin && allowedOriginSet.has(requestOrigin)) ||
         (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))
       ) {
         callback(null, true);
         return;
       }
-      callback(new Error(`CORS origin not allowed: ${origin || 'unknown'}`));
+
+      logger.warn(`Blocked CORS origin: ${origin}`);
+      callback(null, false);
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
