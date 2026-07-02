@@ -26,7 +26,7 @@ DATABASE_PASSWORD=cVKgVLfpoyOvbqQTCNWrhsSQVxIkmoZm
 DATABASE_NAME=railway
 JWT_SECRET=TenqV9meuswV0IyiYc5C6XMIMH9rO5szgijsWmEJbmy9UrvpNBO20FnSaLuS8fEAhjYVy3zF0uteX4pCNaV/5A==
 JWT_EXPIRATION=7d
-CORS_ORIGIN=
+CORS_ORIGIN=https://admin.blitznyc.com,https://jewel-sales.vercel.app,http://localhost:8082,http://127.0.0.1:8082
 EOF
 
 sudo tee /etc/systemd/system/jewelry-backend.service > /dev/null <<'SERVICE'
