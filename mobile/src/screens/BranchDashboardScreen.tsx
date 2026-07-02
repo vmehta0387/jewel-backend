@@ -18,13 +18,12 @@ import { useAuth } from '../context/AuthContext';
 import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchSpiffSummary } from '../api/spiff';
-import { fetchAllDesigns } from '../api/designs';
+import { fetchMobileTrendingDesigns } from '../api/designs';
 import { uploadMyPhoto } from '../api/auth';
 import { fetchBranchEmployees } from '../api/branchEmployees';
-import type { BranchEmployee, Design, Order } from '../types';
+import type { BranchEmployee, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { mapNotificationsToActivityItems } from '../utils/appNotifications';
-import { getDesignFamilyKey } from '../utils/designFamily';
 
 type ActivityItem = {
   id: string;
@@ -148,7 +147,7 @@ const BranchDashboardScreen = () => {
       fetchOrderSummary(token),
       fetchOrderTrends(token),
       fetchOrders(token, 1, 100, 'ALL'),
-      fetchAllDesigns(token, 200),
+      fetchMobileTrendingDesigns(token, 3),
       fetchSpiffSummary(token),
       user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
     ]);
@@ -311,25 +310,11 @@ const BranchDashboardScreen = () => {
     }
 
     if (designsRes.status === 'fulfilled') {
-      const allDesigns = designsRes.value || [];
-      const uniqueDesigns: Design[] = [];
-      const seenDesignKeys = new Set<string>();
-      for (const design of allDesigns) {
-        const key =
-          getDesignFamilyKey(design.designNo) ||
-          String(design.designName || '').trim().toLowerCase() ||
-          design.id;
-        if (!key || seenDesignKeys.has(key)) continue;
-        seenDesignKeys.add(key);
-        uniqueDesigns.push(design);
-      }
-
-      const shuffled = [...uniqueDesigns].sort(() => Math.random() - 0.5);
-      const chosen = shuffled.slice(0, 2).map((design: Design) => ({
+      const chosen = (designsRes.value.data || []).slice(0, 3).map((design) => ({
         id: design.id,
         title: design.designName || design.designNo || 'Jewelry design',
         subtitle: `${design.jewelryGroup || 'Jewelry'} - ${design.collection || design.version || 'Catalog'}`,
-        price: Number(design.displayPrice ?? design.totalValue ?? 0),
+        price: Number(design.totalValue ?? 0),
         imageUrl: design.imageUrls?.[0] || null,
       }));
 

@@ -12,10 +12,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDesigns } from '../api/designs';
-import type { Design } from '../types';
+import { fetchCatalogCategoryCounts } from '../api/designs';
 import type { CatalogPresetCategory } from '../navigation/RootNavigator';
-import { getDesignFamilyKey } from '../utils/designFamily';
 
 type CategoryOption = {
   key: CatalogPresetCategory;
@@ -34,21 +32,6 @@ const CATEGORY_IMAGES: Record<CatalogPresetCategory, any> = {
   bracelets: require('../../assets/bracelet.png'),
   studs: require('../../assets/studs.png'),
   necklaces: require('../../assets/necklace.png'),
-};
-
-const CATEGORY_HINTS: Record<CatalogPresetCategory, string[]> = {
-  rings: ['ring'],
-  bracelets: ['bracelet', 'bangle'],
-  studs: ['stud', 'earring'],
-  necklaces: ['necklace', 'pendant', 'chain'],
-};
-
-const matchesPresetCategory = (design: Design, categoryKey: CatalogPresetCategory) => {
-  const searchableText = [design.jewelryGroup, design.collection, design.designName, design.designNo]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return CATEGORY_HINTS[categoryKey].some((hint) => searchableText.includes(hint));
 };
 
 type CategoryCountStats = {
@@ -105,46 +88,8 @@ const CatalogCategoryScreen = () => {
 
     setCountsLoading(true);
     try {
-      const rows = await fetchAllDesigns(token, 200);
-
-      const uniqueByCategory: Record<CatalogPresetCategory, Set<string>> = {
-        rings: new Set<string>(),
-        bracelets: new Set<string>(),
-        studs: new Set<string>(),
-        necklaces: new Set<string>(),
-      };
-      const versionCounts: Record<CatalogPresetCategory, number> = {
-        rings: 0,
-        bracelets: 0,
-        studs: 0,
-        necklaces: 0,
-      };
-
-      const activeRows = rows.filter((design) => {
-        const dynamicRow = design as Design & { isActive?: boolean; status?: string | null };
-        if (typeof dynamicRow.isActive === 'boolean') return dynamicRow.isActive;
-        return String(dynamicRow.status || 'ACTIVE').toUpperCase() === 'ACTIVE';
-      });
-
-      activeRows.forEach((design) => {
-        const uniqueKey = getDesignFamilyKey(design.designNo) || design.id;
-
-        (Object.keys(CATEGORY_HINTS) as CatalogPresetCategory[]).forEach((categoryKey) => {
-          if (matchesPresetCategory(design, categoryKey)) {
-            if (design.isPrimary === true) {
-              uniqueByCategory[categoryKey].add(uniqueKey);
-            }
-            versionCounts[categoryKey] += 1;
-          }
-        });
-      });
-
-      setCategoryCounts({
-        rings: { designs: uniqueByCategory.rings.size, versions: versionCounts.rings },
-        bracelets: { designs: uniqueByCategory.bracelets.size, versions: versionCounts.bracelets },
-        studs: { designs: uniqueByCategory.studs.size, versions: versionCounts.studs },
-        necklaces: { designs: uniqueByCategory.necklaces.size, versions: versionCounts.necklaces },
-      });
+      const response = await fetchCatalogCategoryCounts(token);
+      setCategoryCounts(response.data || EMPTY_COUNTS);
     } catch {
       setCategoryCounts(EMPTY_COUNTS);
     } finally {

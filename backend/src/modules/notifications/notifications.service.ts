@@ -6,6 +6,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
 import { FindNotificationsQueryDto } from './dto/notification.dto';
 import { Notification, NotificationPriority } from './entities/notification.entity';
+import { NotificationsGateway } from './notifications.gateway';
 
 export interface CreateNotificationInput {
   userId: string;
@@ -31,6 +32,7 @@ export class NotificationsService {
     private readonly notificationRepo: Repository<Notification>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   async findMine(query: FindNotificationsQueryDto, requester: AuthUser) {
@@ -110,7 +112,9 @@ export class NotificationsService {
 
     notification.isRead = isRead;
     notification.readAt = isRead ? new Date() : null;
-    return this.notificationRepo.save(notification);
+    const saved = await this.notificationRepo.save(notification);
+    await this.emitUnreadCountUpdate(requester.id);
+    return saved;
   }
 
   async markAllRead(requester: AuthUser) {
@@ -125,7 +129,9 @@ export class NotificationsService {
       .andWhere('is_read = :isRead', { isRead: false })
       .execute();
 
-    return this.getUnreadCount(requester);
+    const result = await this.getUnreadCount(requester);
+    this.notificationsGateway.emitUnreadCount(requester.id, result.unreadCount);
+    return result;
   }
 
   async createForUser(input: CreateNotificationInput) {
@@ -149,7 +155,9 @@ export class NotificationsService {
       readAt: null,
     });
 
-    return this.notificationRepo.save(record);
+    const saved = await this.notificationRepo.save(record);
+    await this.emitUnreadCountUpdate(saved.recipientUserId);
+    return saved;
   }
 
   async createForUsers(userIds: string[], input: Omit<CreateNotificationInput, 'userId'>) {
@@ -188,7 +196,20 @@ export class NotificationsService {
       }),
     );
 
-    return this.notificationRepo.save(rows);
+    const saved = await this.notificationRepo.save(rows);
+    await Promise.all(uniqueUserIds.map((userId) => this.emitUnreadCountUpdate(userId)));
+    return saved;
+  }
+
+  private async emitUnreadCountUpdate(userId: string) {
+    try {
+      const unreadCount = await this.notificationRepo.count({
+        where: { recipientUserId: userId, isRead: false },
+      });
+      this.notificationsGateway.emitUnreadCount(userId, unreadCount);
+    } catch {
+      // Socket delivery is best-effort; the database remains the source of truth.
+    }
   }
 
   private normalizeText(value: string): string {

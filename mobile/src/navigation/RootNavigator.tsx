@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { NavigationContainer, DefaultTheme, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { fetchUnreadNotificationCount } from '../api/notifications';
+import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../api/notificationSocket';
 import LoginScreen from '../screens/LoginScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
 import DesignsScreen from '../screens/DesignsScreen';
@@ -205,9 +206,41 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
 
   useEffect(() => {
     loadOrdersBadge();
-    const interval = setInterval(loadOrdersBadge, 8000);
-    return () => clearInterval(interval);
-  }, [loadOrdersBadge]);
+    const canReceiveNotificationUpdates =
+      Boolean(token && user) &&
+      (role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN');
+
+    if (!canReceiveNotificationUpdates || !token) {
+      return undefined;
+    }
+
+    const socket = createNotificationsSocket(token);
+    const syncUnreadCount = () => {
+      void loadOrdersBadge();
+    };
+    const handleUnreadCountUpdate = (payload: NotificationUnreadCountPayload) => {
+      const unreadCount = Number(payload?.unreadCount || 0);
+      setOrdersBadgeCount(Number.isFinite(unreadCount) ? unreadCount : 0);
+    };
+
+    socket.on('connect', syncUnreadCount);
+    socket.io.on('reconnect', syncUnreadCount);
+    socket.on('notification.unread_count_updated', handleUnreadCountUpdate);
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncUnreadCount();
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      socket.off('connect', syncUnreadCount);
+      socket.io.off('reconnect', syncUnreadCount);
+      socket.off('notification.unread_count_updated', handleUnreadCountUpdate);
+      socket.disconnect();
+    };
+  }, [loadOrdersBadge, role, token, user]);
 
   return (
     <Tabs.Navigator

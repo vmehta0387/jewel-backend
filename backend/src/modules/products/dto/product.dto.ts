@@ -768,6 +768,88 @@ export class FindProductsQueryDto {
   modificationTo?: string;
 }
 
+export class FindMobileTrendingProductsQueryDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(10)
+  @IsOptional()
+  limit?: number;
+}
+
+export class FindMobileCatalogProductsQueryDto {
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  page?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(50)
+  @IsOptional()
+  limit?: number;
+
+  @IsIn(['rings', 'bracelets', 'studs', 'necklaces'])
+  @IsOptional()
+  category?: 'rings' | 'bracelets' | 'studs' | 'necklaces';
+
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @IsString()
+  @IsOptional()
+  collection?: string;
+
+  @IsString()
+  @IsOptional()
+  diamondType?: string;
+
+  @IsIn(['ALL', 'UNDER_2000', 'BETWEEN_2000_5000', 'ABOVE_5000'])
+  @IsOptional()
+  priceBand?: 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
+
+  @IsIn(['recent', 'priceAsc', 'priceDesc', 'designAsc', 'designDesc'])
+  @IsOptional()
+  sort?: 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
+}
+
+export class ResolveMobileDesignConfiguratorQueryDto {
+  @IsIn(['diamondType', 'shape', 'style', 'metalColor', 'weight', 'quality', 'ringSize'])
+  @IsOptional()
+  selectedKey?: 'diamondType' | 'shape' | 'style' | 'metalColor' | 'weight' | 'quality' | 'ringSize';
+
+  @IsString()
+  @IsOptional()
+  diamondType?: string;
+
+  @IsString()
+  @IsOptional()
+  shape?: string;
+
+  @IsString()
+  @IsOptional()
+  style?: string;
+
+  @IsString()
+  @IsOptional()
+  metalColor?: string;
+
+  @IsString()
+  @IsOptional()
+  weight?: string;
+
+  @IsString()
+  @IsOptional()
+  quality?: string;
+
+  @IsString()
+  @IsOptional()
+  ringSize?: string;
+}
+
 export class FindDesignMediaLibraryQueryDto {
   @Type(() => Number)
   @IsNumber()

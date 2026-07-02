@@ -20,12 +20,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllDesigns, fetchDesign } from '../api/designs';
+import {
+  fetchMobileDesignConfigurator,
+  resolveMobileDesignConfigurator,
+  type MobileConfiguratorResponse,
+} from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatNumber } from '../utils/format';
-import { getDesignFamilyKey } from '../utils/designFamily';
 
 type OptionVariant = 'default' | 'metal';
 
@@ -40,6 +43,7 @@ type VersionFilters = {
 };
 
 type FilterKey = keyof VersionFilters;
+type VersionOptionGroups = Record<FilterKey, string[]>;
 
 const formatDetailPrice = (value: number | null | undefined) => {
   const numeric = Number(value);
@@ -55,12 +59,6 @@ const compact = (value?: string | number | null) => String(value ?? '').trim();
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
-
-const parseVersion = (version?: string | null) => {
-  const match = /V(\d+)/i.exec(String(version || '').trim());
-  const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-};
 
 const toCaratLabel = (value?: string | number | null) => {
   const clean = compact(value);
@@ -162,93 +160,6 @@ const getFilterValuesFromDesign = (design: Design): VersionFilters => {
   };
 };
 
-const pickPrimaryFromFamily = (family: Design[]) => {
-  if (!family.length) return null;
-  return (
-    family.find((design) => design.isPrimary) ||
-    [...family].sort((a, b) => parseVersion(a.version) - parseVersion(b.version))[0]
-  );
-};
-
-const matchesFilter = (values: string[], selected: string) => !selected || values.includes(selected);
-
-const findBestMatchingVersion = (
-  family: Design[],
-  filters: VersionFilters,
-  currentId: string | null,
-) => {
-  const candidates = family.filter((design) => {
-    const attrs = getVersionAttributes(design);
-    return (
-      matchesFilter(attrs.diamondTypes, filters.diamondType) &&
-      matchesFilter(attrs.shapes, filters.shape) &&
-      matchesFilter(attrs.styles, filters.style) &&
-      matchesFilter(attrs.metalColors, filters.metalColor) &&
-      matchesFilter(attrs.qualities, filters.quality) &&
-      matchesFilter(attrs.weights, filters.weight) &&
-      matchesFilter(attrs.ringSizes, filters.ringSize)
-    );
-  });
-
-  if (!candidates.length) return null;
-  const current = candidates.find((item) => item.id === currentId);
-  if (current) return current;
-  return [...candidates].sort((a, b) => parseVersion(a.version) - parseVersion(b.version))[0];
-};
-
-const filterMatchesDesign = (design: Design, key: FilterKey, value: string) => {
-  const attrs = getVersionAttributes(design);
-  switch (key) {
-    case 'diamondType':
-      return attrs.diamondTypes.includes(value);
-    case 'shape':
-      return attrs.shapes.includes(value);
-    case 'style':
-      return attrs.styles.includes(value);
-    case 'metalColor':
-      return attrs.metalColors.includes(value);
-    case 'weight':
-      return attrs.weights.includes(value);
-    case 'quality':
-      return attrs.qualities.includes(value);
-    case 'ringSize':
-      return attrs.ringSizes.includes(value);
-    default:
-      return false;
-  }
-};
-
-const scoreDesignAgainstFilters = (design: Design, filters: VersionFilters, skipKey: FilterKey) => {
-  let score = 0;
-  (Object.keys(filters) as FilterKey[]).forEach((key) => {
-    if (key === skipKey) return;
-    if (!filters[key]) return;
-    if (filterMatchesDesign(design, key, filters[key])) score += 1;
-  });
-  return score;
-};
-
-const findBestVersionForFieldSelection = (
-  family: Design[],
-  selectedKey: FilterKey,
-  selectedValue: string,
-  currentFilters: VersionFilters,
-  currentId: string | null,
-) => {
-  const candidates = family.filter((design) => filterMatchesDesign(design, selectedKey, selectedValue));
-  if (!candidates.length) return null;
-
-  const scored = [...candidates].sort((a, b) => {
-    const scoreA = scoreDesignAgainstFilters(a, currentFilters, selectedKey);
-    const scoreB = scoreDesignAgainstFilters(b, currentFilters, selectedKey);
-    if (scoreA !== scoreB) return scoreB - scoreA;
-    if (a.id === currentId) return -1;
-    if (b.id === currentId) return 1;
-    return parseVersion(a.version) - parseVersion(b.version);
-  });
-  return scored[0];
-};
-
 const OptionSection = ({
   title,
   options,
@@ -313,8 +224,18 @@ const DesignDetailScreen = () => {
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
+  const [optionGroups, setOptionGroups] = useState<VersionOptionGroups>({
+    diamondType: [],
+    shape: [],
+    style: [],
+    metalColor: [],
+    weight: [],
+    quality: [],
+    ringSize: [],
+  });
   const [priceByDesignId, setPriceByDesignId] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const [resolvingSelection, setResolvingSelection] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const [selectedShape, setSelectedShape] = useState('');
@@ -328,6 +249,7 @@ const DesignDetailScreen = () => {
   const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
   const [dropdownSelected, setDropdownSelected] = useState('');
   const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
+  const resolveRequestSeqRef = useRef(0);
 
   const handleBackToDesigns = useCallback(() => {
     navigation.navigate('Designs', {
@@ -335,8 +257,8 @@ const DesignDetailScreen = () => {
     });
   }, [navigation, route.params?.presetCategory]);
 
-  const applyActiveDesignSelection = useCallback((design: Design) => {
-    const next = getFilterValuesFromDesign(design);
+  const applyActiveDesignSelection = useCallback((design: Design, selectedOptions?: Partial<VersionFilters>) => {
+    const next = { ...getFilterValuesFromDesign(design), ...(selectedOptions || {}) };
     setActiveDesignId(design.id);
     setSelectedShape(next.shape);
     setSelectedDiamondType(next.diamondType);
@@ -348,71 +270,60 @@ const DesignDetailScreen = () => {
     setSelectedImageIndex(0);
   }, []);
 
-  const loadDesign = useCallback(async () => {
-    if (!token) return;
-    setError(null);
+  const applyConfiguratorResponse = useCallback(
+    (response: MobileConfiguratorResponse) => {
+      setFamilyDesigns([response.selectedDesign]);
+      setOptionGroups(response.optionGroups);
+      applyActiveDesignSelection(response.selectedDesign, response.selectedOptions);
+    },
+    [applyActiveDesignSelection],
+  );
 
-    try {
-      const primary = await fetchDesign(token, route.params.designId);
-      const familyKey = getDesignFamilyKey(primary.designNo);
-
-      let familyIds = [primary.id];
-      try {
-        const rows = await fetchAllDesigns(token, 200);
-        const fromList = rows
-          .filter((row) => getDesignFamilyKey(row.designNo) === familyKey)
-          .map((row) => row.id);
-        familyIds = Array.from(new Set([primary.id, ...fromList]));
-      } catch {
-        familyIds = [primary.id];
-      }
-
-      const detailed = (
-        await Promise.all(
-          familyIds.map(async (id) => {
-            try {
-              return await fetchDesign(token, id);
-            } catch {
-              return null;
-            }
-          }),
-        )
-      ).filter(Boolean) as Design[];
-
-      const family = (detailed.length ? detailed : [primary]).sort(
-        (a, b) => parseVersion(a.version) - parseVersion(b.version),
-      );
-
-      const primaryDesign = pickPrimaryFromFamily(family) || primary;
-      setFamilyDesigns(family);
-      applyActiveDesignSelection(primaryDesign);
-
+  const loadPriceForDesign = useCallback(
+    async (design: Design) => {
+      const fallback = design.totalValue ?? 0;
       const shouldApplyPricing =
         (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
         Boolean(user?.companyId) &&
         Boolean(user?.branchId);
 
-      if (shouldApplyPricing) {
-        const pricedRows = await Promise.all(
-          family.map(async (design) => {
-            try {
-              const preview = await fetchPricePreview(token, design.id, user?.companyId as string, user?.branchId as string);
-              return [design.id, preview.finalPrice ?? design.totalValue ?? 0] as const;
-            } catch {
-              return [design.id, design.totalValue ?? 0] as const;
-            }
-          }),
-        );
-        setPriceByDesignId(Object.fromEntries(pricedRows));
-      } else {
-        setPriceByDesignId(
-          Object.fromEntries(family.map((design) => [design.id, design.totalValue ?? 0] as const)),
-        );
+      if (!shouldApplyPricing || !token) {
+        setPriceByDesignId({ [design.id]: fallback });
+        return;
       }
+
+      try {
+        const preview = await fetchPricePreview(token, design.id, user?.companyId as string, user?.branchId as string);
+        setPriceByDesignId({ [design.id]: preview.finalPrice ?? fallback });
+      } catch {
+        setPriceByDesignId({ [design.id]: fallback });
+      }
+    },
+    [token, user?.role, user?.companyId, user?.branchId],
+  );
+
+  const setSelectedFeatureValue = useCallback((key: FilterKey, value: string) => {
+    if (key === 'diamondType') setSelectedDiamondType(value);
+    else if (key === 'shape') setSelectedShape(value);
+    else if (key === 'style') setSelectedStyle(value);
+    else if (key === 'metalColor') setSelectedMetalColor(value);
+    else if (key === 'weight') setSelectedWeight(value);
+    else if (key === 'quality') setSelectedQuality(value);
+    else if (key === 'ringSize') setSelectedRingSize(value);
+  }, []);
+
+  const loadDesign = useCallback(async () => {
+    if (!token) return;
+    setError(null);
+
+    try {
+      const response = await fetchMobileDesignConfigurator(token, route.params.designId);
+      applyConfiguratorResponse(response);
+      await loadPriceForDesign(response.selectedDesign);
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
-  }, [token, route.params.designId, user?.role, user?.companyId, user?.branchId, applyActiveDesignSelection]);
+  }, [token, route.params.designId, applyConfiguratorResponse, loadPriceForDesign]);
 
   useFocusEffect(
     useCallback(() => {
@@ -460,32 +371,35 @@ const DesignDetailScreen = () => {
   );
 
   const diamondTypeOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).diamondTypes)),
-    [familyDesigns],
+    () => optionGroups.diamondType,
+    [optionGroups.diamondType],
   );
   const styleOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).styles)),
-    [familyDesigns],
+    () => optionGroups.style,
+    [optionGroups.style],
   );
   const metalColorOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).metalColors)),
-    [familyDesigns],
+    () => optionGroups.metalColor,
+    [optionGroups.metalColor],
   );
   const qualityOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).qualities)),
-    [familyDesigns],
+    () => optionGroups.quality,
+    [optionGroups.quality],
   );
   const weightOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).weights)),
-    [familyDesigns],
+    () => optionGroups.weight,
+    [optionGroups.weight],
   );
   const ringSizeOptions = useMemo(
-    () => uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).ringSizes)),
-    [familyDesigns],
+    () => optionGroups.ringSize,
+    [optionGroups.ringSize],
   );
 
   const resolveVersionSelection = useCallback(
-    (selectedKey: FilterKey, selectedValue: string) => {
+    async (selectedKey: FilterKey, selectedValue: string) => {
+      if (!token) return;
+      const requestId = resolveRequestSeqRef.current + 1;
+      resolveRequestSeqRef.current = requestId;
       const currentFilters: VersionFilters = {
         diamondType: selectedDiamondType,
         shape: selectedShape,
@@ -495,26 +409,33 @@ const DesignDetailScreen = () => {
         quality: selectedQuality,
         ringSize: selectedRingSize,
       };
+      const nextFilters = { ...currentFilters, [selectedKey]: selectedValue };
 
-      const strictFilters: VersionFilters = { ...currentFilters, [selectedKey]: selectedValue };
-      const strictMatch = findBestMatchingVersion(familyDesigns, strictFilters, activeDesignId);
+      setSelectedFeatureValue(selectedKey, selectedValue);
+      setResolvingSelection(true);
+      setError(null);
 
-      const matched =
-        strictMatch ||
-        findBestVersionForFieldSelection(
-          familyDesigns,
+      try {
+        const response = await resolveMobileDesignConfigurator(token, route.params.designId, {
+          ...nextFilters,
           selectedKey,
-          selectedValue,
-          currentFilters,
-          activeDesignId,
-        );
-
-      if (!matched) return;
-      applyActiveDesignSelection(matched);
+        });
+        if (resolveRequestSeqRef.current !== requestId) return;
+        applyConfiguratorResponse(response);
+        await loadPriceForDesign(response.selectedDesign);
+      } catch (err: any) {
+        if (resolveRequestSeqRef.current === requestId) {
+          setError(err?.message || 'Unable to update design selection');
+        }
+      } finally {
+        if (resolveRequestSeqRef.current === requestId) {
+          setResolvingSelection(false);
+        }
+      }
     },
     [
-      familyDesigns,
-      activeDesignId,
+      token,
+      route.params.designId,
       selectedShape,
       selectedDiamondType,
       selectedStyle,
@@ -522,7 +443,9 @@ const DesignDetailScreen = () => {
       selectedWeight,
       selectedQuality,
       selectedRingSize,
-      applyActiveDesignSelection,
+      setSelectedFeatureValue,
+      applyConfiguratorResponse,
+      loadPriceForDesign,
     ],
   );
 
@@ -697,6 +620,23 @@ const DesignDetailScreen = () => {
     ],
   );
 
+  const renderMediaSkeleton = () => (
+    <View style={styles.mediaSkeleton}>
+      <View style={styles.mediaSkeletonImage} />
+    </View>
+  );
+
+  const renderSpecSkeleton = () => (
+    <>
+      {[0, 1, 2, 3, 4].map((item, index) => (
+        <View key={`spec-sk-${item}`} style={[styles.specRow, index === 4 ? styles.specRowLast : null]}>
+          <View style={[styles.skeletonLine, styles.specSkeletonLabel]} />
+          <View style={[styles.skeletonLine, styles.specSkeletonValue]} />
+        </View>
+      ))}
+    </>
+  );
+
   if (!activeDesign && !error) {
     return (
       <View style={{flex: 1}}>
@@ -750,7 +690,9 @@ const DesignDetailScreen = () => {
 
           <View style={[styles.fixedMediaCard, { height: mediaHeight + 70 }]}>
             <View style={[styles.fixedMediaImageShell, { height: mediaHeight }]}>
-              {gallery.length ? (
+              {resolvingSelection ? (
+                renderMediaSkeleton()
+              ) : gallery.length ? (
                 <FlatList
                   ref={mediaListRef}
                   data={gallery}
@@ -786,11 +728,15 @@ const DesignDetailScreen = () => {
                 </View>
               )}
             </View>
-            <Text style={styles.mediaCaption} numberOfLines={1}>
-              {heroCaption}
-            </Text>
+            {resolvingSelection ? (
+              <View style={[styles.skeletonLine, styles.mediaCaptionSkeleton]} />
+            ) : (
+              <Text style={styles.mediaCaption} numberOfLines={1}>
+                {heroCaption}
+              </Text>
+            )}
 
-            {gallery.length > 1 ? (
+            {!resolvingSelection && gallery.length > 1 ? (
               <View style={styles.imagePagerRow}>
                 {gallery.slice(0, 6).map((_, index) => (
                   <TouchableOpacity
@@ -901,12 +847,14 @@ const DesignDetailScreen = () => {
 
           <View style={styles.specCard}>
             <Text style={styles.specTitle}>PRODUCT SPECIFICATIONS</Text>
-            {specRows.map((row, index) => (
-              <View key={`spec-${row.label}`} style={[styles.specRow, index === specRows.length - 1 ? styles.specRowLast : null]}>
-                <Text style={styles.specLabel}>{row.label}</Text>
-                <Text style={[styles.specValue, row.highlight ? styles.specValueHighlight : null]}>{row.value}</Text>
-              </View>
-            ))}
+            {resolvingSelection
+              ? renderSpecSkeleton()
+              : specRows.map((row, index) => (
+                  <View key={`spec-${row.label}`} style={[styles.specRow, index === specRows.length - 1 ? styles.specRowLast : null]}>
+                    <Text style={styles.specLabel}>{row.label}</Text>
+                    <Text style={[styles.specValue, row.highlight ? styles.specValueHighlight : null]}>{row.value}</Text>
+                  </View>
+                ))}
           </View>
         </ScrollView>
 
@@ -914,13 +862,27 @@ const DesignDetailScreen = () => {
           <View style={styles.bottomTopRow}>
             <View style={styles.retailBlock}>
               <Text style={styles.retailLabel}>RETAIL PRICE</Text>
-              <Text style={styles.retailValue}>{formatDetailPrice(displayPrice)}</Text>
+              {resolvingSelection ? (
+                <View style={[styles.skeletonLine, styles.priceSkeleton]} />
+              ) : (
+                <Text style={styles.retailValue}>{formatDetailPrice(displayPrice)}</Text>
+              )}
             </View>
             <View style={styles.orderSummaryCard}>
               <Text style={styles.orderSummaryTitle}>ORDER SUMMARY</Text>
-              <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalColor)}</Text>
-              <Text style={styles.orderSummaryLine}>{toCtwLabel(selectedWeight) || '-'}</Text>
-              <Text style={styles.orderSummaryLine}>{selectedRingSize || '-'}</Text>
+              {resolvingSelection ? (
+                <>
+                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
+                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
+                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalColor)}</Text>
+                  <Text style={styles.orderSummaryLine}>{toCtwLabel(selectedWeight) || '-'}</Text>
+                  <Text style={styles.orderSummaryLine}>{selectedRingSize || '-'}</Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -1022,6 +984,18 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  mediaSkeleton: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaSkeletonImage: {
+    width: 76,
+    height: '92%',
+    borderRadius: 10,
+    backgroundColor: '#F1ECE5',
+  },
   mediaSlide: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1033,6 +1007,11 @@ const styles = StyleSheet.create({
     color: '#80786F',
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  mediaCaptionSkeleton: {
+    width: 96,
+    height: 10,
+    marginTop: 8,
   },
   imagePagerRow: {
     flexDirection: 'row',
@@ -1308,6 +1287,18 @@ const styles = StyleSheet.create({
   specValueHighlight: {
     color: '#B2874A',
   },
+  skeletonLine: {
+    borderRadius: 999,
+    backgroundColor: '#EEE7DE',
+  },
+  specSkeletonLabel: {
+    width: 78,
+    height: 10,
+  },
+  specSkeletonValue: {
+    width: 108,
+    height: 10,
+  },
   bottomSummary: {
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
@@ -1343,6 +1334,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#1F1A15',
   },
+  priceSkeleton: {
+    width: 130,
+    height: 31,
+    marginTop: 2,
+  },
   orderSummaryCard: {
     width: 122,
     borderWidth: 1,
@@ -1370,6 +1366,12 @@ const styles = StyleSheet.create({
     color: '#5D554C',
     textAlign: 'right',
     fontWeight: '600',
+  },
+  orderSkeletonLine: {
+    width: 54,
+    height: 9,
+    alignSelf: 'flex-end',
+    marginTop: 4,
   },
   bottomActionsRow: {
     flexDirection: 'row',

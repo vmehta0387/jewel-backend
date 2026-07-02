@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   Modal,
@@ -14,7 +13,7 @@ import {
   View,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -22,12 +21,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
-import { fetchAllDesigns } from '../api/designs';
-import { fetchPricePreview } from '../api/orders';
+import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
 import type { Design } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
 import { mapNotificationsToActivityItems } from '../utils/appNotifications';
-import { getDesignFamilyKey } from '../utils/designFamily';
 
 type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
 type ActivityItem = {
@@ -114,6 +111,8 @@ const toLower = (value?: string | null) => normalizeText(value).toLowerCase();
 const uniqueNonEmpty = (values: Array<string | null | undefined>) =>
   Array.from(new Set(values.map((v) => normalizeText(v)).filter(Boolean)));
 
+const withAllOption = (values: Array<string | null | undefined>) => ['All', ...uniqueNonEmpty(values)];
+
 const SHAPE_LABELS = [
   'Round',
   'Oval',
@@ -163,45 +162,6 @@ const extractKnownShapes = (values: Array<string | null | undefined>) => {
   return uniqueNonEmpty(found);
 };
 
-const isActiveDesign = (design: Design) => {
-  const row = design as Design & { status?: string; isActive?: boolean };
-  if (typeof row.isActive === 'boolean') return row.isActive;
-  if (typeof row.status === 'string') return row.status.toUpperCase() === 'ACTIVE';
-  return true;
-};
-
-const keepPrimaryDesignsOnly = (rows: Design[]) => {
-  if (!rows.length) return rows;
-  const hasExplicitPrimaryFlag = rows.some((row) => typeof row.isPrimary === 'boolean');
-
-  if (hasExplicitPrimaryFlag) {
-    const explicitPrimaryRows = rows.filter((row) => row.isPrimary === true);
-    if (explicitPrimaryRows.length > 0) {
-      return explicitPrimaryRows;
-    }
-  }
-
-  const primaryByBase = new Map<string, Design>();
-  for (const row of rows) {
-    const base = getDesignFamilyKey(row.designNo);
-    if (!base) continue;
-    const existing = primaryByBase.get(base);
-    const isV1 = /^V1$/i.test(String(row.version || '').trim());
-
-    if (!existing) {
-      primaryByBase.set(base, row);
-      continue;
-    }
-
-    const existingIsV1 = /^V1$/i.test(String(existing.version || '').trim());
-    if (isV1 && !existingIsV1) {
-      primaryByBase.set(base, row);
-    }
-  }
-
-  return primaryByBase.size > 0 ? Array.from(primaryByBase.values()) : rows;
-};
-
 const getDesignShapes = (design: Design) => {
   const row = design as Design & { shape?: string | null; Shape?: string | null; stoneInfo?: string | null };
   const explicitShapes = uniqueNonEmpty([
@@ -231,31 +191,11 @@ const getDesignMetals = (design: Design) =>
     ...(design.metals || []).flatMap((metal) => [metal.goldColour, metal.metalCaratage]),
   ]);
 
-const PRESET_CATEGORY_MATCH: Record<CatalogPresetCategory, string[]> = {
-  rings: ['ring'],
-  bracelets: ['bracelet', 'bangle'],
-  studs: ['stud', 'earring'],
-  necklaces: ['necklace', 'pendant', 'chain'],
-};
-
 const PRESET_CATEGORY_TITLES: Record<CatalogPresetCategory, string> = {
   rings: 'Eternity Rings',
   bracelets: 'Bracelets',
   studs: 'Studs',
   necklaces: 'Necklaces',
-};
-
-const matchesPresetCategory = (design: Design, presetCategory: CatalogPresetCategory) => {
-  const searchableText = [
-    design.jewelryGroup,
-    design.collection,
-    design.designName,
-    design.designNo,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return PRESET_CATEGORY_MATCH[presetCategory].some((hint) => searchableText.includes(hint));
 };
 
 // Keep helper at module scope so stale fast-refresh closures always find it.
@@ -267,6 +207,11 @@ const formatCurrency = (value: number) =>
     minimumFractionDigits: 0,
   }).format(Number.isFinite(value) ? value : 0);
 
+const CATALOG_PAGE_SIZE = 20;
+const INITIAL_SKELETON_MIN_MS = 180;
+const DESIGN_SKELETON_IDS = ['sk-1', 'sk-2', 'sk-3', 'sk-4', 'sk-5', 'sk-6'];
+const DESIGN_FOOTER_SKELETON_IDS = ['sk-more-1', 'sk-more-2'];
+
 const DesignsScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
@@ -274,70 +219,157 @@ const DesignsScreen = () => {
   const numColumns = 2;
   const [designs, setDesigns] = useState<Design[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [showInitialSkeleton, setShowInitialSkeleton] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalDesigns, setTotalDesigns] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCollection, setSelectedCollection] = useState('All');
+  const [collectionOptions, setCollectionOptions] = useState<string[]>(['All']);
   const [selectedShape, setSelectedShape] = useState('All');
   const [selectedDiamondType, setSelectedDiamondType] = useState('All');
   const [selectedPriceBand, setSelectedPriceBand] = useState<PriceBand>('ALL');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [draftSearch, setDraftSearch] = useState('');
+  const [draftCategory, setDraftCategory] = useState('All');
+  const [draftCollection, setDraftCollection] = useState('All');
+  const [draftShape, setDraftShape] = useState('All');
+  const [draftDiamondType, setDraftDiamondType] = useState('All');
+  const [draftPriceBand, setDraftPriceBand] = useState<PriceBand>('ALL');
+  const [draftSortOption, setDraftSortOption] = useState<SortOption>('recent');
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const appliedSearchPresetRef = useRef('');
-  const appliedCategoryPresetRef = useRef('');
+  const requestSeqRef = useRef(0);
+  const loadedQueryKeyRef = useRef('');
+  const requestedQueryKeyRef = useRef('');
+  const loadingMoreRef = useRef(false);
+  const initialSkeletonTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogQueryRef = useRef<MobileCatalogQuery>({});
 
-  const loadDesigns = useCallback(async () => {
+  const catalogQuery = useMemo<MobileCatalogQuery>(
+    () => ({
+      category: route.params?.presetCategory,
+      search: search.trim() || undefined,
+      collection: selectedCollection !== 'All' ? selectedCollection : undefined,
+      diamondType: selectedDiamondType !== 'All' ? selectedDiamondType : undefined,
+      priceBand: selectedPriceBand,
+      sort: sortOption,
+    }),
+    [
+      route.params?.presetCategory,
+      search,
+      selectedCollection,
+      selectedDiamondType,
+      selectedPriceBand,
+      sortOption,
+    ],
+  );
+
+  const catalogQueryKey = useMemo(() => JSON.stringify(catalogQuery), [catalogQuery]);
+  catalogQueryRef.current = catalogQuery;
+
+  const loadDesigns = useCallback(async (nextPage = 1, append = false) => {
     if (!token) return;
-    setLoading(true);
-    setError(null);
-    let releasedLoadingEarly = false;
+    const activeQuery = catalogQueryRef.current;
+    const activeQueryKey = JSON.stringify(activeQuery);
+    const requestId = requestSeqRef.current + 1;
+    const shouldHoldInitialSkeleton = !append;
+    requestSeqRef.current = requestId;
+    if (append) {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    } else {
+      requestedQueryKeyRef.current = activeQueryKey;
+      loadingMoreRef.current = false;
+      setLoading(true);
+      setLoadingMore(false);
+      if (initialSkeletonTimerRef.current) clearTimeout(initialSkeletonTimerRef.current);
+      setShowInitialSkeleton(true);
+      setError(null);
+    }
+
     try {
-      const allRows = await fetchAllDesigns(token, 200);
-      const activeDesigns = allRows.filter(isActiveDesign);
-      const baseDesigns = keepPrimaryDesignsOnly(activeDesigns);
-      // Render immediately so users don't wait for pricing preview round-trips.
-      setDesigns(baseDesigns);
+      const response = await fetchMobileCatalogDesigns(token, {
+        ...activeQuery,
+        page: nextPage,
+        limit: CATALOG_PAGE_SIZE,
+      });
 
-      const shouldApplyPricing =
-        (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
-        Boolean(user?.companyId) &&
-        Boolean(user?.branchId);
+      if (requestSeqRef.current !== requestId) return;
 
-      if (!shouldApplyPricing) {
-        return;
+      const rows = (response.data || []) as Design[];
+
+      if (requestSeqRef.current !== requestId) return;
+
+      if (!activeQuery.collection) {
+        setCollectionOptions((current) => {
+          const previous = append ? current.filter((item) => item !== 'All') : [];
+          return withAllOption([...previous, ...rows.map((design) => design.collection)]);
+        });
       }
-
-      setLoading(false);
-      releasedLoadingEarly = true;
-
-      const companyId = user.companyId as string;
-      const branchId = user.branchId as string;
-      const pricedDesigns = await Promise.all(
-        baseDesigns.map(async (design) => {
-          try {
-            const preview = await fetchPricePreview(token, design.id, companyId, branchId);
-            return { ...design, displayPrice: preview.finalPrice };
-          } catch {
-            return { ...design, displayPrice: design.totalValue ?? 0 };
-          }
-        }),
-      );
 
       setDesigns((current) => {
-        const byId = new Map(pricedDesigns.map((row) => [row.id, row]));
-        return current.map((row) => byId.get(row.id) || row);
+        if (!append) return rows;
+        const seen = new Set(current.map((item) => item.id));
+        return [...current, ...rows.filter((item) => !seen.has(item.id))];
       });
+      setPage(response.page || nextPage);
+      setTotalPages(response.totalPages || 1);
+      setTotalDesigns(response.total || rows.length);
+      loadedQueryKeyRef.current = activeQueryKey;
     } catch (err: any) {
-      setError(err?.message || 'Unable to load designs');
+      if (requestSeqRef.current === requestId) {
+        setError(err?.message || 'Unable to load designs');
+      }
     } finally {
-      if (!releasedLoadingEarly) {
+      if (requestSeqRef.current === requestId) {
         setLoading(false);
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
+        if (shouldHoldInitialSkeleton) {
+          initialSkeletonTimerRef.current = setTimeout(() => {
+            setShowInitialSkeleton(false);
+            initialSkeletonTimerRef.current = null;
+          }, INITIAL_SKELETON_MIN_MS);
+        }
       }
     }
-  }, [token, user?.role, user?.companyId, user?.branchId]);
+  }, [token]);
+
+  useEffect(
+    () => () => {
+      if (initialSkeletonTimerRef.current) clearTimeout(initialSkeletonTimerRef.current);
+    },
+    [],
+  );
+
+  const loadMoreDesigns = useCallback(() => {
+    if (loading || loadingMore || loadingMoreRef.current || page >= totalPages) return;
+    loadDesigns(page + 1, true);
+  }, [loadDesigns, loading, loadingMore, page, totalPages]);
+
+  const refreshDesigns = useCallback(() => {
+    loadDesigns(1, false);
+  }, [loadDesigns]);
+
+  useEffect(() => {
+    if (!token || requestedQueryKeyRef.current === catalogQueryKey || loadedQueryKeyRef.current === catalogQueryKey) return;
+    const timeout = setTimeout(() => {
+      loadDesigns(1, false);
+    }, search.trim() ? 350 : 0);
+    return () => clearTimeout(timeout);
+  }, [catalogQueryKey, loadDesigns, search, token]);
+
+  const queryWaitingForLoad =
+    !!token &&
+    requestedQueryKeyRef.current !== catalogQueryKey &&
+    loadedQueryKeyRef.current !== catalogQueryKey;
 
   const loadNotifications = useCallback(async () => {
     if (!token) return;
@@ -355,7 +387,8 @@ const DesignsScreen = () => {
 
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
-  }, []);
+    loadNotifications();
+  }, [loadNotifications]);
 
   const handleMarkAllRead = useCallback(async () => {
     if (!token) return;
@@ -366,13 +399,6 @@ const DesignsScreen = () => {
       // ignore notification mark-all errors in the sheet
     }
   }, [loadNotifications, token]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadDesigns();
-      loadNotifications();
-    }, [loadDesigns, loadNotifications]),
-  );
 
   const categories = useMemo(() => {
     const orderedGroups = Array.from(
@@ -393,35 +419,16 @@ const DesignsScreen = () => {
     appliedSearchPresetRef.current = presetSearch;
   }, [route.params?.prefillSearch]);
 
-  useEffect(() => {
-    const presetCategory = route.params?.presetCategory;
-    if (!presetCategory || categories.length <= 1) return;
-
-    const signature = `${presetCategory}|${categories.join('|')}`;
-    if (appliedCategoryPresetRef.current === signature) return;
-
-    const hints = PRESET_CATEGORY_MATCH[presetCategory] || [];
-    const matchedCategory =
-      categories
-        .filter((item) => item !== 'All')
-        .find((item) => hints.some((hint) => item.toLowerCase().includes(hint))) || 'All';
-
-    setSelectedCategory(matchedCategory);
-    setSelectedCollection('All');
-    setSelectedShape('All');
-    setSelectedDiamondType('All');
-    setSelectedPriceBand('ALL');
-    appliedCategoryPresetRef.current = signature;
-  }, [route.params?.presetCategory, categories]);
-
   const collections = useMemo(() => {
-    const source =
+    const sourceOptions =
       selectedCategory === 'All'
-        ? designs
-        : designs.filter((design) => toLower(design.jewelryGroup) === toLower(selectedCategory));
+        ? collectionOptions
+        : designs
+            .filter((design) => toLower(design.jewelryGroup) === toLower(selectedCategory))
+            .map((design) => design.collection);
 
-    return ['All', ...uniqueNonEmpty(source.map((design) => design.collection))];
-  }, [designs, selectedCategory]);
+    return withAllOption(sourceOptions.filter((item) => item !== 'All'));
+  }, [collectionOptions, designs, selectedCategory]);
 
   const shapeOptions = useMemo(
     () => uniqueNonEmpty(designs.flatMap((design) => getDesignShapes(design))),
@@ -435,10 +442,8 @@ const DesignsScreen = () => {
 
   const filteredDesigns = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const presetCategory = route.params?.presetCategory;
 
     const filtered = designs.filter((design) => {
-      const matchesPreset = !presetCategory || matchesPresetCategory(design, presetCategory);
       const matchesCategory =
         selectedCategory === 'All' || toLower(design.jewelryGroup) === toLower(selectedCategory);
       const matchesCollection =
@@ -458,7 +463,6 @@ const DesignsScreen = () => {
       const matchesSearch = !term || getSearchableFields(design).some((value) => value.includes(term));
 
       return (
-        matchesPreset &&
         matchesCategory &&
         matchesCollection &&
         matchesShape &&
@@ -493,7 +497,6 @@ const DesignsScreen = () => {
     selectedPriceBand,
     sortOption,
     user?.role,
-    route.params?.presetCategory,
   ]);
 
   const useCollectionRibbon = useMemo(
@@ -562,13 +565,13 @@ const DesignsScreen = () => {
       },
       {
         id: 'update-catalog-count',
-        title: `${filteredDesigns.length} designs in ${catalogTitle}`,
+        title: `${totalDesigns || filteredDesigns.length} designs in ${catalogTitle}`,
         subtitle: 'Use filters to narrow or expand your results',
         time: 'Now',
         tone: 'promo',
       },
     ],
-    [filteredDesigns.length, catalogTitle],
+    [filteredDesigns.length, catalogTitle, totalDesigns],
   );
 
   const getNotificationCardStyle = (tone: NotificationTone) => {
@@ -634,6 +637,23 @@ const DesignsScreen = () => {
     );
   };
 
+  const renderSkeletonCards = (ids: string[]) => (
+    <View style={styles.skeletonGrid}>
+      {ids.map((id) => (
+        <View key={id} style={[styles.cardTouchable, styles.cardTouchableGrid]}>
+          <View style={[styles.designCard, styles.skeletonCard]}>
+            <View style={[styles.imageShell, styles.skeletonImage]} />
+            <View style={styles.cardBody}>
+              <View style={[styles.skeletonLine, styles.skeletonTitleLine]} />
+              <View style={[styles.skeletonLine, styles.skeletonMetaLine]} />
+              <View style={[styles.skeletonLine, styles.skeletonPriceLine]} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (selectedCategory !== 'All') count += 1;
@@ -644,14 +664,31 @@ const DesignsScreen = () => {
     return count;
   }, [selectedCategory, selectedCollection, selectedShape, selectedDiamondType, selectedPriceBand]);
 
+  const openSortMenu = useCallback(() => {
+    setDraftSearch(search);
+    setDraftCategory(selectedCategory);
+    setDraftCollection(selectedCollection);
+    setDraftShape(selectedShape);
+    setDraftDiamondType(selectedDiamondType);
+    setDraftPriceBand(selectedPriceBand);
+    setDraftSortOption(sortOption);
+    setSortMenuVisible(true);
+  }, [search, selectedCategory, selectedCollection, selectedShape, selectedDiamondType, selectedPriceBand, sortOption]);
+
+  const applyDraftFilters = useCallback(() => {
+    setSearch(draftSearch);
+    setSelectedCategory(draftCategory);
+    setSelectedCollection(draftCollection);
+    setSelectedShape(draftShape);
+    setSelectedDiamondType(draftDiamondType);
+    setSelectedPriceBand(draftPriceBand);
+    setSortOption(draftSortOption);
+    setSortMenuVisible(false);
+  }, [draftSearch, draftCategory, draftCollection, draftShape, draftDiamondType, draftPriceBand, draftSortOption]);
+
   const renderEmpty = () => {
-    if (loading && designs.length === 0) {
-      return (
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="small" color="#8a6b55" />
-          <Text style={styles.loadingText}>Loading designs...</Text>
-        </View>
-      );
+    if (loading || showInitialSkeleton || queryWaitingForLoad) {
+      return renderSkeletonCards(DESIGN_SKELETON_IDS);
     }
 
     return (
@@ -663,6 +700,11 @@ const DesignsScreen = () => {
         <Text style={styles.emptyText}>Try another keyword or reset the filters to explore the full catalog.</Text>
       </View>
     );
+  };
+
+  const renderListFooter = () => {
+    if (!loadingMore) return null;
+    return <View style={styles.skeletonFooter}>{renderSkeletonCards(DESIGN_FOOTER_SKELETON_IDS)}</View>;
   };
 
   return (
@@ -722,7 +764,7 @@ const DesignsScreen = () => {
             >
               <Ionicons name="grid-outline" size={14} color="#8D8276" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.searchActionBtn} onPress={() => setSortMenuVisible(true)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.searchActionBtn} onPress={openSortMenu} activeOpacity={0.85}>
               <Ionicons name="camera-outline" size={14} color="#8D8276" />
             </TouchableOpacity>
           </View>
@@ -752,7 +794,7 @@ const DesignsScreen = () => {
               })}
             </ScrollView>
 
-            <TouchableOpacity style={styles.filterButton} onPress={() => setSortMenuVisible(true)} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.filterButton} onPress={openSortMenu} activeOpacity={0.85}>
               <Ionicons name="options-outline" size={16} color="#6f6257" />
               {activeFilterCount > 0 ? (
                 <View style={styles.filterBadge}>
@@ -884,14 +926,12 @@ const DesignsScreen = () => {
                   <ScrollView showsVerticalScrollIndicator={false}>
                     <Text style={styles.sortTitle}>Sort & Filters</Text>
                     {SORT_OPTIONS.map((option) => {
-                      const selected = sortOption === option.key;
+                      const selected = draftSortOption === option.key;
                       return (
                         <TouchableOpacity
                           key={option.key}
                           style={[styles.sortOption, selected ? styles.sortOptionActive : null]}
-                          onPress={() => {
-                            setSortOption(option.key);
-                          }}
+                          onPress={() => setDraftSortOption(option.key)}
                           activeOpacity={0.85}
                         >
                           <Text style={[styles.sortOptionText, selected ? styles.sortOptionTextActive : null]}>
@@ -905,12 +945,12 @@ const DesignsScreen = () => {
                     <Text style={styles.filterSectionTitle}>Collection</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
                       {collections.map((item) => {
-                        const selected = item === selectedCollection;
+                        const selected = item === draftCollection;
                         return (
                           <TouchableOpacity
                             key={`m-col-${item}`}
                             style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                            onPress={() => setSelectedCollection(item)}
+                            onPress={() => setDraftCollection(item)}
                             activeOpacity={0.85}
                           >
                             <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
@@ -922,12 +962,12 @@ const DesignsScreen = () => {
                     <Text style={styles.filterSectionTitle}>Diamond Type</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
                       {diamondTypeOptions.map((item) => {
-                        const selected = item === selectedDiamondType;
+                        const selected = item === draftDiamondType;
                         return (
                           <TouchableOpacity
                             key={`m-type-${item}`}
                             style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                            onPress={() => setSelectedDiamondType(item)}
+                            onPress={() => setDraftDiamondType(item)}
                             activeOpacity={0.85}
                           >
                             <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
@@ -939,12 +979,12 @@ const DesignsScreen = () => {
                     <Text style={styles.filterSectionTitle}>Price</Text>
                     <View style={styles.priceBandGrid}>
                       {PRICE_BAND_OPTIONS.map((option) => {
-                        const selected = option.key === selectedPriceBand;
+                        const selected = option.key === draftPriceBand;
                         return (
                           <TouchableOpacity
                             key={option.key}
                             style={[styles.modalChip, styles.priceBandChip, selected ? styles.modalChipActive : null]}
-                            onPress={() => setSelectedPriceBand(option.key)}
+                            onPress={() => setDraftPriceBand(option.key)}
                             activeOpacity={0.85}
                           >
                             <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>
@@ -959,7 +999,7 @@ const DesignsScreen = () => {
                       <TouchableOpacity
                         style={styles.sortActionButton}
                         onPress={() => {
-                          setSearch('');
+                          setDraftSearch('');
                         }}
                         activeOpacity={0.85}
                       >
@@ -968,7 +1008,7 @@ const DesignsScreen = () => {
                       <TouchableOpacity
                         style={styles.sortActionButton}
                         onPress={() => {
-                          setSortOption('recent');
+                          setDraftSortOption('recent');
                         }}
                         activeOpacity={0.85}
                       >
@@ -979,11 +1019,11 @@ const DesignsScreen = () => {
                       <TouchableOpacity
                         style={styles.sortActionButton}
                         onPress={() => {
-                          setSelectedCategory('All');
-                          setSelectedCollection('All');
-                          setSelectedShape('All');
-                          setSelectedDiamondType('All');
-                          setSelectedPriceBand('ALL');
+                          setDraftCategory('All');
+                          setDraftCollection('All');
+                          setDraftShape('All');
+                          setDraftDiamondType('All');
+                          setDraftPriceBand('ALL');
                         }}
                         activeOpacity={0.85}
                       >
@@ -991,7 +1031,7 @@ const DesignsScreen = () => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.sortActionButton, styles.sortApplyButton]}
-                        onPress={() => setSortMenuVisible(false)}
+                        onPress={applyDraftFilters}
                         activeOpacity={0.85}
                       >
                         <Text style={[styles.sortActionText, styles.sortApplyText]}>Apply</Text>
@@ -1005,7 +1045,7 @@ const DesignsScreen = () => {
         </Modal>
 
         <FlatList
-          data={filteredDesigns}
+          data={loading || showInitialSkeleton || queryWaitingForLoad ? [] : filteredDesigns}
           key={`design-grid-${numColumns}`}
           keyExtractor={(item) => item.id}
           numColumns={numColumns}
@@ -1019,10 +1059,13 @@ const DesignsScreen = () => {
           updateCellsBatchingPeriod={30}
           removeClippedSubviews
           ListEmptyComponent={renderEmpty}
+          ListFooterComponent={renderListFooter}
+          onEndReached={loadMoreDesigns}
+          onEndReachedThreshold={0.45}
           refreshControl={
             <RefreshControl
-              refreshing={loading}
-              onRefresh={loadDesigns}
+              refreshing={loading && designs.length > 0}
+              onRefresh={refreshDesigns}
               tintColor="#8a6b55"
               colors={['#8a6b55']}
             />
@@ -1545,14 +1588,39 @@ const styles = StyleSheet.create({
     color: '#B2874A',
     marginTop: 3,
   },
-  loadingState: {
-    alignItems: 'center',
-    paddingVertical: 44,
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  loadingText: {
-    fontSize: 13,
-    color: '#8a786a',
-    marginTop: 10,
+  skeletonCard: {
+    shadowOpacity: 0.03,
+  },
+  skeletonImage: {
+    backgroundColor: '#F3EEE8',
+    borderBottomColor: '#EEE4D9',
+  },
+  skeletonLine: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#F0E8DF',
+  },
+  skeletonTitleLine: {
+    width: '78%',
+    height: 14,
+  },
+  skeletonMetaLine: {
+    width: '58%',
+    marginTop: 7,
+  },
+  skeletonPriceLine: {
+    width: '46%',
+    height: 16,
+    marginTop: 8,
+  },
+  skeletonFooter: {
+    paddingTop: 10,
   },
   emptyState: {
     alignItems: 'center',

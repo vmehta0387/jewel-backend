@@ -24,11 +24,14 @@ import {
   FindPacketsQueryDto,
   FindDesignMastersQueryDto,
   FindDesignMediaLibraryQueryDto,
+  FindMobileCatalogProductsQueryDto,
+  FindMobileTrendingProductsQueryDto,
   FindProductsQueryDto,
   ReplacePricingTiersDto,
   ReplaceProcessStagesDto,
   ReplaceRelevantDesignsDto,
   ReplaceVendorsDto,
+  ResolveMobileDesignConfiguratorQueryDto,
   CreateProductDto,
   UpdateProductDto,
   UpdateProductStatusDto,
@@ -60,6 +63,41 @@ export class ProductsController {
   @Get()
   findAll(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
     return this.productsService.findAll(query, req.user);
+  }
+
+  @Get('mobile/trending')
+  findMobileTrending(
+    @Query() query: FindMobileTrendingProductsQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.findMobileTrending(query, req.user);
+  }
+
+  @Get('mobile/catalog')
+  findMobileCatalog(
+    @Query() query: FindMobileCatalogProductsQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.findMobileCatalog(query, req.user);
+  }
+
+  @Get('mobile/category-counts')
+  findMobileCategoryCounts(@Request() req: { user: AuthUser }) {
+    return this.productsService.findMobileCategoryCounts(req.user);
+  }
+
+  @Get('mobile/configurator/:id')
+  findMobileConfigurator(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.productsService.findMobileConfigurator(id, req.user);
+  }
+
+  @Get('mobile/configurator/:id/resolve')
+  resolveMobileConfigurator(
+    @Param('id') id: string,
+    @Query() query: ResolveMobileDesignConfiguratorQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.resolveMobileConfigurator(id, query, req.user);
   }
 
   @Get('export/template')
