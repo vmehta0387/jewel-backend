@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import api from '../../services/api';
@@ -295,6 +295,7 @@ function MiniLineChart({ values }: { values: number[] }) {
 export default function DashboardPage() {
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const didLoadStatsRef = useRef(false);
 
   const [goldModalOpen, setGoldModalOpen] = useState(false);
   const [goldLoading, setGoldLoading] = useState(false);
@@ -564,14 +565,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    void loadStats();
-    if (!isSuperAdmin) {
+    if (didLoadStatsRef.current) {
       return;
     }
-
-    void fetchGoldMaster();
-    void fetchPackets();
-  }, [isSuperAdmin]);
+    didLoadStatsRef.current = true;
+    void loadStats();
+  }, []);
 
   useEffect(() => {
     if (!selectedPacket) {

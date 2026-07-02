@@ -27,6 +27,3 @@ export interface NotificationListResponse {
   totalPages: number;
 }
 
-export interface NotificationUnreadCountResponse {
-  unreadCount: number;
-}

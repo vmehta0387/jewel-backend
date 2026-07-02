@@ -5,7 +5,6 @@ import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import {
   fetchNotificationsWithFilters,
-  fetchUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../services/notifications';
@@ -52,16 +51,15 @@ export default function NotificationsPage() {
 
   const loadCounts = useCallback(async () => {
     try {
-      const [allRes, unreadRes, alertsRes, updatesRes] = await Promise.all([
+      const [allRes, alertsRes, updatesRes] = await Promise.all([
         fetchNotificationsWithFilters(1, 1, false),
-        fetchUnreadNotificationCount(),
         fetchNotificationsWithFilters(1, 1, false, '', 'ALERTS'),
         fetchNotificationsWithFilters(1, 1, false, '', 'UPDATES'),
       ]);
 
       setCounts({
         all: Number(allRes.total || 0),
-        unread: Number(unreadRes.unreadCount || 0),
+        unread: Number(allRes.unreadCount || 0),
         alerts: Number(alertsRes.total || 0),
         updates: Number(updatesRes.total || 0),
       });

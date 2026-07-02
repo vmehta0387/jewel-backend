@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import {
   fetchNotifications,
-  fetchUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../services/notifications';
+import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../../services/notificationSocket';
+import type { AuthUser } from '../../types/auth.types';
 import type { NotificationItem } from '../../types/notification.types';
 import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
 import {
@@ -22,6 +23,35 @@ interface HeaderProps {
   onOpenMobileSidebar?: () => void;
 }
 
+const CURRENT_USER_REFRESH_TTL_MS = 5 * 60 * 1000;
+let currentUserRefreshPromise: Promise<AuthUser> | null = null;
+let currentUserRefreshAt = 0;
+let currentUserRefreshToken = '';
+
+const fetchCurrentUser = async (token: string, force = false) => {
+  const now = Date.now();
+  const sameToken = currentUserRefreshToken === token;
+  if (!force && sameToken && currentUserRefreshAt && now - currentUserRefreshAt < CURRENT_USER_REFRESH_TTL_MS) {
+    return null;
+  }
+
+  if (!currentUserRefreshPromise || !sameToken) {
+    currentUserRefreshToken = token;
+    currentUserRefreshPromise = api
+      .get<AuthUser>('/auth/me')
+      .then((response) => {
+        currentUserRefreshAt = Date.now();
+        saveAuthSession(token, response.data);
+        return response.data;
+      })
+      .finally(() => {
+        currentUserRefreshPromise = null;
+      });
+  }
+
+  return currentUserRefreshPromise;
+};
+
 export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,22 +64,12 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const notificationsPanelRef = useRef<HTMLDivElement | null>(null);
   const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const notificationsOpenRef = useRef(notificationsOpen);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
 
-  const loadUnreadCount = useCallback(async () => {
-    const token = getToken();
-    if (!token) {
-      setUnreadCount(0);
-      return;
-    }
-
-    try {
-      const response = await fetchUnreadNotificationCount();
-      setUnreadCount(response.unreadCount || 0);
-    } catch (error) {
-      console.error('Failed to load unread notification count', error);
-    }
-  }, []);
+  useEffect(() => {
+    notificationsOpenRef.current = notificationsOpen;
+  }, [notificationsOpen]);
 
   const loadNotifications = useCallback(async () => {
     const token = getToken();
@@ -72,15 +92,15 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
     }
   }, []);
 
-  const refreshCurrentUser = useCallback(async () => {
+  const refreshCurrentUser = useCallback(async (force = false) => {
     const token = getToken();
     if (!token) return;
 
     try {
-      const response = await api.get('/auth/me');
-      const nextUser = response.data;
-      setUser(nextUser);
-      saveAuthSession(token, nextUser);
+      const nextUser = await fetchCurrentUser(token, force);
+      if (nextUser) {
+        setUser(nextUser);
+      }
     } catch (error) {
       console.error('Failed to refresh current user profile', error);
     }
@@ -88,14 +108,11 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
 
   useEffect(() => {
     void refreshCurrentUser();
-    void loadUnreadCount();
 
     const onFocus = () => {
       void refreshCurrentUser();
-      void loadUnreadCount();
     };
     const onNotificationsChanged = () => {
-      void loadUnreadCount();
       if (notificationsOpen) {
         void loadNotifications();
       }
@@ -107,22 +124,36 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
       }
     };
 
-    const intervalId = window.setInterval(() => {
-      void refreshCurrentUser();
-      void loadUnreadCount();
-    }, 120000);
-
     window.addEventListener('focus', onFocus);
     window.addEventListener('notifications:changed', onNotificationsChanged);
     window.addEventListener('storage', onStorage);
 
     return () => {
-      window.clearInterval(intervalId);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('notifications:changed', onNotificationsChanged);
       window.removeEventListener('storage', onStorage);
     };
-  }, [loadNotifications, loadUnreadCount, notificationsOpen, refreshCurrentUser]);
+  }, [loadNotifications, notificationsOpen, refreshCurrentUser]);
+
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+
+    const socket = createNotificationsSocket(token);
+    const handleUnreadCountUpdate = (payload: NotificationUnreadCountPayload) => {
+      setUnreadCount(Math.max(0, Number(payload.unreadCount) || 0));
+      if (notificationsOpenRef.current) {
+        void loadNotifications();
+      }
+    };
+
+    socket.on('notification.unread_count_updated', handleUnreadCountUpdate);
+
+    return () => {
+      socket.off('notification.unread_count_updated', handleUnreadCountUpdate);
+      socket.disconnect();
+    };
+  }, [loadNotifications]);
 
   useEffect(() => {
     setNotificationsOpen(false);
@@ -167,6 +198,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       const nextUser = response.data;
+      currentUserRefreshAt = Date.now();
       setUser(nextUser);
       saveAuthSession(token, nextUser);
     } catch (error) {

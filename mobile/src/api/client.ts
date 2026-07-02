@@ -5,6 +5,21 @@ export type ApiError = {
   status: number;
 };
 
+let unauthorizedHandler: (() => void | Promise<void>) | null = null;
+let handlingUnauthorized = false;
+
+export const setUnauthorizedHandler = (handler: (() => void | Promise<void>) | null) => {
+  unauthorizedHandler = handler;
+};
+
+const handleUnauthorized = () => {
+  if (!unauthorizedHandler || handlingUnauthorized) return;
+  handlingUnauthorized = true;
+  void Promise.resolve(unauthorizedHandler()).finally(() => {
+    handlingUnauthorized = false;
+  });
+};
+
 const buildError = async (response: Response): Promise<ApiError> => {
   let message = response.statusText;
   try {
@@ -44,7 +59,11 @@ export const apiRequest = async <T>(
   });
 
   if (!response.ok) {
-    throw await buildError(response);
+    const error = await buildError(response);
+    if (error.status === 401) {
+      handleUnauthorized();
+    }
+    throw error;
   }
 
   if (response.status === 204) {

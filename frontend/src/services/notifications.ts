@@ -2,7 +2,6 @@ import api from './api';
 import type {
   NotificationItem,
   NotificationListResponse,
-  NotificationUnreadCountResponse,
 } from '../types/notification.types';
 
 export const fetchNotifications = async (page = 1, limit = 20, unreadOnly = false) => {
@@ -37,17 +36,12 @@ export const fetchNotificationsWithFilters = async (
   return response.data;
 };
 
-export const fetchUnreadNotificationCount = async () => {
-  const response = await api.get<NotificationUnreadCountResponse>('/notifications/unread-count');
-  return response.data;
-};
-
 export const markNotificationRead = async (id: string, isRead = true) => {
   const response = await api.patch<NotificationItem>(`/notifications/${id}/read`, { isRead });
   return response.data;
 };
 
 export const markAllNotificationsRead = async () => {
-  const response = await api.patch<NotificationUnreadCountResponse>('/notifications/read-all', {});
+  const response = await api.patch<{ unreadCount: number }>('/notifications/read-all', {});
   return response.data;
 };

@@ -13,6 +13,7 @@ import { Server, Socket } from 'socket.io';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { JwtPayload } from '../auth/interfaces/auth-user.interface';
+import { Notification } from './entities/notification.entity';
 
 @WebSocketGateway({
   namespace: 'notifications',
@@ -32,6 +33,8 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly configService: ConfigService,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(Notification)
+    private readonly notificationRepo: Repository<Notification>,
   ) {}
 
   async handleConnection(@ConnectedSocket() socket: Socket) {
@@ -58,6 +61,7 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
       socket.data.userId = user.id;
       await socket.join(this.userRoom(user.id));
+      await this.emitCurrentUnreadCount(socket, user.id);
     } catch {
       socket.disconnect(true);
     }
@@ -96,5 +100,12 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   private userRoom(userId: string) {
     return `user:${userId}`;
+  }
+
+  private async emitCurrentUnreadCount(socket: Socket, userId: string) {
+    const unreadCount = await this.notificationRepo.count({
+      where: { recipientUserId: userId, isRead: false },
+    });
+    socket.emit('notification.unread_count_updated', { unreadCount });
   }
 }
