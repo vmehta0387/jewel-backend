@@ -3608,6 +3608,14 @@ export class ProductsService {
               marketPricePerGm: payload.marketPricePerGm,
               livePricePerGm: payload.livePricePerGm,
               defaultWastagePercent: payload.defaultWastagePercent,
+              laborApplyMode: payload.laborApplyMode,
+              flatCost: payload.flatCost,
+              ratePerStone: payload.ratePerStone,
+              ratePerGram: payload.ratePerGram,
+              ratePerGroup: payload.ratePerGroup,
+              overheadApplyMode: payload.overheadApplyMode,
+              ratePercent: payload.ratePercent,
+              flatAmount: payload.flatAmount,
             },
             requester,
           );
@@ -3781,6 +3789,12 @@ export class ProductsService {
         valueMatch.flatAmount = overheadRuleFields.flatAmount;
         valueMatch.isActive = true;
         valueMatch.updatedBy = requester.id;
+        await this.assertNoDuplicateOverheadRule(
+          masterType,
+          jewelrySizeFields.scopeKey,
+          overheadRuleFields,
+          valueMatch.id,
+        );
         return this.designMasterRepo.save(valueMatch);
       }
       throw new BadRequestException('Master value already exists for selected type');
@@ -3821,6 +3835,12 @@ export class ProductsService {
         aliasMatch.flatAmount = overheadRuleFields.flatAmount;
         aliasMatch.isActive = true;
         aliasMatch.updatedBy = requester.id;
+        await this.assertNoDuplicateOverheadRule(
+          masterType,
+          jewelrySizeFields.scopeKey,
+          overheadRuleFields,
+          aliasMatch.id,
+        );
         return this.designMasterRepo.save(aliasMatch);
       }
       throw new BadRequestException('Master alias already exists for selected type');
@@ -3865,11 +3885,23 @@ export class ProductsService {
           findingNoMatch.flatAmount = overheadRuleFields.flatAmount;
           findingNoMatch.isActive = true;
           findingNoMatch.updatedBy = requester.id;
+          await this.assertNoDuplicateOverheadRule(
+            masterType,
+            jewelrySizeFields.scopeKey,
+            overheadRuleFields,
+            findingNoMatch.id,
+          );
           return this.designMasterRepo.save(findingNoMatch);
         }
         throw new BadRequestException('Finding number already exists');
       }
     }
+
+    await this.assertNoDuplicateOverheadRule(
+      masterType,
+      jewelrySizeFields.scopeKey,
+      overheadRuleFields,
+    );
 
     const created = this.designMasterRepo.create({
       masterType,
@@ -4045,6 +4077,13 @@ export class ProductsService {
     ) {
       throw new BadRequestException('Finding number already exists');
     }
+
+    await this.assertNoDuplicateOverheadRule(
+      master.masterType,
+      jewelrySizeFields.scopeKey,
+      overheadRuleFields,
+      master.id,
+    );
 
     master.value = value;
     master.normalizedValue = normalizedValue;
@@ -6509,6 +6548,52 @@ export class ProductsService {
       ratePercent,
       flatAmount,
     };
+  }
+
+  private async assertNoDuplicateOverheadRule(
+    masterType: DesignMasterType,
+    scopeKey: string,
+    fields: {
+      overheadApplyMode: OverheadApplyMode | null;
+      ratePercent: number | null;
+      flatAmount: number | null;
+    },
+    excludeId?: string,
+  ): Promise<void> {
+    if (masterType !== DesignMasterType.OVERHEAD_RULE || !fields.overheadApplyMode) {
+      return;
+    }
+
+    const isFlatMode = fields.overheadApplyMode === OverheadApplyMode.FLAT;
+    const amount = isFlatMode ? fields.flatAmount : fields.ratePercent;
+    if (amount === null || amount === undefined) {
+      return;
+    }
+
+    const duplicateQuery = this.designMasterRepo
+      .createQueryBuilder('master')
+      .where('master.masterType = :masterType', { masterType })
+      .andWhere('master.scopeKey = :scopeKey', { scopeKey })
+      .andWhere('master.overheadApplyMode = :overheadApplyMode', {
+        overheadApplyMode: fields.overheadApplyMode,
+      });
+
+    if (excludeId) {
+      duplicateQuery.andWhere('master.id != :excludeId', { excludeId });
+    }
+
+    if (isFlatMode) {
+      duplicateQuery.andWhere('master.flatAmount = :amount', { amount });
+    } else {
+      duplicateQuery.andWhere('master.ratePercent = :amount', { amount });
+    }
+
+    const duplicate = await duplicateQuery.getOne();
+    if (duplicate) {
+      throw new BadRequestException(
+        'Overhead rule already exists for this category, apply mode, and amount',
+      );
+    }
   }
 
   private emptyMetalMasterFields(): {

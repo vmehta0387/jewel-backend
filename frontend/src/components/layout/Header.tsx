@@ -9,6 +9,7 @@ import {
 import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../../services/notificationSocket';
 import type { AuthUser } from '../../types/auth.types';
 import type { NotificationItem } from '../../types/notification.types';
+import { USER_ROLE_OPTIONS } from '../../types/user.types';
 import { clearAuthSession, getStoredUser, getToken, saveAuthSession } from '../../utils/auth';
 import {
   formatNotificationTime,
@@ -27,6 +28,7 @@ const CURRENT_USER_REFRESH_TTL_MS = 5 * 60 * 1000;
 let currentUserRefreshPromise: Promise<AuthUser> | null = null;
 let currentUserRefreshAt = 0;
 let currentUserRefreshToken = '';
+const roleLabelByValue = new Map(USER_ROLE_OPTIONS.map((option) => [option.value, option.label]));
 
 const fetchCurrentUser = async (token: string, force = false) => {
   const now = Date.now();
@@ -66,6 +68,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
   const notificationsButtonRef = useRef<HTMLButtonElement | null>(null);
   const notificationsOpenRef = useRef(notificationsOpen);
   const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+  const roleLabel = user ? roleLabelByValue.get(user.role) ?? user.role : 'User';
 
   useEffect(() => {
     notificationsOpenRef.current = notificationsOpen;
@@ -403,7 +406,7 @@ export default function Header({ onOpenMobileSidebar }: HeaderProps) {
           <div className="flex items-center gap-3 cursor-default">
             <div className="flex flex-col items-end">
               <span className="hidden text-sm font-bold text-[#2a221b] sm:block leading-tight">{displayName}</span>
-              <span className="hidden text-[0.65rem] font-bold tracking-wider uppercase text-[#a17635] sm:block leading-tight mt-0.5">Admin Role</span>
+              <span className="hidden text-[0.65rem] font-bold tracking-wider uppercase text-[#a17635] sm:block leading-tight mt-0.5">{roleLabel}</span>
             </div>
             
             <button

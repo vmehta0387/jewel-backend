@@ -595,6 +595,19 @@ function getMasterDisplayName(row: Pick<MasterRow, 'value' | 'aliasName'>): stri
   return (row.aliasName || row.value || '').trim();
 }
 
+function getOverheadApplyModeLabel(mode?: OverheadApplyMode | null): string {
+  if (mode === 'FLAT') {
+    return 'Flat';
+  }
+  if (mode === 'PERCENT_MATERIALS') {
+    return '% of Materials';
+  }
+  if (mode === 'PERCENT_BOM_SUBTOTAL') {
+    return '% of BOM Subtotal';
+  }
+  return '-';
+}
+
 function MasterModal({
   open,
   title,
@@ -689,6 +702,7 @@ function MasterModal({
           (option) => normalizeLookup(option.metalName) === normalizeLookup(metalName),
         )
       : metalPurityOptions;
+  const isFlatOverheadMode = overheadApplyMode === 'FLAT';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
@@ -986,34 +1000,38 @@ function MasterModal({
                     required
                   >
                     <option value="PERCENT_MATERIALS">% of Materials</option>
-                    <option value="PERCENT_BOM_SUBTOTAL">% of BOM Subtotal</option>
                     <option value="FLAT">Flat</option>
                   </select>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Rate Percent</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.001"
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={ratePercent}
-                    onChange={(event) => onChangeRatePercent(event.target.value)}
-                    placeholder="0.000"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Flat Amount</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={flatAmount}
-                    onChange={(event) => onChangeFlatAmount(event.target.value)}
-                    placeholder="0.00"
-                  />
-                </div>
+                {isFlatOverheadMode ? (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Flat Amount*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={flatAmount}
+                      onChange={(event) => onChangeFlatAmount(event.target.value)}
+                      placeholder="0.00"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Rate Percent*</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={ratePercent}
+                      onChange={(event) => onChangeRatePercent(event.target.value)}
+                      placeholder="0.000"
+                      required
+                    />
+                  </div>
+                )}
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
                   <textarea
@@ -1960,7 +1978,7 @@ export default function DesignMastersPage() {
       row.ratePerGroup !== null && row.ratePerGroup !== undefined ? String(row.ratePerGroup) : '',
     );
     setFormOverheadApplyMode(
-      (row.overheadApplyMode as OverheadApplyMode) || 'PERCENT_MATERIALS',
+      row.overheadApplyMode === 'FLAT' ? 'FLAT' : 'PERCENT_MATERIALS',
     );
     setFormRatePercent(
       row.ratePercent !== null && row.ratePercent !== undefined ? String(row.ratePercent) : '',
@@ -2185,8 +2203,10 @@ export default function DesignMastersPage() {
       selectedType === 'OVERHEAD_RULE'
         ? {
             overheadApplyMode: formOverheadApplyMode,
-            ratePercent: parseOptionalNum(formRatePercent),
-            flatAmount: parseOptionalNum(formFlatAmount),
+            ratePercent:
+              formOverheadApplyMode === 'FLAT' ? null : parseOptionalNum(formRatePercent),
+            flatAmount:
+              formOverheadApplyMode === 'FLAT' ? parseOptionalNum(formFlatAmount) : null,
           }
         : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
@@ -3103,7 +3123,9 @@ export default function DesignMastersPage() {
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.overheadApplyMode || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {getOverheadApplyModeLabel(row.overheadApplyMode)}
+                        </td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.ratePercent !== null && row.ratePercent !== undefined ? Number(row.ratePercent).toFixed(3) : '-'}
                         </td>
@@ -3388,7 +3410,14 @@ export default function DesignMastersPage() {
           onChangeRatePerStone={setFormRatePerStone}
           onChangeRatePerGram={setFormRatePerGram}
           onChangeRatePerGroup={setFormRatePerGroup}
-          onChangeOverheadApplyMode={setFormOverheadApplyMode}
+          onChangeOverheadApplyMode={(value) => {
+            setFormOverheadApplyMode(value);
+            if (value === 'FLAT') {
+              setFormRatePercent('');
+            } else {
+              setFormFlatAmount('');
+            }
+          }}
           onChangeRatePercent={setFormRatePercent}
           onChangeFlatAmount={setFormFlatAmount}
         />
