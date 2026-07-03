@@ -434,27 +434,13 @@ export default function DashboardPage() {
   };
 
   const fetchDesignSummary = async (): Promise<{ designs: number; versions: number }> => {
-    const [primaryResponse, totalResponse] = await Promise.all([
-      api.get('/products', {
-        params: { page: 1, limit: 1, status: 'ALL', primaryOnly: true, summaryOnly: true },
-      }),
-      api.get('/products', {
-        params: { page: 1, limit: 1, status: 'ALL', summaryOnly: true },
-      }),
-    ]);
-
-    const primaryCount = Number(
-      primaryResponse.data?.total ??
-        (Array.isArray(primaryResponse.data?.data) ? primaryResponse.data.data.length : 0),
-    );
-    const totalCount = Number(
-      totalResponse.data?.total ??
-        (Array.isArray(totalResponse.data?.data) ? totalResponse.data.data.length : 0),
-    );
+    const response = await api.get('/products/dashboard-summary', {
+      params: { status: 'ALL' },
+    });
 
     return {
-      designs: primaryCount,
-      versions: Math.max(totalCount - primaryCount, 0),
+      designs: Number(response.data?.designs || 0),
+      versions: Number(response.data?.versions || 0),
     };
   };
 

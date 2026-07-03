@@ -2302,10 +2302,14 @@ export default function ProductsPage() {
     if (!lookup) return undefined;
     return (
       masterOptions.metalCaratages.find(
-        (option) => normalizeLookupKey(option.value) === lookup,
+        (option) =>
+          normalizeLookupKey(option.value) === lookup ||
+          normalizeLookupKey(option.aliasName || '') === lookup,
       ) ||
       masterOptions.goldColours.find(
-        (option) => normalizeLookupKey(option.value) === lookup,
+        (option) =>
+          normalizeLookupKey(option.value) === lookup ||
+          normalizeLookupKey(option.aliasName || '') === lookup,
       )
     );
   };
@@ -3649,17 +3653,20 @@ export default function ProductsPage() {
         })
         .map((option) => option.value) || [];
 
-    const activeMetalCaratageValues = uniqueNonEmptyValues([
-      ...masterOptions.metalCaratages
+    const activeMetalCaratageValues = uniqueNonEmptyValues(
+      masterOptions.metalCaratages
         .filter((option) => option.isActive !== false)
-        .map((option) => option.aliasName || option.value),
-    ]);
-    const baseMetalIsActive = activeMetalCaratageValues.some(
-      (value) => normalizeLookupKey(value) === normalizeLookupKey(versionBuilderBaseDesign.goldColour),
+        .map((option) => option.value),
     );
+    const matchedBaseMetalMaster = masterOptions.metalCaratages.find(
+      (option) =>
+        normalizeLookupKey(option.value) === normalizeLookupKey(versionBuilderBaseDesign.goldColour) ||
+        normalizeLookupKey(option.aliasName || '') === normalizeLookupKey(versionBuilderBaseDesign.goldColour),
+    );
+    const normalizedBaseMetalValue = matchedBaseMetalMaster?.value || versionBuilderBaseDesign.goldColour;
     const metals = uniqueNonEmptyValues([
       ...activeMetalCaratageValues,
-      ...(baseMetalIsActive ? [versionBuilderBaseDesign.goldColour] : []),
+      ...(normalizedBaseMetalValue ? [normalizedBaseMetalValue] : []),
     ]);
     const coverages = uniqueNonEmptyValues([
       ...masterOptions.diamondSpreads.map((option) => option.value),

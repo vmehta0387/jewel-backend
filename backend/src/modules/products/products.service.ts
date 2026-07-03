@@ -1430,6 +1430,43 @@ export class ProductsService {
     };
   }
 
+  async getDashboardSummary(
+    query: Pick<FindProductsQueryDto, 'status' | 'companyId' | 'branchId'>,
+    requester: AuthUser,
+  ): Promise<{ designs: number; versions: number }> {
+    const status = query.status || 'ACTIVE';
+
+    const buildCountQuery = (primaryOnly: boolean) => {
+      const qb = this.designRepo.createQueryBuilder('design').select('COUNT(1)', 'count');
+      this.applyScopeFilter(qb, requester, query.companyId, query.branchId);
+
+      if (status === 'ACTIVE') {
+        qb.andWhere('design.isActive = :isActive', { isActive: true });
+      } else if (status === 'INACTIVE') {
+        qb.andWhere('design.isActive = :isActive', { isActive: false });
+      }
+
+      if (primaryOnly) {
+        qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+      }
+
+      return qb;
+    };
+
+    const [primaryRow, totalRow] = await Promise.all([
+      buildCountQuery(true).getRawOne<{ count?: string | number }>(),
+      buildCountQuery(false).getRawOne<{ count?: string | number }>(),
+    ]);
+
+    const designs = Math.max(0, Math.trunc(this.toNumber(primaryRow?.count || 0)));
+    const total = Math.max(0, Math.trunc(this.toNumber(totalRow?.count || 0)));
+
+    return {
+      designs,
+      versions: Math.max(total - designs, 0),
+    };
+  }
+
   async findMobileTrending(
     query: FindMobileTrendingProductsQueryDto,
     requester: AuthUser,
@@ -4562,14 +4599,15 @@ export class ProductsService {
 
     const map = new Map<string, number>();
     rows.forEach((row) => {
-      const key = (row.value || '').trim().toLowerCase();
-      if (!key || map.has(key)) {
-        return;
-      }
       const rate = this.toNumber(row.livePricePerGm);
-      if (rate > 0) {
-        map.set(key, rate);
-      }
+      if (rate <= 0) return;
+
+      const keys = [(row.value || '').trim().toLowerCase(), (row.aliasName || '').trim().toLowerCase()].filter(Boolean);
+      keys.forEach((key) => {
+        if (!map.has(key)) {
+          map.set(key, rate);
+        }
+      });
     });
     return map;
   }

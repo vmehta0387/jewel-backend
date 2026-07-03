@@ -65,6 +65,14 @@ export class ProductsController {
     return this.productsService.findAll(query, req.user);
   }
 
+  @Get('dashboard-summary')
+  getDashboardSummary(
+    @Query() query: FindProductsQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.getDashboardSummary(query, req.user);
+  }
+
   @Get('mobile/trending')
   findMobileTrending(
     @Query() query: FindMobileTrendingProductsQueryDto,
