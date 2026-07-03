@@ -6,6 +6,7 @@ export type SpiffConfig = {
   conversionDisplay: string;
   giftCardOptions: string[];
   giftbitConfigured: boolean;
+  giftogramConfigured?: boolean;
   autoFulfill: boolean;
 };
 

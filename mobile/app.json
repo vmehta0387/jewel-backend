@@ -32,13 +32,13 @@
     },
     "extra": {
       "eas": {
-        "projectId": "4f76496b-c8ad-4bd5-9fd3-e72906fb5919"
+        "projectId": "91a68c90-064d-4a53-9f1b-9b704b828945"
       }
     },
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-font"
     ],
-    "owner": "bitace"
+    "owner": "vmehta0387"
   }
 }

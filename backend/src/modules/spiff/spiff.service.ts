@@ -14,7 +14,7 @@ import { Branch } from '../branches/entities/branch.entity';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
-import { GiftbitService } from './giftbit.service';
+import { GiftogramService } from './giftogram.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
@@ -63,7 +63,7 @@ export class SpiffService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
-    private readonly giftbitService: GiftbitService,
+    private readonly giftogramService: GiftogramService,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -74,7 +74,8 @@ export class SpiffService {
       pointsPerDollar,
       conversionDisplay: `${pointsPerDollar} points = $1`,
       giftCardOptions: this.getGiftCardOptions(),
-      giftbitConfigured: this.giftbitService.isConfigured(),
+      giftbitConfigured: this.giftogramService.isConfigured(),
+      giftogramConfigured: this.giftogramService.isConfigured(),
       autoFulfill: this.isAutoFulfillEnabled(),
     };
   }
@@ -595,14 +596,14 @@ export class SpiffService {
     claim.approvedById = requester.id;
     claim.approvedAt = new Date();
 
-    if (this.isAutoFulfillEnabled() && this.giftbitService.isConfigured()) {
+    if (this.isAutoFulfillEnabled() && this.giftogramService.isConfigured()) {
       try {
         const userName = [claim.user?.firstName, claim.user?.lastName]
           .filter(Boolean)
           .join(' ')
           .trim();
 
-        const giftbitResult = await this.giftbitService.createDirectLinkReward({
+        const giftogramResult = await this.giftogramService.createOrderReward({
           requestId: claim.claimNumber,
           amountCents: claim.requestedAmountCents,
           giftCardType: claim.giftCardType,
@@ -611,16 +612,14 @@ export class SpiffService {
           note: claim.note,
         });
 
-        claim.giftbitRequestId = giftbitResult.requestId;
-        claim.giftbitLinkUrl = giftbitResult.rewardLink;
-        claim.giftbitResponse = giftbitResult.response;
+        claim.giftbitRequestId = giftogramResult.requestId;
+        claim.giftbitLinkUrl = giftogramResult.rewardLink;
+        claim.giftbitResponse = giftogramResult.response;
+        claim.status = SpiffClaimStatus.FULFILLED;
+        claim.fulfilledAt = new Date();
 
-        if (giftbitResult.rewardLink) {
-          claim.status = SpiffClaimStatus.FULFILLED;
-          claim.fulfilledAt = new Date();
-        }
       } catch (error: any) {
-        const message = this.optionalText(String(error?.message || 'Giftbit auto fulfillment failed'));
+        const message = this.optionalText(String(error?.message || 'Giftogram auto fulfillment failed'));
         claim.reviewReason = [claim.reviewReason, message].filter(Boolean).join(' | ');
       }
     }
@@ -1509,6 +1508,10 @@ export class SpiffService {
   }
 
   private isAutoFulfillEnabled(): boolean {
+    const explicitGiftogram = this.optionalText(process.env.GIFTOGRAM_AUTO_FULFILL);
+    if (explicitGiftogram !== null) {
+      return /^true$/i.test(explicitGiftogram);
+    }
     return /^true$/i.test(String(process.env.GIFTBIT_AUTO_FULFILL || 'false').trim());
   }
 

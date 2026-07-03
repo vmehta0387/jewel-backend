@@ -11,6 +11,7 @@ type SpiffConfig = {
   conversionDisplay: string;
   giftCardOptions: string[];
   giftbitConfigured: boolean;
+  giftogramConfigured?: boolean;
   autoFulfill: boolean;
 };
 
@@ -481,7 +482,7 @@ export default function SpiffPage() {
                   Current conversion: {config?.conversionDisplay || '100 points = $1'}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Giftbit: {config?.giftbitConfigured ? 'Connected' : 'Not connected'} · Auto-fulfill:{' '}
+                  Giftogram: {(config?.giftogramConfigured ?? config?.giftbitConfigured) ? 'Connected' : 'Not connected'} · Auto-fulfill:{' '}
                   {config?.autoFulfill ? 'On' : 'Off'}
                 </p>
               </div>
@@ -816,7 +817,7 @@ export default function SpiffPage() {
                           </Button>
                         ) : canRetryGiftbit ? (
                           <Button size="sm" onClick={() => void reviewClaim(claim.id, 'APPROVE')}>
-                            Retry Giftbit
+                            Retry Auto Fulfill
                           </Button>
                         ) : null}
                         <Button size="sm" variant="secondary" onClick={() => void reviewClaim(claim.id, 'HOLD')}>

@@ -7,7 +7,7 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { SpiffController } from './spiff.controller';
 import { SpiffService } from './spiff.service';
-import { GiftbitService } from './giftbit.service';
+import { GiftogramService } from './giftogram.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
 import { SpiffSetting } from './entities/spiff-setting.entity';
@@ -28,7 +28,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [SpiffController],
-  providers: [SpiffService, GiftbitService],
+  providers: [SpiffService, GiftogramService],
   exports: [SpiffService],
 })
 export class SpiffModule {}
