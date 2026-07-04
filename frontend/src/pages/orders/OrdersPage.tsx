@@ -322,6 +322,8 @@ export default function OrdersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editOrderLoading, setEditOrderLoading] = useState(false);
+  const [viewOrderLoading, setViewOrderLoading] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
   const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
   const [activeToggleOrderId, setActiveToggleOrderId] = useState<string | null>(null);
@@ -744,21 +746,26 @@ export default function OrdersPage() {
   };
 
   const openViewModal = async (order: OrderRow) => {
+    setShowViewModal(true);
+    setViewOrderLoading(true);
+    setViewOrder(order);
+    setViewDesign(null);
+    setViewMediaUrls([]);
     try {
       const { detail, design } = await fetchOrderWithDesign(order.id);
       setViewOrder(detail);
-      const [familyMedia] = await Promise.all([
-        loadDesignFamilyMedia(design),
-        loadPackets(),
-      ]);
       setViewDesign(design);
-      setViewMediaUrls(familyMedia);
-      setShowViewModal(true);
+      setViewMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
+      setViewOrderLoading(false);
+      void loadPackets();
+      void loadDesignFamilyMedia(design).then((familyMedia) => {
+        setViewMediaUrls(familyMedia);
+      });
     } catch {
-      setViewOrder(null);
+      setViewOrder(order);
       setViewDesign(null);
       setViewMediaUrls([]);
-      setShowViewModal(true);
+      setViewOrderLoading(false);
     }
   };
 
@@ -775,19 +782,29 @@ export default function OrdersPage() {
 
     deepLinkedOrderRef.current = deepLinkedOrderId;
     setHighlightedOrderId(deepLinkedOrderId);
+    setShowViewModal(true);
+    setViewOrderLoading(true);
+    setViewOrder(null);
+    setViewDesign(null);
+    setViewMediaUrls([]);
 
     const openDeepLinkedOrder = async () => {
       try {
         const { detail, design } = await fetchOrderWithDesign(deepLinkedOrderId);
         setViewOrder(detail);
-        await loadPackets();
         setViewDesign(design);
-        setShowViewModal(true);
+        setViewMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
+        setViewOrderLoading(false);
+        void loadPackets();
+        void loadDesignFamilyMedia(design).then((familyMedia) => {
+          setViewMediaUrls(familyMedia);
+        });
       } catch (error) {
         console.error('Failed to open deep-linked order', error);
         setViewOrder(null);
         setViewDesign(null);
-        setShowViewModal(true);
+        setViewMediaUrls([]);
+        setViewOrderLoading(false);
       } finally {
         const nextParams = new URLSearchParams(searchParams);
         nextParams.delete('open');
@@ -809,33 +826,67 @@ export default function OrdersPage() {
   }, [highlightedOrderId, orders]);
 
   const openEditModal = async (order: OrderRow) => {
+    setShowAddModal(true);
+    setEditOrderLoading(true);
     setEditingOrderId(order.id);
     setEditingDesignNo(order.designNo || '');
     setPriceManuallyEdited(false);
     setFormErrors({});
     setDeliveryDateMin(toDateInputValue(order.createdAt));
-    setForm({
-      companyId: order.companyId || '',
-      branchId: order.branchId || '',
-      designId: order.designId || '',
-      deliveryDate: order.deliveryDate || '',
-      status: order.status || 'QUOTE',
-      price: order.price !== undefined && order.price !== null ? String(order.price) : '',
-      quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
-      shortDescription: order.shortDescription || '',
-      customerName: order.customerName || '',
-      customerPhone: order.customerPhone || '',
-      customerEmail: order.customerEmail || '',
-      purchaseOrderNumber: order.purchaseOrderNumber || '',
-      notes: order.notes || '',
-    });
     setOrderNumber(order.orderNumber || '');
     setDesignDetail(null);
     setDesignMediaUrls([]);
-    if (order.companyId) {
-      loadBranches(order.companyId);
+
+    try {
+      const { detail, design } = await fetchOrderWithDesign(order.id);
+      setEditingDesignNo(detail.designNo || order.designNo || '');
+      setDeliveryDateMin(toDateInputValue(detail.createdAt || order.createdAt));
+      setForm({
+        companyId: detail.companyId || '',
+        branchId: detail.branchId || '',
+        designId: detail.designId || '',
+        deliveryDate: detail.deliveryDate || '',
+        status: detail.status || 'QUOTE',
+        price: detail.price !== undefined && detail.price !== null ? String(detail.price) : '',
+        quantity: detail.quantity !== undefined && detail.quantity !== null ? String(detail.quantity) : '1',
+        shortDescription: detail.shortDescription || '',
+        customerName: detail.customerName || '',
+        customerPhone: detail.customerPhone || '',
+        customerEmail: detail.customerEmail || '',
+        purchaseOrderNumber: detail.purchaseOrderNumber || '',
+        notes: detail.notes || '',
+      });
+      if (detail.companyId) {
+        loadBranches(detail.companyId);
+      }
+      setDesignDetail(design);
+      setDesignMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
+      setEditOrderLoading(false);
+      void loadPackets();
+      void loadDesignFamilyMedia(design).then((familyMedia) => {
+        setDesignMediaUrls(familyMedia);
+      });
+    } catch {
+      setForm({
+        companyId: order.companyId || '',
+        branchId: order.branchId || '',
+        designId: order.designId || '',
+        deliveryDate: order.deliveryDate || '',
+        status: order.status || 'QUOTE',
+        price: order.price !== undefined && order.price !== null ? String(order.price) : '',
+        quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
+        shortDescription: order.shortDescription || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        customerEmail: order.customerEmail || '',
+        purchaseOrderNumber: order.purchaseOrderNumber || '',
+        notes: order.notes || '',
+      });
+      if (order.companyId) {
+        loadBranches(order.companyId);
+      }
+      setEditOrderLoading(false);
     }
-    setShowAddModal(true);
   };
 
   const requestStatusChange = (nextStatus: string) => {
@@ -1355,6 +1406,7 @@ export default function OrdersPage() {
           onClose={() => {
             setShowAddModal(false);
             setEditingOrderId(null);
+            setEditOrderLoading(false);
             setEditingDesignNo('');
             setFormErrors({});
             setDeliveryDateMin(toDateInputValue());
@@ -1362,8 +1414,13 @@ export default function OrdersPage() {
           }}
           size="max-w-6xl"
         >
-          <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          {editOrderLoading ? (
+            <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600">
+              Loading order details...
+            </div>
+          ) : (
+            <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <span className="font-semibold text-red-600">*Required fields</span>
               <span className="font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
             </div>
@@ -1868,7 +1925,6 @@ export default function OrdersPage() {
                 </div>
               </div>
             </div>
-          </div>
 
           <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-4">
             <Button
@@ -1877,6 +1933,7 @@ export default function OrdersPage() {
               onClick={() => {
                 setShowAddModal(false);
                 setEditingOrderId(null);
+                setEditOrderLoading(false);
                 setEditingDesignNo('');
                 setFormErrors({});
                 setDeliveryDateMin(toDateInputValue());
@@ -1893,6 +1950,8 @@ export default function OrdersPage() {
               {savingOrder ? 'Saving...' : isEditing ? 'Update' : 'Save'}
             </Button>
           </div>
+          </div>
+          )}
         </Modal>
       )}
       {pendingStatusChange && (
@@ -1921,97 +1980,103 @@ export default function OrdersPage() {
       )}
       {showViewModal && (
         <Modal title={`ORDER DETAILS ${viewOrder?.orderNumber ? `(${viewOrder.orderNumber})` : ''}`} onClose={() => setShowViewModal(false)} size="max-w-6xl">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
+          {viewOrderLoading ? (
+            <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600">
+              Loading order details...
+            </div>
+          ) : (
+            <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
               <label className="text-sm font-medium text-slate-700">Design</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign ? formatDesignLabel(viewDesign.designNo, viewDesign.version) : '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Company</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.companyName || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Branch</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.branchName || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.jewelryGroup || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Sub Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.collection || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.jewelrySize || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Design Status</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.designStatus || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Diamond Type</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.diamondType || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.diamondSpread || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.diamondWeight || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.diamondQuality || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Delivery Date</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.deliveryDate || '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Quantity</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.quantity ?? '-'}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Price</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
                 {formatMoney(Number(viewOrder?.price || 0))}
               </div>
-            </div>
-            <div>
+              </div>
+              <div>
               <label className="text-sm font-medium text-slate-700">Total Amount</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
                 {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
               </div>
-            </div>
+              </div>
             {isSuperAdmin && (
               <div>
                 <label className="text-sm font-medium text-slate-700">Cost Price</label>
@@ -2152,6 +2217,8 @@ export default function OrdersPage() {
               Close
             </Button>
           </div>
+          </div>
+          )}
         </Modal>
       )}
     </div>
