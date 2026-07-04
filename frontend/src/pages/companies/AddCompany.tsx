@@ -16,6 +16,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const COMPANY_ERROR_ORDER = [
   'companyName',
   'companyCode',
+  'newManagerDraft',
+  'newUserDraft',
   'primaryEmail',
   'shipStreetAddress',
   'defaultMultiplier',
@@ -238,6 +240,13 @@ export default function AddCompany() {
           newErrors.collections = collectionError;
         }
       }
+    }
+
+    if (showAddManager) {
+      newErrors.newManagerDraft = 'First add/cancel new manager detail with company';
+    }
+    if (showCreateUserForm) {
+      newErrors.newUserDraft = 'First add/cancel new user detail with company';
     }
 
     setErrors(newErrors);
@@ -570,7 +579,14 @@ export default function AddCompany() {
               </div>
               
               {showAddManager && (
-                <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+                <div
+                  id="newManagerDraft"
+                  tabIndex={-1}
+                  className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {errors.newManagerDraft && (
+                    <p className="text-sm text-red-600">{errors.newManagerDraft}</p>
+                  )}
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Input
                       id="newManagerFirstName"
@@ -904,7 +920,14 @@ export default function AddCompany() {
             </div>
 
             {showCreateUserForm && (
-              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
+              <div
+                id="newUserDraft"
+                tabIndex={-1}
+                className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {errors.newUserDraft && (
+                  <p className="text-sm text-red-600">{errors.newUserDraft}</p>
+                )}
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     id="newUserFirstName"
