@@ -983,6 +983,7 @@ export class OrdersService {
           entityType: 'ORDER',
           entityId: context.id,
           actionUrl: `/orders/${context.id}`,
+          channelPush: true,
           metadata: {
             orderId: context.id,
             orderNumber: context.orderNumber,
@@ -1005,6 +1006,7 @@ export class OrdersService {
             entityType: 'ORDER',
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
+            channelPush: true,
             metadata: {
               orderId: context.id,
               orderNumber: context.orderNumber,
@@ -1058,6 +1060,7 @@ export class OrdersService {
             entityType: 'ORDER',
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
+            channelPush: true,
             metadata,
           });
         }
@@ -1112,6 +1115,7 @@ export class OrdersService {
         entityType: 'ORDER',
         entityId: context.id,
         actionUrl: `/orders/${context.id}`,
+        channelPush: true,
         metadata: {
           ...metadata,
           updatedByUserId: requester.id,

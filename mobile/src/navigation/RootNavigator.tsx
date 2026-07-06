@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { NavigationContainer, DefaultTheme, StackActions } from '@react-navigation/native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { NavigationContainer, DefaultTheme, StackActions, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { fetchUnreadNotificationCount } from '../api/notifications';
+import { fetchUnreadNotificationCount, registerPushDevice } from '../api/notifications';
 import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../api/notificationSocket';
 import LoginScreen from '../screens/LoginScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
@@ -26,6 +29,7 @@ import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import PricingScreen from '../screens/PricingScreen';
 import type { BranchEmployee, UserRole } from '../types';
+import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -121,6 +125,17 @@ const DesignsStack = createNativeStackNavigator<DesignsStackParamList>();
 const OrdersStack = createNativeStackNavigator<OrdersStackParamList>();
 const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const navigationTheme = {
   ...DefaultTheme,
@@ -132,6 +147,93 @@ const navigationTheme = {
     text: colors.text,
     border: colors.border,
   },
+};
+
+const canReceivePushForRole = (role?: UserRole) =>
+  role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN';
+
+const routeFromPushNotification = (data: Record<string, unknown> | null | undefined) => {
+  if (!data || !navigationRef.isReady()) {
+    return;
+  }
+
+  const orderId = getOrderIdFromNotification({
+    entityType: String(data.entityType || ''),
+    entityId: String(data.entityId || ''),
+    metadata: (data.metadata as Record<string, unknown> | null) || null,
+  });
+
+  if (orderId) {
+    (navigationRef as any).navigate('App', {
+      screen: 'OrdersTab',
+      params: {
+        screen: 'OrderDetail',
+        params: { orderId },
+      },
+    });
+    return;
+  }
+
+  const spiffTarget = getSpiffClaimTargetFromNotification({
+    entityType: String(data.entityType || ''),
+    entityId: String(data.entityId || ''),
+    metadata: (data.metadata as Record<string, unknown> | null) || null,
+  });
+
+  if (spiffTarget) {
+    (navigationRef as any).navigate('App', {
+      screen: 'DashboardTab',
+      params: {
+        screen: 'SpiffRewards',
+        params: spiffTarget,
+      },
+    });
+  }
+};
+
+const registerForPushNotificationsAsync = async (authToken: string) => {
+  if (!Device.isDevice) {
+    return null;
+  }
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#A67F3F',
+    });
+  }
+
+  const currentPermissions = await Notifications.getPermissionsAsync();
+  let status = currentPermissions.status;
+  if (status !== 'granted') {
+    const requested = await Notifications.requestPermissionsAsync();
+    status = requested.status;
+  }
+
+  if (status !== 'granted') {
+    return null;
+  }
+
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId
+    || (Constants as any)?.easConfig?.projectId
+    || undefined;
+
+  const tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+  const expoPushToken = tokenResponse.data;
+  if (!expoPushToken) {
+    return null;
+  }
+
+  await registerPushDevice(authToken, {
+    expoPushToken,
+    platform: Platform.OS,
+    appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
+  });
+
+  return expoPushToken;
 };
 
 const AuthNavigator = () => (
@@ -302,13 +404,6 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
               <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
                 <Ionicons name={name} size={iconSize} color={focused ? '#2C1E16' : '#8B7355'} />
               </View>
-              {route.name === 'OrdersTab' && ordersBadgeCount > 0 ? (
-                <View style={styles.badgePill}>
-                  <Text style={styles.badgePillText}>
-                    {ordersBadgeCount > 99 ? '99+' : String(ordersBadgeCount)}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           );
         },
@@ -362,13 +457,54 @@ const LoadingScreen = () => (
 
 const RootNavigator = () => {
   const { token, isLoading, user } = useAuth();
+  const registeredPushTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!token || !user || !canReceivePushForRole(user.role)) {
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const registerDevice = async () => {
+      try {
+        const pushToken = await registerForPushNotificationsAsync(token);
+        if (!isMounted || !pushToken) {
+          return;
+        }
+        registeredPushTokenRef.current = pushToken;
+      } catch {
+        // Push registration is best-effort; in-app notifications remain available.
+      }
+    };
+
+    void registerDevice();
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = (response.notification.request.content.data || {}) as Record<string, unknown>;
+      routeFromPushNotification(data);
+    });
+
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!isMounted || !response) {
+        return;
+      }
+      const data = (response.notification.request.content.data || {}) as Record<string, unknown>;
+      routeFromPushNotification(data);
+    });
+
+    return () => {
+      isMounted = false;
+      responseSubscription.remove();
+    };
+  }, [token, user]);
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
           <RootStack.Screen name="App">

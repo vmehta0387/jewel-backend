@@ -22,6 +22,8 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-employee.dto';
 import { CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
 
 export interface UserResponse {
   id: string;
@@ -83,6 +85,7 @@ export class UsersService {
     private companyRepo: Repository<Company>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private readonly allPermissions: TaskPermission[] = Object.values(TaskPermission);
@@ -263,7 +266,9 @@ export class UsersService {
     });
 
     const saved = await this.userRepo.save(user);
-    return this.findOne(saved.id, requester);
+    const response = await this.findOne(saved.id, requester);
+    await this.safeNotifyUserCreated(saved, response, requester);
+    return response;
   }
 
   async update(id: string, dto: UpdateUserDto, requester?: AuthUser): Promise<UserResponse> {
@@ -283,6 +288,8 @@ export class UsersService {
       }
       dto.companyId = requester.companyId || null;
     }
+
+    const previousRole = user.role;
 
     if (dto.email !== undefined) {
       const normalizedEmail = this.normalizeEmail(dto.email);
@@ -334,7 +341,11 @@ export class UsersService {
     user.taskPermissions = this.normalizePermissions(permissionsInput, nextRole);
 
     await this.userRepo.save(user);
-    return this.findOne(id, requester);
+    const response = await this.findOne(id, requester);
+    if (previousRole !== user.role) {
+      await this.safeNotifyUserRoleChanged(user, response, previousRole, requester);
+    }
+    return response;
   }
 
   async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<UserResponse> {
@@ -350,6 +361,139 @@ export class UsersService {
     user.isActive = isActive;
     await this.userRepo.save(user);
     return this.findOne(id, requester);
+  }
+
+  private async safeNotifyUserCreated(user: User, response: UserResponse, requester?: AuthUser) {
+    try {
+      const recipientIds = await this.getUserAdminAudience(user, [requester?.id, user.id]);
+      const roleLabel = this.formatRoleLabel(user.role);
+      const companyLabel = response.company?.companyName || 'your company';
+      const branchLabel = response.branch?.name || null;
+
+      await this.notificationsService.createForUser({
+        userId: user.id,
+        companyId: user.companyId ?? null,
+        branchId: user.branchId ?? null,
+        type: 'USER_ACCOUNT_CREATED',
+        priority: NotificationPriority.P1,
+        title: 'Your account is ready',
+        message: branchLabel
+          ? `Your ${roleLabel} account for ${companyLabel} / ${branchLabel} is now active.`
+          : `Your ${roleLabel} account for ${companyLabel} is now active.`,
+        entityType: 'USER',
+        entityId: user.id,
+        actionUrl: '/profile',
+        channelPush: true,
+        metadata: {
+          userId: user.id,
+          role: user.role,
+          companyId: user.companyId ?? null,
+          branchId: user.branchId ?? null,
+        },
+      });
+
+      if (recipientIds.length) {
+        await this.notificationsService.createForUsers(recipientIds, {
+          companyId: user.companyId ?? null,
+          branchId: user.branchId ?? null,
+          type: 'USER_ACCOUNT_CREATED',
+          priority: NotificationPriority.P2,
+          title: `New ${roleLabel} account created`,
+          message: `${response.firstName} ${response.lastName} was added as ${roleLabel}.`,
+          entityType: 'USER',
+          entityId: user.id,
+          actionUrl: `/users/${user.id}`,
+          channelPush: true,
+          metadata: {
+            userId: user.id,
+            role: user.role,
+            createdByUserId: requester?.id ?? null,
+            companyId: user.companyId ?? null,
+            branchId: user.branchId ?? null,
+          },
+        });
+      }
+    } catch {
+      // Notifications are best-effort; user creation remains the source of truth.
+    }
+  }
+
+  private async safeNotifyUserRoleChanged(
+    user: User,
+    response: UserResponse,
+    previousRole: UserRole,
+    requester?: AuthUser,
+  ) {
+    try {
+      const recipientIds = await this.getUserAdminAudience(user, [requester?.id, user.id]);
+      const nextRoleLabel = this.formatRoleLabel(user.role);
+      const previousRoleLabel = this.formatRoleLabel(previousRole);
+
+      await this.notificationsService.createForUser({
+        userId: user.id,
+        companyId: user.companyId ?? null,
+        branchId: user.branchId ?? null,
+        type: 'USER_ROLE_CHANGED',
+        priority: NotificationPriority.P1,
+        title: 'Your role was updated',
+        message: `Your role changed from ${previousRoleLabel} to ${nextRoleLabel}.`,
+        entityType: 'USER',
+        entityId: user.id,
+        actionUrl: '/profile',
+        channelPush: true,
+        metadata: {
+          userId: user.id,
+          previousRole,
+          role: user.role,
+          updatedByUserId: requester?.id ?? null,
+        },
+      });
+
+      if (recipientIds.length) {
+        await this.notificationsService.createForUsers(recipientIds, {
+          companyId: user.companyId ?? null,
+          branchId: user.branchId ?? null,
+          type: 'USER_ROLE_CHANGED',
+          priority: NotificationPriority.P2,
+          title: `Role updated for ${response.firstName} ${response.lastName}`,
+          message: `${response.firstName} ${response.lastName} moved from ${previousRoleLabel} to ${nextRoleLabel}.`,
+          entityType: 'USER',
+          entityId: user.id,
+          actionUrl: `/users/${user.id}`,
+          channelPush: true,
+          metadata: {
+            userId: user.id,
+            previousRole,
+            role: user.role,
+            updatedByUserId: requester?.id ?? null,
+          },
+        });
+      }
+    } catch {
+      // Notifications are best-effort.
+    }
+  }
+
+  private async getUserAdminAudience(user: User, excludedIds: Array<string | null | undefined>) {
+    const excludeSet = new Set(excludedIds.map((value) => String(value || '').trim()).filter(Boolean));
+    const rows = await this.userRepo.find({
+      where: [
+        { role: UserRole.SUPER_ADMIN, isActive: true },
+        ...(user.companyId ? [{ role: UserRole.COMPANY_ADMIN, companyId: user.companyId, isActive: true } as any] : []),
+      ],
+      select: ['id'],
+    });
+
+    return rows.map((row) => row.id).filter((id) => !excludeSet.has(id));
+  }
+
+  private formatRoleLabel(role: UserRole) {
+    return String(role || '')
+      .toLowerCase()
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   }
 
   async uploadPhoto(

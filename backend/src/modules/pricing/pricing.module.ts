@@ -16,6 +16,8 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
 import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.entity';
+import { User } from '../users/entities/user.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -32,8 +34,10 @@ import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.enti
       Branch,
       CompanyPricingSlab,
       BranchPricingSlab,
+      User,
     ]),
     AuthModule,
+    NotificationsModule,
   ],
   controllers: [PricingController, CompanyAdminPricingController],
   providers: [PricingService],

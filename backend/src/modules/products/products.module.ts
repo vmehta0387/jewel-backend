@@ -21,6 +21,7 @@ import { DesignMaster } from './entities/design-master.entity';
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary } from './entities/design-media-library.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { DesignMediaLibrary } from './entities/design-media-library.entity';
       Branch,
     ]),
     AuthModule,
+    NotificationsModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

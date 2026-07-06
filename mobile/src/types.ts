@@ -127,6 +127,13 @@ export type NotificationUnreadCountResponse = {
   unreadCount: number;
 };
 
+export type PushDeviceRegistrationResponse = {
+  success: boolean;
+  id?: string;
+  expoPushToken?: string;
+  isActive?: boolean;
+};
+
 export type BranchEmployee = {
   id: string;
   email: string;

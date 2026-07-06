@@ -37,11 +37,6 @@ export class GiftogramService {
       throw new Error('Giftogram request id is required');
     }
 
-    const recipientEmail = this.optionalText(input.recipientEmail);
-    if (!recipientEmail) {
-      throw new Error('Recipient email is required for Giftogram fulfillment');
-    }
-
     const campaignId = this.resolveCampaignIdByGiftCardType(input.giftCardType);
     if (!campaignId) {
       throw new Error(`Giftogram campaign is not configured for gift card type "${input.giftCardType}"`);
@@ -51,29 +46,13 @@ export class GiftogramService {
     const payload: Record<string, unknown> = {
       external_id: requestId,
       campaign_id: campaignId,
-      notes: this.optionalText(input.note) || this.optionalText(process.env.GIFTOGRAM_NOTES_TEMPLATE),
       reference_number: `${this.optionalText(process.env.GIFTOGRAM_REFERENCE_PREFIX) || 'SPIFF'}-${requestId}`,
-      message:
-        this.optionalText(input.note) ||
-        this.optionalText(process.env.GIFTOGRAM_MESSAGE_TEMPLATE) ||
-        'Your Blitz NYC SPIFF redemption is ready.',
-      subject:
-        this.optionalText(process.env.GIFTOGRAM_SUBJECT_TEMPLATE) ||
-        `Your Blitz NYC SPIFF reward (${requestId})`,
-      recipients: [
-        {
-          email: recipientEmail,
-          name: this.optionalText(input.recipientName) || undefined,
-        },
-      ],
+      delivery_type: 'code',
+      quantity: 1,
       denomination,
     };
 
-    if (!payload.notes) {
-      delete payload.notes;
-    }
-
-    const response = await this.request('POST', '/order', payload);
+    const response = await this.request('POST', '/orders', payload);
     const rewardLink = this.extractRewardLink(response);
 
     return {
@@ -118,12 +97,7 @@ export class GiftogramService {
       }
 
       if (!response.ok) {
-        const message =
-          payload?.message ||
-          payload?.error ||
-          payload?.errors?.[0]?.message ||
-          response.statusText ||
-          `Giftogram request failed (${response.status})`;
+        const message = this.extractErrorMessage(payload) || response.statusText || `Giftogram request failed (${response.status})`;
         throw new Error(String(message));
       }
 
@@ -142,6 +116,10 @@ export class GiftogramService {
 
     const candidateFields = [
       payload?.reward_link,
+      payload?.redeem_url,
+      payload?.code_url,
+      payload?.redemption_url,
+      payload?.reward_url,
       payload?.gift_link,
       payload?.link,
       payload?.url,
@@ -178,6 +156,53 @@ export class GiftogramService {
           const nested = this.extractRewardLink(value);
           if (nested) return nested;
         }
+      }
+    }
+
+    return null;
+  }
+
+  private extractErrorMessage(payload: any): string | null {
+    if (!payload) return null;
+
+    const direct = [payload?.message, payload?.error, payload?.detail];
+    for (const value of direct) {
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+    }
+
+    if (Array.isArray(payload?.errors) && payload.errors.length) {
+      const parts = payload.errors
+        .map((entry: any) => {
+          if (typeof entry === 'string') return entry.trim();
+          const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+          const message = typeof entry?.message === 'string' ? entry.message.trim() : '';
+          if (field && message) return `${field}: ${message}`;
+          return message || field;
+        })
+        .filter(Boolean);
+      if (parts.length) {
+        return parts.join(' | ');
+      }
+    }
+
+    if (payload?.details && typeof payload.details === 'object') {
+      const parts = Object.entries(payload.details)
+        .flatMap(([field, value]) => {
+          if (Array.isArray(value)) {
+            return value
+              .map((item) => `${field}: ${String(item).trim()}`)
+              .filter(Boolean);
+          }
+          if (typeof value === 'string' && value.trim()) {
+            return [`${field}: ${value.trim()}`];
+          }
+          return [];
+        })
+        .filter(Boolean);
+      if (parts.length) {
+        return parts.join(' | ');
       }
     }
 
