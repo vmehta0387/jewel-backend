@@ -67,6 +67,8 @@ import {
 import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-library.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
 
 interface ScopeResult {
   companyId: string | null;
@@ -356,6 +358,7 @@ export class ProductsService {
     private readonly designMediaLibraryRepo: Repository<DesignMediaLibrary>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
@@ -1015,7 +1018,7 @@ export class ProductsService {
 
         if (existing) {
           const updatePayload: UpdateProductDto = { ...payload };
-          await this.update(existing.id, updatePayload, requester);
+          await this.update(existing.id, updatePayload, requester, true);
           updated += 1;
         } else {
           await this.create(payload, requester);
@@ -1027,13 +1030,19 @@ export class ProductsService {
       }
     }
 
-    return {
+    const result = {
       totalRows: designRows.length,
       created,
       updated,
       failed: errors.length,
       errors,
     };
+
+    if (errors.length > 0) {
+      await this.safeNotifyDesignImportFailed(requester, result);
+    }
+
+    return result;
   }
 
   async getNextDesignNo(
@@ -2301,7 +2310,7 @@ export class ProductsService {
     };
   }
 
-  async update(id: string, dto: UpdateProductDto, requester: AuthUser): Promise<any> {
+  async update(id: string, dto: UpdateProductDto, requester: AuthUser, suppressNotifications = false): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
 
@@ -2451,6 +2460,9 @@ export class ProductsService {
     }
 
     await this.addHistory(id, 'UPDATED', 'Design updated successfully.', requester.id);
+    if (!suppressNotifications) {
+      await this.safeNotifyDesignUpdated(design, requester);
+    }
     return this.findOne(id, requester);
   }
 
@@ -5201,6 +5213,96 @@ export class ProductsService {
         metadata: metadata || null,
       }),
     );
+  }
+
+  private async safeNotifyDesignUpdated(design: Design, requester: AuthUser) {
+    try {
+      const recipients = await this.userRepo.find({
+        where: [
+          ...(design.companyId ? [{ companyId: design.companyId, role: UserRole.COMPANY_ADMIN, isActive: true } as any] : []),
+          ...(design.branchId
+            ? [
+                { branchId: design.branchId, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
+                { branchId: design.branchId, role: UserRole.SALES_REP, isActive: true } as any,
+              ]
+            : design.companyId
+              ? [
+                  { companyId: design.companyId, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
+                  { companyId: design.companyId, role: UserRole.SALES_REP, isActive: true } as any,
+                ]
+              : []),
+        ],
+        select: ['id'],
+      });
+
+      const userIds = Array.from(new Set(recipients.map((user) => user.id).filter((id) => id && id !== requester.id)));
+      if (!userIds.length) return;
+
+      await this.notificationsService.createForUsers(userIds, {
+        companyId: design.companyId ?? null,
+        branchId: design.branchId ?? null,
+        type: 'DESIGN_UPDATED',
+        priority: NotificationPriority.P2,
+        title: `${design.designNo} updated`,
+        message: `Design ${design.designName || design.designNo} was updated.`,
+        entityType: 'DESIGN',
+        entityId: design.id,
+        actionUrl: `/products/${design.id}`,
+        channelPush: true,
+        metadata: {
+          designId: design.id,
+          designNo: design.designNo,
+          designName: design.designName ?? null,
+          updatedByUserId: requester.id,
+          companyId: design.companyId ?? null,
+          branchId: design.branchId ?? null,
+        },
+      });
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  private async safeNotifyDesignImportFailed(
+    requester: AuthUser,
+    result: { totalRows: number; created: number; updated: number; failed: number; errors: string[] },
+  ) {
+    try {
+      const recipients = await this.userRepo.find({
+        where: [
+          { id: requester.id, isActive: true } as any,
+          { role: UserRole.SUPER_ADMIN, isActive: true } as any,
+          { role: UserRole.INTERNAL_REP, isActive: true } as any,
+        ],
+        select: ['id'],
+      });
+
+      const userIds = Array.from(new Set(recipients.map((user) => user.id).filter(Boolean)));
+      if (!userIds.length) return;
+
+      await this.notificationsService.createForUsers(userIds, {
+        companyId: requester.companyId ?? null,
+        branchId: requester.branchId ?? null,
+        type: 'PRODUCT_IMPORT_FAILED',
+        priority: NotificationPriority.P1,
+        title: 'Design import completed with failures',
+        message: `${result.failed} row(s) failed during design import. Created ${result.created}, updated ${result.updated}.`,
+        entityType: 'PRODUCT_IMPORT',
+        entityId: null,
+        actionUrl: '/products',
+        channelPush: true,
+        metadata: {
+          totalRows: result.totalRows,
+          created: result.created,
+          updated: result.updated,
+          failed: result.failed,
+          sampleErrors: result.errors.slice(0, 5),
+          requestedByUserId: requester.id,
+        },
+      });
+    } catch {
+      // Best-effort only.
+    }
   }
 
   private async getExistingRows(designId: string): Promise<{

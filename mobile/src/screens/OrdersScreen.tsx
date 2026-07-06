@@ -298,6 +298,7 @@ const OrdersScreen = () => {
     [notificationEntries],
   );
   const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
+
   const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';

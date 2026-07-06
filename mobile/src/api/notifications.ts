@@ -1,5 +1,10 @@
 import { apiRequest } from './client';
-import type { NotificationItem, NotificationListResponse, NotificationUnreadCountResponse } from '../types';
+import type {
+  NotificationItem,
+  NotificationListResponse,
+  NotificationUnreadCountResponse,
+  PushDeviceRegistrationResponse,
+} from '../types';
 
 export const fetchNotifications = (
   token: string,
@@ -32,4 +37,24 @@ export const markAllNotificationsRead = (token: string) =>
   apiRequest<NotificationUnreadCountResponse>('/notifications/read-all', {
     method: 'PATCH',
     body: JSON.stringify({}),
+  }, token);
+
+export const registerPushDevice = (
+  token: string,
+  payload: {
+    expoPushToken: string;
+    platform?: string;
+    deviceId?: string;
+    appVersion?: string;
+  },
+) =>
+  apiRequest<PushDeviceRegistrationResponse>('/notifications/push/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }, token);
+
+export const unregisterPushDevice = (token: string, expoPushToken: string) =>
+  apiRequest<PushDeviceRegistrationResponse>('/notifications/push/unregister', {
+    method: 'POST',
+    body: JSON.stringify({ expoPushToken }),
   }, token);

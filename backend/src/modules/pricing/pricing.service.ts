@@ -23,6 +23,9 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
 import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.entity';
+import { User } from '../users/entities/user.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
 import {
   CompanyAdminPricingSlabDto,
   UpdateCompanyAdminBranchPricingDto,
@@ -58,6 +61,9 @@ export class PricingService {
     private readonly companySlabRepo: Repository<CompanyPricingSlab>,
     @InjectRepository(BranchPricingSlab)
     private readonly branchSlabRepo: Repository<BranchPricingSlab>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getCompanyAdminPricingSettings(requester: AuthUser) {
@@ -131,7 +137,9 @@ export class PricingService {
       }
     }
 
-    return this.getCompanyAdminPricingSettings(requester);
+    const settings = await this.getCompanyAdminPricingSettings(requester);
+    await this.safeNotifyCompanyPricingUpdated(company, requester);
+    return settings;
   }
 
   async updateCompanyAdminBranchPricing(
@@ -173,7 +181,9 @@ export class PricingService {
       }
     }
 
-    return this.getCompanyAdminPricingSettings(requester);
+    const settings = await this.getCompanyAdminPricingSettings(requester);
+    await this.safeNotifyBranchPricingUpdated(branch, requester);
+    return settings;
   }
 
   async findGlobalBasePrices(query: FindGlobalBasePricesQueryDto): Promise<any> {
@@ -714,6 +724,79 @@ export class PricingService {
       throw new ForbiddenException('Company admin must be assigned to a company');
     }
     return companyId;
+  }
+
+  private async safeNotifyCompanyPricingUpdated(company: Company, requester: AuthUser) {
+    try {
+      const recipients = await this.userRepo.find({
+        where: [
+          { companyId: company.id, role: UserRole.COMPANY_ADMIN, isActive: true } as any,
+          { companyId: company.id, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
+          { companyId: company.id, role: UserRole.SALES_REP, isActive: true } as any,
+        ],
+        select: ['id'],
+      });
+
+      const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
+      if (!userIds.length) return;
+
+      await this.notificationsService.createForUsers(userIds, {
+        companyId: company.id,
+        branchId: null,
+        type: 'PRICING_UPDATED',
+        priority: NotificationPriority.P1,
+        title: 'Pricing settings updated',
+        message: `Company pricing for ${company.companyName} was updated.`,
+        entityType: 'PRICING',
+        entityId: company.id,
+        actionUrl: '/pricing',
+        channelPush: true,
+        metadata: {
+          companyId: company.id,
+          updatedByUserId: requester.id,
+          scope: 'COMPANY',
+        },
+      });
+    } catch {
+      // Best-effort only.
+    }
+  }
+
+  private async safeNotifyBranchPricingUpdated(branch: Branch, requester: AuthUser) {
+    try {
+      const recipients = await this.userRepo.find({
+        where: [
+          { companyId: branch.companyId, role: UserRole.COMPANY_ADMIN, isActive: true } as any,
+          { branchId: branch.id, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
+          { branchId: branch.id, role: UserRole.SALES_REP, isActive: true } as any,
+        ],
+        select: ['id'],
+      });
+
+      const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
+      if (!userIds.length) return;
+
+      await this.notificationsService.createForUsers(userIds, {
+        companyId: branch.companyId,
+        branchId: branch.id,
+        type: 'PRICING_UPDATED',
+        priority: NotificationPriority.P1,
+        title: 'Branch pricing updated',
+        message: `Pricing for branch ${branch.name} was updated.`,
+        entityType: 'PRICING',
+        entityId: branch.id,
+        actionUrl: '/pricing',
+        channelPush: true,
+        metadata: {
+          companyId: branch.companyId,
+          branchId: branch.id,
+          updatedByUserId: requester.id,
+          scope: 'BRANCH',
+        },
+      });
+    } catch {
+      // Best-effort only.
+    }
   }
 
   private validateCompanyAdminSlabs(slabs: CompanyAdminPricingSlabDto[]): void {

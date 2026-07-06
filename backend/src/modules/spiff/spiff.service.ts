@@ -686,6 +686,7 @@ export class SpiffService {
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
+        channelPush: true,
         metadata: {
           claimId: context.id,
           claimNumber: context.claimNumber,
@@ -710,6 +711,7 @@ export class SpiffService {
           entityType: 'SPIFF_CLAIM',
           entityId: context.id,
           actionUrl: `/spiff`,
+          channelPush: true,
           metadata: {
             claimId: context.id,
             claimNumber: context.claimNumber,
@@ -789,11 +791,36 @@ export class SpiffService {
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
+        channelPush: true,
         metadata: {
           ...baseMetadata,
           rewardLink: context.giftbitLinkUrl ?? null,
         },
       });
+
+      const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
+      if (managerIds.length) {
+        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
+          || context.user?.email
+          || 'A user';
+        await this.notificationsService.createForUsers(managerIds, {
+          companyId: context.companyId,
+          branchId: context.branchId,
+          type: payload.type,
+          priority: payload.priority,
+          title: payload.title,
+          message: `${requestorName}'s claim ${context.claimNumber} is now ${context.status.replace(/_/g, ' ').toLowerCase()}.`,
+          entityType: 'SPIFF_CLAIM',
+          entityId: context.id,
+          actionUrl: `/spiff`,
+          channelPush: true,
+          metadata: {
+            ...baseMetadata,
+            requestorName,
+            rewardLink: context.giftbitLinkUrl ?? null,
+          },
+        });
+      }
     } catch (error: any) {
       this.logger.warn(
         `SPIFF review notification skipped for claim ${claim?.id || '-'}: ${error?.message || 'unknown error'}`,
@@ -819,6 +846,7 @@ export class SpiffService {
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
+        channelPush: true,
         metadata: {
           claimId: context.id,
           claimNumber: context.claimNumber,
@@ -829,6 +857,35 @@ export class SpiffService {
           fulfilledByUserId: requester.id,
         },
       });
+
+      const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
+      if (managerIds.length) {
+        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
+          || context.user?.email
+          || 'A user';
+        await this.notificationsService.createForUsers(managerIds, {
+          companyId: context.companyId,
+          branchId: context.branchId,
+          type: 'SPIFF_CLAIM_FULFILLED',
+          priority: NotificationPriority.P1,
+          title: `${context.claimNumber} fulfilled`,
+          message: `${requestorName}'s claim ${context.claimNumber} was fulfilled.`,
+          entityType: 'SPIFF_CLAIM',
+          entityId: context.id,
+          actionUrl: `/spiff`,
+          channelPush: true,
+          metadata: {
+            claimId: context.id,
+            claimNumber: context.claimNumber,
+            status: context.status,
+            requestedPoints: context.requestedPoints,
+            requestedAmount: this.roundMoney(context.requestedAmountCents / 100),
+            requestorName,
+            rewardLink: context.giftbitLinkUrl ?? null,
+            fulfilledByUserId: requester.id,
+          },
+        });
+      }
     } catch (error: any) {
       this.logger.warn(
         `SPIFF fulfill notification skipped for claim ${claim?.id || '-'}: ${error?.message || 'unknown error'}`,
@@ -863,6 +920,10 @@ export class SpiffService {
 
     qb.andWhere(
       new Brackets((subQb) => {
+        subQb.orWhere('user.role = :superAdminRole', {
+          superAdminRole: UserRole.SUPER_ADMIN,
+        });
+
         if (claim.companyId) {
           subQb.orWhere('(user.companyId = :companyId AND user.role = :companyAdminRole)', {
             companyId: claim.companyId,

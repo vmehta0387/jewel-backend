@@ -43,3 +43,25 @@ export class MarkAllNotificationsReadDto {
   @IsUUID()
   beforeId?: string;
 }
+
+export class RegisterPushDeviceDto {
+  @IsString()
+  expoPushToken!: string;
+
+  @IsOptional()
+  @IsString()
+  platform?: string;
+
+  @IsOptional()
+  @IsString()
+  deviceId?: string;
+
+  @IsOptional()
+  @IsString()
+  appVersion?: string;
+}
+
+export class UnregisterPushDeviceDto {
+  @IsString()
+  expoPushToken!: string;
+}
