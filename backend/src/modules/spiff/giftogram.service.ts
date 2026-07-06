@@ -38,9 +38,6 @@ export class GiftogramService {
     }
 
     const recipientEmail = this.optionalText(input.recipientEmail);
-    if (!recipientEmail) {
-      throw new Error('Recipient email is required for Giftogram fulfillment');
-    }
 
     const campaignId = this.resolveCampaignIdByGiftCardType(input.giftCardType);
     if (!campaignId) {
@@ -60,20 +57,25 @@ export class GiftogramService {
       subject:
         this.optionalText(process.env.GIFTOGRAM_SUBJECT_TEMPLATE) ||
         `Your Blitz NYC SPIFF reward (${requestId})`,
-      recipients: [
+      delivery_type: 'code',
+      quantity: 1,
+      denomination,
+    };
+
+    if (recipientEmail) {
+      payload.recipients = [
         {
           email: recipientEmail,
           name: this.optionalText(input.recipientName) || undefined,
         },
-      ],
-      denomination,
-    };
+      ];
+    }
 
     if (!payload.notes) {
       delete payload.notes;
     }
 
-    const response = await this.request('POST', '/order', payload);
+    const response = await this.request('POST', '/orders', payload);
     const rewardLink = this.extractRewardLink(response);
 
     return {
@@ -142,6 +144,10 @@ export class GiftogramService {
 
     const candidateFields = [
       payload?.reward_link,
+      payload?.redeem_url,
+      payload?.code_url,
+      payload?.redemption_url,
+      payload?.reward_url,
       payload?.gift_link,
       payload?.link,
       payload?.url,

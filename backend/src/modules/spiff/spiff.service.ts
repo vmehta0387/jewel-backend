@@ -1335,15 +1335,47 @@ export class SpiffService {
       .filter(Boolean)
       .join(' ')
       .trim();
+    const rewardLink = claim.giftbitLinkUrl || this.extractRewardLinkFromResponse(claim.giftbitResponse);
 
     return {
       ...claim,
+      giftbitLinkUrl: rewardLink,
       requestedAmount: this.roundMoney(claim.requestedAmountCents / 100),
       requestorName: requestorName || claim.user?.email || null,
       reviewerName: reviewerName || claim.approvedBy?.email || null,
       companyName: claim.company?.companyName || null,
       branchName: claim.branch?.name || null,
     };
+  }
+
+  private extractRewardLinkFromResponse(payload: unknown): string | null {
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    const stack: unknown[] = [payload];
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current || typeof current !== 'object') {
+        continue;
+      }
+
+      for (const [key, value] of Object.entries(current as Record<string, unknown>)) {
+        if (
+          typeof value === 'string' &&
+          /^https?:\/\//i.test(value) &&
+          /redeem|reward|gift/i.test(key)
+        ) {
+          return value;
+        }
+
+        if (value && typeof value === 'object') {
+          stack.push(value);
+        }
+      }
+    }
+
+    return null;
   }
 
   private async getNextClaimNumber(): Promise<string> {
