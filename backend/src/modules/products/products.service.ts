@@ -85,14 +85,6 @@ type MobileConfiguratorKey =
   | 'quality'
   | 'ringSize';
 
-type MobileConfiguratorMasterMaps = Record<MobileConfiguratorKey, Map<string, string>>;
-type MobileConfiguratorMasterValues = Record<MobileConfiguratorKey, Map<string, string>>;
-
-interface MobileConfiguratorMasterContext {
-  lookupMaps: MobileConfiguratorMasterMaps;
-  usedMasterValues: MobileConfiguratorMasterValues;
-}
-
 interface NormalizedMetalRow {
   metalCaratage: string | null;
   goldColour: string | null;
@@ -1821,8 +1813,8 @@ export class ProductsService {
 
   async findMobileConfigurator(id: string, requester: AuthUser): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
-    const primary = family.find((design) => design.isPrimary) || family[0];
-    return this.toMobileConfiguratorResponse(family, primary, {}, requester);
+    const selected = family.find((design) => design.id === id) || family.find((design) => design.isPrimary) || family[0];
+    return this.toMobileConfiguratorResponse(family, selected, {}, requester);
   }
 
   async resolveMobileConfigurator(
@@ -1927,14 +1919,13 @@ export class ProductsService {
     requestedOptions: Partial<Record<MobileConfiguratorKey, string>> = {},
     requester?: AuthUser,
   ): Promise<any> {
-    const masterContext = await this.getMobileConfiguratorMasterContext(family);
     return {
-      selectedDesign: await this.toMobileConfiguratorDesign(selected, masterContext, requester),
+      selectedDesign: await this.toMobileConfiguratorDesign(selected, requester),
       selectedOptions: {
-        ...this.getMobileConfiguratorOptions(selected, masterContext),
-        ...this.resolveMobileConfiguratorRequestedOptions(requestedOptions, masterContext),
+        ...this.getMobileConfiguratorOptions(selected),
+        ...this.resolveMobileConfiguratorRequestedOptions(requestedOptions),
       },
-      optionGroups: this.getMobileConfiguratorOptionGroups(family, masterContext),
+      optionGroups: this.getMobileConfiguratorOptionGroups(family),
     };
   }
 
@@ -1950,7 +1941,6 @@ export class ProductsService {
 
   private async toMobileConfiguratorDesign(
     design: Design,
-    masterContext?: MobileConfiguratorMasterContext,
     requester?: AuthUser,
   ): Promise<any> {
     const displayPrice = requester ? await this.resolveMobileConfiguratorDisplayPrice(design, requester) : undefined;
@@ -1977,7 +1967,7 @@ export class ProductsService {
       ijewelModelId: design.ijewelModelId,
       ijewelBaseName: design.ijewelBaseName,
       metals: (design.metals || []).map((metal) => ({
-        metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour, masterContext),
+        metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour),
         goldColour: metal.goldColour,
         netWt: Number(metal.netWt || 0),
         totalWt: Number(metal.totalWt || 0),
@@ -2017,28 +2007,24 @@ export class ProductsService {
     }
   }
 
-  private getMobileConfiguratorOptionGroups(
-    family: Design[],
-    masterContext?: MobileConfiguratorMasterContext,
-  ) {
+  private getMobileConfiguratorOptionGroups(family: Design[]) {
     const groups = {
       diamondType: new Map<string, string>(),
       shape: new Map<string, string>(),
       style: new Map<string, string>(),
-      metalCaratage: new Map<string, string>(masterContext?.usedMasterValues.metalCaratage || []),
+      metalCaratage: new Map<string, string>(),
       weight: new Map<string, string>(),
       quality: new Map<string, string>(),
       ringSize: new Map<string, string>(),
     };
 
     for (const design of family) {
-      const values = this.getMobileConfiguratorValues(design, masterContext);
+      const values = this.getMobileConfiguratorValues(design);
       (Object.keys(values) as Array<keyof typeof values>).forEach((key) => {
-        if (key === 'metalCaratage') return;
         values[key].forEach((value) => {
-          const normalized = this.mobileConfiguratorOptionKey(key, value, masterContext);
+          const normalized = this.mobileConfiguratorOptionKey(key, value);
           if (normalized && !groups[key].has(normalized)) {
-            groups[key].set(normalized, this.mobileConfiguratorDisplayValue(key, value, masterContext));
+            groups[key].set(normalized, this.mobileConfiguratorDisplayValue(key, value));
           }
         });
       });
@@ -2049,10 +2035,7 @@ export class ProductsService {
     );
   }
 
-  private getMobileConfiguratorValues(
-    design: Design,
-    masterContext?: MobileConfiguratorMasterContext,
-  ): Record<MobileConfiguratorKey, string[]> {
+  private getMobileConfiguratorValues(design: Design): Record<MobileConfiguratorKey, string[]> {
     const values = {
       diamondType: new Set<string>(),
       shape: new Set<string>(),
@@ -2063,7 +2046,7 @@ export class ProductsService {
       ringSize: new Set<string>(),
     };
     const add = (key: MobileConfiguratorKey, value?: string | number | null) => {
-      const text = this.mobileConfiguratorDisplayValue(key, value, masterContext);
+      const text = this.mobileConfiguratorDisplayValue(key, value);
       if (text) values[key].add(text);
     };
 
@@ -2084,11 +2067,8 @@ export class ProductsService {
     ) as Record<MobileConfiguratorKey, string[]>;
   }
 
-  private getMobileConfiguratorOptions(
-    design: Design,
-    masterContext?: MobileConfiguratorMasterContext,
-  ) {
-    const values = this.getMobileConfiguratorValues(design, masterContext);
+  private getMobileConfiguratorOptions(design: Design) {
+    const values = this.getMobileConfiguratorValues(design);
     return {
       diamondType: values.diamondType[0] || '',
       shape: values.shape[0] || '',
@@ -2102,12 +2082,11 @@ export class ProductsService {
 
   private resolveMobileConfiguratorRequestedOptions(
     requestedOptions: Partial<Record<MobileConfiguratorKey, string>>,
-    masterContext?: MobileConfiguratorMasterContext,
   ): Partial<Record<MobileConfiguratorKey, string>> {
     return Object.fromEntries(
       Object.entries(requestedOptions).map(([key, value]) => [
         key,
-        this.mobileConfiguratorDisplayValue(key as MobileConfiguratorKey, value, masterContext),
+        this.mobileConfiguratorDisplayValue(key as MobileConfiguratorKey, value),
       ]),
     ) as Partial<Record<MobileConfiguratorKey, string>>;
   }
@@ -2167,160 +2146,17 @@ export class ProductsService {
     return this.mobileConfiguratorOptionKey(key, left) === this.mobileConfiguratorOptionKey(key, right);
   }
 
-  private mobileConfiguratorOptionKey(
-    key: MobileConfiguratorKey,
-    value?: string | number | null,
-    masterContext?: MobileConfiguratorMasterContext,
-  ): string {
-    const display = this.mobileConfiguratorDisplayValue(key, value, masterContext);
+  private mobileConfiguratorOptionKey(key: MobileConfiguratorKey, value?: string | number | null): string {
+    const display = this.mobileConfiguratorDisplayValue(key, value);
     return display.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
   private mobileConfiguratorDisplayValue(
     key: MobileConfiguratorKey,
     value?: string | number | null,
-    masterContext?: MobileConfiguratorMasterContext,
   ): string {
-    const masterValue = this.resolveMobileConfiguratorMasterValue(key, value, masterContext);
-    if (masterValue) return masterValue;
-
     const text = key === 'weight' ? this.toMobileCaratLabel(value) : this.mobileConfiguratorText(value);
     return text.replace(/\s+/g, ' ').trim();
-  }
-
-  private async getMobileConfiguratorMasterContext(family: Design[]): Promise<MobileConfiguratorMasterContext> {
-    const lookupMaps = this.emptyMobileConfiguratorMasterMaps();
-    const usedMasterValues = this.emptyMobileConfiguratorMasterMaps();
-    const lookupKeys = new Set<string>();
-
-    for (const design of family) {
-      const rawValues = this.getMobileConfiguratorRawValues(design);
-      (Object.keys(rawValues) as MobileConfiguratorKey[]).forEach((key) => {
-        rawValues[key].forEach((value) => {
-          this.getMobileConfiguratorMasterLookupKeys(key, value).forEach((lookupKey) => {
-            lookupKeys.add(lookupKey);
-          });
-        });
-      });
-    }
-
-    if (!lookupKeys.size) return { lookupMaps, usedMasterValues };
-
-    const masterTypes = Array.from(new Set(Object.values(this.mobileConfiguratorMasterTypeMap()).flat()));
-    const masters = await this.designMasterRepo
-      .createQueryBuilder('master')
-      .select([
-        'master.masterType',
-        'master.value',
-        'master.normalizedValue',
-        'master.aliasName',
-        'master.normalizedAlias',
-      ])
-      .where('master.isActive = :isActive', { isActive: true })
-      .andWhere('master.masterType IN (:...masterTypes)', { masterTypes })
-      .andWhere(
-        new Brackets((where) => {
-          where
-            .where('master.normalizedValue IN (:...lookupKeys)', { lookupKeys: Array.from(lookupKeys) })
-            .orWhere('master.normalizedAlias IN (:...lookupKeys)', { lookupKeys: Array.from(lookupKeys) });
-        }),
-      )
-      .getMany();
-
-    const keysByMasterType = this.mobileConfiguratorKeysByMasterType();
-    masters.forEach((master) => {
-      const optionKeys = keysByMasterType.get(master.masterType) || [];
-      const display = this.mobileConfiguratorText(master.value);
-      if (!display) return;
-      const displayKey = this.normalizeLookupKey(display);
-
-      [master.normalizedValue, master.normalizedAlias]
-        .filter((key): key is string => Boolean(key))
-        .forEach((lookupKey) => {
-          optionKeys.forEach((optionKey) => {
-            if (!lookupMaps[optionKey].has(lookupKey)) {
-              lookupMaps[optionKey].set(lookupKey, display);
-            }
-            if (displayKey && lookupKeys.has(lookupKey) && !usedMasterValues[optionKey].has(displayKey)) {
-              usedMasterValues[optionKey].set(displayKey, display);
-            }
-          });
-        });
-    });
-
-    return { lookupMaps, usedMasterValues };
-  }
-
-  private emptyMobileConfiguratorMasterMaps(): MobileConfiguratorMasterMaps {
-    return {
-      diamondType: new Map<string, string>(),
-      shape: new Map<string, string>(),
-      style: new Map<string, string>(),
-      metalCaratage: new Map<string, string>(),
-      weight: new Map<string, string>(),
-      quality: new Map<string, string>(),
-      ringSize: new Map<string, string>(),
-    };
-  }
-
-  private getMobileConfiguratorRawValues(design: Design): Record<MobileConfiguratorKey, string[]> {
-    const values = {
-      diamondType: new Set<string>(),
-      shape: new Set<string>(),
-      style: new Set<string>(),
-      metalCaratage: new Set<string>(),
-      weight: new Set<string>(),
-      quality: new Set<string>(),
-      ringSize: new Set<string>(),
-    };
-    const add = (key: MobileConfiguratorKey, value?: string | number | null) => {
-      const text = this.mobileConfiguratorText(value);
-      if (text) values[key].add(text);
-    };
-
-    add('diamondType', design.diamondType);
-    add('style', design.diamondSpread);
-    add('weight', design.diamondWeight);
-    add('quality', design.diamondQuality);
-    add('ringSize', design.jewelrySize);
-    this.getUsedMetalCaratageCandidates(design).forEach((value) => add('metalCaratage', value));
-    for (const gem of design.gemstones || []) {
-      add('diamondType', gem.stone);
-      add('shape', gem.shape);
-      add('quality', gem.quality);
-    }
-
-    return Object.fromEntries(
-      Object.entries(values).map(([key, set]) => [key, Array.from(set)]),
-    ) as Record<MobileConfiguratorKey, string[]>;
-  }
-
-  private getMobileConfiguratorMasterLookupKeys(
-    key: MobileConfiguratorKey,
-    value?: string | number | null,
-  ): string[] {
-    const keys = new Set<string>();
-    [this.mobileConfiguratorText(value), this.mobileConfiguratorDisplayValue(key, value)].forEach((candidate) => {
-      const normalized = this.normalizeLookupKey(candidate);
-      if (normalized) keys.add(normalized);
-    });
-    return Array.from(keys);
-  }
-
-  private resolveMobileConfiguratorMasterValue(
-    key: MobileConfiguratorKey,
-    value?: string | number | null,
-    masterContext?: MobileConfiguratorMasterContext,
-  ): string {
-    if (!masterContext) return '';
-    const map = masterContext.lookupMaps[key];
-    if (!map?.size) return '';
-
-    for (const lookupKey of this.getMobileConfiguratorMasterLookupKeys(key, value)) {
-      const display = map.get(lookupKey);
-      if (display) return display;
-    }
-    return '';
   }
 
   private getUsedMetalCaratageCandidates(design: Design): string[] {
@@ -2334,30 +2170,6 @@ export class ProductsService {
       if (fallback) candidates.add(fallback);
     }
     return Array.from(candidates);
-  }
-
-  private mobileConfiguratorMasterTypeMap(): Record<MobileConfiguratorKey, DesignMasterType[]> {
-    return {
-      diamondType: [DesignMasterType.DIAMOND_TYPE, DesignMasterType.PACKET_STONE],
-      shape: [DesignMasterType.PACKET_SHAPE],
-      style: [DesignMasterType.DIAMOND_SPREAD],
-      metalCaratage: [DesignMasterType.METAL_CARATAGE],
-      weight: [DesignMasterType.DIAMOND_WEIGHT],
-      quality: [DesignMasterType.DIAMOND_QUALITY, DesignMasterType.PACKET_QUALITY],
-      ringSize: [DesignMasterType.JEWELRY_SIZE],
-    };
-  }
-
-  private mobileConfiguratorKeysByMasterType(): Map<DesignMasterType, MobileConfiguratorKey[]> {
-    const map = new Map<DesignMasterType, MobileConfiguratorKey[]>();
-    Object.entries(this.mobileConfiguratorMasterTypeMap()).forEach(([key, types]) => {
-      types.forEach((type) => {
-        const optionKeys = map.get(type) || [];
-        optionKeys.push(key as MobileConfiguratorKey);
-        map.set(type, optionKeys);
-      });
-    });
-    return map;
   }
 
   private mobileConfiguratorText(value?: string | number | null): string {
