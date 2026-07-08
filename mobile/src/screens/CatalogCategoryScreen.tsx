@@ -12,6 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { fetchCatalogCategoryCounts } from '../api/designs';
 import type { CatalogPresetCategory } from '../navigation/RootNavigator';
 
@@ -49,6 +50,7 @@ const EMPTY_COUNTS: Record<CatalogPresetCategory, CategoryCountStats> = {
 const CatalogCategoryScreen = () => {
   const navigation = useNavigation<any>();
   const { user, token } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const [search, setSearch] = useState('');
   const [categoryCounts, setCategoryCounts] = useState<Record<CatalogPresetCategory, CategoryCountStats>>(EMPTY_COUNTS);
   const [countsLoading, setCountsLoading] = useState(true);
@@ -125,9 +127,11 @@ const CatalogCategoryScreen = () => {
 
           <TouchableOpacity style={styles.headerBellBtn} activeOpacity={0.85} onPress={openNotifications}>
             <Ionicons name="notifications-outline" size={18} color="#6A635C" />
-            <View style={styles.headerBellBadge}>
-              <Text style={styles.headerBellBadgeText}>3</Text>
-            </View>
+            {notificationCount > 0 ? (
+              <View style={styles.headerBellBadge}>
+                <Text style={styles.headerBellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
 

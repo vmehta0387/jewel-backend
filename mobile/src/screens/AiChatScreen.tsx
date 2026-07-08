@@ -11,11 +11,12 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import { NavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NavigationProp, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { chatDesigns } from '../api/ai';
 import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
 import { mapNotificationsToActivityItems } from '../utils/appNotifications';
@@ -97,6 +98,7 @@ const formatRelativeTime = (date?: string | null) => {
 
 const AiChatScreen = () => {
   const { token, user } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NavigationProp<any>>();
   const chatRef = useRef<ScrollView | null>(null);
   const firstName = useMemo(() => getFirstName(user?.firstName), [user?.firstName]);
@@ -107,7 +109,6 @@ const AiChatScreen = () => {
   const [loading, setLoading] = useState(false);
 
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
 
   const canSend = input.trim().length > 0 && !loading;
@@ -133,18 +134,10 @@ const AiChatScreen = () => {
       const items = mapNotificationsToActivityItems(response.data || []);
       items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
       setActivity(items);
-      setNotificationCount(response.unreadCount || 0);
     } catch {
       setActivity([]);
-      setNotificationCount(0);
     }
   }, [token]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadNotifications();
-    }, [loadNotifications]),
-  );
 
   const sendMessage = useCallback(async () => {
     if (!token || loading) return;
@@ -271,7 +264,8 @@ const AiChatScreen = () => {
 
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
-  }, []);
+    void loadNotifications();
+  }, [loadNotifications]);
 
   const handleMarkAllRead = useCallback(async () => {
     if (!token) return;

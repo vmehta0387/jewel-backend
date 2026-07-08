@@ -19,6 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -209,6 +210,7 @@ const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPaylo
 
 const OrdersScreen = () => {
   const { token, user } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
@@ -217,7 +219,6 @@ const OrdersScreen = () => {
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('PENDING_APPROVAL');
   const [actingOrderId, setActingOrderId] = useState<string | null>(null);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [notificationEntries, setNotificationEntries] = useState<NotificationEntry[]>([]);
 
   const loadOrders = useCallback(async () => {
@@ -319,10 +320,8 @@ const OrdersScreen = () => {
         orderId: getOrderIdFromNotification(entry),
       }));
       setNotificationEntries(entries);
-      setNotificationCount(response.unreadCount || 0);
     } catch {
       setNotificationEntries([]);
-      setNotificationCount(0);
     }
   }, [token]);
 
@@ -335,8 +334,7 @@ const OrdersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadOrders();
-      loadNotifications();
-    }, [loadOrders, loadNotifications]),
+    }, [loadOrders]),
   );
 
   const openOrderSummary = useCallback(
@@ -654,7 +652,8 @@ const OrdersScreen = () => {
 
   const openNotifications = useCallback(() => {
     setNotificationsVisible(true);
-  }, []);
+    void loadNotifications();
+  }, [loadNotifications]);
 
   const closeNotifications = useCallback(() => {
     setNotificationsVisible(false);

@@ -20,6 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
 import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
 import type { Design } from '../types';
@@ -214,6 +215,7 @@ const DESIGN_FOOTER_SKELETON_IDS = ['sk-more-1', 'sk-more-2'];
 
 const DesignsScreen = () => {
   const { token, user } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'Designs'>>();
   const numColumns = 2;
@@ -242,7 +244,6 @@ const DesignsScreen = () => {
   const [draftPriceBand, setDraftPriceBand] = useState<PriceBand>('ALL');
   const [draftSortOption, setDraftSortOption] = useState<SortOption>('recent');
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const appliedSearchPresetRef = useRef('');
   const requestSeqRef = useRef(0);
@@ -378,10 +379,8 @@ const DesignsScreen = () => {
       const items = mapNotificationsToActivityItems(response.data || []);
       items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
       setActivity(items);
-      setNotificationCount(response.unreadCount || 0);
     } catch {
       setActivity([]);
-      setNotificationCount(0);
     }
   }, [token]);
 

@@ -2,7 +2,6 @@ import { apiRequest } from './client';
 import type {
   NotificationItem,
   NotificationListResponse,
-  NotificationUnreadCountResponse,
   PushDeviceRegistrationResponse,
 } from '../types';
 
@@ -24,9 +23,6 @@ export const fetchNotifications = (
   return apiRequest<NotificationListResponse>(`/notifications?${params.toString()}`, { method: 'GET' }, token);
 };
 
-export const fetchUnreadNotificationCount = (token: string) =>
-  apiRequest<NotificationUnreadCountResponse>('/notifications/unread-count', { method: 'GET' }, token);
-
 export const markNotificationRead = (token: string, id: string, isRead = true) =>
   apiRequest<NotificationItem>(`/notifications/${id}/read`, {
     method: 'PATCH',
@@ -34,7 +30,7 @@ export const markNotificationRead = (token: string, id: string, isRead = true) =
   }, token);
 
 export const markAllNotificationsRead = (token: string) =>
-  apiRequest<NotificationUnreadCountResponse>('/notifications/read-all', {
+  apiRequest<{ unreadCount: number }>('/notifications/read-all', {
     method: 'PATCH',
     body: JSON.stringify({}),
   }, token);

@@ -15,6 +15,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchSpiffSummary } from '../api/spiff';
@@ -103,6 +104,7 @@ const statusIcon = (status: string): keyof typeof Ionicons.glyphMap => {
 
 const BranchDashboardScreen = () => {
   const { token, user, signOut, refresh } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<any>();
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
@@ -133,7 +135,6 @@ const BranchDashboardScreen = () => {
 
   const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
   const [activity, setActivity] = useState<ActivityItem[]>([]);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>([]);
   const [spiffEarned, setSpiffEarned] = useState(0);
   const [repPerformance, setRepPerformance] = useState<RepPerformanceRow[]>([]);
@@ -342,23 +343,21 @@ const BranchDashboardScreen = () => {
       }));
       items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
       setActivity(items);
-      setNotificationCount(response.unreadCount || 0);
     } catch {
       setActivity([]);
-      setNotificationCount(0);
     }
   }, [token]);
 
   useFocusEffect(
     useCallback(() => {
       loadDashboard();
-      loadNotifications();
-    }, [loadDashboard, loadNotifications]),
+    }, [loadDashboard]),
   );
 
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
-  }, []);
+    void loadNotifications();
+  }, [loadNotifications]);
 
   const handleMarkAllRead = useCallback(async () => {
     if (!token) return;

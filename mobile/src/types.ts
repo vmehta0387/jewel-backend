@@ -123,10 +123,6 @@ export type NotificationListResponse = {
   totalPages: number;
 };
 
-export type NotificationUnreadCountResponse = {
-  unreadCount: number;
-};
-
 export type PushDeviceRegistrationResponse = {
   success: boolean;
   id?: string;

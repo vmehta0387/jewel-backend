@@ -20,6 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import {
   fetchMobileDesignConfigurator,
   resolveMobileDesignConfigurator,
@@ -208,6 +209,7 @@ const OptionSection = ({
 
 const DesignDetailScreen = () => {
   const { token, user } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width } = useWindowDimensions();
@@ -692,9 +694,11 @@ const DesignDetailScreen = () => {
               activeOpacity={0.88}
             >
               <Ionicons name="notifications-outline" size={17} color="#7A6E61" />
-              <View style={styles.headerBellBadge}>
-                <Text style={styles.headerBellBadgeText}>3</Text>
-              </View>
+              {notificationCount > 0 ? (
+                <View style={styles.headerBellBadge}>
+                  <Text style={styles.headerBellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           </View>
 

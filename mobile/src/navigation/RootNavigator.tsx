@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, DefaultTheme, StackActions, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
@@ -10,8 +10,8 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { fetchUnreadNotificationCount, registerPushDevice } from '../api/notifications';
-import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../api/notificationSocket';
+import { useNotifications } from '../context/NotificationContext';
+import { registerPushDevice } from '../api/notifications';
 import LoginScreen from '../screens/LoginScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
 import DesignsScreen from '../screens/DesignsScreen';
@@ -289,60 +289,9 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
-  const { token, user } = useAuth();
-  const [ordersBadgeCount, setOrdersBadgeCount] = useState(0);
-
-  const loadOrdersBadge = useCallback(async () => {
-    if (!token || !user || (role !== 'BRANCH_MANAGER' && role !== 'SALES_REP' && role !== 'COMPANY_ADMIN')) {
-      setOrdersBadgeCount(0);
-      return;
-    }
-
-    try {
-      const response = await fetchUnreadNotificationCount(token);
-      setOrdersBadgeCount(response.unreadCount || 0);
-    } catch {
-      setOrdersBadgeCount(0);
-    }
-  }, [token, user, role]);
-
-  useEffect(() => {
-    loadOrdersBadge();
-    const canReceiveNotificationUpdates =
-      Boolean(token && user) &&
-      (role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN');
-
-    if (!canReceiveNotificationUpdates || !token) {
-      return undefined;
-    }
-
-    const socket = createNotificationsSocket(token);
-    const syncUnreadCount = () => {
-      void loadOrdersBadge();
-    };
-    const handleUnreadCountUpdate = (payload: NotificationUnreadCountPayload) => {
-      const unreadCount = Number(payload?.unreadCount || 0);
-      setOrdersBadgeCount(Number.isFinite(unreadCount) ? unreadCount : 0);
-    };
-
-    socket.on('connect', syncUnreadCount);
-    socket.io.on('reconnect', syncUnreadCount);
-    socket.on('notification.unread_count_updated', handleUnreadCountUpdate);
-
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        syncUnreadCount();
-      }
-    });
-
-    return () => {
-      appStateSubscription.remove();
-      socket.off('connect', syncUnreadCount);
-      socket.io.off('reconnect', syncUnreadCount);
-      socket.off('notification.unread_count_updated', handleUnreadCountUpdate);
-      socket.disconnect();
-    };
-  }, [loadOrdersBadge, role, token, user]);
+  const { unreadCount } = useNotifications();
+  const ordersBadgeCount =
+    role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN' ? unreadCount : 0;
 
   return (
     <Tabs.Navigator
@@ -403,6 +352,11 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
             <View style={styles.iconWrap}>
               <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
                 <Ionicons name={name} size={iconSize} color={focused ? '#2C1E16' : '#8B7355'} />
+                {route.name === 'OrdersTab' && ordersBadgeCount > 0 ? (
+                  <View style={styles.badgePill}>
+                    <Text style={styles.badgePillText}>{ordersBadgeCount > 99 ? '99+' : ordersBadgeCount}</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
           );

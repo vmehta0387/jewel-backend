@@ -20,6 +20,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createOrder, fetchPricePreview, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
@@ -198,6 +199,7 @@ const QuoteBuilderScreen = () => {
   const route = useRoute<QuoteRoute>();
   const navigation = useNavigation<QuoteNav>();
   const { token, user } = useAuth();
+  const { unreadCount: notificationCount } = useNotifications();
   const { draft } = route.params;
   const companyId = user?.companyId || '';
   const branchId = user?.branchId || '';
@@ -695,9 +697,11 @@ const QuoteBuilderScreen = () => {
             activeOpacity={0.88}
           >
             <Ionicons name="notifications-outline" size={16} color="#7A6E61" />
-            <View style={styles.headerBellBadge}>
-              <Text style={styles.headerBellBadgeText}>3</Text>
-            </View>
+            {notificationCount > 0 ? (
+              <View style={styles.headerBellBadge}>
+                <Text style={styles.headerBellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         </View>
       </View>
