@@ -15,6 +15,7 @@ import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffService } from '../spiff/spiff.service';
+import { PricingService } from '../pricing/pricing.service';
 
 @Injectable()
 export class OrdersService {
@@ -31,6 +32,7 @@ export class OrdersService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     private readonly spiffService: SpiffService,
     private readonly notificationsService: NotificationsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   async getNextOrderNumber(): Promise<{ orderNumber: string }> {
@@ -342,16 +344,18 @@ export class OrdersService {
     return saved;
   }
 
-  async getPricePreview(params: { designId: string; companyId: string; branchId: string }) {
+  async getPricePreview(params: { designId: string; companyId: string; branchId: string }, requester: AuthUser) {
+    const scope = this.resolveScope(requester, params.companyId, params.branchId);
     const design = await this.designRepo.findOne({ where: { id: params.designId } });
     if (!design) {
       throw new NotFoundException('Design not found');
     }
+    this.assertDesignScope(design, requester, scope);
 
     const pricing = await this.calculateOrderPrice({
       design,
-      companyId: params.companyId,
-      branchId: params.branchId,
+      companyId: scope.companyId ?? undefined,
+      branchId: scope.branchId ?? undefined,
     });
 
     return pricing;
@@ -650,73 +654,15 @@ export class OrdersService {
     design: Design | null;
     companyId?: string;
     branchId?: string;
-  }): Promise<{ baseCost: number; companyMultiplier: number; branchMultiplier: number; finalPrice: number }> {
-    const baseCost = this.toNumber(params.design?.totalValue ?? 0);
-
-    let companyMultiplier = 1;
-    let branchMultiplier = 1;
-
-    if (params.companyId) {
-      companyMultiplier = await this.resolveCompanyMultiplier(params.companyId, baseCost, params.design?.collection || undefined);
-    }
-
-    if (params.branchId) {
-      branchMultiplier = await this.resolveBranchMultiplier(params.branchId, baseCost);
-    }
-
-    const finalPrice = this.roundMoney(baseCost * companyMultiplier * branchMultiplier);
-    return { baseCost, companyMultiplier, branchMultiplier, finalPrice };
-  }
-
-  private async resolveCompanyMultiplier(companyId: string, baseCost: number, collection?: string): Promise<number> {
-    const company = await this.companyRepo.findOne({
-      where: { id: companyId },
-      relations: ['pricingSlabs', 'collectionPricingOverrides'],
-    });
-    if (!company) {
-      throw new BadRequestException('Selected company not found');
-    }
-
-    if (company.enableCollectionPricing && collection) {
-      const override = company.collectionPricingOverrides?.find(
-        (row) => row.isActive && row.collectionType === collection,
-      );
-      if (override) {
-        return this.toNumber(override.multiplier) || 1;
-      }
-    }
-
-    if (company.enableSlabPricing) {
-      const slab = company.pricingSlabs?.find(
-        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
-      );
-      if (slab) {
-        return this.toNumber(slab.multiplier) || 1;
-      }
-    }
-
-    return this.toNumber(company.defaultMultiplier) || 1;
-  }
-
-  private async resolveBranchMultiplier(branchId: string, baseCost: number): Promise<number> {
-    const branch = await this.branchRepo.findOne({
-      where: { id: branchId },
-      relations: ['pricingSlabs'],
-    });
-    if (!branch) {
-      throw new BadRequestException('Selected branch not found');
-    }
-
-    if (branch.enableSlabPricing) {
-      const slab = branch.pricingSlabs?.find(
-        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
-      );
-      if (slab) {
-        return this.toNumber(slab.multiplier) || 1;
-      }
-    }
-
-    return this.toNumber(branch.branchMultiplier) || 1;
+  }): Promise<{
+    baseCost: number;
+    companyMultiplier: number;
+    branchMultiplier: number;
+    effectiveMultiplier: number;
+    pricingSource: 'COMPANY' | 'BRANCH';
+    finalPrice: number;
+  }> {
+    return this.pricingService.calculateDesignRetailPrice(params);
   }
 
   private toNumber(value: unknown): number {

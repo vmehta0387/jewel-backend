@@ -143,7 +143,7 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
                     designId: d.id,
                     companyId: companyId as string,
                     branchId: branchId as string,
-                  });
+                  }, readUser);
                   return { designId: d.id, finalPrice: preview.finalPrice };
                 } catch {
                   return { designId: d.id, finalPrice: null };

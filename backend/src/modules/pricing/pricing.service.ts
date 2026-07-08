@@ -38,6 +38,15 @@ interface GlobalRateMaps {
   diamondRatesByTypeAndSize: Map<string, number>;
 }
 
+export type DesignRetailPriceResult = {
+  baseCost: number;
+  companyMultiplier: number;
+  branchMultiplier: number;
+  effectiveMultiplier: number;
+  pricingSource: 'COMPANY' | 'BRANCH';
+  finalPrice: number;
+};
+
 @Injectable()
 export class PricingService {
   constructor(
@@ -557,6 +566,42 @@ export class PricingService {
     return { baseCost, finalPrice, appliedMultiplier };
   }
 
+  async calculateDesignRetailPrice(params: {
+    design: Pick<Design, 'totalValue' | 'collection'> | null;
+    companyId?: string;
+    branchId?: string;
+  }): Promise<DesignRetailPriceResult> {
+    const baseCost = this.toNumber(params.design?.totalValue ?? 0);
+
+    let companyMultiplier = 1;
+    let branchPricing = { multiplier: 1, applies: false };
+
+    if (params.companyId) {
+      companyMultiplier = await this.resolveCompanyMultiplier(
+        params.companyId,
+        baseCost,
+        params.design?.collection || undefined,
+      );
+    }
+
+    if (params.branchId) {
+      branchPricing = await this.resolveBranchPricing(params.branchId, baseCost, params.companyId);
+    }
+
+    const pricingSource = branchPricing.applies ? 'BRANCH' : 'COMPANY';
+    const effectiveMultiplier = branchPricing.applies ? branchPricing.multiplier : companyMultiplier;
+    const finalPrice = this.roundMoney(baseCost * effectiveMultiplier);
+
+    return {
+      baseCost,
+      companyMultiplier,
+      branchMultiplier: branchPricing.applies ? branchPricing.multiplier : 1,
+      effectiveMultiplier,
+      pricingSource,
+      finalPrice,
+    };
+  }
+
   private buildGlobalRateMaps(rows: GlobalBasePrice[]): GlobalRateMaps {
     const metalRates = new Map<string, number>();
     const diamondRatesByType = new Map<string, number>();
@@ -849,6 +894,66 @@ export class PricingService {
         multiplier: this.toNumber(slab.multiplier),
       }))
       .sort((a, b) => a.minCost - b.minCost);
+  }
+
+  private async resolveCompanyMultiplier(companyId: string, baseCost: number, collection?: string): Promise<number> {
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId },
+      relations: ['pricingSlabs', 'collectionPricingOverrides'],
+    });
+    if (!company) {
+      throw new BadRequestException('Selected company not found');
+    }
+
+    if (company.enableCollectionPricing && collection) {
+      const override = company.collectionPricingOverrides?.find(
+        (row) => row.isActive && row.collectionType === collection,
+      );
+      if (override) {
+        return this.toNumber(override.multiplier) || 1;
+      }
+    }
+
+    if (company.enableSlabPricing) {
+      const slab = company.pricingSlabs?.find(
+        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
+      );
+      if (slab) {
+        return this.toNumber(slab.multiplier) || 1;
+      }
+    }
+
+    return this.toNumber(company.defaultMultiplier) || 1;
+  }
+
+  private async resolveBranchPricing(
+    branchId: string,
+    baseCost: number,
+    companyId?: string,
+  ): Promise<{ multiplier: number; applies: boolean }> {
+    const branch = await this.branchRepo.findOne({
+      where: { id: branchId },
+      relations: ['pricingSlabs'],
+    });
+    if (!branch) {
+      throw new BadRequestException('Selected branch not found');
+    }
+    if (companyId && branch.companyId !== companyId) {
+      throw new BadRequestException('Selected branch does not belong to the company');
+    }
+
+    if (branch.enableSlabPricing) {
+      const slab = branch.pricingSlabs?.find(
+        (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
+      );
+      if (slab) {
+        return { multiplier: this.toNumber(slab.multiplier) || 1, applies: true };
+      }
+      return { multiplier: this.toNumber(branch.branchMultiplier) || 1, applies: true };
+    }
+
+    const multiplier = this.toNumber(branch.branchMultiplier) || 1;
+    return { multiplier, applies: multiplier !== 1 };
   }
 
   private roundMultiplier(value: number): number {

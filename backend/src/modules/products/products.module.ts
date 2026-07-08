@@ -22,6 +22,7 @@ import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary } from './entities/design-media-library.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PricingModule } from '../pricing/pricing.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     AuthModule,
     NotificationsModule,
+    PricingModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

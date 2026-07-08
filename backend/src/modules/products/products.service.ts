@@ -69,6 +69,7 @@ import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-library.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
+import { PricingService } from '../pricing/pricing.service';
 
 interface ScopeResult {
   companyId: string | null;
@@ -79,10 +80,18 @@ type MobileConfiguratorKey =
   | 'diamondType'
   | 'shape'
   | 'style'
-  | 'metalColor'
+  | 'metalCaratage'
   | 'weight'
   | 'quality'
   | 'ringSize';
+
+type MobileConfiguratorMasterMaps = Record<MobileConfiguratorKey, Map<string, string>>;
+type MobileConfiguratorMasterValues = Record<MobileConfiguratorKey, Map<string, string>>;
+
+interface MobileConfiguratorMasterContext {
+  lookupMaps: MobileConfiguratorMasterMaps;
+  usedMasterValues: MobileConfiguratorMasterValues;
+}
 
 interface NormalizedMetalRow {
   metalCaratage: string | null;
@@ -359,6 +368,7 @@ export class ProductsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    private readonly pricingService: PricingService,
   ) {}
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
@@ -412,10 +422,12 @@ export class ProductsService {
     const resolvedIjewelBase =
       ijewelModelId && /^https?:\/\//i.test(ijewelModelId) ? null : ijewelBaseName;
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
+    const barcode = await this.resolveDesignBarcode();
 
     const design = this.designRepo.create({
       designNo,
       familyDesignId,
+      barcode,
       designName: this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo),
       version,
       companyId: scope.companyId,
@@ -453,10 +465,10 @@ export class ProductsService {
       updatedBy: requester.id,
     });
 
-    let saved = await this.designRepo.save(design);
+    let saved = await this.saveDesignWithUniqueBarcode(design);
     if (!saved.familyDesignId) {
       saved.familyDesignId = saved.id;
-      saved = await this.designRepo.save(saved);
+      saved = await this.saveDesignWithUniqueBarcode(saved, saved.id);
     }
 
     await this.replaceMetalRows(saved.id, normalizedMetals);
@@ -779,6 +791,7 @@ export class ProductsService {
       XLSX.utils.json_to_sheet(
         designs.map((design) => ({
           'Design No': design.designNo,
+          Barcode: design.barcode || '',
           'Design Name': design.designName || '',
           Version: design.version,
           'Company Code': design.company?.companyCode || '',
@@ -1192,6 +1205,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('design.designNo LIKE :search', { search })
+            .orWhere('design.barcode LIKE :search', { search })
             .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
             .orWhere('design.jewelryGroup LIKE :search', { search })
@@ -1338,6 +1352,7 @@ export class ProductsService {
 
     const total = await qb.getCount();
     const { entities: data, raw } = await qb.getRawAndEntities();
+    await this.ensureDesignBarcodes(data);
     const listSummariesByDesign = new Map<string, { metalInfo: string | null; stoneInfo: string | null; versionCount: number }>();
     raw.forEach((row) => {
       const designId = this.optionalText(row.design_id || row.designId || row.design_id_0);
@@ -1549,6 +1564,7 @@ export class ProductsService {
       diamondQuality: string | null;
       goldColour: string | null;
       totalValue: number;
+      displayPrice?: number;
       imageUrls: string[];
       isPrimary: boolean;
       createdAt: Date;
@@ -1591,6 +1607,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('design.designNo LIKE :search', { search: `%${search}%` })
+            .orWhere('design.barcode LIKE :search', { search: `%${search}%` })
             .orWhere('design.designName LIKE :search', { search: `%${search}%` })
             .orWhere('design.jewelryGroup LIKE :search', { search: `%${search}%` })
             .orWhere('design.collection LIKE :search', { search: `%${search}%` })
@@ -1609,19 +1626,20 @@ export class ProductsService {
       qb.andWhere('design.diamondType = :diamondType', { diamondType: query.diamondType.trim() });
     }
 
+    const useRetailPricing = this.shouldApplyMobileCatalogRetailPricing(requester);
     const priceBand = query.priceBand || 'ALL';
-    if (priceBand === 'UNDER_2000') {
+    if (!useRetailPricing && priceBand === 'UNDER_2000') {
       qb.andWhere('design.totalValue < :priceMax', { priceMax: 2000 });
-    } else if (priceBand === 'BETWEEN_2000_5000') {
+    } else if (!useRetailPricing && priceBand === 'BETWEEN_2000_5000') {
       qb.andWhere('design.totalValue BETWEEN :priceMin AND :priceMax', { priceMin: 2000, priceMax: 5000 });
-    } else if (priceBand === 'ABOVE_5000') {
+    } else if (!useRetailPricing && priceBand === 'ABOVE_5000') {
       qb.andWhere('design.totalValue > :priceMin', { priceMin: 5000 });
     }
 
     const sort = query.sort || 'recent';
-    if (sort === 'priceAsc') {
+    if (!useRetailPricing && sort === 'priceAsc') {
       qb.orderBy('design.totalValue', 'ASC').addOrderBy('design.createdAt', 'DESC');
-    } else if (sort === 'priceDesc') {
+    } else if (!useRetailPricing && sort === 'priceDesc') {
       qb.orderBy('design.totalValue', 'DESC').addOrderBy('design.createdAt', 'DESC');
     } else if (sort === 'designAsc') {
       qb.orderBy('design.designNo', 'ASC');
@@ -1631,8 +1649,19 @@ export class ProductsService {
       qb.orderBy('design.createdAt', 'DESC');
     }
 
-    const total = await qb.getCount();
-    const rows = await qb.skip((page - 1) * limit).take(limit).getMany();
+    let total = 0;
+    let rows: Array<Design & { displayPrice?: number }>;
+    if (useRetailPricing) {
+      const pricedRows = await this.applyMobileCatalogRetailPricing(await qb.getMany(), requester);
+      const filteredRows = this.filterMobileCatalogPriceBand(pricedRows, priceBand);
+      const sortedRows = this.sortMobileCatalogRetailRows(filteredRows, sort);
+      total = sortedRows.length;
+      rows = sortedRows.slice((page - 1) * limit, page * limit);
+    } else {
+      total = await qb.getCount();
+      rows = await qb.skip((page - 1) * limit).take(limit).getMany();
+    }
+
     const data = await Promise.all(
       rows.map(async (design) => ({
         id: design.id,
@@ -1648,6 +1677,7 @@ export class ProductsService {
         diamondQuality: design.diamondQuality,
         goldColour: design.goldColour,
         totalValue: Number(design.totalValue || 0),
+        displayPrice: design.displayPrice,
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         isPrimary: design.isPrimary,
         createdAt: design.createdAt,
@@ -1660,6 +1690,66 @@ export class ProductsService {
       page,
       totalPages: Math.max(1, Math.ceil(total / limit)),
     };
+  }
+
+  private shouldApplyMobileCatalogRetailPricing(requester: AuthUser): boolean {
+    return (
+      (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) &&
+      Boolean(requester.companyId) &&
+      Boolean(requester.branchId)
+    );
+  }
+
+  private async applyMobileCatalogRetailPricing(
+    rows: Design[],
+    requester: AuthUser,
+  ): Promise<Array<Design & { displayPrice?: number }>> {
+    if (!this.shouldApplyMobileCatalogRetailPricing(requester)) {
+      return rows;
+    }
+
+    return Promise.all(
+      rows.map(async (design) => {
+        try {
+          const preview = await this.pricingService.calculateDesignRetailPrice({
+            design,
+            companyId: requester.companyId as string,
+            branchId: requester.branchId as string,
+          });
+          return Object.assign(design, { displayPrice: preview.finalPrice });
+        } catch {
+          return Object.assign(design, { displayPrice: Number(design.totalValue || 0) });
+        }
+      }),
+    );
+  }
+
+  private filterMobileCatalogPriceBand(
+    rows: Array<Design & { displayPrice?: number }>,
+    priceBand: FindMobileCatalogProductsQueryDto['priceBand'] = 'ALL',
+  ): Array<Design & { displayPrice?: number }> {
+    if (!priceBand || priceBand === 'ALL') return rows;
+
+    return rows.filter((design) => {
+      const price = Number(design.displayPrice ?? design.totalValue ?? 0);
+      if (priceBand === 'UNDER_2000') return price < 2000;
+      if (priceBand === 'BETWEEN_2000_5000') return price >= 2000 && price <= 5000;
+      if (priceBand === 'ABOVE_5000') return price > 5000;
+      return true;
+    });
+  }
+
+  private sortMobileCatalogRetailRows(
+    rows: Array<Design & { displayPrice?: number }>,
+    sort: FindMobileCatalogProductsQueryDto['sort'] = 'recent',
+  ): Array<Design & { displayPrice?: number }> {
+    if (sort !== 'priceAsc' && sort !== 'priceDesc') return rows;
+
+    return [...rows].sort((a, b) => {
+      const first = Number(a.displayPrice ?? a.totalValue ?? 0);
+      const second = Number(b.displayPrice ?? b.totalValue ?? 0);
+      return sort === 'priceAsc' ? first - second : second - first;
+    });
   }
 
   async findMobileCategoryCounts(
@@ -1732,7 +1822,7 @@ export class ProductsService {
   async findMobileConfigurator(id: string, requester: AuthUser): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
     const primary = family.find((design) => design.isPrimary) || family[0];
-    return this.toMobileConfiguratorResponse(family, primary);
+    return this.toMobileConfiguratorResponse(family, primary, {}, requester);
   }
 
   async resolveMobileConfigurator(
@@ -1742,7 +1832,7 @@ export class ProductsService {
   ): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
     const selected = this.pickMobileConfiguratorMatch(family, query);
-    return this.toMobileConfiguratorResponse(family, selected, this.normalizeMobileConfiguratorQuery(query));
+    return this.toMobileConfiguratorResponse(family, selected, this.normalizeMobileConfiguratorQuery(query), requester);
   }
 
   private async loadMobileConfiguratorFamily(id: string, requester: AuthUser): Promise<Design[]> {
@@ -1835,11 +1925,16 @@ export class ProductsService {
     family: Design[],
     selected: Design,
     requestedOptions: Partial<Record<MobileConfiguratorKey, string>> = {},
+    requester?: AuthUser,
   ): Promise<any> {
+    const masterContext = await this.getMobileConfiguratorMasterContext(family);
     return {
-      selectedDesign: await this.toMobileConfiguratorDesign(selected),
-      selectedOptions: { ...this.getMobileConfiguratorOptions(selected), ...requestedOptions },
-      optionGroups: this.getMobileConfiguratorOptionGroups(family),
+      selectedDesign: await this.toMobileConfiguratorDesign(selected, masterContext, requester),
+      selectedOptions: {
+        ...this.getMobileConfiguratorOptions(selected, masterContext),
+        ...this.resolveMobileConfiguratorRequestedOptions(requestedOptions, masterContext),
+      },
+      optionGroups: this.getMobileConfiguratorOptionGroups(family, masterContext),
     };
   }
 
@@ -1853,7 +1948,13 @@ export class ProductsService {
     return grouped;
   }
 
-  private async toMobileConfiguratorDesign(design: Design): Promise<any> {
+  private async toMobileConfiguratorDesign(
+    design: Design,
+    masterContext?: MobileConfiguratorMasterContext,
+    requester?: AuthUser,
+  ): Promise<any> {
+    const displayPrice = requester ? await this.resolveMobileConfiguratorDisplayPrice(design, requester) : undefined;
+
     return {
       id: design.id,
       designNo: design.designNo,
@@ -1870,11 +1971,13 @@ export class ProductsService {
       diamondQuality: design.diamondQuality,
       goldColour: design.goldColour,
       totalValue: Number(design.totalValue || 0),
+      displayPrice,
       grossWeight: Number(design.grossWeight || 0),
       imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
       ijewelModelId: design.ijewelModelId,
       ijewelBaseName: design.ijewelBaseName,
       metals: (design.metals || []).map((metal) => ({
+        metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour, masterContext),
         goldColour: metal.goldColour,
         netWt: Number(metal.netWt || 0),
         totalWt: Number(metal.totalWt || 0),
@@ -1894,24 +1997,48 @@ export class ProductsService {
     };
   }
 
-  private getMobileConfiguratorOptionGroups(family: Design[]) {
+  private async resolveMobileConfiguratorDisplayPrice(
+    design: Design,
+    requester: AuthUser,
+  ): Promise<number | undefined> {
+    if (!this.shouldApplyMobileCatalogRetailPricing(requester)) {
+      return undefined;
+    }
+
+    try {
+      const preview = await this.pricingService.calculateDesignRetailPrice({
+        design,
+        companyId: requester.companyId as string,
+        branchId: requester.branchId as string,
+      });
+      return preview.finalPrice;
+    } catch {
+      return Number(design.totalValue || 0);
+    }
+  }
+
+  private getMobileConfiguratorOptionGroups(
+    family: Design[],
+    masterContext?: MobileConfiguratorMasterContext,
+  ) {
     const groups = {
       diamondType: new Map<string, string>(),
       shape: new Map<string, string>(),
       style: new Map<string, string>(),
-      metalColor: new Map<string, string>(),
+      metalCaratage: new Map<string, string>(masterContext?.usedMasterValues.metalCaratage || []),
       weight: new Map<string, string>(),
       quality: new Map<string, string>(),
       ringSize: new Map<string, string>(),
     };
 
     for (const design of family) {
-      const values = this.getMobileConfiguratorValues(design);
+      const values = this.getMobileConfiguratorValues(design, masterContext);
       (Object.keys(values) as Array<keyof typeof values>).forEach((key) => {
+        if (key === 'metalCaratage') return;
         values[key].forEach((value) => {
-          const normalized = this.mobileConfiguratorOptionKey(key, value);
+          const normalized = this.mobileConfiguratorOptionKey(key, value, masterContext);
           if (normalized && !groups[key].has(normalized)) {
-            groups[key].set(normalized, this.mobileConfiguratorDisplayValue(key, value));
+            groups[key].set(normalized, this.mobileConfiguratorDisplayValue(key, value, masterContext));
           }
         });
       });
@@ -1922,18 +2049,21 @@ export class ProductsService {
     );
   }
 
-  private getMobileConfiguratorValues(design: Design): Record<MobileConfiguratorKey, string[]> {
+  private getMobileConfiguratorValues(
+    design: Design,
+    masterContext?: MobileConfiguratorMasterContext,
+  ): Record<MobileConfiguratorKey, string[]> {
     const values = {
       diamondType: new Set<string>(),
       shape: new Set<string>(),
       style: new Set<string>(),
-      metalColor: new Set<string>(),
+      metalCaratage: new Set<string>(),
       weight: new Set<string>(),
       quality: new Set<string>(),
       ringSize: new Set<string>(),
     };
     const add = (key: MobileConfiguratorKey, value?: string | number | null) => {
-      const text = key === 'weight' ? this.toMobileCaratLabel(value) : this.mobileConfiguratorText(value);
+      const text = this.mobileConfiguratorDisplayValue(key, value, masterContext);
       if (text) values[key].add(text);
     };
 
@@ -1942,8 +2072,7 @@ export class ProductsService {
     add('weight', design.diamondWeight);
     add('quality', design.diamondQuality);
     add('ringSize', design.jewelrySize);
-    add('metalColor', design.goldColour);
-    for (const metal of design.metals || []) add('metalColor', metal.goldColour);
+    this.getUsedMetalCaratageCandidates(design).forEach((value) => add('metalCaratage', value));
     for (const gem of design.gemstones || []) {
       add('diamondType', gem.stone);
       add('shape', gem.shape);
@@ -1955,17 +2084,32 @@ export class ProductsService {
     ) as Record<MobileConfiguratorKey, string[]>;
   }
 
-  private getMobileConfiguratorOptions(design: Design) {
-    const values = this.getMobileConfiguratorValues(design);
+  private getMobileConfiguratorOptions(
+    design: Design,
+    masterContext?: MobileConfiguratorMasterContext,
+  ) {
+    const values = this.getMobileConfiguratorValues(design, masterContext);
     return {
-      diamondType: this.mobileConfiguratorDisplayValue('diamondType', values.diamondType[0]),
-      shape: this.mobileConfiguratorDisplayValue('shape', values.shape[0]),
-      style: this.mobileConfiguratorDisplayValue('style', values.style[0]),
-      metalColor: this.mobileConfiguratorDisplayValue('metalColor', values.metalColor[0]),
-      weight: this.mobileConfiguratorDisplayValue('weight', values.weight[0]),
-      quality: this.mobileConfiguratorDisplayValue('quality', values.quality[0]),
-      ringSize: this.mobileConfiguratorDisplayValue('ringSize', values.ringSize[0]),
+      diamondType: values.diamondType[0] || '',
+      shape: values.shape[0] || '',
+      style: values.style[0] || '',
+      metalCaratage: values.metalCaratage[0] || '',
+      weight: values.weight[0] || '',
+      quality: values.quality[0] || '',
+      ringSize: values.ringSize[0] || '',
     };
+  }
+
+  private resolveMobileConfiguratorRequestedOptions(
+    requestedOptions: Partial<Record<MobileConfiguratorKey, string>>,
+    masterContext?: MobileConfiguratorMasterContext,
+  ): Partial<Record<MobileConfiguratorKey, string>> {
+    return Object.fromEntries(
+      Object.entries(requestedOptions).map(([key, value]) => [
+        key,
+        this.mobileConfiguratorDisplayValue(key as MobileConfiguratorKey, value, masterContext),
+      ]),
+    ) as Partial<Record<MobileConfiguratorKey, string>>;
   }
 
   private pickMobileConfiguratorMatch(
@@ -2012,7 +2156,7 @@ export class ProductsService {
 
   private normalizeMobileConfiguratorQuery(query: ResolveMobileDesignConfiguratorQueryDto) {
     const wanted: Partial<Record<MobileConfiguratorKey, string>> = {};
-    (['diamondType', 'shape', 'style', 'metalColor', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
+    (['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
       const text = key === 'weight' ? this.toMobileCaratLabel(query[key]) : this.mobileConfiguratorText(query[key]);
       if (text) wanted[key] = this.mobileConfiguratorDisplayValue(key, text);
     });
@@ -2023,21 +2167,197 @@ export class ProductsService {
     return this.mobileConfiguratorOptionKey(key, left) === this.mobileConfiguratorOptionKey(key, right);
   }
 
-  private mobileConfiguratorOptionKey(key: MobileConfiguratorKey, value?: string | number | null): string {
-    const display = this.mobileConfiguratorDisplayValue(key, value);
+  private mobileConfiguratorOptionKey(
+    key: MobileConfiguratorKey,
+    value?: string | number | null,
+    masterContext?: MobileConfiguratorMasterContext,
+  ): string {
+    const display = this.mobileConfiguratorDisplayValue(key, value, masterContext);
     return display.replace(/\s+/g, ' ').trim().toLowerCase();
   }
 
-  private mobileConfiguratorDisplayValue(key: MobileConfiguratorKey, value?: string | number | null): string {
-    const text = key === 'weight' ? this.toMobileCaratLabel(value) : this.mobileConfiguratorText(value);
-    if (key !== 'metalColor') return text.replace(/\s+/g, ' ').trim();
+  private mobileConfiguratorDisplayValue(
+    key: MobileConfiguratorKey,
+    value?: string | number | null,
+    masterContext?: MobileConfiguratorMasterContext,
+  ): string {
+    const masterValue = this.resolveMobileConfiguratorMasterValue(key, value, masterContext);
+    if (masterValue) return masterValue;
 
-    const lower = text.toLowerCase();
-    const karatMatch = lower.match(/\b(\d{1,2})\s*k\b/i);
-    if (karatMatch) return `${karatMatch[1]}K`;
-    if (/\bpt\b|platinum/.test(lower)) return 'PT';
-    if (/\bsv\b|silver/.test(lower)) return 'SV';
+    const text = key === 'weight' ? this.toMobileCaratLabel(value) : this.mobileConfiguratorText(value);
     return text.replace(/\s+/g, ' ').trim();
+  }
+
+  private async getMobileConfiguratorMasterContext(family: Design[]): Promise<MobileConfiguratorMasterContext> {
+    const lookupMaps = this.emptyMobileConfiguratorMasterMaps();
+    const usedMasterValues = this.emptyMobileConfiguratorMasterMaps();
+    const lookupKeys = new Set<string>();
+
+    for (const design of family) {
+      const rawValues = this.getMobileConfiguratorRawValues(design);
+      (Object.keys(rawValues) as MobileConfiguratorKey[]).forEach((key) => {
+        rawValues[key].forEach((value) => {
+          this.getMobileConfiguratorMasterLookupKeys(key, value).forEach((lookupKey) => {
+            lookupKeys.add(lookupKey);
+          });
+        });
+      });
+    }
+
+    if (!lookupKeys.size) return { lookupMaps, usedMasterValues };
+
+    const masterTypes = Array.from(new Set(Object.values(this.mobileConfiguratorMasterTypeMap()).flat()));
+    const masters = await this.designMasterRepo
+      .createQueryBuilder('master')
+      .select([
+        'master.masterType',
+        'master.value',
+        'master.normalizedValue',
+        'master.aliasName',
+        'master.normalizedAlias',
+      ])
+      .where('master.isActive = :isActive', { isActive: true })
+      .andWhere('master.masterType IN (:...masterTypes)', { masterTypes })
+      .andWhere(
+        new Brackets((where) => {
+          where
+            .where('master.normalizedValue IN (:...lookupKeys)', { lookupKeys: Array.from(lookupKeys) })
+            .orWhere('master.normalizedAlias IN (:...lookupKeys)', { lookupKeys: Array.from(lookupKeys) });
+        }),
+      )
+      .getMany();
+
+    const keysByMasterType = this.mobileConfiguratorKeysByMasterType();
+    masters.forEach((master) => {
+      const optionKeys = keysByMasterType.get(master.masterType) || [];
+      const display = this.mobileConfiguratorText(master.value);
+      if (!display) return;
+      const displayKey = this.normalizeLookupKey(display);
+
+      [master.normalizedValue, master.normalizedAlias]
+        .filter((key): key is string => Boolean(key))
+        .forEach((lookupKey) => {
+          optionKeys.forEach((optionKey) => {
+            if (!lookupMaps[optionKey].has(lookupKey)) {
+              lookupMaps[optionKey].set(lookupKey, display);
+            }
+            if (displayKey && lookupKeys.has(lookupKey) && !usedMasterValues[optionKey].has(displayKey)) {
+              usedMasterValues[optionKey].set(displayKey, display);
+            }
+          });
+        });
+    });
+
+    return { lookupMaps, usedMasterValues };
+  }
+
+  private emptyMobileConfiguratorMasterMaps(): MobileConfiguratorMasterMaps {
+    return {
+      diamondType: new Map<string, string>(),
+      shape: new Map<string, string>(),
+      style: new Map<string, string>(),
+      metalCaratage: new Map<string, string>(),
+      weight: new Map<string, string>(),
+      quality: new Map<string, string>(),
+      ringSize: new Map<string, string>(),
+    };
+  }
+
+  private getMobileConfiguratorRawValues(design: Design): Record<MobileConfiguratorKey, string[]> {
+    const values = {
+      diamondType: new Set<string>(),
+      shape: new Set<string>(),
+      style: new Set<string>(),
+      metalCaratage: new Set<string>(),
+      weight: new Set<string>(),
+      quality: new Set<string>(),
+      ringSize: new Set<string>(),
+    };
+    const add = (key: MobileConfiguratorKey, value?: string | number | null) => {
+      const text = this.mobileConfiguratorText(value);
+      if (text) values[key].add(text);
+    };
+
+    add('diamondType', design.diamondType);
+    add('style', design.diamondSpread);
+    add('weight', design.diamondWeight);
+    add('quality', design.diamondQuality);
+    add('ringSize', design.jewelrySize);
+    this.getUsedMetalCaratageCandidates(design).forEach((value) => add('metalCaratage', value));
+    for (const gem of design.gemstones || []) {
+      add('diamondType', gem.stone);
+      add('shape', gem.shape);
+      add('quality', gem.quality);
+    }
+
+    return Object.fromEntries(
+      Object.entries(values).map(([key, set]) => [key, Array.from(set)]),
+    ) as Record<MobileConfiguratorKey, string[]>;
+  }
+
+  private getMobileConfiguratorMasterLookupKeys(
+    key: MobileConfiguratorKey,
+    value?: string | number | null,
+  ): string[] {
+    const keys = new Set<string>();
+    [this.mobileConfiguratorText(value), this.mobileConfiguratorDisplayValue(key, value)].forEach((candidate) => {
+      const normalized = this.normalizeLookupKey(candidate);
+      if (normalized) keys.add(normalized);
+    });
+    return Array.from(keys);
+  }
+
+  private resolveMobileConfiguratorMasterValue(
+    key: MobileConfiguratorKey,
+    value?: string | number | null,
+    masterContext?: MobileConfiguratorMasterContext,
+  ): string {
+    if (!masterContext) return '';
+    const map = masterContext.lookupMaps[key];
+    if (!map?.size) return '';
+
+    for (const lookupKey of this.getMobileConfiguratorMasterLookupKeys(key, value)) {
+      const display = map.get(lookupKey);
+      if (display) return display;
+    }
+    return '';
+  }
+
+  private getUsedMetalCaratageCandidates(design: Design): string[] {
+    const candidates = new Set<string>();
+    for (const metal of design.metals || []) {
+      const value = this.mobileConfiguratorText(metal.goldColour);
+      if (value) candidates.add(value);
+    }
+    if (!candidates.size) {
+      const fallback = this.mobileConfiguratorText(design.goldColour);
+      if (fallback) candidates.add(fallback);
+    }
+    return Array.from(candidates);
+  }
+
+  private mobileConfiguratorMasterTypeMap(): Record<MobileConfiguratorKey, DesignMasterType[]> {
+    return {
+      diamondType: [DesignMasterType.DIAMOND_TYPE, DesignMasterType.PACKET_STONE],
+      shape: [DesignMasterType.PACKET_SHAPE],
+      style: [DesignMasterType.DIAMOND_SPREAD],
+      metalCaratage: [DesignMasterType.METAL_CARATAGE],
+      weight: [DesignMasterType.DIAMOND_WEIGHT],
+      quality: [DesignMasterType.DIAMOND_QUALITY, DesignMasterType.PACKET_QUALITY],
+      ringSize: [DesignMasterType.JEWELRY_SIZE],
+    };
+  }
+
+  private mobileConfiguratorKeysByMasterType(): Map<DesignMasterType, MobileConfiguratorKey[]> {
+    const map = new Map<DesignMasterType, MobileConfiguratorKey[]>();
+    Object.entries(this.mobileConfiguratorMasterTypeMap()).forEach(([key, types]) => {
+      types.forEach((type) => {
+        const optionKeys = map.get(type) || [];
+        optionKeys.push(key as MobileConfiguratorKey);
+        map.set(type, optionKeys);
+      });
+    });
+    return map;
   }
 
   private mobileConfiguratorText(value?: string | number | null): string {
@@ -2124,6 +2444,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('design.designNo LIKE :search', { search })
+            .orWhere('design.barcode LIKE :search', { search })
             .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
             .orWhere('design.stage LIKE :search', { search })
@@ -2133,6 +2454,7 @@ export class ProductsService {
     }
 
     const [data, total] = await qb.getManyAndCount();
+    await this.ensureDesignBarcodes(data);
 
     return {
       data: data.map((design) => ({
@@ -2163,6 +2485,7 @@ export class ProductsService {
       .select([
         'design.id',
         'design.designNo',
+        'design.barcode',
         'design.version',
         'design.designName',
         'design.jewelryGroup',
@@ -2193,6 +2516,7 @@ export class ProductsService {
         new Brackets((sqb) => {
           sqb
             .where('design.designNo LIKE :search', { search })
+            .orWhere('design.barcode LIKE :search', { search })
             .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
             .orWhere('design.jewelryGroup LIKE :search', { search })
@@ -2273,6 +2597,7 @@ export class ProductsService {
     }
 
     this.assertReadScope(design, requester);
+    await this.ensureDesignBarcodes([design]);
 
     const history = await this.historyRepo.find({
       where: { designId: id },
@@ -2352,6 +2677,9 @@ export class ProductsService {
     );
 
     design.designNo = designNo;
+    if (!this.optionalText(design.barcode)) {
+      design.barcode = await this.resolveDesignBarcode(undefined, id);
+    }
     design.version = version;
     design.familyDesignId = design.familyDesignId || await this.resolveFamilyDesignId(undefined, designNo, scope) || design.id;
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
@@ -7523,6 +7851,86 @@ export class ProductsService {
       return null;
     }
     return this.optionalText(value);
+  }
+
+  private isDesignBarcode(value?: string | null): boolean {
+    return /^[A-Z]{3}\d{4}$/.test(String(value || '').trim().toUpperCase());
+  }
+
+  private async ensureDesignBarcodes(designs: Design[]): Promise<void> {
+    for (const design of designs || []) {
+      if (!design?.id || this.isDesignBarcode(design.barcode)) {
+        continue;
+      }
+      design.barcode = await this.resolveDesignBarcode(undefined, design.id);
+      await this.saveDesignWithUniqueBarcode(design, design.id);
+    }
+  }
+
+  private async saveDesignWithUniqueBarcode(design: Design, excludeDesignId?: string): Promise<Design> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (!this.isDesignBarcode(design.barcode)) {
+        design.barcode = await this.resolveDesignBarcode(undefined, excludeDesignId || design.id);
+      }
+
+      try {
+        return await this.designRepo.save(design);
+      } catch (error) {
+        if (!this.isDuplicateDesignBarcodeError(error) || attempt === 19) {
+          throw error;
+        }
+        design.barcode = await this.resolveDesignBarcode(undefined, excludeDesignId || design.id);
+      }
+    }
+
+    throw new BadRequestException('Unable to save design with a unique barcode');
+  }
+
+  private isDuplicateDesignBarcodeError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code || '';
+    const message = String((error as { message?: string })?.message || '').toLowerCase();
+    return (
+      code === 'ER_DUP_ENTRY' &&
+      (message.includes('ux_designs_barcode') || message.includes('barcode'))
+    );
+  }
+
+  private normalizeDesignBarcode(value?: string | null): string | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+    if (!this.isDesignBarcode(normalized)) {
+      throw new BadRequestException('Design barcode must use 3 letters followed by 4 digits, for example ABC1234');
+    }
+    return normalized;
+  }
+
+  private async generateDesignBarcode(): Promise<string> {
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const prefix = Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+      const suffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const candidate = `${prefix}${suffix}`;
+      const existing = await this.designRepo.findOne({ where: { barcode: candidate } });
+      if (!existing) {
+        return candidate;
+      }
+    }
+    throw new BadRequestException('Unable to generate a unique design barcode');
+  }
+
+  private async resolveDesignBarcode(value?: string | null, excludeDesignId?: string): Promise<string> {
+    const normalized = this.normalizeDesignBarcode(value);
+    if (!normalized) {
+      return this.generateDesignBarcode();
+    }
+
+    const existing = await this.designRepo.findOne({ where: { barcode: normalized } });
+    if (existing && existing.id !== excludeDesignId) {
+      throw new BadRequestException('Design barcode already exists');
+    }
+    return normalized;
   }
 
   private normalizeStonePacketBarcode(value?: string | null): string | null {

@@ -32,6 +32,9 @@ export class Design {
   @Column({ name: 'design_no' })
   designNo: string;
 
+  @Column({ nullable: true, length: 7, unique: true })
+  barcode: string | null;
+
   @Column({ name: 'family_design_id', nullable: true })
   familyDesignId: string | null;
 

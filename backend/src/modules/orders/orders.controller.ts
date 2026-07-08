@@ -32,6 +32,7 @@ export class OrdersController {
 
   @Get('price-preview')
   getPricePreview(
+    @Request() req: { user: AuthUser },
     @Query('designId') designId?: string,
     @Query('companyId') companyId?: string,
     @Query('branchId') branchId?: string,
@@ -39,7 +40,7 @@ export class OrdersController {
     if (!designId || !companyId || !branchId) {
       return { baseCost: 0, companyMultiplier: 1, branchMultiplier: 1, finalPrice: 0 };
     }
-    return this.ordersService.getPricePreview({ designId, companyId, branchId });
+    return this.ordersService.getPricePreview({ designId, companyId, branchId }, req.user);
   }
 
   @Get('summary')

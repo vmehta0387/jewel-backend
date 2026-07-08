@@ -36,7 +36,7 @@ type VersionFilters = {
   diamondType: string;
   shape: string;
   style: string;
-  metalColor: string;
+  metalCaratage: string;
   weight: string;
   quality: string;
   ringSize: string;
@@ -79,55 +79,27 @@ const toCtwLabel = (value?: string | number | null) => {
   return `${normalized} ctw`;
 };
 
-const metalSwatchByValue = (value: string) => {
-  const normalized = value.toLowerCase();
-  const karatMatch = normalized.match(/(\d{1,2})\s*k/i);
-  const karat = karatMatch ? Number.parseInt(karatMatch[1], 10) : null;
+const metalCaratageSwatchByValue = (value: string) => {
+  const palette = ['#B8A46A', '#A7AEB8', '#B98D7E', '#8EA8A1', '#9B8CB6', '#AF9A86'];
+  const normalized = compact(value).toLowerCase();
+  const hash = Array.from(normalized).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return palette[hash % palette.length];
+};
 
-  if (normalized.includes('yellow') || normalized.includes('yg')) {
-    if (karat && karat >= 18) return '#C79C3E';
-    if (karat && karat >= 14) return '#D9B657';
-    return '#E2C672';
-  }
-  if (normalized.includes('rose') || normalized.includes('pink') || normalized.includes('rg')) {
-    if (karat && karat >= 18) return '#C78673';
-    if (karat && karat >= 14) return '#D89D89';
-    return '#E4B2A0';
-  }
-  if (normalized.includes('white') || normalized.includes('wg')) {
-    if (karat && karat >= 18) return '#CED1D8';
-    if (karat && karat >= 14) return '#DEE1E8';
-    return '#E8EBF1';
-  }
-  if (normalized.includes('platinum') || normalized.includes('pt')) return '#CFCEDA';
-  if (normalized.includes('silver')) return '#C7C6D2';
-  if (normalized.includes('green')) return '#95B79C';
-  if (normalized.includes('red')) return '#C08B85';
-  if (normalized.includes('brown')) return '#B79A7E';
-  return '#BFB7AF';
+const toMetalCaratageLabel = (value?: string | null) => {
+  return compact(value).replace(/\s+/g, ' ') || '-';
 };
 
 const toMetalShortCode = (value?: string | null) => {
-  const text = compact(value);
-  const lower = text.toLowerCase();
-  const karatMatch = lower.match(/\b(\d{1,2}\s*k)\b/i);
-  const karat = karatMatch ? karatMatch[1].toUpperCase().replace(/\s+/g, '') : '';
+  return toMetalCaratageLabel(value);
+};
 
-  let code = '';
-  if (/\bwg\b|white/.test(lower)) code = 'WG';
-  else if (/\brg\b|rose|pink/.test(lower)) code = 'RG';
-  else if (/\byg\b|yellow/.test(lower)) code = 'YG';
-  else if (/\bpt\b|platinum/.test(lower)) code = 'PT';
-  else if (/\bsv\b|silver/.test(lower)) code = 'SV';
-
-  if (karat && code) return `${karat} ${code}`;
-  if (karat) return karat;
-  if (code) return code;
-
-  const compacted = text.replace(/\s+/g, ' ').trim();
-  if (!compacted) return '-';
-  if (compacted.length <= 10) return compacted.toUpperCase();
-  return compacted;
+const getMetalOptionsFromDesign = (design: Design) => {
+  const metals = design.metals || [];
+  if (metals.length) {
+    return uniqueValues(metals.map((metal) => metal.metalCaratage));
+  }
+  return [];
 };
 
 const getVersionAttributes = (design: Design) => ({
@@ -135,13 +107,8 @@ const getVersionAttributes = (design: Design) => ({
   shapes: uniqueValues(design.gemstones?.map((gem) => gem.shape) || []),
   // Spread must come only from design-level field (not gemstone type).
   styles: uniqueValues([design.diamondSpread]),
-  metalColors: uniqueValues(
-    [
-      ...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []),
-      design.goldColour,
-    ],
-  ),
-  // Quality/weight/ring size options are version-level selections from general info.
+  metalCaratages: getMetalOptionsFromDesign(design),
+  // Quality/weight/jewelry size options are version-level selections from general info.
   qualities: uniqueValues([design.diamondQuality]),
   weights: uniqueValues([toCaratLabel(design.diamondWeight)]),
   ringSizes: uniqueValues([design.jewelrySize]),
@@ -153,11 +120,37 @@ const getFilterValuesFromDesign = (design: Design): VersionFilters => {
     diamondType: attrs.diamondTypes[0] || '',
     shape: attrs.shapes[0] || '',
     style: attrs.styles[0] || '',
-    metalColor: attrs.metalColors[0] || '',
+    metalCaratage: attrs.metalCaratages[0] || '',
     weight: attrs.weights[0] || '',
     quality: attrs.qualities[0] || '',
     ringSize: attrs.ringSizes[0] || '',
   };
+};
+
+const emptyVersionFilters = (): VersionFilters => ({
+  diamondType: '',
+  shape: '',
+  style: '',
+  metalCaratage: '',
+  weight: '',
+  quality: '',
+  ringSize: '',
+});
+
+const mergeOptionGroupsWithSelection = (
+  groups: VersionOptionGroups,
+  selected: Partial<VersionFilters>,
+): VersionOptionGroups => {
+  const next = { ...groups };
+  (Object.keys(next) as FilterKey[]).forEach((key) => {
+    const selectedValue = compact(selected[key]);
+    if (!selectedValue) return;
+    const values = next[key] || [];
+    if (!values.some((value) => compact(value) === selectedValue)) {
+      next[key] = [selectedValue, ...values];
+    }
+  });
+  return next;
 };
 
 const OptionSection = ({
@@ -187,7 +180,7 @@ const OptionSection = ({
                 onPress={() => onSelect(option)}
                 activeOpacity={0.9}
               >
-                <View style={[styles.metalDot, { backgroundColor: metalSwatchByValue(option) }]} />
+                <View style={[styles.metalDot, { backgroundColor: metalCaratageSwatchByValue(option) }]} />
                 <Text style={[styles.metalChipText, active ? styles.metalChipTextActive : null]} numberOfLines={1}>
                   {toMetalShortCode(option)}
                 </Text>
@@ -228,7 +221,7 @@ const DesignDetailScreen = () => {
     diamondType: [],
     shape: [],
     style: [],
-    metalColor: [],
+    metalCaratage: [],
     weight: [],
     quality: [],
     ringSize: [],
@@ -241,7 +234,7 @@ const DesignDetailScreen = () => {
   const [selectedShape, setSelectedShape] = useState('');
   const [selectedDiamondType, setSelectedDiamondType] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('');
-  const [selectedMetalColor, setSelectedMetalColor] = useState('');
+  const [selectedMetalCaratage, setSelectedMetalCaratage] = useState('');
   const [selectedWeight, setSelectedWeight] = useState('');
   const [selectedQuality, setSelectedQuality] = useState('');
   const [selectedRingSize, setSelectedRingSize] = useState('');
@@ -263,7 +256,7 @@ const DesignDetailScreen = () => {
     setSelectedShape(next.shape);
     setSelectedDiamondType(next.diamondType);
     setSelectedStyle(next.style);
-    setSelectedMetalColor(next.metalColor);
+    setSelectedMetalCaratage(next.metalCaratage);
     setSelectedWeight(next.weight);
     setSelectedQuality(next.quality);
     setSelectedRingSize(next.ringSize);
@@ -271,17 +264,32 @@ const DesignDetailScreen = () => {
   }, []);
 
   const applyConfiguratorResponse = useCallback(
-    (response: MobileConfiguratorResponse) => {
+    (response: MobileConfiguratorResponse, preservedOptions: Partial<VersionFilters> = {}) => {
+      const responseSelectedOptions = {
+        diamondType: response.selectedOptions?.diamondType || response.optionGroups.diamondType[0] || '',
+        shape: response.selectedOptions?.shape || response.optionGroups.shape[0] || '',
+        style: response.selectedOptions?.style || response.optionGroups.style[0] || '',
+        metalCaratage: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage[0] || '',
+        weight: response.selectedOptions?.weight || response.optionGroups.weight[0] || '',
+        quality: response.selectedOptions?.quality || response.optionGroups.quality[0] || '',
+        ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize[0] || '',
+      };
+      const selectedOptions = {
+        ...responseSelectedOptions,
+        ...Object.fromEntries(
+          Object.entries(preservedOptions).filter(([, value]) => compact(value)),
+        ),
+      } as VersionFilters;
       setFamilyDesigns([response.selectedDesign]);
-      setOptionGroups(response.optionGroups);
-      applyActiveDesignSelection(response.selectedDesign, response.selectedOptions);
+      setOptionGroups(mergeOptionGroupsWithSelection(response.optionGroups, selectedOptions));
+      applyActiveDesignSelection(response.selectedDesign, selectedOptions);
     },
     [applyActiveDesignSelection],
   );
 
   const loadPriceForDesign = useCallback(
     async (design: Design) => {
-      const fallback = design.totalValue ?? 0;
+      const fallback = design.displayPrice ?? design.totalValue ?? 0;
       const shouldApplyPricing =
         (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
         Boolean(user?.companyId) &&
@@ -306,7 +314,7 @@ const DesignDetailScreen = () => {
     if (key === 'diamondType') setSelectedDiamondType(value);
     else if (key === 'shape') setSelectedShape(value);
     else if (key === 'style') setSelectedStyle(value);
-    else if (key === 'metalColor') setSelectedMetalColor(value);
+    else if (key === 'metalCaratage') setSelectedMetalCaratage(value);
     else if (key === 'weight') setSelectedWeight(value);
     else if (key === 'quality') setSelectedQuality(value);
     else if (key === 'ringSize') setSelectedRingSize(value);
@@ -366,7 +374,7 @@ const DesignDetailScreen = () => {
   }, [gallery.length, selectedImageIndex]);
 
   const displayPrice = useMemo(
-    () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.totalValue ?? 0 : 0),
+    () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.displayPrice ?? activeDesign.totalValue ?? 0 : 0),
     [activeDesign, priceByDesignId],
   );
 
@@ -378,9 +386,9 @@ const DesignDetailScreen = () => {
     () => optionGroups.style,
     [optionGroups.style],
   );
-  const metalColorOptions = useMemo(
-    () => optionGroups.metalColor,
-    [optionGroups.metalColor],
+  const metalCaratageOptions = useMemo(
+    () => optionGroups.metalCaratage,
+    [optionGroups.metalCaratage],
   );
   const qualityOptions = useMemo(
     () => optionGroups.quality,
@@ -404,7 +412,7 @@ const DesignDetailScreen = () => {
         diamondType: selectedDiamondType,
         shape: selectedShape,
         style: selectedStyle,
-        metalColor: selectedMetalColor,
+        metalCaratage: selectedMetalCaratage,
         weight: selectedWeight,
         quality: selectedQuality,
         ringSize: selectedRingSize,
@@ -421,7 +429,7 @@ const DesignDetailScreen = () => {
           selectedKey,
         });
         if (resolveRequestSeqRef.current !== requestId) return;
-        applyConfiguratorResponse(response);
+        applyConfiguratorResponse(response, nextFilters);
         await loadPriceForDesign(response.selectedDesign);
       } catch (err: any) {
         if (resolveRequestSeqRef.current === requestId) {
@@ -439,7 +447,7 @@ const DesignDetailScreen = () => {
       selectedShape,
       selectedDiamondType,
       selectedStyle,
-      selectedMetalColor,
+      selectedMetalCaratage,
       selectedWeight,
       selectedQuality,
       selectedRingSize,
@@ -453,8 +461,8 @@ const DesignDetailScreen = () => {
     if (!activeDesign) return;
     const shortDescription = [
       selectedDiamondType ? `Type: ${selectedDiamondType}` : null,
-      selectedMetalColor ? `Metal: ${selectedMetalColor}` : null,
-      selectedRingSize ? `Size: ${selectedRingSize}` : null,
+      selectedMetalCaratage ? `Metal Caratage: ${toMetalCaratageLabel(selectedMetalCaratage)}` : null,
+      selectedRingSize ? `Jewelry Size: ${selectedRingSize}` : null,
       selectedStyle ? `Spread: ${selectedStyle}` : null,
       selectedQuality ? `Quality: ${selectedQuality}` : null,
       selectedWeight ? `Weight: ${selectedWeight}` : null,
@@ -474,7 +482,7 @@ const DesignDetailScreen = () => {
           diamondType: selectedDiamondType,
           shape: selectedShape,
           style: selectedStyle,
-          metalColor: selectedMetalColor,
+          metalColor: selectedMetalCaratage,
           weight: selectedWeight,
           quality: selectedQuality,
           ringSize: selectedRingSize,
@@ -487,7 +495,7 @@ const DesignDetailScreen = () => {
     displayPrice,
     navigation,
     selectedDiamondType,
-    selectedMetalColor,
+    selectedMetalCaratage,
     selectedQuality,
     selectedRingSize,
     selectedShape,
@@ -589,7 +597,8 @@ const DesignDetailScreen = () => {
     () => [
       { label: 'Stone', value: firstGem?.stone || selectedDiamondType || 'Diamond (Lab Grown)' },
       { label: 'Stone Shape', value: selectedShape || firstGem?.shape || '-' },
-      { label: 'Ring Size', value: selectedRingSize || activeDesign?.jewelrySize || '-' },
+      { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
+      { label: 'Jewelry Size', value: selectedRingSize || activeDesign?.jewelrySize || '-' },
       { label: 'Quality', value: selectedQuality || firstGem?.quality || activeDesign?.diamondQuality || '-' },
       { label: 'Color', value: firstGem?.color || '-' },
       {
@@ -609,6 +618,7 @@ const DesignDetailScreen = () => {
       firstGem?.color,
       selectedDiamondType,
       selectedShape,
+      selectedMetalCaratage,
       selectedRingSize,
       selectedQuality,
       selectedWeight,
@@ -758,13 +768,13 @@ const DesignDetailScreen = () => {
         </View>
 
         <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.configPanel}>
+          <View style={[styles.configPanel, dropdownVisible ? styles.configPanelDropdownOpen : null]}>
             <OptionSection
-              title="METAL"
-              options={metalColorOptions}
-              selected={selectedMetalColor}
+              title="METAL CARATAGE"
+              options={metalCaratageOptions}
+              selected={selectedMetalCaratage}
               onSelect={(value) => {
-                resolveVersionSelection('metalColor', value);
+                resolveVersionSelection('metalCaratage', value);
               }}
               variant="metal"
             />
@@ -815,8 +825,13 @@ const DesignDetailScreen = () => {
             />
 
             {ringSizeOptions.length ? (
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionLabel}>RING SIZE</Text>
+              <View
+                style={[
+                  styles.sectionBlock,
+                  dropdownVisible && dropdownKey === 'ringSize' ? styles.dropdownSectionOpen : null,
+                ]}
+              >
+                <Text style={styles.sectionLabel}>JEWELRY SIZE</Text>
                 <View style={[styles.singleDropdownWrap, dropdownVisible && dropdownKey === 'ringSize' ? styles.dropdownFieldWrapActive : null]}>
                   <TouchableOpacity
                     style={styles.singleDropdownCard}
@@ -878,7 +893,7 @@ const DesignDetailScreen = () => {
                 </>
               ) : (
                 <>
-                  <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalColor)}</Text>
+                  <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalCaratage)}</Text>
                   <Text style={styles.orderSummaryLine}>{toCtwLabel(selectedWeight) || '-'}</Text>
                   <Text style={styles.orderSummaryLine}>{selectedRingSize || '-'}</Text>
                 </>
@@ -1057,9 +1072,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 11,
     paddingVertical: 10,
+    zIndex: 20,
+    elevation: 2,
+  },
+  configPanelDropdownOpen: {
+    zIndex: 900,
+    elevation: 18,
   },
   sectionBlock: {
     marginTop: 7,
+  },
+  dropdownSectionOpen: {
+    zIndex: 880,
+    elevation: 18,
   },
   sectionLabel: {
     fontSize: 10,

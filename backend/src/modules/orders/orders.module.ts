@@ -10,9 +10,10 @@ import { User } from '../users/entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
 import { SpiffModule } from '../spiff/spiff.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PricingModule } from '../pricing/pricing.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order, Company, Branch, Design, User]), AuthModule, SpiffModule, NotificationsModule],
+  imports: [TypeOrmModule.forFeature([Order, Company, Branch, Design, User]), AuthModule, SpiffModule, NotificationsModule, PricingModule],
   controllers: [OrdersController],
   providers: [OrdersService],
   exports: [OrdersService],

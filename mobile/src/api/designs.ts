@@ -23,6 +23,7 @@ export type MobileCatalogDesign = Pick<
   | 'diamondQuality'
   | 'goldColour'
   | 'totalValue'
+  | 'displayPrice'
   | 'imageUrls'
   | 'isPrimary'
 > & {
@@ -44,7 +45,7 @@ export type MobileConfiguratorOptions = {
   diamondType: string;
   shape: string;
   style: string;
-  metalColor: string;
+  metalCaratage: string;
   weight: string;
   quality: string;
   ringSize: string;
@@ -58,6 +59,51 @@ export type MobileConfiguratorResponse = {
   selectedDesign: Design;
   selectedOptions: MobileConfiguratorOptions;
   optionGroups: Record<keyof MobileConfiguratorOptions, string[]>;
+};
+
+type LegacyMobileConfiguratorOptions = Partial<MobileConfiguratorOptions> & {
+  metalColor?: string;
+};
+
+type LegacyMobileConfiguratorResponse = {
+  selectedDesign: Design;
+  selectedOptions?: LegacyMobileConfiguratorOptions;
+  optionGroups?: Partial<Record<keyof MobileConfiguratorOptions | 'metalColor', string[]>>;
+};
+
+const emptyMobileConfiguratorOptions = (): MobileConfiguratorOptions => ({
+  diamondType: '',
+  shape: '',
+  style: '',
+  metalCaratage: '',
+  weight: '',
+  quality: '',
+  ringSize: '',
+});
+
+const normalizeMobileConfiguratorResponse = (
+  response: LegacyMobileConfiguratorResponse,
+): MobileConfiguratorResponse => {
+  const selectedOptions = response.selectedOptions || {};
+  const optionGroups = response.optionGroups || {};
+
+  return {
+    selectedDesign: response.selectedDesign,
+    selectedOptions: {
+      ...emptyMobileConfiguratorOptions(),
+      ...selectedOptions,
+      metalCaratage: selectedOptions.metalCaratage || selectedOptions.metalColor || '',
+    },
+    optionGroups: {
+      diamondType: optionGroups.diamondType || [],
+      shape: optionGroups.shape || [],
+      style: optionGroups.style || [],
+      metalCaratage: optionGroups.metalCaratage || optionGroups.metalColor || [],
+      weight: optionGroups.weight || [],
+      quality: optionGroups.quality || [],
+      ringSize: optionGroups.ringSize || [],
+    },
+  };
 };
 
 export const fetchDesigns = (token: string, page = 1, limit = 25) => {
@@ -106,27 +152,55 @@ export const fetchCatalogCategoryCounts = (token: string) =>
   );
 
 export const fetchMobileDesignConfigurator = (token: string, id: string) =>
-  apiRequest<MobileConfiguratorResponse>(
+  apiRequest<LegacyMobileConfiguratorResponse>(
     `/products/mobile/configurator/${encodeURIComponent(id)}`,
     { method: 'GET' },
     token,
-  );
+  ).then(normalizeMobileConfiguratorResponse);
 
 export const resolveMobileDesignConfigurator = (
   token: string,
   id: string,
   options: MobileConfiguratorResolveQuery,
 ) => {
-  const params = new URLSearchParams();
-  Object.entries(options).forEach(([key, value]) => {
-    if (value) params.set(key, String(value));
-  });
-  const qs = params.toString();
-  return apiRequest<MobileConfiguratorResponse>(
-    `/products/mobile/configurator/${encodeURIComponent(id)}/resolve${qs ? `?${qs}` : ''}`,
+  const buildPath = (useLegacyMetalKey = false) => {
+    const params = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => {
+      if (!value) return;
+      if (useLegacyMetalKey && key === 'selectedKey' && value === 'metalCaratage') {
+        params.set(key, 'metalColor');
+        return;
+      }
+      if (useLegacyMetalKey && key === 'metalCaratage') {
+        params.set('metalColor', String(value));
+        return;
+      }
+      params.set(key, String(value));
+    });
+    const qs = params.toString();
+    return `/products/mobile/configurator/${encodeURIComponent(id)}/resolve${qs ? `?${qs}` : ''}`;
+  };
+
+  const shouldRetryLegacy =
+    options.selectedKey === 'metalCaratage' ||
+    Boolean(options.metalCaratage);
+
+  return apiRequest<LegacyMobileConfiguratorResponse>(
+    buildPath(),
     { method: 'GET' },
     token,
-  );
+  )
+    .catch((error) => {
+      if (!shouldRetryLegacy || error?.status !== 400) {
+        throw error;
+      }
+      return apiRequest<LegacyMobileConfiguratorResponse>(
+        buildPath(true),
+        { method: 'GET' },
+        token,
+      );
+    })
+    .then(normalizeMobileConfiguratorResponse);
 };
 
 export const fetchAllDesigns = async (token: string, limit = 500) => {

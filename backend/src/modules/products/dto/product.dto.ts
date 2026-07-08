@@ -817,9 +817,9 @@ export class FindMobileCatalogProductsQueryDto {
 }
 
 export class ResolveMobileDesignConfiguratorQueryDto {
-  @IsIn(['diamondType', 'shape', 'style', 'metalColor', 'weight', 'quality', 'ringSize'])
+  @IsIn(['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'])
   @IsOptional()
-  selectedKey?: 'diamondType' | 'shape' | 'style' | 'metalColor' | 'weight' | 'quality' | 'ringSize';
+  selectedKey?: 'diamondType' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
 
   @IsString()
   @IsOptional()
@@ -835,7 +835,7 @@ export class ResolveMobileDesignConfiguratorQueryDto {
 
   @IsString()
   @IsOptional()
-  metalColor?: string;
+  metalCaratage?: string;
 
   @IsString()
   @IsOptional()
