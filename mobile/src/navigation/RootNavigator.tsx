@@ -29,6 +29,7 @@ import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import PricingScreen from '../screens/PricingScreen';
 import type { BranchEmployee, UserRole } from '../types';
+import type { MobileConfiguratorResponse } from '../api/designs';
 import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
 
 export type RootStackParamList = {
@@ -54,6 +55,7 @@ export type QuoteBuilderDraft = {
   customerEmail?: string;
   purchaseOrderNumber?: string;
   notes?: string;
+  configurator?: MobileConfiguratorResponse;
   selection?: {
     diamondType?: string;
     shape?: string;

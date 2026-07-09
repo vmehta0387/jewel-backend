@@ -17,13 +17,17 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { createOrder, fetchPricePreview, updateOrder } from '../api/orders';
-import { fetchAllDesigns, fetchDesign } from '../api/designs';
+import { createOrder, updateOrder } from '../api/orders';
+import {
+  fetchMobileDesignConfigurator,
+  resolveMobileDesignConfigurator,
+  type MobileConfiguratorResponse,
+  type MobileConfiguratorResolveQuery,
+} from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
-import { getDesignFamilyKey } from '../utils/designFamily';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -38,6 +42,7 @@ type VersionFilters = {
 };
 
 type FilterKey = keyof VersionFilters;
+type VersionOptionGroups = Record<FilterKey, string[]>;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -57,12 +62,6 @@ const compact = (value?: string | number | null) => String(value ?? '').trim();
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
-
-const parseVersion = (version?: string | null) => {
-  const match = /V(\d+)/i.exec(String(version || '').trim());
-  const parsed = match ? Number.parseInt(match[1], 10) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-};
 
 const toCtwLabel = (value?: string | number | null) => {
   const clean = compact(value);
@@ -124,76 +123,48 @@ const getFilterValuesFromDesign = (design: Design): VersionFilters => {
   };
 };
 
-const matchesFilter = (values: string[], selected: string) => !selected || values.includes(selected);
+const emptyOptionGroups = (): VersionOptionGroups => ({
+  shape: [],
+  style: [],
+  metalColor: [],
+  weight: [],
+  quality: [],
+  ringSize: [],
+});
 
-const filterMatchesDesign = (design: Design, key: FilterKey, value: string) => {
-  const attrs = getVersionAttributes(design);
-  switch (key) {
-    case 'shape':
-      return attrs.shapes.includes(value);
-    case 'style':
-      return attrs.styles.includes(value);
-    case 'metalColor':
-      return attrs.metalColors.includes(value);
-    case 'weight':
-      return attrs.weights.includes(value);
-    case 'quality':
-      return attrs.qualities.includes(value);
-    case 'ringSize':
-      return attrs.ringSizes.includes(value);
-    default:
-      return false;
-  }
-};
+const filtersFromConfigurator = (response: MobileConfiguratorResponse): VersionFilters => ({
+  shape: response.selectedOptions?.shape || response.optionGroups.shape?.[0] || '',
+  style: response.selectedOptions?.style || response.optionGroups.style?.[0] || '',
+  metalColor: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage?.[0] || '',
+  weight: response.selectedOptions?.weight || response.optionGroups.weight?.[0] || '',
+  quality: response.selectedOptions?.quality || response.optionGroups.quality?.[0] || '',
+  ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize?.[0] || '',
+});
 
-const scoreDesignAgainstFilters = (design: Design, filters: VersionFilters, skipKey: FilterKey) => {
-  let score = 0;
-  (Object.keys(filters) as FilterKey[]).forEach((key) => {
-    if (key === skipKey) return;
-    if (!filters[key]) return;
-    if (filterMatchesDesign(design, key, filters[key])) score += 1;
-  });
-  return score;
-};
+const optionGroupsFromConfigurator = (
+  response: MobileConfiguratorResponse,
+  selected: VersionFilters,
+): VersionOptionGroups => ({
+  shape: uniqueValues([...(response.optionGroups.shape || []), selected.shape]),
+  style: uniqueValues([...(response.optionGroups.style || []), selected.style]),
+  metalColor: uniqueValues([...(response.optionGroups.metalCaratage || []), selected.metalColor]),
+  weight: uniqueValues([...(response.optionGroups.weight || []), selected.weight]),
+  quality: uniqueValues([...(response.optionGroups.quality || []), selected.quality]),
+  ringSize: uniqueValues([...(response.optionGroups.ringSize || []), selected.ringSize]),
+});
 
-const findBestMatchingVersion = (family: Design[], filters: VersionFilters, currentId: string | null) => {
-  const candidates = family.filter((design) => {
-    const attrs = getVersionAttributes(design);
-    return (
-      matchesFilter(attrs.shapes, filters.shape) &&
-      matchesFilter(attrs.styles, filters.style) &&
-      matchesFilter(attrs.metalColors, filters.metalColor) &&
-      matchesFilter(attrs.weights, filters.weight) &&
-      matchesFilter(attrs.qualities, filters.quality) &&
-      matchesFilter(attrs.ringSizes, filters.ringSize)
-    );
-  });
-
-  if (!candidates.length) return null;
-  const current = candidates.find((item) => item.id === currentId);
-  if (current) return current;
-  return [...candidates].sort((a, b) => parseVersion(a.version) - parseVersion(b.version))[0];
-};
-
-const findBestVersionForFieldSelection = (
-  family: Design[],
-  selectedKey: FilterKey,
-  selectedValue: string,
-  currentFilters: VersionFilters,
-  currentId: string | null,
-) => {
-  const candidates = family.filter((design) => filterMatchesDesign(design, selectedKey, selectedValue));
-  if (!candidates.length) return null;
-  const scored = [...candidates].sort((a, b) => {
-    const scoreA = scoreDesignAgainstFilters(a, currentFilters, selectedKey);
-    const scoreB = scoreDesignAgainstFilters(b, currentFilters, selectedKey);
-    if (scoreA !== scoreB) return scoreB - scoreA;
-    if (a.id === currentId) return -1;
-    if (b.id === currentId) return 1;
-    return parseVersion(a.version) - parseVersion(b.version);
-  });
-  return scored[0];
-};
+const configuratorQueryFromFilters = (
+  filters: VersionFilters,
+  selectedKey?: FilterKey,
+): MobileConfiguratorResolveQuery => ({
+  shape: filters.shape,
+  style: filters.style,
+  metalCaratage: filters.metalColor,
+  weight: filters.weight,
+  quality: filters.quality,
+  ringSize: filters.ringSize,
+  selectedKey: selectedKey === 'metalColor' ? 'metalCaratage' : selectedKey,
+});
 
 const QuoteBuilderScreen = () => {
   const route = useRoute<QuoteRoute>();
@@ -212,6 +183,7 @@ const QuoteBuilderScreen = () => {
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
+  const [optionGroups, setOptionGroups] = useState<VersionOptionGroups>(() => emptyOptionGroups());
   const [priceByDesignId, setPriceByDesignId] = useState<Record<string, number>>({});
 
   const [shape, setShape] = useState(draft.selection?.shape || '');
@@ -249,8 +221,8 @@ const QuoteBuilderScreen = () => {
     draft.notes,
   ]);
 
-  const applyActiveDesignSelection = useCallback((design: Design) => {
-    const next = getFilterValuesFromDesign(design);
+  const applyActiveDesignSelection = useCallback((design: Design, selectedOptions?: Partial<VersionFilters>) => {
+    const next = { ...getFilterValuesFromDesign(design), ...(selectedOptions || {}) };
     setActiveDesignId(design.id);
     setShape(next.shape || '');
     setStyle(next.style || '');
@@ -260,81 +232,43 @@ const QuoteBuilderScreen = () => {
     setRingSize(next.ringSize || '');
   }, []);
 
+  const applyConfiguratorResponse = useCallback((response: MobileConfiguratorResponse) => {
+    const selected = filtersFromConfigurator(response);
+    const design = response.selectedDesign;
+    setFamilyDesigns([design]);
+    setOptionGroups(optionGroupsFromConfigurator(response, selected));
+    setPriceByDesignId({
+      [design.id]: Number(design.displayPrice ?? design.totalValue ?? draft.unitPrice ?? 0),
+    });
+    applyActiveDesignSelection(design, selected);
+  }, [applyActiveDesignSelection, draft.unitPrice]);
+
   useEffect(() => {
     if (!token) return;
     let active = true;
 
-    const loadFamily = async () => {
+    const loadConfigurator = async () => {
       setLoadingFamily(true);
       try {
-        const primary = await fetchDesign(token, draft.designId);
-        const familyKey = getDesignFamilyKey(primary.designNo);
-
-        let familyIds = [primary.id];
-        try {
-          const rows = await fetchAllDesigns(token, 200);
-          const fromList = rows
-            .filter((row) => getDesignFamilyKey(row.designNo) === familyKey)
-            .map((row) => row.id);
-          familyIds = Array.from(new Set([primary.id, ...fromList]));
-        } catch {
-          familyIds = [primary.id];
-        }
-
-        const detailed = (
-          await Promise.all(
-            familyIds.map(async (id) => {
-              try {
-                return await fetchDesign(token, id);
-              } catch {
-                return null;
-              }
-            }),
-          )
-        ).filter(Boolean) as Design[];
-
-        const family = (detailed.length ? detailed : [primary]).sort((a, b) => parseVersion(a.version) - parseVersion(b.version));
-        const primaryDesign = [...family].sort((a, b) => parseVersion(a.version) - parseVersion(b.version))[0] || primary;
         if (!active) return;
-
-        setFamilyDesigns(family);
-        applyActiveDesignSelection(primaryDesign);
-
-        const shouldApplyPricing =
-          (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') &&
-          Boolean(user?.companyId) &&
-          Boolean(user?.branchId);
-
-        if (shouldApplyPricing) {
-          const pricedRows = await Promise.all(
-            family.map(async (design) => {
-              try {
-                const preview = await fetchPricePreview(token, design.id, user?.companyId as string, user?.branchId as string);
-                return [design.id, preview.finalPrice ?? design.totalValue ?? 0] as const;
-              } catch {
-                return [design.id, design.totalValue ?? 0] as const;
-              }
-            }),
-          );
-          if (active) setPriceByDesignId(Object.fromEntries(pricedRows));
-        } else {
-          setPriceByDesignId(Object.fromEntries(family.map((design) => [design.id, design.totalValue ?? 0] as const)));
-        }
+        const response = draft.configurator || await fetchMobileDesignConfigurator(token, draft.designId);
+        if (active) applyConfiguratorResponse(response);
       } catch {
         if (active) {
           setFamilyDesigns([]);
           setActiveDesignId(null);
+          setOptionGroups(emptyOptionGroups());
         }
       } finally {
         if (active) setLoadingFamily(false);
       }
     };
 
-    loadFamily();
+    loadConfigurator();
     return () => {
       active = false;
     };
-  }, [token, draft.designId, user?.role, user?.companyId, user?.branchId, applyActiveDesignSelection]);
+  }, [token, draft.designId, draft.configurator, applyConfiguratorResponse]);
 
   const activeDesign = useMemo(() => {
     if (!familyDesigns.length) return null;
@@ -352,29 +286,29 @@ const QuoteBuilderScreen = () => {
   }, [activeDesign, priceByDesignId, draft.unitPrice]);
 
   const shapeOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).shapes));
+    const values = optionGroups.shape;
     return values.length ? values : uniqueValues([shape]);
-  }, [familyDesigns, shape]);
+  }, [optionGroups.shape, shape]);
   const styleOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).styles));
+    const values = optionGroups.style;
     return values.length ? values : uniqueValues([style]);
-  }, [familyDesigns, style]);
+  }, [optionGroups.style, style]);
   const metalColorOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).metalColors));
+    const values = optionGroups.metalColor;
     return values.length ? values : uniqueValues([metalColor]);
-  }, [familyDesigns, metalColor]);
+  }, [optionGroups.metalColor, metalColor]);
   const weightOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).weights));
+    const values = optionGroups.weight;
     return values.length ? values : uniqueValues([weight]);
-  }, [familyDesigns, weight]);
+  }, [optionGroups.weight, weight]);
   const qualityOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).qualities));
+    const values = optionGroups.quality;
     return values.length ? values : uniqueValues([quality]);
-  }, [familyDesigns, quality]);
+  }, [optionGroups.quality, quality]);
   const ringSizeOptions = useMemo(() => {
-    const values = uniqueValues(familyDesigns.flatMap((design) => getVersionAttributes(design).ringSizes));
+    const values = optionGroups.ringSize;
     return values.length ? values : uniqueValues([ringSize]);
-  }, [familyDesigns, ringSize]);
+  }, [optionGroups.ringSize, ringSize]);
 
   const selection = useMemo<VersionFilters>(
     () => ({
@@ -416,23 +350,28 @@ const QuoteBuilderScreen = () => {
   }, []);
 
   const resolveVersionSelection = useCallback(
-    (selectedKey: FilterKey, selectedValue: string) => {
-      if (!familyDesigns.length) {
+    async (selectedKey: FilterKey, selectedValue: string) => {
+      if (!token) {
         setSelectionField(selectedKey, selectedValue);
         return;
       }
-      const strictFilters: VersionFilters = { ...selection, [selectedKey]: selectedValue };
-      const strictMatch = findBestMatchingVersion(familyDesigns, strictFilters, activeDesignId);
-      const matched =
-        strictMatch ||
-        findBestVersionForFieldSelection(familyDesigns, selectedKey, selectedValue, selection, activeDesignId);
-      if (!matched) {
+      const nextSelection: VersionFilters = { ...selection, [selectedKey]: selectedValue };
+      setSelectionField(selectedKey, selectedValue);
+      setLoadingFamily(true);
+      try {
+        const response = await resolveMobileDesignConfigurator(
+          token,
+          draft.designId,
+          configuratorQueryFromFilters(nextSelection, selectedKey),
+        );
+        applyConfiguratorResponse(response);
+      } catch {
         setSelectionField(selectedKey, selectedValue);
-        return;
+      } finally {
+        setLoadingFamily(false);
       }
-      applyActiveDesignSelection(matched);
     },
-    [familyDesigns, selection, activeDesignId, setSelectionField, applyActiveDesignSelection],
+    [token, selection, setSelectionField, draft.designId, applyConfiguratorResponse],
   );
 
   const openDropdown = useCallback(
@@ -453,7 +392,7 @@ const QuoteBuilderScreen = () => {
   const handleDropdownSelect = useCallback(
     (value: string) => {
       if (!dropdownKey) return;
-      resolveVersionSelection(dropdownKey, value);
+      void resolveVersionSelection(dropdownKey, value);
       setDropdownVisible(false);
     },
     [dropdownKey, resolveVersionSelection],

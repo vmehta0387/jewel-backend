@@ -480,6 +480,19 @@ const DesignDetailScreen = () => {
         imageUrl: activeImage || null,
         unitPrice: Math.round(Number(displayPrice || 0)),
         shortDescription,
+        configurator: {
+          selectedDesign: activeDesign,
+          selectedOptions: {
+            diamondType: selectedDiamondType,
+            shape: selectedShape,
+            style: selectedStyle,
+            metalCaratage: selectedMetalCaratage,
+            weight: selectedWeight,
+            quality: selectedQuality,
+            ringSize: selectedRingSize,
+          },
+          optionGroups,
+        },
         selection: {
           diamondType: selectedDiamondType,
           shape: selectedShape,
@@ -496,6 +509,7 @@ const DesignDetailScreen = () => {
     activeImage,
     displayPrice,
     navigation,
+    optionGroups,
     selectedDiamondType,
     selectedMetalCaratage,
     selectedQuality,
