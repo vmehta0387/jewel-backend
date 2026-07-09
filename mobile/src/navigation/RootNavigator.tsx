@@ -10,7 +10,6 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { useNotifications } from '../context/NotificationContext';
 import { registerPushDevice } from '../api/notifications';
 import LoginScreen from '../screens/LoginScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
@@ -291,9 +290,6 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
-  const { unreadCount } = useNotifications();
-  const ordersBadgeCount =
-    role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN' ? unreadCount : 0;
 
   return (
     <Tabs.Navigator
@@ -354,11 +350,6 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
             <View style={styles.iconWrap}>
               <View style={[styles.tabIcon, focused ? styles.tabIconActive : null]}>
                 <Ionicons name={name} size={iconSize} color={focused ? '#2C1E16' : '#8B7355'} />
-                {route.name === 'OrdersTab' && ordersBadgeCount > 0 ? (
-                  <View style={styles.badgePill}>
-                    <Text style={styles.badgePillText}>{ordersBadgeCount > 99 ? '99+' : ordersBadgeCount}</Text>
-                  </View>
-                ) : null}
               </View>
             </View>
           );
@@ -492,24 +483,5 @@ const styles = StyleSheet.create({
   },
   tabIconActive: {
     backgroundColor: 'rgba(255, 252, 245, 0.95)',
-  },
-  badgePill: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#A67F3F',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.75)',
-  },
-  badgePillText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
   },
 });

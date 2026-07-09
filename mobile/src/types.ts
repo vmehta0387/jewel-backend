@@ -29,6 +29,9 @@ export type Design = {
   diamondWeight?: string | null;
   diamondQuality?: string | null;
   goldColour?: string | null;
+  tags?: string[];
+  designDescription?: string | null;
+  remarks?: string | null;
   totalValue?: number;
   displayPrice?: number;
   grossWeight?: number;
@@ -44,12 +47,15 @@ export type Design = {
   }>;
   gemstones?: Array<{
     packetId?: string;
+    packetName?: string | null;
     stone?: string;
     shape?: string;
     size?: string;
     color?: string;
     quality?: string;
     stoneType?: string;
+    wtPerPcs?: number;
+    pcs?: number;
     wtInCts?: number;
   }>;
 };

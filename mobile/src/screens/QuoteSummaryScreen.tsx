@@ -19,7 +19,7 @@ import { createOrder, fetchOrder, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import type { Design } from '../types';
-import type { QuoteSummaryPayload } from '../navigation/RootNavigator';
+import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
@@ -394,6 +394,38 @@ const QuoteSummaryScreen = () => {
     }
   }, [statusKey, handleSendForApproval]);
 
+  const handleModifyOrder = useCallback(() => {
+    const designId = compact(summary.designId);
+    if (!designId) {
+      setError('Design reference is missing for this order.');
+      return;
+    }
+
+    const draft: QuoteBuilderDraft = {
+      orderId,
+      orderNumber,
+      createdAt: summary.createdAt,
+      status: currentStatus,
+      designId,
+      designNo: compact(summary.designNo) || orderNumber || 'Order',
+      designName: summary.designName || summary.designNo || null,
+      imageUrl: summary.imageUrl || null,
+      unitPrice: retailPrice,
+      shortDescription: summary.shortDescription || undefined,
+      selection: sanitizeSelection(resolvedSelection),
+      purchaseOrderNumber: summary.purchaseOrderNumber || undefined,
+      customerName: summary.customerName || undefined,
+      customerPhone: summary.customerPhone || undefined,
+      customerEmail: summary.customerEmail || undefined,
+      notes: summary.notes || undefined,
+    };
+
+    (navigation as any).navigate('DesignsTab', {
+      screen: 'QuoteBuilder',
+      params: { draft },
+    });
+  }, [currentStatus, navigation, orderId, orderNumber, resolvedSelection, retailPrice, summary]);
+
   const handleManagerPendingDecision = useCallback(
     async (nextStatus: 'APPROVED' | 'CANCELLED') => {
       if (!token || !orderId) {
@@ -486,7 +518,7 @@ const QuoteSummaryScreen = () => {
             </View>
             <Text style={styles.itemPrice}>{formatCurrency(retailPrice).replace('.00', '')}</Text>
           </View>
-          <TouchableOpacity style={styles.modifyBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
+          <TouchableOpacity style={styles.modifyBtn} onPress={handleModifyOrder} activeOpacity={0.9}>
             <Ionicons name="create-outline" size={14} color="#93826F" />
             <Text style={styles.modifyBtnText}>Modify this order</Text>
           </TouchableOpacity>
@@ -553,7 +585,11 @@ const QuoteSummaryScreen = () => {
         ) : (
           <>
             <View style={styles.smallActionsRow}>
-              <TouchableOpacity style={styles.smallBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
+              <TouchableOpacity
+                style={styles.smallBtn}
+                onPress={statusKey === 'QUOTE' ? handleModifyOrder : () => navigation.goBack()}
+                activeOpacity={0.9}
+              >
                 <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
                 <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]}>{actionConfig.leftLabel}</Text>
               </TouchableOpacity>

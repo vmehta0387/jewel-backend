@@ -41,6 +41,12 @@ const formatCompactCurrency = (value: number | string | null | undefined) => {
   }).format(num);
 };
 
+const formatStoneNumber = (value: number | string | null | undefined, decimals = 3) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '-';
+  return decimals > 0 ? num.toFixed(decimals) : String(Math.trunc(num));
+};
+
 const toYyyyMmDd = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -340,15 +346,15 @@ const OrderDetailScreen = () => {
                 {/* Table Body */}
                 {gemstoneRows.map((row, index) => (
                   <View key={`gem-${index}`} style={styles.tableRow}>
-                    <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.packetId || '-'}</Text>
+                    <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.packetName || row.packetId || '-'}</Text>
                     <Text style={[styles.tableCell, { width: 90 }]}>{row.stone || '-'}</Text>
                     <Text style={[styles.tableCell, { width: 80 }]}>{row.shape || '-'}</Text>
                     <Text style={[styles.tableCell, { width: 70 }]}>{row.size || '-'}</Text>
                     <Text style={[styles.tableCell, { width: 80 }]}>{row.color || '-'}</Text>
                     <Text style={[styles.tableCell, { width: 80 }]}>{row.quality || '-'}</Text>
-                    <Text style={[styles.tableCell, { width: 70 }]}>-</Text>
-                    <Text style={[styles.tableCell, { width: 60 }]}>-</Text>
-                    <Text style={[styles.tableCell, { width: 80, paddingRight: 16 }]}>{(Number(row.wtInCts) || 0).toFixed(3)}</Text>
+                    <Text style={[styles.tableCell, { width: 70 }]}>{formatStoneNumber(row.wtPerPcs)}</Text>
+                    <Text style={[styles.tableCell, { width: 60 }]}>{formatStoneNumber(row.pcs, 0)}</Text>
+                    <Text style={[styles.tableCell, { width: 80, paddingRight: 16 }]}>{formatStoneNumber(row.wtInCts)}</Text>
                   </View>
                 ))}
 

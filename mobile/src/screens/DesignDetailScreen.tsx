@@ -95,6 +95,9 @@ const toMetalShortCode = (value?: string | null) => {
   return toMetalCaratageLabel(value);
 };
 
+const toTagsLabel = (values?: string[] | null) =>
+  Array.isArray(values) ? values.map(compact).filter(Boolean).join(', ') : '';
+
 const getMetalOptionsFromDesign = (design: Design) => {
   const metals = design.metals || [];
   if (metals.length) {
@@ -608,41 +611,57 @@ const DesignDetailScreen = () => {
     () => String(activeDesign?.designName || activeDesign?.designNo || '').trim(),
     [activeDesign?.designName, activeDesign?.designNo],
   );
-
   const specRows = useMemo(
     () => [
-      { label: 'Stone', value: firstGem?.stone || selectedDiamondType || 'Diamond (Lab Grown)' },
-      { label: 'Stone Shape', value: selectedShape || firstGem?.shape || '-' },
+      { label: 'Design No.', value: activeDesign?.designNo || '-' },
+      { label: 'Sub-category', value: activeDesign?.collection || '-' },
       { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
       { label: 'Jewelry Size', value: selectedRingSize || activeDesign?.jewelrySize || '-' },
-      { label: 'Quality', value: selectedQuality || firstGem?.quality || activeDesign?.diamondQuality || '-' },
-      { label: 'Color', value: firstGem?.color || '-' },
+      { label: 'Stone', value: firstGem?.stone || selectedDiamondType || 'Diamond (Lab Grown)' },
+      { label: 'Stone Shape', value: selectedShape || firstGem?.shape || '-' },
+      {
+        label: 'Total No. of Stones',
+        value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '-',
+      },
       {
         label: 'Approx. Total Carat Wt.',
         value: toCtwLabel(selectedWeight) || (totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : '-'),
         highlight: true,
       },
       {
-        label: 'Total No. of Stones',
-        value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '-',
+        label: 'Gross Wt.',
+        value: Number(activeDesign?.grossWeight || 0) > 0 ? `${formatNumber(activeDesign?.grossWeight || 0, 3)} gm` : '-',
+      },
+      { label: 'Tag', value: toTagsLabel(activeDesign?.tags) || '-' },
+      {
+        label: 'Description',
+        value: compact(activeDesign?.designDescription) || '-',
+        multiline: true,
+      },
+      {
+        label: 'Remarks',
+        value: compact(activeDesign?.remarks) || '-',
+        multiline: true,
       },
     ],
     [
+      activeDesign?.collection,
+      activeDesign?.designDescription,
+      activeDesign?.designNo,
+      activeDesign?.grossWeight,
+      activeDesign?.jewelrySize,
+      activeDesign?.remarks,
+      activeDesign?.tags,
       firstGem?.stone,
       firstGem?.shape,
-      firstGem?.quality,
-      firstGem?.color,
       selectedDiamondType,
       selectedShape,
       selectedMetalCaratage,
       selectedRingSize,
-      selectedQuality,
       selectedWeight,
       totalGemWt,
       totalStonePieces,
       hasStonePieces,
-      activeDesign?.jewelrySize,
-      activeDesign?.diamondQuality,
     ],
   );
 
@@ -816,7 +835,7 @@ const DesignDetailScreen = () => {
               </View>
 
               <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === 'quality' ? styles.dropdownFieldWrapActive : null]}>
-                <Text style={styles.sectionLabel}>DIAMOND QUALITY</Text>
+                <Text style={styles.sectionLabel}>DIA. QUALITY</Text>
                 <TouchableOpacity
                   style={styles.dualFieldCard}
                   activeOpacity={0.9}
@@ -834,7 +853,7 @@ const DesignDetailScreen = () => {
             </View>
 
             <OptionSection
-              title="CARAT WEIGHT"
+              title="DIA. WEIGHT"
               options={weightOptions}
               selected={selectedWeight}
               onSelect={(value) => {
@@ -885,7 +904,16 @@ const DesignDetailScreen = () => {
               : specRows.map((row, index) => (
                   <View key={`spec-${row.label}`} style={[styles.specRow, index === specRows.length - 1 ? styles.specRowLast : null]}>
                     <Text style={styles.specLabel}>{row.label}</Text>
-                    <Text style={[styles.specValue, row.highlight ? styles.specValueHighlight : null]}>{row.value}</Text>
+                    <Text
+                      style={[
+                        styles.specValue,
+                        row.highlight ? styles.specValueHighlight : null,
+                        row.multiline ? styles.specValueMultiline : null,
+                      ]}
+                      numberOfLines={row.multiline ? 2 : 1}
+                    >
+                      {row.value}
+                    </Text>
                   </View>
                 ))}
           </View>
@@ -1319,16 +1347,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   specLabel: {
+    flex: 0.9,
     fontSize: 12,
     color: '#6D665D',
   },
   specValue: {
+    flex: 1.15,
+    marginLeft: 10,
     fontSize: 12,
     color: '#2A241F',
     fontWeight: '700',
+    textAlign: 'right',
   },
   specValueHighlight: {
     color: '#B2874A',
+  },
+  specValueMultiline: {
+    lineHeight: 16,
   },
   skeletonLine: {
     borderRadius: 999,

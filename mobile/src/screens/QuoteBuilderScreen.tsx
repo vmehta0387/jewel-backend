@@ -43,6 +43,7 @@ type VersionFilters = {
 
 type FilterKey = keyof VersionFilters;
 type VersionOptionGroups = Record<FilterKey, string[]>;
+type CustomerFieldErrors = Partial<Record<'name' | 'phone' | 'email', string>>;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -59,6 +60,7 @@ const formatQuoteDate = (value?: string | Date | null) => {
 };
 
 const compact = (value?: string | number | null) => String(value ?? '').trim();
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
@@ -197,6 +199,8 @@ const QuoteBuilderScreen = () => {
   const [customerName, setCustomerName] = useState(draft.customerName || '');
   const [customerPhone, setCustomerPhone] = useState(draft.customerPhone || '');
   const [customerEmail, setCustomerEmail] = useState(draft.customerEmail || '');
+  const [customerErrors, setCustomerErrors] = useState<CustomerFieldErrors>({});
+  const [validationToast, setValidationToast] = useState('');
   const [notes, setNotes] = useState(draft.notes || '');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
 
@@ -210,6 +214,8 @@ const QuoteBuilderScreen = () => {
     setCustomerName(draft.customerName || '');
     setCustomerPhone(draft.customerPhone || '');
     setCustomerEmail(draft.customerEmail || '');
+    setCustomerErrors({});
+    setValidationToast('');
     setNotes(draft.notes || '');
     setEditingOrderId(draft.orderId || null);
   }, [
@@ -220,6 +226,12 @@ const QuoteBuilderScreen = () => {
     draft.customerEmail,
     draft.notes,
   ]);
+
+  useEffect(() => {
+    if (!validationToast) return;
+    const timer = setTimeout(() => setValidationToast(''), 2800);
+    return () => clearTimeout(timer);
+  }, [validationToast]);
 
   const applyActiveDesignSelection = useCallback((design: Design, selectedOptions?: Partial<VersionFilters>) => {
     const next = { ...getFilterValuesFromDesign(design), ...(selectedOptions || {}) };
@@ -433,6 +445,41 @@ const QuoteBuilderScreen = () => {
 
   const canPersist = Boolean(token && companyId && branchId && !saving && !sending);
 
+  const clearCustomerError = useCallback((field: keyof CustomerFieldErrors) => {
+    setCustomerErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setError(null);
+  }, []);
+
+  const validateCustomerDetails = useCallback(() => {
+    const nextErrors: CustomerFieldErrors = {};
+    const name = customerName.trim();
+    const phone = customerPhone.trim();
+    const email = customerEmail.trim();
+    const phoneDigits = phone.replace(/\D/g, '');
+
+    if (!name) nextErrors.name = 'Customer name is required.';
+    if (!phone) nextErrors.phone = 'Customer phone is required.';
+    else if (phoneDigits.length < 7 || phoneDigits.length > 15) nextErrors.phone = 'Enter a valid phone number.';
+    if (!email) nextErrors.email = 'Customer email is required.';
+    else if (!emailPattern.test(email)) nextErrors.email = 'Enter a valid email address.';
+
+    setCustomerErrors(nextErrors);
+    const firstError = nextErrors.name || nextErrors.phone || nextErrors.email;
+    if (firstError) {
+      setError(firstError);
+      setValidationToast(firstError);
+      return false;
+    }
+
+    setValidationToast('');
+    return true;
+  }, [customerEmail, customerName, customerPhone]);
+
   const persistOrder = useCallback(
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
       if (!token || !companyId || !branchId) return null;
@@ -500,6 +547,7 @@ const QuoteBuilderScreen = () => {
 
   const handleSave = useCallback(async () => {
     if (!canPersist) return;
+    if (!validateCustomerDetails()) return;
     setSaving(true);
     setError(null);
     try {
@@ -510,10 +558,11 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [canPersist, persistOrder]);
+  }, [canPersist, persistOrder, validateCustomerDetails]);
 
   const handleSendForApproval = useCallback(async () => {
     if (!canPersist) return;
+    if (!validateCustomerDetails()) return;
     setSending(true);
     setError(null);
     try {
@@ -529,9 +578,11 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [canPersist, navigation, persistOrder]);
+  }, [canPersist, navigation, persistOrder, validateCustomerDetails]);
 
   const handleSummary = useCallback(() => {
+    if (!validateCustomerDetails()) return;
+    setError(null);
     navigation.navigate('QuoteSummary', {
       summary: {
         orderId: order?.id || editingOrderId || undefined,
@@ -590,6 +641,7 @@ const QuoteBuilderScreen = () => {
     purchaseOrderNumber,
     user?.branchName,
     notes,
+    validateCustomerDetails,
   ]);
 
   const headerDate = formatQuoteDate(order?.createdAt || draft.createdAt);
@@ -740,32 +792,51 @@ const QuoteBuilderScreen = () => {
           <Text style={styles.blockLabel}>CUSTOMER INFO</Text>
           <TextInput
             value={customerName}
-            onChangeText={setCustomerName}
+            onChangeText={(value) => {
+              setCustomerName(value);
+              clearCustomerError('name');
+            }}
             placeholder="Customer name"
             placeholderTextColor="#A29587"
-            style={styles.customerInput}
+            style={[styles.customerInput, customerErrors.name ? styles.customerInputError : null]}
           />
+          {customerErrors.name ? <Text style={styles.customerErrorText}>{customerErrors.name}</Text> : null}
           <TextInput
             value={customerPhone}
-            onChangeText={setCustomerPhone}
+            onChangeText={(value) => {
+              setCustomerPhone(value);
+              clearCustomerError('phone');
+            }}
             placeholder="+1 (212) 555-0198"
             placeholderTextColor="#A29587"
             keyboardType="phone-pad"
-            style={styles.customerInput}
+            style={[styles.customerInput, customerErrors.phone ? styles.customerInputError : null]}
           />
+          {customerErrors.phone ? <Text style={styles.customerErrorText}>{customerErrors.phone}</Text> : null}
           <TextInput
             value={customerEmail}
-            onChangeText={setCustomerEmail}
+            onChangeText={(value) => {
+              setCustomerEmail(value);
+              clearCustomerError('email');
+            }}
             placeholder="customer@email.com"
             placeholderTextColor="#A29587"
             autoCapitalize="none"
             keyboardType="email-address"
-            style={styles.customerInput}
+            style={[styles.customerInput, customerErrors.email ? styles.customerInputError : null]}
           />
+          {customerErrors.email ? <Text style={styles.customerErrorText}>{customerErrors.email}</Text> : null}
         </View>
 
         <View style={{ height: 140 }} />
       </ScrollView>
+
+      {validationToast ? (
+        <View style={styles.validationToast} pointerEvents="none">
+          <Ionicons name="alert-circle" size={16} color="#FFFFFF" />
+          <Text style={styles.validationToastText}>{validationToast}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.bottomBar}>
         <View style={styles.bottomSmallActions}>
@@ -1198,6 +1269,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: 8,
+  },
+  customerInputError: {
+    borderColor: '#B54040',
+    backgroundColor: '#FFF7F5',
+  },
+  customerErrorText: {
+    marginTop: 4,
+    color: '#B54040',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  validationToast: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: Platform.OS === 'ios' ? 128 : 118,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: '#B54040',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 30,
+  },
+  validationToastText: {
+    flex: 1,
+    marginLeft: 8,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   bottomBar: {
     position: 'absolute',

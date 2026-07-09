@@ -1376,8 +1376,9 @@ export class ProductsService {
       group.push(metal);
       metalsByDesign.set(metal.designId, group);
     }
-    const gemstonesByDesign = new Map<string, DesignGemstone[]>();
-    for (const gemstone of gemstones) {
+    const gemstonesWithPacketNames = await this.withGemstonePacketNames(gemstones);
+    const gemstonesByDesign = new Map<string, Array<DesignGemstone & { packetName: string | null }>>();
+    for (const gemstone of gemstonesWithPacketNames) {
       const group = gemstonesByDesign.get(gemstone.designId) || [];
       group.push(gemstone);
       gemstonesByDesign.set(gemstone.designId, group);
@@ -1860,6 +1861,9 @@ export class ProductsService {
         'design.diamondWeight',
         'design.diamondQuality',
         'design.goldColour',
+        'design.tags',
+        'design.designDescription',
+        'design.remarks',
         'design.totalValue',
         'design.grossWeight',
         'design.imageUrls',
@@ -1939,6 +1943,51 @@ export class ProductsService {
     return grouped;
   }
 
+  private async withGemstonePacketNames<T extends { packetId?: string | null }>(
+    gemstones: T[],
+  ): Promise<Array<T & { packetName: string | null }>> {
+    const packetRefs = Array.from(
+      new Set(
+        gemstones
+          .map((gem) => gem.packetId)
+          .map((value) => (value || '').trim())
+          .filter((value): value is string => value.length > 0),
+      ),
+    );
+    const packets = packetRefs.length
+      ? await this.packetRepo.find({
+          where: [
+            { id: In(packetRefs) },
+            { barcode: In(packetRefs) },
+            { packetName: In(packetRefs) },
+          ],
+        })
+      : [];
+    const packetNameById = new Map(packets.map((packet) => [packet.id, packet.packetName]));
+    const packetNameByBarcode = new Map(
+      packets
+        .filter((packet) => Boolean((packet.barcode || '').trim()))
+        .map((packet) => [packet.barcode!.trim(), packet.packetName]),
+    );
+    const packetNameByName = new Map(
+      packets.map((packet) => [packet.packetName.trim().toUpperCase(), packet.packetName]),
+    );
+
+    return gemstones.map((gem) => ({
+      ...gem,
+      packetName: (() => {
+        const packetRef = (gem.packetId || '').trim();
+        if (!packetRef) return null;
+        return (
+          packetNameById.get(packetRef) ||
+          packetNameByBarcode.get(packetRef) ||
+          packetNameByName.get(packetRef.toUpperCase()) ||
+          null
+        );
+      })(),
+    }));
+  }
+
   private async toMobileConfiguratorDesign(
     design: Design,
     requester?: AuthUser,
@@ -1960,6 +2009,9 @@ export class ProductsService {
       diamondWeight: design.diamondWeight,
       diamondQuality: design.diamondQuality,
       goldColour: design.goldColour,
+      tags: Array.isArray(design.tags) ? design.tags : [],
+      designDescription: design.designDescription,
+      remarks: design.remarks,
       totalValue: Number(design.totalValue || 0),
       displayPrice,
       grossWeight: Number(design.grossWeight || 0),
@@ -1973,7 +2025,7 @@ export class ProductsService {
         totalWt: Number(metal.totalWt || 0),
         value: Number(metal.value || 0),
       })),
-      gemstones: (design.gemstones || []).map((gem) => ({
+      gemstones: await this.withGemstonePacketNames((design.gemstones || []).map((gem) => ({
         packetId: gem.packetId,
         stone: gem.stone,
         shape: gem.shape,
@@ -1981,9 +2033,10 @@ export class ProductsService {
         color: gem.color,
         quality: gem.quality,
         stoneType: gem.stoneType,
+        wtPerPcs: Number(gem.wtPerPcs || 0),
         wtInCts: Number(gem.wtInCts || 0),
         pcs: Number(gem.pcs || 0),
-      })),
+      }))),
     };
   }
 
@@ -2433,6 +2486,7 @@ export class ProductsService {
 
     return {
       ...design,
+      gemstones: await this.withGemstonePacketNames(design.gemstones || []),
       imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
       imageUrls: resolvedImageUrls,
       stlFileUrl: resolvedStlFileUrl,
