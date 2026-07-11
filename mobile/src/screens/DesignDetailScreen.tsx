@@ -3,12 +3,14 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  Keyboard,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
@@ -21,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import NotificationPopover from '../components/NotificationPopover';
 import {
   fetchMobileDesignConfigurator,
   resolveMobileDesignConfigurator,
@@ -30,6 +33,7 @@ import { fetchPricePreview } from '../api/orders';
 import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatNumber } from '../utils/format';
+import type { NotificationFeedEntry } from '../utils/appNotifications';
 
 type OptionVariant = 'default' | 'metal';
 
@@ -45,6 +49,20 @@ type VersionFilters = {
 
 type FilterKey = keyof VersionFilters;
 type VersionOptionGroups = Record<FilterKey, string[]>;
+type DropdownLayout = {
+  top: number;
+  left: number;
+  width: number;
+  listMaxHeight: number;
+};
+
+const DROPDOWN_EDGE_PADDING = 12;
+const DROPDOWN_GAP = 6;
+const DROPDOWN_LIST_MAX_HEIGHT = 176;
+const DROPDOWN_OPTION_HEIGHT = 40;
+const DROPDOWN_SEARCH_HEIGHT = 48;
+const DROPDOWN_LIST_MIN_HEIGHT = 40;
+const FILTER_KEYS: FilterKey[] = ['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'];
 
 const formatDetailPrice = (value: number | null | undefined) => {
   const numeric = Number(value);
@@ -58,8 +76,12 @@ const formatDetailPrice = (value: number | null | undefined) => {
 
 const compact = (value?: string | number | null) => String(value ?? '').trim();
 
+const hasDisplayValue = (value?: string | number | null) => compact(value) !== '';
+
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
+
+const cleanOptions = (values?: Array<string | number | null | undefined> | null) => uniqueValues(values || []);
 
 const toCaratLabel = (value?: string | number | null) => {
   const clean = compact(value);
@@ -88,7 +110,7 @@ const metalCaratageSwatchByValue = (value: string) => {
 };
 
 const toMetalCaratageLabel = (value?: string | null) => {
-  return compact(value).replace(/\s+/g, ' ') || '-';
+  return compact(value).replace(/\s+/g, ' ');
 };
 
 const toMetalShortCode = (value?: string | null) => {
@@ -97,6 +119,12 @@ const toMetalShortCode = (value?: string | null) => {
 
 const toTagsLabel = (values?: string[] | null) =>
   Array.isArray(values) ? values.map(compact).filter(Boolean).join(', ') : '';
+
+const formatStoneNumber = (value: string | number | null | undefined, decimals = 3) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return formatNumber(numeric, decimals);
+};
 
 const getMetalOptionsFromDesign = (design: Design) => {
   const metals = design.metals || [];
@@ -146,7 +174,7 @@ const mergeOptionGroupsWithSelection = (
   selected: Partial<VersionFilters>,
 ): VersionOptionGroups => {
   const next = { ...groups };
-  (Object.keys(next) as FilterKey[]).forEach((key) => {
+  FILTER_KEYS.forEach((key) => {
     const selectedValue = compact(selected[key]);
     if (!selectedValue) return;
     const values = next[key] || [];
@@ -169,12 +197,15 @@ const OptionSection = ({
   selected: string;
   onSelect: (value: string) => void;
   variant?: OptionVariant;
-}) => (
-  <View style={styles.sectionBlock}>
-    <Text style={styles.sectionLabel}>{title}</Text>
-    {options.length ? (
+}) => {
+  const visibleOptions = cleanOptions(options);
+  if (!visibleOptions.length) return null;
+
+  return (
+    <View style={styles.sectionBlock}>
+      <Text style={styles.sectionLabel}>{title}</Text>
       <View style={[styles.optionWrap, variant === 'metal' ? styles.metalWrap : null]}>
-        {options.map((option) => {
+        {visibleOptions.map((option) => {
           const active = selected === option;
           if (variant === 'metal') {
             return (
@@ -204,21 +235,98 @@ const OptionSection = ({
           );
         })}
       </View>
-    ) : (
-      <Text style={styles.emptyOption}>Not available</Text>
-    )}
-  </View>
-);
+    </View>
+  );
+};
+
+const hasGemstoneValue = (gem: NonNullable<Design['gemstones']>[number]) => {
+  const numericValues = [gem.wtPerPcs, gem.pcs, gem.wtInCts].map(Number);
+  return (
+    [gem.stone, gem.shape, gem.size, gem.color, gem.quality].some(hasDisplayValue) ||
+    numericValues.some((value) => Number.isFinite(value) && value > 0)
+  );
+};
+
+const GemstoneGrid = ({ gemstones }: { gemstones: NonNullable<Design['gemstones']> }) => {
+  const visibleGemstones = gemstones.filter(hasGemstoneValue);
+  if (!visibleGemstones.length) return null;
+
+  return (
+    <View style={styles.gemstoneCard}>
+      <Text style={styles.specTitle}>DESIGN GEMSTONES</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
+        <View style={styles.gemstoneTable}>
+          <View style={[styles.gemstoneTableRow, styles.gemstoneHeaderRow]}>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneStoneCell]}>Stone</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Shape</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Size</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Color</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Quality</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt/Pcs</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneSmallNumberCell]}>Pcs</Text>
+            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt(Cts)</Text>
+          </View>
+          {visibleGemstones.map((gem, index) => (
+            <View
+              key={`gem-row-${gem.packetId || gem.stone || index}-${index}`}
+              style={[styles.gemstoneTableRow, index === visibleGemstones.length - 1 ? styles.gemstoneTableRowLast : null]}
+            >
+              <Text style={[styles.gemstoneCell, styles.gemstoneStoneCell]} numberOfLines={1}>
+                {compact(gem.stone)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+                {compact(gem.shape)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+                {compact(gem.size)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+                {compact(gem.color)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+                {compact(gem.quality)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
+                {formatStoneNumber(gem.wtPerPcs)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneSmallNumberCell]}>
+                {formatStoneNumber(gem.pcs, 0)}
+              </Text>
+              <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
+                {formatStoneNumber(gem.wtInCts)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
 
 const DesignDetailScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const mediaHeight = Math.min(178, Math.max(136, width * 0.38));
   const mediaFrameWidth = Math.max(220, width - 28);
   const mediaListRef = useRef<FlatList<string> | null>(null);
+  const detailScrollRef = useRef<ScrollView | null>(null);
+  const detailScrollYRef = useRef(0);
+  const keyboardHeightRef = useRef(0);
+  const keyboardRestoreScrollYRef = useRef<number | null>(null);
+  const keyboardManualScrollRef = useRef(false);
+  const screenRef = useRef<View | null>(null);
+  const dropdownFieldRefs = useRef<Record<FilterKey, View | null>>({
+    diamondType: null,
+    shape: null,
+    style: null,
+    metalCaratage: null,
+    weight: null,
+    quality: null,
+    ringSize: null,
+  });
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -235,6 +343,7 @@ const DesignDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [resolvingSelection, setResolvingSelection] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
 
   const [selectedShape, setSelectedShape] = useState('');
   const [selectedDiamondType, setSelectedDiamondType] = useState('');
@@ -247,6 +356,8 @@ const DesignDetailScreen = () => {
   const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
   const [dropdownSelected, setDropdownSelected] = useState('');
   const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
+  const [dropdownLayout, setDropdownLayout] = useState<DropdownLayout | null>(null);
+  const [dropdownSearch, setDropdownSearch] = useState('');
   const resolveRequestSeqRef = useRef(0);
 
   const handleBackToDesigns = useCallback(() => {
@@ -384,27 +495,27 @@ const DesignDetailScreen = () => {
   );
 
   const diamondTypeOptions = useMemo(
-    () => optionGroups.diamondType,
+    () => cleanOptions(optionGroups.diamondType),
     [optionGroups.diamondType],
   );
   const styleOptions = useMemo(
-    () => optionGroups.style,
+    () => cleanOptions(optionGroups.style),
     [optionGroups.style],
   );
   const metalCaratageOptions = useMemo(
-    () => optionGroups.metalCaratage,
+    () => cleanOptions(optionGroups.metalCaratage),
     [optionGroups.metalCaratage],
   );
   const qualityOptions = useMemo(
-    () => optionGroups.quality,
+    () => cleanOptions(optionGroups.quality),
     [optionGroups.quality],
   );
   const weightOptions = useMemo(
-    () => optionGroups.weight,
+    () => cleanOptions(optionGroups.weight),
     [optionGroups.weight],
   );
   const ringSizeOptions = useMemo(
-    () => optionGroups.ringSize,
+    () => cleanOptions(optionGroups.ringSize),
     [optionGroups.ringSize],
   );
 
@@ -527,43 +638,258 @@ const DesignDetailScreen = () => {
     handleOpenQuoteBuilder();
   }, [activeDesign, handleOpenQuoteBuilder]);
 
+  const filteredDropdownOptions = useMemo(() => {
+    const search = dropdownSearch.trim().toLowerCase();
+    if (!search) return dropdownOptions;
+    return dropdownOptions.filter((option) => option.toLowerCase().includes(search));
+  }, [dropdownOptions, dropdownSearch]);
+
+  const closeDropdown = useCallback(() => {
+    setDropdownVisible(false);
+    setDropdownLayout(null);
+    setDropdownSearch('');
+  }, []);
+
+  const measureDropdownLayout = useCallback(
+    (key: FilterKey, optionCount: number) => {
+      const fieldNode = dropdownFieldRefs.current[key];
+      const screenNode = screenRef.current;
+      if (!fieldNode || !screenNode) {
+        setDropdownLayout(null);
+        return;
+      }
+
+      screenNode.measureInWindow((rootX, rootY) => {
+        fieldNode.measureInWindow((fieldX, fieldY, fieldWidth, fieldHeight) => {
+          const preferredListHeight = Math.min(
+            DROPDOWN_LIST_MAX_HEIGHT,
+            Math.max(DROPDOWN_OPTION_HEIGHT, optionCount * DROPDOWN_OPTION_HEIGHT),
+          );
+          const visibleBottom = windowHeight - keyboardHeightRef.current - DROPDOWN_EDGE_PADDING;
+          const spaceBelow = visibleBottom - (fieldY + fieldHeight);
+          const spaceAbove = fieldY - DROPDOWN_EDGE_PADDING;
+          const preferredMenuHeight = DROPDOWN_SEARCH_HEIGHT + preferredListHeight;
+          const openDownTop = fieldY + fieldHeight + DROPDOWN_GAP;
+          const openUpTop = Math.max(DROPDOWN_EDGE_PADDING, fieldY - preferredMenuHeight - DROPDOWN_GAP);
+          const canOpenDown = spaceBelow >= DROPDOWN_SEARCH_HEIGHT + DROPDOWN_LIST_MIN_HEIGHT;
+          const openUp = spaceBelow < preferredMenuHeight && spaceAbove > spaceBelow;
+          const openDown = canOpenDown || !openUp;
+          const listHeight = openDown
+            ? Math.max(
+                DROPDOWN_LIST_MIN_HEIGHT,
+                Math.min(preferredListHeight, visibleBottom - openDownTop - DROPDOWN_SEARCH_HEIGHT),
+              )
+            : preferredListHeight;
+          const menuTopInWindow = openDown ? openDownTop : openUpTop;
+          const menuLeft = Math.max(
+            DROPDOWN_EDGE_PADDING,
+            Math.min(fieldX - rootX, width - DROPDOWN_EDGE_PADDING - fieldWidth),
+          );
+
+          setDropdownLayout({
+            top: menuTopInWindow - rootY,
+            left: menuLeft,
+            width: fieldWidth,
+            listMaxHeight: listHeight,
+          });
+        });
+      });
+    },
+    [width, windowHeight],
+  );
+
   const openDropdown = useCallback(
     (key: FilterKey, options: string[], selected: string) => {
       if (!options.length) return;
       if (dropdownVisible && dropdownKey === key) {
-        setDropdownVisible(false);
+        closeDropdown();
         return;
       }
       setDropdownKey(key);
       setDropdownOptions(options);
       setDropdownSelected(selected);
+      setDropdownSearch('');
+      measureDropdownLayout(key, options.length);
       setDropdownVisible(true);
     },
-    [dropdownKey, dropdownVisible],
+    [closeDropdown, dropdownKey, dropdownVisible, measureDropdownLayout],
   );
 
   const handleDropdownSelect = useCallback(
     (value: string) => {
       if (!dropdownKey) return;
       resolveVersionSelection(dropdownKey, value);
-      setDropdownVisible(false);
+      closeDropdown();
     },
-    [dropdownKey, resolveVersionSelection],
+    [closeDropdown, dropdownKey, resolveVersionSelection],
   );
 
-  const renderInlineDropdown = useCallback(
-    (ownerKey: FilterKey) => {
-      if (!dropdownVisible || dropdownKey !== ownerKey) return null;
+  const handleDetailScrollBegin = useCallback(() => {
+    if (keyboardHeightRef.current > 0) {
+      keyboardManualScrollRef.current = true;
+      keyboardRestoreScrollYRef.current = null;
+    }
+    if (dropdownVisible) closeDropdown();
+  }, [closeDropdown, dropdownVisible]);
 
-      return (
-        <View style={styles.inlineDropdownMenu}>
-          <ScrollView style={styles.inlineDropdownScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            {dropdownOptions.map((item, index) => {
+  const handleDetailTouchStart = useCallback(() => {
+    if (dropdownVisible) closeDropdown();
+  }, [closeDropdown, dropdownVisible]);
+
+  const handleOutsideDropdownTouchStart = useCallback(() => {
+    if (dropdownVisible) closeDropdown();
+  }, [closeDropdown, dropdownVisible]);
+
+  const handleOpenNotifications = useCallback(() => {
+    closeDropdown();
+    setNotificationsVisible(true);
+  }, [closeDropdown]);
+
+  const handleOpenNotificationEntry = useCallback(
+    (_entry: NotificationFeedEntry) => {
+      (navigation as any).navigate('OrdersTab');
+    },
+    [navigation],
+  );
+
+  const keepDropdownAboveKeyboard = useCallback(
+    (keyboardHeight: number) => {
+      if (!dropdownKey || keyboardHeight <= 0) return;
+      const fieldNode = dropdownFieldRefs.current[dropdownKey];
+      if (!fieldNode) return;
+
+      fieldNode.measureInWindow((_, fieldY, __, fieldHeight) => {
+        const listHeight = Math.min(
+          DROPDOWN_LIST_MAX_HEIGHT,
+          Math.max(DROPDOWN_OPTION_HEIGHT, dropdownOptions.length * DROPDOWN_OPTION_HEIGHT),
+        );
+        const menuHeight = DROPDOWN_SEARCH_HEIGHT + listHeight;
+        const visibleBottom = windowHeight - keyboardHeight - DROPDOWN_EDGE_PADDING;
+        const wantedBottom = fieldY + fieldHeight + DROPDOWN_GAP + menuHeight;
+        const overlap = wantedBottom - visibleBottom;
+
+        if (overlap > 0) {
+          if (keyboardRestoreScrollYRef.current === null) {
+            keyboardRestoreScrollYRef.current = detailScrollYRef.current;
+          }
+          keyboardManualScrollRef.current = false;
+          const nextY = Math.max(0, detailScrollYRef.current + overlap + DROPDOWN_EDGE_PADDING);
+          detailScrollYRef.current = nextY;
+          detailScrollRef.current?.scrollTo({
+            y: nextY,
+            animated: false,
+          });
+          requestAnimationFrame(() => {
+            measureDropdownLayout(dropdownKey, dropdownOptions.length);
+            requestAnimationFrame(() => {
+              measureDropdownLayout(dropdownKey, dropdownOptions.length);
+            });
+          });
+          return;
+        }
+
+        measureDropdownLayout(dropdownKey, dropdownOptions.length);
+        requestAnimationFrame(() => {
+          measureDropdownLayout(dropdownKey, dropdownOptions.length);
+        });
+      });
+    },
+    [dropdownKey, dropdownOptions.length, measureDropdownLayout, windowHeight],
+  );
+
+  useEffect(() => {
+    const handleKeyboardShow = (event: { endCoordinates?: { height?: number } }) => {
+      const nextHeight = event.endCoordinates?.height || 0;
+      keyboardHeightRef.current = nextHeight;
+      keepDropdownAboveKeyboard(nextHeight);
+    };
+    const handleKeyboardHide = () => {
+      keyboardHeightRef.current = 0;
+      const restoreY = keyboardRestoreScrollYRef.current;
+      if (restoreY !== null && !keyboardManualScrollRef.current) {
+        detailScrollYRef.current = restoreY;
+        detailScrollRef.current?.scrollTo({
+          y: restoreY,
+          animated: false,
+        });
+      }
+      keyboardRestoreScrollYRef.current = null;
+      keyboardManualScrollRef.current = false;
+      if (dropdownVisible && dropdownKey) {
+        requestAnimationFrame(() => {
+          measureDropdownLayout(dropdownKey, dropdownOptions.length);
+          requestAnimationFrame(() => {
+            measureDropdownLayout(dropdownKey, dropdownOptions.length);
+          });
+        });
+      }
+    };
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', handleKeyboardShow);
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', handleKeyboardHide);
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [
+    dropdownKey,
+    dropdownOptions.length,
+    dropdownVisible,
+    keepDropdownAboveKeyboard,
+    measureDropdownLayout,
+  ]);
+
+  const renderDropdownOverlay = useCallback(() => {
+    if (!dropdownVisible || !dropdownKey || !dropdownLayout) return null;
+
+    return (
+      <View style={styles.dropdownOverlay} pointerEvents="box-none">
+        <View
+          style={[
+            styles.inlineDropdownMenu,
+            {
+              top: dropdownLayout.top,
+              left: dropdownLayout.left,
+              width: dropdownLayout.width,
+            },
+          ]}
+        >
+          <View style={styles.inlineDropdownSearchRow}>
+            <Ionicons name="search-outline" size={14} color="#9A8D80" />
+            <TextInput
+              style={styles.inlineDropdownSearchInput}
+              value={dropdownSearch}
+              onChangeText={setDropdownSearch}
+              placeholder="Search options"
+              placeholderTextColor="#A79C91"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onFocus={() => keepDropdownAboveKeyboard(keyboardHeightRef.current)}
+              returnKeyType="search"
+            />
+            {dropdownSearch ? (
+              <TouchableOpacity
+                style={styles.inlineDropdownClearBtn}
+                onPress={() => setDropdownSearch('')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close-circle" size={15} color="#A79C91" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <ScrollView
+            style={[styles.inlineDropdownScroll, { maxHeight: dropdownLayout.listMaxHeight }]}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={filteredDropdownOptions.length * DROPDOWN_OPTION_HEIGHT > dropdownLayout.listMaxHeight}
+          >
+            {filteredDropdownOptions.length ? filteredDropdownOptions.map((item, index) => {
               const active = item === dropdownSelected;
-              const isLast = index === dropdownOptions.length - 1;
+              const isLast = index === filteredDropdownOptions.length - 1;
               return (
                 <TouchableOpacity
-                  key={`inline-dd-${ownerKey}-${item}`}
+                  key={`inline-dd-${dropdownKey}-${item}`}
                   style={[
                     styles.inlineDropdownOption,
                     isLast ? styles.inlineDropdownOptionLast : null,
@@ -577,13 +903,27 @@ const DesignDetailScreen = () => {
                   </Text>
                 </TouchableOpacity>
               );
-            })}
+            }) : (
+              <View style={styles.inlineDropdownEmptyRow}>
+                <Text style={styles.inlineDropdownEmptyText}>No matching options</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
-      );
-    },
-    [dropdownVisible, dropdownKey, dropdownOptions, dropdownSelected, handleDropdownSelect],
-  );
+      </View>
+    );
+  }, [
+    closeDropdown,
+    dropdownKey,
+    dropdownLayout,
+    dropdownSearch,
+    filteredDropdownOptions,
+    dropdownOptions,
+    dropdownSelected,
+    dropdownVisible,
+    handleDropdownSelect,
+    keepDropdownAboveKeyboard,
+  ]);
 
   const totalGemWt = useMemo(
     () => (activeDesign?.gemstones || []).reduce((sum, gem) => sum + Number(gem.wtInCts || 0), 0),
@@ -602,7 +942,8 @@ const DesignDetailScreen = () => {
     () =>
       (activeDesign?.gemstones || []).some((gem) => {
         const row = gem as { pcs?: number | string; Pcs?: number | string };
-        return row.pcs !== undefined || row.Pcs !== undefined;
+        const pieces = Number(row.pcs ?? row.Pcs);
+        return Number.isFinite(pieces) && pieces > 0;
       }),
     [activeDesign?.gemstones],
   );
@@ -612,47 +953,50 @@ const DesignDetailScreen = () => {
     [activeDesign?.designName, activeDesign?.designNo],
   );
   const specRows = useMemo(
-    () => [
-      { label: 'Design No.', value: activeDesign?.designNo || '-' },
-      { label: 'Sub-category', value: activeDesign?.collection || '-' },
-      { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
-      { label: 'Jewelry Size', value: selectedRingSize || activeDesign?.jewelrySize || '-' },
-      { label: 'Stone', value: firstGem?.stone || selectedDiamondType || 'Diamond (Lab Grown)' },
-      { label: 'Stone Shape', value: selectedShape || firstGem?.shape || '-' },
-      {
-        label: 'Total No. of Stones',
-        value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '-',
-      },
-      {
-        label: 'Approx. Total Carat Wt.',
-        value: toCtwLabel(selectedWeight) || (totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : '-'),
-        highlight: true,
-      },
-      {
-        label: 'Gross Wt.',
-        value: Number(activeDesign?.grossWeight || 0) > 0 ? `${formatNumber(activeDesign?.grossWeight || 0, 3)} gm` : '-',
-      },
-      { label: 'Tag', value: toTagsLabel(activeDesign?.tags) || '-' },
-      {
-        label: 'Description',
-        value: compact(activeDesign?.designDescription) || '-',
-        multiline: true,
-      },
-      {
-        label: 'Remarks',
-        value: compact(activeDesign?.remarks) || '-',
-        multiline: true,
-      },
-    ],
+    () =>
+      [
+        { label: 'Design No.', value: compact(activeDesign?.designNo) },
+        { label: 'QR Code No.', value: compact(activeDesign?.barcode) },
+        { label: 'Sub-category', value: compact(activeDesign?.collection) },
+        { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
+        { label: 'Jewelry Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
+        { label: 'Diamond Type', value: compact(activeDesign?.diamondType || selectedDiamondType) },
+        { label: 'Stone Shape', value: compact(selectedShape || firstGem?.shape) },
+        {
+          label: 'Total No. of Stones',
+          value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '',
+        },
+        {
+          label: 'Approx. Total Carat Wt.',
+          value: toCtwLabel(selectedWeight) || (totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : ''),
+          highlight: true,
+        },
+        {
+          label: 'Gross Wt.',
+          value: Number(activeDesign?.grossWeight || 0) > 0 ? `${formatNumber(activeDesign?.grossWeight || 0, 3)} gm` : '',
+        },
+        { label: 'Tag', value: toTagsLabel(activeDesign?.tags) },
+        {
+          label: 'Description',
+          value: compact(activeDesign?.designDescription),
+          multiline: true,
+        },
+        {
+          label: 'Remarks',
+          value: compact(activeDesign?.remarks),
+          multiline: true,
+        },
+      ].filter((row) => hasDisplayValue(row.value)),
     [
       activeDesign?.collection,
+      activeDesign?.barcode,
       activeDesign?.designDescription,
       activeDesign?.designNo,
+      activeDesign?.diamondType,
       activeDesign?.grossWeight,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
       activeDesign?.tags,
-      firstGem?.stone,
       firstGem?.shape,
       selectedDiamondType,
       selectedShape,
@@ -681,6 +1025,17 @@ const DesignDetailScreen = () => {
       ))}
     </>
   );
+
+  const showStyleDropdown = styleOptions.length > 0;
+  const showQualityDropdown = qualityOptions.length > 0;
+  const hasPairedDropdowns = showStyleDropdown && showQualityDropdown;
+  const hasConfiguratorOptions =
+    metalCaratageOptions.length > 0 ||
+    showStyleDropdown ||
+    showQualityDropdown ||
+    weightOptions.length > 0 ||
+    ringSizeOptions.length > 0 ||
+    diamondTypeOptions.length > 1;
 
   if (!activeDesign && !error) {
     return (
@@ -714,8 +1069,8 @@ const DesignDetailScreen = () => {
   return (
     <View style={styles.root}>
       <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
-      <SafeAreaView style={styles.screenShell} edges={['top']}>
-        <View style={styles.fixedTopSection}>
+      <SafeAreaView ref={screenRef} style={styles.screenShell} edges={['top']}>
+        <View style={styles.fixedTopSection} onTouchStart={handleOutsideDropdownTouchStart}>
           <View style={styles.headerRow}>
             <TouchableOpacity style={styles.headerIconBtn} onPress={handleBackToDesigns} activeOpacity={0.88}>
               <Ionicons name="chevron-back" size={18} color="#7A6E61" />
@@ -723,7 +1078,7 @@ const DesignDetailScreen = () => {
             <Text style={styles.headerTitle}>Ring Configurator</Text>
             <TouchableOpacity
               style={styles.headerBellBtn}
-              onPress={() => (navigation as any).navigate('OrdersTab')}
+              onPress={handleOpenNotifications}
               activeOpacity={0.88}
             >
               <Ionicons name="notifications-outline" size={17} color="#7A6E61" />
@@ -804,7 +1159,19 @@ const DesignDetailScreen = () => {
           </View>
         </View>
 
-        <ScrollView style={styles.detailScroll} contentContainerStyle={styles.detailScrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={detailScrollRef}
+          style={styles.detailScroll}
+          contentContainerStyle={styles.detailScrollContent}
+          showsVerticalScrollIndicator={false}
+          onTouchStart={handleDetailTouchStart}
+          onScroll={(event) => {
+            detailScrollYRef.current = event.nativeEvent.contentOffset.y;
+          }}
+          onScrollBeginDrag={handleDetailScrollBegin}
+          scrollEventThrottle={16}
+        >
+          {hasConfiguratorOptions ? (
           <View style={[styles.configPanel, dropdownVisible ? styles.configPanelDropdownOpen : null]}>
             <OptionSection
               title="METAL CARATAGE"
@@ -816,13 +1183,24 @@ const DesignDetailScreen = () => {
               variant="metal"
             />
 
+            {showStyleDropdown || showQualityDropdown ? (
             <View style={styles.dualRow}>
-              <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === 'style' ? styles.dropdownFieldWrapActive : null]}>
+              {showStyleDropdown ? (
+              <View
+                ref={(node) => {
+                  dropdownFieldRefs.current.style = node;
+                }}
+                style={[
+                  styles.dropdownFieldWrap,
+                  !hasPairedDropdowns ? styles.dropdownFieldWrapSingle : null,
+                  dropdownVisible && dropdownKey === 'style' ? styles.dropdownFieldWrapActive : null,
+                ]}
+              >
                 <Text style={styles.sectionLabel}>COVERAGE</Text>
                 <TouchableOpacity
                   style={styles.dualFieldCard}
                   activeOpacity={0.9}
-                onPress={() => openDropdown('style', styleOptions, selectedStyle)}
+                  onPress={() => openDropdown('style', styleOptions, selectedStyle)}
                 >
                   <View style={styles.dropdownValueRow}>
                     <Text style={styles.dualFieldValue} numberOfLines={1}>
@@ -831,15 +1209,25 @@ const DesignDetailScreen = () => {
                     <Ionicons name="chevron-down" size={14} color="#7D746A" />
                   </View>
                 </TouchableOpacity>
-                {renderInlineDropdown('style')}
               </View>
+              ) : null}
 
-              <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === 'quality' ? styles.dropdownFieldWrapActive : null]}>
+              {showQualityDropdown ? (
+              <View
+                ref={(node) => {
+                  dropdownFieldRefs.current.quality = node;
+                }}
+                style={[
+                  styles.dropdownFieldWrap,
+                  !hasPairedDropdowns ? styles.dropdownFieldWrapSingle : null,
+                  dropdownVisible && dropdownKey === 'quality' ? styles.dropdownFieldWrapActive : null,
+                ]}
+              >
                 <Text style={styles.sectionLabel}>DIA. QUALITY</Text>
                 <TouchableOpacity
                   style={styles.dualFieldCard}
                   activeOpacity={0.9}
-                onPress={() => openDropdown('quality', qualityOptions, selectedQuality)}
+                  onPress={() => openDropdown('quality', qualityOptions, selectedQuality)}
                 >
                   <View style={styles.dropdownValueRow}>
                     <Text style={styles.dualFieldValue} numberOfLines={1}>
@@ -848,9 +1236,10 @@ const DesignDetailScreen = () => {
                     <Ionicons name="chevron-down" size={14} color="#7D746A" />
                   </View>
                 </TouchableOpacity>
-                {renderInlineDropdown('quality')}
               </View>
+              ) : null}
             </View>
+            ) : null}
 
             <OptionSection
               title="DIA. WEIGHT"
@@ -869,7 +1258,12 @@ const DesignDetailScreen = () => {
                 ]}
               >
                 <Text style={styles.sectionLabel}>JEWELRY SIZE</Text>
-                <View style={[styles.singleDropdownWrap, dropdownVisible && dropdownKey === 'ringSize' ? styles.dropdownFieldWrapActive : null]}>
+                <View
+                  ref={(node) => {
+                    dropdownFieldRefs.current.ringSize = node;
+                  }}
+                  style={[styles.singleDropdownWrap, dropdownVisible && dropdownKey === 'ringSize' ? styles.dropdownFieldWrapActive : null]}
+                >
                   <TouchableOpacity
                     style={styles.singleDropdownCard}
                     activeOpacity={0.9}
@@ -880,14 +1274,13 @@ const DesignDetailScreen = () => {
                     </Text>
                     <Ionicons name="chevron-down" size={16} color="#7D746A" />
                   </TouchableOpacity>
-                  {renderInlineDropdown('ringSize')}
                 </View>
               </View>
             ) : null}
 
             {diamondTypeOptions.length > 1 ? (
               <OptionSection
-                title="STONE"
+                title="DIAMOND TYPE"
                 options={diamondTypeOptions}
                 selected={selectedDiamondType}
                 onSelect={(value) => {
@@ -895,8 +1288,11 @@ const DesignDetailScreen = () => {
                 }}
               />
             ) : null}
-          </View>
 
+          </View>
+          ) : null}
+
+          {resolvingSelection || specRows.length ? (
           <View style={styles.specCard}>
             <Text style={styles.specTitle}>PRODUCT SPECIFICATIONS</Text>
             {resolvingSelection
@@ -917,9 +1313,12 @@ const DesignDetailScreen = () => {
                   </View>
                 ))}
           </View>
+          ) : null}
+
+          <GemstoneGrid gemstones={activeDesign.gemstones || []} />
         </ScrollView>
 
-        <View style={styles.bottomSummary}>
+        <View style={styles.bottomSummary} onTouchStart={handleOutsideDropdownTouchStart}>
           <View style={styles.bottomTopRow}>
             <View style={styles.retailBlock}>
               <Text style={styles.retailLabel}>RETAIL PRICE</Text>
@@ -929,34 +1328,18 @@ const DesignDetailScreen = () => {
                 <Text style={styles.retailValue}>{formatDetailPrice(displayPrice)}</Text>
               )}
             </View>
-            <View style={styles.orderSummaryCard}>
-              <Text style={styles.orderSummaryTitle}>ORDER SUMMARY</Text>
-              {resolvingSelection ? (
-                <>
-                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
-                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
-                  <View style={[styles.skeletonLine, styles.orderSkeletonLine]} />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.orderSummaryLine}>{toMetalShortCode(selectedMetalCaratage)}</Text>
-                  <Text style={styles.orderSummaryLine}>{toCtwLabel(selectedWeight) || '-'}</Text>
-                  <Text style={styles.orderSummaryLine}>{selectedRingSize || '-'}</Text>
-                </>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.bottomActionsRow}>
-            <TouchableOpacity style={styles.ghostActionBtn} onPress={handleOpenQuoteBuilder} activeOpacity={0.9}>
-              <Text style={styles.ghostActionText}>Save Quote</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.processActionBtn} onPress={handleProcessOrder} activeOpacity={0.9}>
               <Text style={styles.processActionText}>Process Order</Text>
               <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
+        {renderDropdownOverlay()}
+        <NotificationPopover
+          visible={notificationsVisible}
+          onClose={() => setNotificationsVisible(false)}
+          onOpenNotification={handleOpenNotificationEntry}
+        />
       </SafeAreaView>
     </View>
   );
@@ -969,6 +1352,12 @@ const styles = StyleSheet.create({
   screenShell: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    position: 'relative',
+  },
+  dropdownOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1200,
+    elevation: 40,
   },
   fixedTopSection: {
     backgroundColor: '#FFFFFF',
@@ -1212,6 +1601,9 @@ const styles = StyleSheet.create({
     width: '48.5%',
     position: 'relative',
   },
+  dropdownFieldWrapSingle: {
+    width: '100%',
+  },
   dropdownFieldWrapActive: {
     zIndex: 380,
   },
@@ -1265,10 +1657,6 @@ const styles = StyleSheet.create({
   },
   inlineDropdownMenu: {
     position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: 6,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#D9CDBD',
@@ -1280,6 +1668,30 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
     zIndex: 420,
+  },
+  inlineDropdownSearchRow: {
+    height: DROPDOWN_SEARCH_HEIGHT,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE5DA',
+    backgroundColor: '#FBFAF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inlineDropdownSearchInput: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    fontSize: 12,
+    color: '#2C2620',
+    fontWeight: '600',
+  },
+  inlineDropdownClearBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inlineDropdownScroll: {
     maxHeight: 176,
@@ -1310,6 +1722,20 @@ const styles = StyleSheet.create({
   inlineDropdownOptionTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  inlineDropdownEmptyRow: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  inlineDropdownEmptyText: {
+    width: '100%',
+    fontSize: 12,
+    color: '#8F8378',
+    fontWeight: '600',
+    textAlign: 'left',
   },
   specCard: {
     marginTop: 10,
@@ -1365,6 +1791,75 @@ const styles = StyleSheet.create({
   specValueMultiline: {
     lineHeight: 16,
   },
+  gemstoneCard: {
+    marginTop: 10,
+    backgroundColor: '#F9F7F3',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  gemstoneTable: {
+    minWidth: 720,
+  },
+  gemstoneTableRow: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5DDD2',
+  },
+  gemstoneHeaderRow: {
+    minHeight: 32,
+    backgroundColor: '#F1ECE4',
+  },
+  gemstoneTableRowLast: {
+    borderBottomWidth: 0,
+  },
+  gemstoneHeaderCell: {
+    paddingHorizontal: 8,
+    fontSize: 10,
+    letterSpacing: 0.7,
+    color: '#7E6F5C',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  gemstoneCell: {
+    paddingHorizontal: 8,
+    fontSize: 11,
+    color: '#2A241F',
+    fontWeight: '700',
+  },
+  gemstoneStoneCell: {
+    width: 96,
+  },
+  gemstoneTextCell: {
+    width: 88,
+  },
+  gemstoneNumberCell: {
+    width: 82,
+    textAlign: 'right',
+  },
+  gemstoneSmallNumberCell: {
+    width: 54,
+    textAlign: 'right',
+  },
+  gemstoneEmptyRow: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  gemstoneEmptyText: {
+    fontSize: 12,
+    color: '#8F8378',
+    fontWeight: '600',
+  },
   skeletonLine: {
     borderRadius: 999,
     backgroundColor: '#EEE7DE',
@@ -1382,7 +1877,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E8E1D7',
     paddingHorizontal: 12,
-    paddingTop: 10,
+    paddingTop: 9,
     paddingBottom: Platform.OS === 'ios' ? 18 : 12,
     shadowColor: '#AFA191',
     shadowOffset: { width: 0, height: -6 },
@@ -1393,11 +1888,12 @@ const styles = StyleSheet.create({
   bottomTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 10,
+    alignItems: 'center',
   },
   retailBlock: {
     flex: 1,
+    minWidth: 0,
+    marginRight: 12,
   },
   retailLabel: {
     fontSize: 10,
@@ -1417,69 +1913,15 @@ const styles = StyleSheet.create({
     height: 31,
     marginTop: 2,
   },
-  orderSummaryCard: {
-    width: 122,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    borderRadius: 10,
-    backgroundColor: '#FBF9F6',
-    paddingVertical: 7,
-    paddingHorizontal: 8,
-    shadowColor: '#2C1E16',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  orderSummaryTitle: {
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: '#A1968A',
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  orderSummaryLine: {
-    fontSize: 10,
-    lineHeight: 13,
-    color: '#5D554C',
-    textAlign: 'right',
-    fontWeight: '600',
-  },
-  orderSkeletonLine: {
-    width: 54,
-    height: 9,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-  },
-  bottomActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ghostActionBtn: {
-    flex: 1,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#D9D0C4',
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 6,
-  },
-  ghostActionText: {
-    fontSize: 12,
-    color: '#7B736A',
-    fontWeight: '700',
-  },
   processActionBtn: {
-    flex: 1.45,
+    width: 174,
+    maxWidth: '52%',
     height: 40,
     borderRadius: 12,
     backgroundColor: '#BE9851',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    marginLeft: 2,
   },
   processActionText: {
     fontSize: 13,

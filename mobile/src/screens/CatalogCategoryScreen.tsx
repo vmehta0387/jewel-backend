@@ -15,6 +15,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { fetchCatalogCategoryCounts } from '../api/designs';
 import type { CatalogPresetCategory } from '../navigation/RootNavigator';
+import NotificationPopover from '../components/NotificationPopover';
+import type { NotificationFeedEntry } from '../utils/appNotifications';
 
 type CategoryOption = {
   key: CatalogPresetCategory;
@@ -54,6 +56,7 @@ const CatalogCategoryScreen = () => {
   const [search, setSearch] = useState('');
   const [categoryCounts, setCategoryCounts] = useState<Record<CatalogPresetCategory, CategoryCountStats>>(EMPTY_COUNTS);
   const [countsLoading, setCountsLoading] = useState(true);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
 
   const showDashboardBack = useMemo(
     () => user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP',
@@ -74,8 +77,15 @@ const CatalogCategoryScreen = () => {
   };
 
   const openNotifications = useCallback(() => {
-    (navigation as any).navigate('OrdersTab');
-  }, [navigation]);
+    setNotificationsVisible(true);
+  }, []);
+
+  const handleOpenNotificationEntry = useCallback(
+    (_entry: NotificationFeedEntry) => {
+      (navigation as any).navigate('OrdersTab');
+    },
+    [navigation],
+  );
 
   const renderCategoryGlyph = (key: CatalogPresetCategory) => {
     return <Image source={CATEGORY_IMAGES[key]} style={styles.categoryIconImage} resizeMode="contain" />;
@@ -179,6 +189,11 @@ const CatalogCategoryScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
+        <NotificationPopover
+          visible={notificationsVisible}
+          onClose={() => setNotificationsVisible(false)}
+          onOpenNotification={handleOpenNotificationEntry}
+        />
       </SafeAreaView>
     </View>
   );

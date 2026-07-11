@@ -1506,6 +1506,7 @@ export class ProductsService {
       .select([
         'design.id',
         'design.designNo',
+        'design.barcode',
         'design.designName',
         'design.jewelryGroup',
         'design.collection',
@@ -1895,6 +1896,7 @@ export class ProductsService {
 
     const rows = await qb.getMany();
     const family = rows.length ? rows : [selected];
+    await this.ensureDesignBarcodes(family);
     const designIds = family.map((design) => design.id);
     const [metals, gemstones] = designIds.length
       ? await Promise.all([
@@ -1997,6 +1999,7 @@ export class ProductsService {
     return {
       id: design.id,
       designNo: design.designNo,
+      barcode: design.barcode,
       designName: design.designName,
       version: design.version,
       isPrimary: design.isPrimary,
@@ -2005,7 +2008,7 @@ export class ProductsService {
       jewelrySize: design.jewelrySize,
       stage: design.stage,
       diamondSpread: design.diamondSpread,
-      diamondType: design.diamondType,
+      diamondType: this.resolveMobileConfiguratorDiamondType(design),
       diamondWeight: design.diamondWeight,
       diamondQuality: design.diamondQuality,
       goldColour: design.goldColour,
@@ -2088,6 +2091,37 @@ export class ProductsService {
     );
   }
 
+  private resolveMobileConfiguratorDiamondType(design: Design): string {
+    const designDiamondType = this.mobileConfiguratorDisplayValue('diamondType', design.diamondType);
+    if (designDiamondType) {
+      return designDiamondType;
+    }
+
+    for (const gem of design.gemstones || []) {
+      const stoneType = this.mobileConfiguratorDisplayValue('diamondType', gem.stoneType);
+      if (stoneType && this.isMobileConfiguratorDiamondTypeLike(stoneType)) {
+        return stoneType;
+      }
+    }
+
+    for (const gem of design.gemstones || []) {
+      const stone = this.mobileConfiguratorDisplayValue('diamondType', gem.stone);
+      if (stone && this.isMobileConfiguratorDiamondTypeLike(stone)) {
+        return stone;
+      }
+    }
+
+    return '';
+  }
+
+  private isMobileConfiguratorDiamondTypeLike(value?: string | null): boolean {
+    const normalized = this.mobileConfiguratorText(value).toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    return /\b(lab|grown|hpht|cvd|natural|synthetic|earth[-\s]?mined)\b/.test(normalized);
+  }
+
   private getMobileConfiguratorValues(design: Design): Record<MobileConfiguratorKey, string[]> {
     const values = {
       diamondType: new Set<string>(),
@@ -2103,14 +2137,13 @@ export class ProductsService {
       if (text) values[key].add(text);
     };
 
-    add('diamondType', design.diamondType);
+    add('diamondType', this.resolveMobileConfiguratorDiamondType(design));
     add('style', design.diamondSpread);
     add('weight', design.diamondWeight);
     add('quality', design.diamondQuality);
     add('ringSize', design.jewelrySize);
     this.getUsedMetalCaratageCandidates(design).forEach((value) => add('metalCaratage', value));
     for (const gem of design.gemstones || []) {
-      add('diamondType', gem.stone);
       add('shape', gem.shape);
       add('quality', gem.quality);
     }

@@ -17,6 +17,7 @@ export type AuthUser = {
 export type Design = {
   id: string;
   designNo: string;
+  barcode?: string | null;
   designName?: string | null;
   version: string;
   isPrimary?: boolean;

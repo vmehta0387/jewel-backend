@@ -1,16 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Modal,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -21,10 +21,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import {
-  fetchNotifications,
-  markAllNotificationsRead,
   markNotificationRead,
 } from '../api/notifications';
+import NotificationPopover from '../components/NotificationPopover';
 import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders';
 import type { Order } from '../types';
 import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
@@ -32,12 +31,16 @@ import {
   getSpiffClaimTargetFromNotification,
   getOrderIdFromNotification,
   type NotificationFeedEntry,
-  type NotificationTone,
-  mapNotificationsToEntries,
 } from '../utils/appNotifications';
 
 type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED';
-type NotificationEntry = NotificationFeedEntry & { orderId?: string | null };
+type ConfirmationAction = 'deleteDraft' | 'cancelOrder';
+type PopoverPosition = { top: number; left: number };
+
+const CONFIRM_POPOVER_WIDTH = 312;
+const CONFIRM_POPOVER_MARGIN = 12;
+const CONFIRM_POPOVER_ESTIMATED_HEIGHT = 184;
+const THEME_ACTION_COLOR = '#BE9851';
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'QUOTE', label: 'Quotes' },
@@ -212,6 +215,8 @@ const OrdersScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const confirmationButtonRefs = useRef<Record<string, React.ElementRef<typeof TouchableOpacity> | null>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,7 +224,14 @@ const OrdersScreen = () => {
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('PENDING_APPROVAL');
   const [actingOrderId, setActingOrderId] = useState<string | null>(null);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [notificationEntries, setNotificationEntries] = useState<NotificationEntry[]>([]);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    action: ConfirmationAction;
+    order: Order;
+  } | null>(null);
+  const [cancelPopoverPosition, setCancelPopoverPosition] = useState<PopoverPosition>({
+    top: 0,
+    left: CONFIRM_POPOVER_MARGIN,
+  });
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -286,20 +298,6 @@ const OrdersScreen = () => {
     });
   }, [orders, search, selectedFilter]);
 
-  const alerts = useMemo(
-    () => notificationEntries.filter((entry) => entry.tone === 'alertGold' || entry.tone === 'alertRed').slice(0, 5),
-    [notificationEntries],
-  );
-  const recentActivity = useMemo(
-    () => notificationEntries.filter((entry) => entry.tone === 'neutral').slice(0, 6),
-    [notificationEntries],
-  );
-  const updates = useMemo(
-    () => notificationEntries.filter((entry) => entry.tone === 'info' || entry.tone === 'promo').slice(0, 6),
-    [notificationEntries],
-  );
-  const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
-
   const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
@@ -310,20 +308,6 @@ const OrdersScreen = () => {
     }
     return FILTERS;
   }, [isBranchManager, isCompanyAdmin]);
-
-  const loadNotifications = useCallback(async () => {
-    if (!token) return;
-    try {
-      const response = await fetchNotifications(token, 1, 25, false);
-      const entries = mapNotificationsToEntries(response.data || []).map((entry) => ({
-        ...entry,
-        orderId: getOrderIdFromNotification(entry),
-      }));
-      setNotificationEntries(entries);
-    } catch {
-      setNotificationEntries([]);
-    }
-  }, [token]);
 
   useEffect(() => {
     if ((isBranchManager || isCompanyAdmin) && selectedFilter === 'QUOTE') {
@@ -428,6 +412,59 @@ const OrdersScreen = () => {
     [token],
   );
 
+  const requestConfirmation = useCallback((order: Order, action: ConfirmationAction) => {
+    const buttonNode = confirmationButtonRefs.current[`${order.id}-${action}`];
+    const openAtFallbackPosition = () => {
+      setCancelPopoverPosition({
+        top: 176,
+        left: Math.max(CONFIRM_POPOVER_MARGIN, (screenWidth - CONFIRM_POPOVER_WIDTH) / 2),
+      });
+      setPendingConfirmation({ action, order });
+    };
+
+    if (!buttonNode) {
+      openAtFallbackPosition();
+      return;
+    }
+
+    buttonNode.measureInWindow((x, y, w, h) => {
+      const wantedLeft = x + w / 2 - CONFIRM_POPOVER_WIDTH / 2;
+      const maxLeft = Math.max(CONFIRM_POPOVER_MARGIN, screenWidth - CONFIRM_POPOVER_WIDTH - CONFIRM_POPOVER_MARGIN);
+      const wantedTop = y + h + 8;
+      const topAbove = Math.max(CONFIRM_POPOVER_MARGIN, y - CONFIRM_POPOVER_ESTIMATED_HEIGHT - 8);
+      setCancelPopoverPosition({
+        top: wantedTop + CONFIRM_POPOVER_ESTIMATED_HEIGHT <= screenHeight - CONFIRM_POPOVER_MARGIN ? wantedTop : topAbove,
+        left: Math.max(CONFIRM_POPOVER_MARGIN, Math.min(wantedLeft, maxLeft)),
+      });
+      setPendingConfirmation({ action, order });
+    });
+  }, [screenHeight, screenWidth]);
+
+  const requestDeleteDraft = useCallback(
+    (order: Order) => requestConfirmation(order, 'deleteDraft'),
+    [requestConfirmation],
+  );
+
+  const requestCancelOrder = useCallback(
+    (order: Order) => requestConfirmation(order, 'cancelOrder'),
+    [requestConfirmation],
+  );
+
+  const closeConfirmation = useCallback(() => {
+    setPendingConfirmation(null);
+  }, []);
+
+  const confirmPendingAction = useCallback(() => {
+    if (!pendingConfirmation) return;
+    const { action, order } = pendingConfirmation;
+    setPendingConfirmation(null);
+    if (action === 'deleteDraft') {
+      void suspendDraft(order);
+      return;
+    }
+    void markCancelled(order);
+  }, [markCancelled, pendingConfirmation, suspendDraft]);
+
   const approvePending = useCallback(
     async (order: Order) => {
       if (!token) return;
@@ -492,8 +529,11 @@ const OrdersScreen = () => {
       return (
         <View style={styles.actionRow}>
           <TouchableOpacity
+            ref={(node) => {
+              confirmationButtonRefs.current[`${order.id}-deleteDraft`] = node;
+            }}
             style={[styles.actionBtn, styles.actionBtnGhostRed]}
-            onPress={() => suspendDraft(order)}
+            onPress={() => requestDeleteDraft(order)}
             activeOpacity={0.9}
             disabled={actingOrderId === order.id}
           >
@@ -511,8 +551,11 @@ const OrdersScreen = () => {
         return (
           <View style={styles.actionRowThree}>
             <TouchableOpacity
+              ref={(node) => {
+                confirmationButtonRefs.current[`${order.id}-cancelOrder`] = node;
+              }}
               style={[styles.actionBtn, styles.actionBtnGhostRedCompact]}
-              onPress={() => markCancelled(order)}
+              onPress={() => requestCancelOrder(order)}
               activeOpacity={0.9}
               disabled={actingOrderId === order.id}
             >
@@ -549,8 +592,11 @@ const OrdersScreen = () => {
       return (
         <View style={styles.actionRow}>
           <TouchableOpacity
+            ref={(node) => {
+              confirmationButtonRefs.current[`${order.id}-cancelOrder`] = node;
+            }}
             style={[styles.actionBtn, styles.actionBtnGhostRed]}
-            onPress={() => markCancelled(order)}
+            onPress={() => requestCancelOrder(order)}
             activeOpacity={0.9}
             disabled={actingOrderId === order.id}
           >
@@ -578,54 +624,90 @@ const OrdersScreen = () => {
     return null;
   };
 
-  const renderOrderCard = ({ item }: { item: Order }) => {
-    const pill = statusPillStyle(item.status);
-    const price = formatMoney(item.price);
-    const title = safeText(item.designNo, item.orderNumber);
+  const activeConfirmationOrder = pendingConfirmation?.order || null;
+  const activeConfirmationOrderId = activeConfirmationOrder?.id || null;
+  const confirmationIsDeleteQuote = pendingConfirmation?.action === 'deleteDraft';
+  const confirmationTitle = confirmationIsDeleteQuote ? 'Delete this quote?' : 'Cancel this order?';
+  const confirmationMessage = confirmationIsDeleteQuote
+    ? 'This quote draft will be removed from your orders list.'
+    : 'This order will be removed from your active orders list.';
+  const confirmationDangerText = confirmationIsDeleteQuote ? 'Delete Quote' : 'Cancel Order';
+
+  const getOrderCardDisplay = (order: Order) => {
+    const pill = statusPillStyle(order.status);
+    const price = formatMoney(order.price);
+    const title = safeText(order.designNo, order.orderNumber);
     const subtitle =
-      item.shortDescription?.replace(/\s*\|\s*/g, ' - ') ||
-      [item.customerName, item.purchaseOrderNumber ? `PO: ${item.purchaseOrderNumber}` : null].filter(Boolean).join(' - ');
+      order.shortDescription?.replace(/\s*\|\s*/g, ' - ') ||
+      [order.customerName, order.purchaseOrderNumber ? `PO: ${order.purchaseOrderNumber}` : null].filter(Boolean).join(' - ');
 
     const thumbRingColor =
-      normalizeStatus(item.status) === 'SHIPPED' || normalizeStatus(item.status) === 'COMPLETED'
+      normalizeStatus(order.status) === 'SHIPPED' || normalizeStatus(order.status) === 'COMPLETED'
         ? '#4A8ADA'
-        : normalizeStatus(item.status) === 'APPROVED'
+        : normalizeStatus(order.status) === 'APPROVED'
           ? '#B2874A'
-          : normalizeStatus(item.status) === 'PENDING_APPROVAL'
+          : normalizeStatus(order.status) === 'PENDING_APPROVAL'
             ? '#C4826C'
             : '#B4A692';
 
+    return { pill, price, title, subtitle, thumbRingColor };
+  };
+
+  const renderCardTop = (order: Order) => {
+    const { pill, price, title, subtitle, thumbRingColor } = getOrderCardDisplay(order);
+
     return (
-      <TouchableOpacity style={styles.card} activeOpacity={0.92} onPress={() => openOrderSummary(item)}>
-        <View style={styles.cardTopRow}>
-          <View style={styles.thumbWrap}>
-            {item.designImageUrl ? (
-              <Image source={{ uri: item.designImageUrl, cache: 'force-cache' }} style={styles.thumbImage} />
-            ) : (
-              <View style={styles.thumbPlaceholder}>
-                <View style={[styles.thumbRing, { borderColor: thumbRingColor }]} />
-              </View>
-            )}
+      <View style={styles.cardTopRow}>
+        <View style={styles.thumbWrap}>
+          {order.designImageUrl ? (
+            <Image source={{ uri: order.designImageUrl, cache: 'force-cache' }} style={styles.thumbImage} />
+          ) : (
+            <View style={styles.thumbPlaceholder}>
+              <View style={[styles.thumbRing, { borderColor: thumbRingColor }]} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.cardBody}>
+          <View style={styles.cardHeadRow}>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: pill.backgroundColor, borderColor: pill.borderColor }]}>
+              <Text style={[styles.statusPillText, { color: pill.textColor }]}>{statusLabel(order.status)}</Text>
+            </View>
           </View>
 
-          <View style={styles.cardBody}>
-            <View style={styles.cardHeadRow}>
-              <Text style={styles.cardTitle} numberOfLines={1}>
-                {title}
-              </Text>
-              <View style={[styles.statusPill, { backgroundColor: pill.backgroundColor, borderColor: pill.borderColor }]}>
-                <Text style={[styles.statusPillText, { color: pill.textColor }]}>{statusLabel(item.status)}</Text>
-              </View>
-            </View>
-
-            <View style={styles.cardMetaRow}>
-              <Text style={styles.cardMeta} numberOfLines={3}>
-                {safeText(subtitle, 'No details')}
-              </Text>
-              <Text style={styles.cardPrice}>{price}</Text>
-            </View>
+          <View style={styles.cardMetaRow}>
+            <Text style={styles.cardMeta} numberOfLines={3}>
+              {safeText(subtitle, 'No details')}
+            </Text>
+            <Text style={styles.cardPrice}>{price}</Text>
           </View>
         </View>
+      </View>
+    );
+  };
+
+  const renderOrderCard = ({ item }: { item: Order }) => {
+    const isCancelFocused = activeConfirmationOrderId === item.id;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.card,
+          isCancelFocused ? styles.cardFocused : null,
+        ]}
+        activeOpacity={0.92}
+        onPress={() => {
+          if (activeConfirmationOrderId) {
+            closeConfirmation();
+            return;
+          }
+          openOrderSummary(item);
+        }}
+      >
+        {renderCardTop(item)}
 
         {renderActions(item)}
       </TouchableOpacity>
@@ -652,15 +734,14 @@ const OrdersScreen = () => {
 
   const openNotifications = useCallback(() => {
     setNotificationsVisible(true);
-    void loadNotifications();
-  }, [loadNotifications]);
+  }, []);
 
   const closeNotifications = useCallback(() => {
     setNotificationsVisible(false);
   }, []);
 
   const openFromNotification = useCallback(
-    async (entry: NotificationEntry) => {
+    async (entry: NotificationFeedEntry) => {
       if (token && !entry.isRead) {
         try {
           await markNotificationRead(token, entry.notificationId, true);
@@ -669,16 +750,15 @@ const OrdersScreen = () => {
         }
       }
       setNotificationsVisible(false);
-      const targetOrder = orders.find((order) => order.id === entry.orderId);
+      const orderId = getOrderIdFromNotification(entry);
+      const targetOrder = orders.find((order) => order.id === orderId);
       if (targetOrder) {
         openOrderSummary(targetOrder);
-        loadNotifications();
         return;
       }
 
-      if (entry.orderId) {
-        navigation.navigate('OrderDetail', { orderId: entry.orderId });
-        loadNotifications();
+      if (orderId) {
+        navigation.navigate('OrderDetail', { orderId });
         return;
       }
 
@@ -689,40 +769,13 @@ const OrdersScreen = () => {
           params: spiffTarget,
         });
       }
-      loadNotifications();
     },
-    [loadNotifications, navigation, openOrderSummary, orders, token],
+    [navigation, openOrderSummary, orders, token],
   );
-
-  const handleMarkAllRead = useCallback(async () => {
-    if (!token) return;
-    try {
-      await markAllNotificationsRead(token);
-      await loadNotifications();
-    } catch {
-      // ignore mark-all failures in notification sheet
-    }
-  }, [loadNotifications, token]);
-
-  const getNotificationCardStyle = useCallback((tone: NotificationTone) => {
-    if (tone === 'alertGold') return [styles.notificationCardBase, styles.notificationCardGold];
-    if (tone === 'alertRed') return [styles.notificationCardBase, styles.notificationCardRed];
-    if (tone === 'info') return [styles.notificationCardBase, styles.notificationCardInfo];
-    if (tone === 'promo') return [styles.notificationCardBase, styles.notificationCardPromo];
-    return [styles.notificationCardBase, styles.notificationCardNeutral];
-  }, []);
-
-  const getNotificationDotStyle = useCallback((tone: NotificationTone) => {
-    if (tone === 'alertGold') return [styles.notificationDot, styles.notificationDotGold];
-    if (tone === 'alertRed') return [styles.notificationDot, styles.notificationDotRed];
-    if (tone === 'info') return [styles.notificationDot, styles.notificationDotInfo];
-    if (tone === 'promo') return [styles.notificationDot, styles.notificationDotPromo];
-    return [styles.notificationDot, styles.notificationDotNeutral];
-  }, []);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.brandHeader}>
+      <View style={styles.brandHeader} onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}>
         <View style={styles.brandLeft}>
           <Ionicons name="flash-sharp" size={23} color="#C89D5A" style={styles.brandBoltIcon} />
           <View>
@@ -740,7 +793,7 @@ const OrdersScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.topPanel}>
+      <View style={styles.topPanel} onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}>
         <View style={styles.pageTitleRow}>
           <View style={styles.pageTitleLeft}>
             {isSalesRepOrBranchManager ? (
@@ -787,6 +840,8 @@ const OrdersScreen = () => {
         renderItem={renderOrderCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}
+        onScrollBeginDrag={closeConfirmation}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadOrders} tintColor="#8a6b55" colors={['#8a6b55']} />}
         ListEmptyComponent={
           loading ? (
@@ -804,99 +859,70 @@ const OrdersScreen = () => {
         }
       />
 
-      <Modal visible={notificationsVisible} transparent animationType="fade" onRequestClose={closeNotifications}>
-        <TouchableWithoutFeedback onPress={closeNotifications}>
-          <View style={styles.modalOverlayLock}>
+      {activeConfirmationOrder ? <View pointerEvents="none" style={styles.confirmationScreenDim} /> : null}
+
+      <Modal
+        visible={Boolean(activeConfirmationOrder)}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={closeConfirmation}
+      >
+        <TouchableWithoutFeedback onPress={closeConfirmation}>
+          <View style={styles.cancelMenuOverlay}>
             <TouchableWithoutFeedback>
-              <View style={styles.notificationsWindow}>
-                <View style={styles.notificationsHeaderRow}>
-                  <Text style={styles.notificationsTitle}>Notifications</Text>
-                  <TouchableOpacity onPress={handleMarkAllRead}>
-                    <Text style={styles.markReadText}>Mark all read</Text>
+              <View
+                style={[
+                  styles.cancelPopover,
+                  {
+                    top: cancelPopoverPosition.top,
+                    left: cancelPopoverPosition.left,
+                  },
+                ]}
+              >
+                <View style={styles.cancelPopoverHeader}>
+                  <View style={styles.cancelPopoverIcon}>
+                    <Ionicons name="alert-circle-outline" size={18} color="#CC5757" />
+                  </View>
+                  <View style={styles.cancelPopoverTextWrap}>
+                    <Text style={styles.cancelPopoverTitle}>{confirmationTitle}</Text>
+                    <Text style={styles.cancelPopoverMessage}>{confirmationMessage}</Text>
+                  </View>
+                </View>
+                <View style={styles.cancelPopoverOrderBox}>
+                  <View style={styles.cancelPopoverOrderCol}>
+                    <Text style={styles.cancelPopoverOrderLabel}>Order No.</Text>
+                    <Text style={styles.cancelPopoverOrderValue} numberOfLines={1}>
+                      {activeConfirmationOrder?.orderNumber || '-'}
+                    </Text>
+                  </View>
+                  <View style={styles.cancelPopoverOrderDivider} />
+                  <View style={styles.cancelPopoverOrderCol}>
+                    <Text style={styles.cancelPopoverOrderLabel}>Design No.</Text>
+                    <Text style={styles.cancelPopoverOrderValue} numberOfLines={1}>
+                      {activeConfirmationOrder?.designNo || '-'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.cancelPopoverActions}>
+                  <TouchableOpacity style={styles.cancelPopoverKeepBtn} activeOpacity={0.9} onPress={closeConfirmation}>
+                    <Text style={styles.cancelPopoverKeepText}>Keep</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelPopoverDangerBtn} activeOpacity={0.9} onPress={confirmPendingAction}>
+                    <Text style={styles.cancelPopoverDangerText}>{confirmationDangerText}</Text>
                   </TouchableOpacity>
                 </View>
-
-                {hasAnyNotifications ? (
-                  <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
-                    {alerts.length ? (
-                      <View style={styles.notificationSection}>
-                        <Text style={styles.notificationSectionLabel}>ALERTS</Text>
-                        {alerts.map((entry) => (
-                          <TouchableOpacity
-                            key={entry.id}
-                            style={getNotificationCardStyle(entry.tone)}
-                            onPress={() => openFromNotification(entry)}
-                            activeOpacity={0.88}
-                          >
-                            <View style={styles.notificationCardTopRow}>
-                              <View style={getNotificationDotStyle(entry.tone)} />
-                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                {entry.title}
-                              </Text>
-                            </View>
-                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {recentActivity.length ? (
-                      <View style={styles.notificationSection}>
-                        <Text style={styles.notificationSectionLabel}>RECENT ACTIVITY</Text>
-                        {recentActivity.map((entry) => (
-                          <TouchableOpacity
-                            key={entry.id}
-                            style={getNotificationCardStyle(entry.tone)}
-                            onPress={() => openFromNotification(entry)}
-                            activeOpacity={0.88}
-                          >
-                            <View style={styles.notificationCardTopRow}>
-                              <View style={getNotificationDotStyle(entry.tone)} />
-                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                {entry.title}
-                              </Text>
-                            </View>
-                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {updates.length ? (
-                      <View style={styles.notificationSection}>
-                        <Text style={styles.notificationSectionLabel}>UPDATES</Text>
-                        {updates.map((entry) => (
-                          <TouchableOpacity
-                            key={entry.id}
-                            style={getNotificationCardStyle(entry.tone)}
-                            onPress={() => openFromNotification(entry)}
-                            activeOpacity={0.88}
-                          >
-                            <View style={styles.notificationCardTopRow}>
-                              <View style={getNotificationDotStyle(entry.tone)} />
-                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                {entry.title}
-                              </Text>
-                            </View>
-                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-                  </ScrollView>
-                ) : (
-                  <View style={styles.emptyNotifBox}>
-                    <Text style={styles.emptyNotifString}>No recent activity</Text>
-                  </View>
-                )}
               </View>
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <NotificationPopover
+        visible={notificationsVisible}
+        onClose={closeNotifications}
+        onOpenNotification={openFromNotification}
+      />
     </SafeAreaView>
   );
 };
@@ -905,6 +931,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  confirmationScreenDim: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 8,
+    elevation: 8,
+    backgroundColor: 'rgba(31, 26, 21, 0.34)',
   },
   brandHeader: {
     height: 66,
@@ -963,136 +995,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 9,
     fontWeight: '800',
-  },
-  modalOverlayLock: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  notificationsWindow: {
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#EEE6DB',
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 12,
-    maxHeight: '82%',
-  },
-  notificationsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  notificationsTitle: {
-    fontSize: 30,
-    lineHeight: 33,
-    color: '#211A14',
-    fontWeight: '800',
-  },
-  markReadText: {
-    color: '#B2874A',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  notificationSection: {
-    marginBottom: 11,
-  },
-  notificationSectionLabel: {
-    fontSize: 11,
-    letterSpacing: 1.1,
-    color: '#9B9185',
-    fontWeight: '800',
-    marginBottom: 6,
-  },
-  notificationCardBase: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 8,
-  },
-  notificationCardGold: {
-    backgroundColor: '#FAF4E8',
-    borderColor: '#E6D3B2',
-  },
-  notificationCardRed: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#ECCACA',
-  },
-  notificationCardNeutral: {
-    backgroundColor: '#FBF9F6',
-    borderColor: '#E4DBD0',
-  },
-  notificationCardInfo: {
-    backgroundColor: '#EDF3FE',
-    borderColor: '#CBDBF6',
-  },
-  notificationCardPromo: {
-    backgroundColor: '#FBF4E8',
-    borderColor: '#E7D4B7',
-  },
-  notificationCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  notificationDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    marginRight: 7,
-  },
-  notificationDotGold: {
-    backgroundColor: '#C9A45F',
-  },
-  notificationDotRed: {
-    backgroundColor: '#DE5F5F',
-  },
-  notificationDotNeutral: {
-    backgroundColor: '#B8AAA0',
-  },
-  notificationDotInfo: {
-    backgroundColor: '#6C8FCB',
-  },
-  notificationDotPromo: {
-    backgroundColor: '#C48E3C',
-  },
-  notificationCardTitle: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 16,
-    color: '#2D261F',
-    fontWeight: '700',
-  },
-  notificationCardSubtitle: {
-    fontSize: 12,
-    lineHeight: 15,
-    color: '#685E54',
-    fontWeight: '500',
-  },
-  notificationCardTime: {
-    marginTop: 3,
-    fontSize: 11,
-    lineHeight: 14,
-    color: '#938779',
-    fontWeight: '500',
-  },
-  emptyNotifBox: {
-    borderWidth: 1,
-    borderColor: '#E8DFD3',
-    borderRadius: 12,
-    backgroundColor: '#FAF8F5',
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyNotifString: {
-    fontSize: 13,
-    color: '#85796C',
-    fontWeight: '600',
   },
   topPanel: {
     paddingHorizontal: 12,
@@ -1209,6 +1111,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   card: {
+    position: 'relative',
     borderWidth: 1.2,
     borderColor: '#E8DED2',
     borderRadius: 14,
@@ -1220,6 +1123,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 9,
     elevation: 3,
+  },
+  cardFocused: {
+    zIndex: 12,
+    borderColor: '#E7C2C2',
+    transform: [{ scale: 1.018 }],
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 10,
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -1318,7 +1231,7 @@ const styles = StyleSheet.create({
   },
   actionBtnBlack: {
     flex: 1.35,
-    backgroundColor: '#1A1715',
+    backgroundColor: THEME_ACTION_COLOR,
   },
   actionBtnBlackText: {
     color: '#FFFFFF',
@@ -1356,6 +1269,124 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  cancelMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  cancelPopover: {
+    position: 'absolute',
+    width: CONFIRM_POPOVER_WIDTH,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#E7C2C2',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  cancelPopoverHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  cancelPopoverIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF3F1',
+    borderWidth: 1,
+    borderColor: '#F2D6D1',
+    marginRight: 9,
+  },
+  cancelPopoverTextWrap: {
+    flex: 1,
+  },
+  cancelPopoverTitle: {
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#251D17',
+    fontWeight: '800',
+  },
+  cancelPopoverMessage: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#7B7268',
+    fontWeight: '500',
+  },
+  cancelPopoverOrderBox: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#EEE1D6',
+    backgroundColor: '#FAF8F5',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  cancelPopoverOrderCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cancelPopoverOrderDivider: {
+    width: 1,
+    marginHorizontal: 9,
+    backgroundColor: '#E8DED2',
+  },
+  cancelPopoverOrderLabel: {
+    fontSize: 9,
+    lineHeight: 12,
+    color: '#A0978F',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  cancelPopoverOrderValue: {
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 17,
+    color: '#2C1E16',
+    fontWeight: '700',
+  },
+  cancelPopoverActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 11,
+  },
+  cancelPopoverKeepBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8CEC3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    marginRight: 8,
+  },
+  cancelPopoverKeepText: {
+    fontSize: 12,
+    color: '#6F665C',
+    fontWeight: '800',
+  },
+  cancelPopoverDangerBtn: {
+    flex: 1.25,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#CC5757',
+  },
+  cancelPopoverDangerText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
   actionBtnGhostRedTextCompact: {
     color: '#CC5757',
     fontSize: 12,
@@ -1379,7 +1410,7 @@ const styles = StyleSheet.create({
     flex: 1.25,
     borderRadius: 11,
     height: 36,
-    backgroundColor: '#2F8A58',
+    backgroundColor: THEME_ACTION_COLOR,
     paddingHorizontal: 10,
   },
   actionBtnApproveTextCompact: {
@@ -1492,6 +1523,119 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8A8178',
     fontWeight: '500',
+  },
+  confirmOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    backgroundColor: 'rgba(31, 26, 21, 0.48)',
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#F0E5DA',
+    backgroundColor: '#FFFFFF',
+    padding: 18,
+    alignItems: 'center',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 26,
+    elevation: 8,
+  },
+  confirmIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF3F1',
+    borderWidth: 1,
+    borderColor: '#F2D6D1',
+    marginBottom: 12,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    lineHeight: 24,
+    color: '#251D17',
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  confirmMessage: {
+    marginTop: 7,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#7B7268',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  confirmOrderBox: {
+    width: '100%',
+    marginTop: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8DED2',
+    backgroundColor: '#FAF8F5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  confirmOrderLabel: {
+    fontSize: 10,
+    lineHeight: 13,
+    color: '#A0978F',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  confirmOrderValue: {
+    marginTop: 3,
+    fontSize: 14,
+    lineHeight: 18,
+    color: '#2C1E16',
+    fontWeight: '700',
+  },
+  confirmActions: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D8CEC3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    marginRight: 9,
+  },
+  confirmCancelText: {
+    fontSize: 13,
+    color: '#6F665C',
+    fontWeight: '800',
+  },
+  confirmDangerBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#CC5757',
+    shadowColor: '#CC5757',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  confirmDangerText: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
 });
 

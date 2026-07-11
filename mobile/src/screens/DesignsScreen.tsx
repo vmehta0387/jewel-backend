@@ -21,27 +21,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { fetchNotifications, markAllNotificationsRead } from '../api/notifications';
+import NotificationPopover from '../components/NotificationPopover';
 import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
 import type { Design } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
-import { mapNotificationsToActivityItems } from '../utils/appNotifications';
-
-type NotificationTone = 'alertGold' | 'alertRed' | 'neutral' | 'info' | 'promo';
-type ActivityItem = {
-  id: string;
-  title: string;
-  subtitle: string;
-  time: string;
-  sortDate: Date;
-};
-type NotificationEntry = {
-  id: string;
-  title: string;
-  subtitle: string;
-  time: string;
-  tone: NotificationTone;
-};
+import type { NotificationFeedEntry } from '../utils/appNotifications';
 
 const formatRelativeTime = (date: Date): string => {
   const diffMs = Date.now() - date.getTime();
@@ -244,7 +228,6 @@ const DesignsScreen = () => {
   const [draftPriceBand, setDraftPriceBand] = useState<PriceBand>('ALL');
   const [draftSortOption, setDraftSortOption] = useState<SortOption>('recent');
   const [notificationsVisible, setNotificationsVisible] = useState(false);
-  const [activity, setActivity] = useState<ActivityItem[]>([]);
   const appliedSearchPresetRef = useRef('');
   const requestSeqRef = useRef(0);
   const loadedQueryKeyRef = useRef('');
@@ -372,32 +355,9 @@ const DesignsScreen = () => {
     requestedQueryKeyRef.current !== catalogQueryKey &&
     loadedQueryKeyRef.current !== catalogQueryKey;
 
-  const loadNotifications = useCallback(async () => {
-    if (!token) return;
-    try {
-      const response = await fetchNotifications(token, 1, 25, false);
-      const items = mapNotificationsToActivityItems(response.data || []);
-      items.sort((a, b) => b.sortDate.getTime() - a.sortDate.getTime());
-      setActivity(items);
-    } catch {
-      setActivity([]);
-    }
-  }, [token]);
-
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
-    loadNotifications();
-  }, [loadNotifications]);
-
-  const handleMarkAllRead = useCallback(async () => {
-    if (!token) return;
-    try {
-      await markAllNotificationsRead(token);
-      await loadNotifications();
-    } catch {
-      // ignore notification mark-all errors in the sheet
-    }
-  }, [loadNotifications, token]);
+  }, []);
 
   const categories = useMemo(() => {
     const orderedGroups = Array.from(
@@ -527,69 +487,12 @@ const DesignsScreen = () => {
     return 'Search products...';
   }, [route.params?.presetCategory]);
 
-  const activityEntries: NotificationEntry[] = useMemo(
-    () =>
-      activity.slice(0, 10).map((item) => {
-        const text = `${item.title} ${item.subtitle}`.toLowerCase();
-        const isApproval = text.includes('approval') || text.includes('approve');
-        const isCritical = text.includes('cancelled') || text.includes('rejected') || text.includes('failed');
-        const tone: NotificationTone = isCritical ? 'alertRed' : isApproval ? 'alertGold' : 'neutral';
-        return {
-          id: item.id,
-          title: item.title,
-          subtitle: item.subtitle,
-          time: item.time,
-          tone,
-        };
-      }),
-    [activity],
+  const handleOpenNotificationEntry = useCallback(
+    (_entry: NotificationFeedEntry) => {
+      (navigation as any).navigate('OrdersTab');
+    },
+    [navigation],
   );
-
-  const alerts = useMemo(
-    () => activityEntries.filter((entry) => entry.tone === 'alertGold' || entry.tone === 'alertRed').slice(0, 3),
-    [activityEntries],
-  );
-  const recentActivity = useMemo(
-    () => activityEntries.filter((entry) => entry.tone === 'neutral').slice(0, 4),
-    [activityEntries],
-  );
-  const updates: NotificationEntry[] = useMemo(
-    () => [
-      {
-        id: 'update-catalog-sync',
-        title: 'Catalog sync completed',
-        subtitle: 'Latest designs are available for browsing',
-        time: 'Available now',
-        tone: 'info',
-      },
-      {
-        id: 'update-catalog-count',
-        title: `${totalDesigns || filteredDesigns.length} designs in ${catalogTitle}`,
-        subtitle: 'Use filters to narrow or expand your results',
-        time: 'Now',
-        tone: 'promo',
-      },
-    ],
-    [filteredDesigns.length, catalogTitle, totalDesigns],
-  );
-
-  const getNotificationCardStyle = (tone: NotificationTone) => {
-    if (tone === 'alertGold') return [styles.notificationCardBase, styles.notificationCardGold];
-    if (tone === 'alertRed') return [styles.notificationCardBase, styles.notificationCardRed];
-    if (tone === 'info') return [styles.notificationCardBase, styles.notificationCardInfo];
-    if (tone === 'promo') return [styles.notificationCardBase, styles.notificationCardPromo];
-    return [styles.notificationCardBase, styles.notificationCardNeutral];
-  };
-
-  const getNotificationDotStyle = (tone: NotificationTone) => {
-    if (tone === 'alertGold') return [styles.notificationDot, styles.notificationDotGold];
-    if (tone === 'alertRed') return [styles.notificationDot, styles.notificationDotRed];
-    if (tone === 'info') return [styles.notificationDot, styles.notificationDotInfo];
-    if (tone === 'promo') return [styles.notificationDot, styles.notificationDotPromo];
-    return [styles.notificationDot, styles.notificationDotNeutral];
-  };
-
-  const hasAnyNotifications = alerts.length || recentActivity.length || updates.length;
 
   const renderDesignCard = ({ item }: { item: Design; index: number }) => {
     const imageUrl = item.imageUrls?.[0];
@@ -806,111 +709,11 @@ const DesignsScreen = () => {
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
 
-        <Modal
+        <NotificationPopover
           visible={notificationsVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setNotificationsVisible(false)}
-        >
-          <TouchableWithoutFeedback onPress={() => setNotificationsVisible(false)}>
-            <View style={styles.modalOverlayLock}>
-              <TouchableWithoutFeedback>
-                <View style={styles.notificationsWindow}>
-                  <View style={styles.notificationsHeaderRow}>
-                    <Text style={styles.notificationsTitle}>Notifications</Text>
-                    <TouchableOpacity onPress={handleMarkAllRead}>
-                      <Text style={styles.markReadText}>Mark all read</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {hasAnyNotifications ? (
-                    <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
-                      {alerts.length ? (
-                        <View style={styles.notificationSection}>
-                          <Text style={styles.notificationSectionLabel}>ALERTS</Text>
-                          {alerts.map((entry) => (
-                            <TouchableOpacity
-                              key={entry.id}
-                              style={getNotificationCardStyle(entry.tone)}
-                              onPress={() => {
-                                setNotificationsVisible(false);
-                                (navigation as any).navigate('OrdersTab');
-                              }}
-                              activeOpacity={0.88}
-                            >
-                              <View style={styles.notificationCardTopRow}>
-                                <View style={getNotificationDotStyle(entry.tone)} />
-                                <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                  {entry.title}
-                                </Text>
-                              </View>
-                              <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                              <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ) : null}
-
-                      {recentActivity.length ? (
-                        <View style={styles.notificationSection}>
-                          <Text style={styles.notificationSectionLabel}>RECENT ACTIVITY</Text>
-                          {recentActivity.map((entry) => (
-                            <TouchableOpacity
-                              key={entry.id}
-                              style={getNotificationCardStyle(entry.tone)}
-                              onPress={() => {
-                                setNotificationsVisible(false);
-                                (navigation as any).navigate('OrdersTab');
-                              }}
-                              activeOpacity={0.88}
-                            >
-                              <View style={styles.notificationCardTopRow}>
-                                <View style={getNotificationDotStyle(entry.tone)} />
-                                <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                  {entry.title}
-                                </Text>
-                              </View>
-                              <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                              <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ) : null}
-
-                      <View style={styles.notificationSection}>
-                        <Text style={styles.notificationSectionLabel}>UPDATES</Text>
-                        {updates.map((entry) => (
-                          <TouchableOpacity
-                            key={entry.id}
-                            style={getNotificationCardStyle(entry.tone)}
-                            onPress={() => {
-                              setNotificationsVisible(false);
-                              navigation.navigate('CatalogCategories');
-                            }}
-                            activeOpacity={0.88}
-                          >
-                            <View style={styles.notificationCardTopRow}>
-                              <View style={getNotificationDotStyle(entry.tone)} />
-                              <Text style={styles.notificationCardTitle} numberOfLines={1}>
-                                {entry.title}
-                              </Text>
-                            </View>
-                            <Text style={styles.notificationCardSubtitle}>{entry.subtitle}</Text>
-                            <Text style={styles.notificationCardTime}>{entry.time}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </ScrollView>
-                  ) : (
-                    <View style={styles.emptyNotifBox}>
-                      <Text style={styles.emptyNotifString}>No recent activity</Text>
-                    </View>
-                  )}
-                </View>
-              </TouchableWithoutFeedback>
-            </View>
-          </TouchableWithoutFeedback>
-        </Modal>
+          onClose={() => setNotificationsVisible(false)}
+          onOpenNotification={handleOpenNotificationEntry}
+        />
 
         <Modal
           visible={sortMenuVisible}
@@ -1260,131 +1063,6 @@ const styles = StyleSheet.create({
   },
   subChipTextActive: {
     color: '#9C7127',
-  },
-  modalOverlayLock: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-  },
-  notificationsWindow: {
-    position: 'absolute',
-    top: 80,
-    right: 10,
-    width: 338,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingTop: 14,
-    paddingBottom: 10,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  notificationsTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1F1C18',
-  },
-  notificationsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  markReadText: {
-    fontSize: 11,
-    color: '#B2874A',
-    fontWeight: '700',
-  },
-  notificationSection: {
-    marginBottom: 12,
-  },
-  notificationSectionLabel: {
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: '#8F877E',
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  notificationCardBase: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    marginBottom: 8,
-  },
-  notificationCardGold: {
-    backgroundColor: '#FCF7EC',
-    borderColor: '#FFFFFF',
-  },
-  notificationCardRed: {
-    backgroundColor: '#FDF2F3',
-    borderColor: '#FFFFFF',
-  },
-  notificationCardNeutral: {
-    backgroundColor: '#F8F8F8',
-    borderColor: '#FFFFFF',
-  },
-  notificationCardInfo: {
-    backgroundColor: '#ECF3FF',
-    borderColor: '#FFFFFF',
-  },
-  notificationCardPromo: {
-    backgroundColor: '#F8F4EC',
-    borderColor: '#FFFFFF',
-  },
-  notificationCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 3,
-  },
-  notificationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  notificationDotGold: {
-    backgroundColor: '#C59A44',
-  },
-  notificationDotRed: {
-    backgroundColor: '#DE5858',
-  },
-  notificationDotNeutral: {
-    backgroundColor: '#9A9188',
-  },
-  notificationDotInfo: {
-    backgroundColor: '#5D86C7',
-  },
-  notificationDotPromo: {
-    backgroundColor: '#C49B52',
-  },
-  notificationCardTitle: {
-    flex: 1,
-    fontSize: 11,
-    color: '#2D2823',
-    fontWeight: '700',
-  },
-  notificationCardSubtitle: {
-    fontSize: 10,
-    lineHeight: 14,
-    color: '#6C645B',
-  },
-  notificationCardTime: {
-    fontSize: 11,
-    color: '#8E867D',
-    marginTop: 2,
-  },
-  emptyNotifBox: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyNotifString: {
-    fontSize: 13,
-    color: '#9E968D',
   },
   sortOverlay: {
     flex: 1,

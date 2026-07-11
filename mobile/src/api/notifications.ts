@@ -14,11 +14,8 @@ export const fetchNotifications = (
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
+    unreadOnly: String(unreadOnly),
   });
-
-  if (unreadOnly) {
-    params.set('unreadOnly', 'true');
-  }
 
   return apiRequest<NotificationListResponse>(`/notifications?${params.toString()}`, { method: 'GET' }, token);
 };

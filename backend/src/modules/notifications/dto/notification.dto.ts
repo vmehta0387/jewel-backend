@@ -1,7 +1,14 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export type NotificationSectionFilter = 'ALERTS' | 'UPDATES';
+
+const parseBooleanQuery = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') return ['true', '1', 'yes'].includes(value.trim().toLowerCase());
+  return false;
+};
 
 export class FindNotificationsQueryDto {
   @IsOptional()
@@ -18,7 +25,7 @@ export class FindNotificationsQueryDto {
   limit?: number = 25;
 
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => parseBooleanQuery(value))
   @IsBoolean()
   unreadOnly?: boolean;
 
@@ -33,7 +40,7 @@ export class FindNotificationsQueryDto {
 
 export class MarkNotificationReadDto {
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(({ value }) => parseBooleanQuery(value))
   @IsBoolean()
   isRead?: boolean = true;
 }

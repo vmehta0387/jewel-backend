@@ -1,14 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
+  Keyboard,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -26,8 +28,10 @@ import {
 } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import NotificationPopover from '../components/NotificationPopover';
 import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
+import type { NotificationFeedEntry } from '../utils/appNotifications';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -44,6 +48,20 @@ type VersionFilters = {
 type FilterKey = keyof VersionFilters;
 type VersionOptionGroups = Record<FilterKey, string[]>;
 type CustomerFieldErrors = Partial<Record<'name' | 'phone' | 'email', string>>;
+type DropdownLayout = {
+  top: number;
+  left: number;
+  width: number;
+  listMaxHeight: number;
+};
+
+const DROPDOWN_EDGE_PADDING = 12;
+const DROPDOWN_GAP = 6;
+const DROPDOWN_LIST_MAX_HEIGHT = 176;
+const DROPDOWN_OPTION_HEIGHT = 40;
+const DROPDOWN_SEARCH_HEIGHT = 48;
+const DROPDOWN_LIST_MIN_HEIGHT = 40;
+const FOOTER_SCROLL_CLEARANCE = Platform.OS === 'ios' ? 86 : 76;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -61,6 +79,7 @@ const formatQuoteDate = (value?: string | Date | null) => {
 
 const compact = (value?: string | number | null) => String(value ?? '').trim();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const THEME_ACTION_COLOR = '#BE9851';
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
@@ -174,14 +193,36 @@ const QuoteBuilderScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const { draft } = route.params;
+  const { width, height: windowHeight } = useWindowDimensions();
   const companyId = user?.companyId || '';
   const branchId = user?.branchId || '';
+  const initializedDraftKeyRef = useRef<string | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const customerCardRef = useRef<View | null>(null);
+  const activeCustomerFieldRef = useRef<keyof CustomerFieldErrors | null>(null);
+  const customerFieldRefs = useRef<Record<keyof CustomerFieldErrors, View | null>>({
+    name: null,
+    phone: null,
+    email: null,
+  });
+  const screenRef = useRef<View | null>(null);
+  const scrollYRef = useRef(0);
+  const dropdownFieldRefs = useRef<Record<FilterKey, View | null>>({
+    shape: null,
+    style: null,
+    metalColor: null,
+    weight: null,
+    quality: null,
+    ringSize: null,
+  });
 
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [loadingFamily, setLoadingFamily] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [approvalConfirmVisible, setApprovalConfirmVisible] = useState(false);
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -200,22 +241,27 @@ const QuoteBuilderScreen = () => {
   const [customerPhone, setCustomerPhone] = useState(draft.customerPhone || '');
   const [customerEmail, setCustomerEmail] = useState(draft.customerEmail || '');
   const [customerErrors, setCustomerErrors] = useState<CustomerFieldErrors>({});
-  const [validationToast, setValidationToast] = useState('');
   const [notes, setNotes] = useState(draft.notes || '');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
   const [dropdownSelected, setDropdownSelected] = useState('');
   const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
+  const [dropdownLayout, setDropdownLayout] = useState<DropdownLayout | null>(null);
+  const [dropdownSearch, setDropdownSearch] = useState('');
 
   useEffect(() => {
+    const draftKey = draft.orderId || draft.designId;
+    if (initializedDraftKeyRef.current === draftKey) return;
+    initializedDraftKeyRef.current = draftKey;
+
     setPurchaseOrderNumber(draft.purchaseOrderNumber || '');
     setCustomerName(draft.customerName || '');
     setCustomerPhone(draft.customerPhone || '');
     setCustomerEmail(draft.customerEmail || '');
     setCustomerErrors({});
-    setValidationToast('');
     setNotes(draft.notes || '');
     setEditingOrderId(draft.orderId || null);
   }, [
@@ -227,11 +273,56 @@ const QuoteBuilderScreen = () => {
     draft.notes,
   ]);
 
+  const focusCustomerField = useCallback((field: keyof CustomerFieldErrors) => {
+    activeCustomerFieldRef.current = field;
+    const scrollToField = () => {
+      const fieldNode = customerFieldRefs.current[field];
+      if (!fieldNode) return;
+
+      fieldNode.measureLayout(
+        scrollRef.current as any,
+        (_x, y) => {
+          scrollRef.current?.scrollTo({
+            y: Math.max(0, y - 14),
+            animated: true,
+          });
+        },
+        () => {
+          customerCardRef.current?.measureLayout(
+            scrollRef.current as any,
+            (_x, y) => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, y - 12),
+                animated: true,
+              });
+            },
+            () => scrollRef.current?.scrollToEnd({ animated: true }),
+          );
+        },
+      );
+    };
+
+    window.setTimeout(scrollToField, 80);
+    window.setTimeout(scrollToField, 220);
+  }, []);
+
   useEffect(() => {
-    if (!validationToast) return;
-    const timer = setTimeout(() => setValidationToast(''), 2800);
-    return () => clearTimeout(timer);
-  }, [validationToast]);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardHeight(event.endCoordinates?.height || 0);
+      const activeField = activeCustomerFieldRef.current;
+      if (activeField) {
+        window.setTimeout(() => focusCustomerField(activeField), 80);
+      }
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [focusCustomerField]);
 
   const applyActiveDesignSelection = useCallback((design: Design, selectedOptions?: Partial<VersionFilters>) => {
     const next = { ...getFilterValuesFromDesign(design), ...(selectedOptions || {}) };
@@ -386,42 +477,160 @@ const QuoteBuilderScreen = () => {
     [token, selection, setSelectionField, draft.designId, applyConfiguratorResponse],
   );
 
+  const filteredDropdownOptions = useMemo(() => {
+    const search = dropdownSearch.trim().toLowerCase();
+    if (!search) return dropdownOptions;
+    return dropdownOptions.filter((option) => option.toLowerCase().includes(search));
+  }, [dropdownOptions, dropdownSearch]);
+
+  const closeDropdown = useCallback(() => {
+    setDropdownVisible(false);
+    setDropdownLayout(null);
+    setDropdownSearch('');
+  }, []);
+
+  const measureDropdownLayout = useCallback(
+    (key: FilterKey, optionCount: number) => {
+      const fieldNode = dropdownFieldRefs.current[key];
+      const screenNode = screenRef.current;
+      if (!fieldNode || !screenNode) {
+        setDropdownLayout(null);
+        return;
+      }
+
+      screenNode.measureInWindow((rootX, rootY) => {
+        fieldNode.measureInWindow((fieldX, fieldY, fieldWidth, fieldHeight) => {
+          const preferredListHeight = Math.min(
+            DROPDOWN_LIST_MAX_HEIGHT,
+            Math.max(DROPDOWN_OPTION_HEIGHT, optionCount * DROPDOWN_OPTION_HEIGHT),
+          );
+          const visibleBottom = windowHeight - keyboardHeight - DROPDOWN_EDGE_PADDING;
+          const spaceBelow = visibleBottom - (fieldY + fieldHeight);
+          const spaceAbove = fieldY - DROPDOWN_EDGE_PADDING;
+          const preferredMenuHeight = DROPDOWN_SEARCH_HEIGHT + preferredListHeight;
+          const openDownTop = fieldY + fieldHeight + DROPDOWN_GAP;
+          const openUpTop = Math.max(DROPDOWN_EDGE_PADDING, fieldY - preferredMenuHeight - DROPDOWN_GAP);
+          const canOpenDown = spaceBelow >= DROPDOWN_SEARCH_HEIGHT + DROPDOWN_LIST_MIN_HEIGHT;
+          const openUp = spaceBelow < preferredMenuHeight && spaceAbove > spaceBelow;
+          const openDown = canOpenDown || !openUp;
+          const listHeight = openDown
+            ? Math.max(
+                DROPDOWN_LIST_MIN_HEIGHT,
+                Math.min(preferredListHeight, visibleBottom - openDownTop - DROPDOWN_SEARCH_HEIGHT),
+              )
+            : preferredListHeight;
+          const menuTopInWindow = openDown ? openDownTop : openUpTop;
+          const menuLeft = Math.max(
+            DROPDOWN_EDGE_PADDING,
+            Math.min(fieldX - rootX, width - DROPDOWN_EDGE_PADDING - fieldWidth),
+          );
+
+          setDropdownLayout({
+            top: menuTopInWindow - rootY,
+            left: menuLeft,
+            width: fieldWidth,
+            listMaxHeight: listHeight,
+          });
+        });
+      });
+    },
+    [keyboardHeight, width, windowHeight],
+  );
+
   const openDropdown = useCallback(
     (key: FilterKey, options: string[], selected: string) => {
       if (!options.length) return;
       if (dropdownVisible && dropdownKey === key) {
-        setDropdownVisible(false);
+        closeDropdown();
         return;
       }
       setDropdownKey(key);
       setDropdownOptions(options);
       setDropdownSelected(selected);
+      setDropdownSearch('');
+      measureDropdownLayout(key, options.length);
       setDropdownVisible(true);
     },
-    [dropdownVisible, dropdownKey],
+    [closeDropdown, dropdownVisible, dropdownKey, measureDropdownLayout],
   );
 
   const handleDropdownSelect = useCallback(
     (value: string) => {
       if (!dropdownKey) return;
       void resolveVersionSelection(dropdownKey, value);
-      setDropdownVisible(false);
+      closeDropdown();
     },
-    [dropdownKey, resolveVersionSelection],
+    [closeDropdown, dropdownKey, resolveVersionSelection],
   );
 
-  const renderInlineDropdown = useCallback(
-    (ownerKey: FilterKey) => {
-      if (!dropdownVisible || dropdownKey !== ownerKey) return null;
-      return (
-        <View style={styles.inlineDropdownMenu}>
-          <ScrollView style={styles.inlineDropdownScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            {dropdownOptions.map((item, index) => {
+  const handleOpenNotifications = useCallback(() => {
+    closeDropdown();
+    setNotificationsVisible(true);
+  }, [closeDropdown]);
+
+  const handleOpenNotificationEntry = useCallback(
+    (_entry: NotificationFeedEntry) => {
+      (navigation as any).navigate('OrdersTab');
+    },
+    [navigation],
+  );
+
+  useEffect(() => {
+    if (!dropdownVisible || !dropdownKey) return;
+    requestAnimationFrame(() => {
+      measureDropdownLayout(dropdownKey, dropdownOptions.length);
+    });
+  }, [dropdownKey, dropdownOptions.length, dropdownVisible, keyboardHeight, measureDropdownLayout]);
+
+  const renderDropdownOverlay = useCallback(() => {
+    if (!dropdownVisible || !dropdownKey || !dropdownLayout) return null;
+
+    return (
+      <View style={styles.dropdownOverlay} pointerEvents="box-none">
+        <View
+          style={[
+            styles.inlineDropdownMenu,
+            {
+              top: dropdownLayout.top,
+              left: dropdownLayout.left,
+              width: dropdownLayout.width,
+            },
+          ]}
+        >
+          <View style={styles.inlineDropdownSearchRow}>
+            <Ionicons name="search-outline" size={14} color="#9A8D80" />
+            <TextInput
+              style={styles.inlineDropdownSearchInput}
+              value={dropdownSearch}
+              onChangeText={setDropdownSearch}
+              placeholder="Search options"
+              placeholderTextColor="#A79C91"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {dropdownSearch ? (
+              <TouchableOpacity
+                style={styles.inlineDropdownClearBtn}
+                onPress={() => setDropdownSearch('')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close-circle" size={15} color="#A79C91" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <ScrollView
+            style={[styles.inlineDropdownScroll, { maxHeight: dropdownLayout.listMaxHeight }]}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={filteredDropdownOptions.length * DROPDOWN_OPTION_HEIGHT > dropdownLayout.listMaxHeight}
+          >
+            {filteredDropdownOptions.length ? filteredDropdownOptions.map((item, index) => {
               const active = item === dropdownSelected;
-              const isLast = index === dropdownOptions.length - 1;
+              const isLast = index === filteredDropdownOptions.length - 1;
               return (
                 <TouchableOpacity
-                  key={`qb-dd-${ownerKey}-${item}`}
+                  key={`qb-dd-${dropdownKey}-${item}`}
                   style={[
                     styles.inlineDropdownOption,
                     isLast ? styles.inlineDropdownOptionLast : null,
@@ -435,13 +644,24 @@ const QuoteBuilderScreen = () => {
                   </Text>
                 </TouchableOpacity>
               );
-            })}
+            }) : (
+              <View style={styles.inlineDropdownEmptyRow}>
+                <Text style={styles.inlineDropdownEmptyText}>No matching options</Text>
+              </View>
+            )}
           </ScrollView>
         </View>
-      );
-    },
-    [dropdownVisible, dropdownKey, dropdownOptions, dropdownSelected, handleDropdownSelect],
-  );
+      </View>
+    );
+  }, [
+    dropdownKey,
+    dropdownLayout,
+    dropdownSearch,
+    dropdownSelected,
+    dropdownVisible,
+    filteredDropdownOptions,
+    handleDropdownSelect,
+  ]);
 
   const canPersist = Boolean(token && companyId && branchId && !saving && !sending);
 
@@ -465,18 +685,15 @@ const QuoteBuilderScreen = () => {
     if (!name) nextErrors.name = 'Customer name is required.';
     if (!phone) nextErrors.phone = 'Customer phone is required.';
     else if (phoneDigits.length < 7 || phoneDigits.length > 15) nextErrors.phone = 'Enter a valid phone number.';
-    if (!email) nextErrors.email = 'Customer email is required.';
-    else if (!emailPattern.test(email)) nextErrors.email = 'Enter a valid email address.';
+    if (email && !emailPattern.test(email)) nextErrors.email = 'Enter a valid email address.';
 
     setCustomerErrors(nextErrors);
     const firstError = nextErrors.name || nextErrors.phone || nextErrors.email;
     if (firstError) {
       setError(firstError);
-      setValidationToast(firstError);
       return false;
     }
 
-    setValidationToast('');
     return true;
   }, [customerEmail, customerName, customerPhone]);
 
@@ -551,24 +768,33 @@ const QuoteBuilderScreen = () => {
     setSaving(true);
     setError(null);
     try {
-      await persistOrder('QUOTE');
-      Alert.alert('Saved', 'Quote draft has been saved.');
+      const saved = await persistOrder('QUOTE');
+      if (!saved) return;
+      (navigation as any).navigate('OrdersTab', {
+        screen: 'OrderDetail',
+        params: { orderId: saved.id },
+      });
     } catch (err: any) {
       setError(err?.message || 'Unable to save quote.');
     } finally {
       setSaving(false);
     }
-  }, [canPersist, persistOrder, validateCustomerDetails]);
+  }, [canPersist, navigation, persistOrder, validateCustomerDetails]);
 
   const handleSendForApproval = useCallback(async () => {
     if (!canPersist) return;
     if (!validateCustomerDetails()) return;
+    closeDropdown();
+    setApprovalConfirmVisible(true);
+  }, [canPersist, closeDropdown, validateCustomerDetails]);
+
+  const handleConfirmSendForApproval = useCallback(async () => {
+    setApprovalConfirmVisible(false);
     setSending(true);
     setError(null);
     try {
       const updated = await persistOrder('PENDING_APPROVAL');
       if (!updated) return;
-      Alert.alert('Quote sent', 'Quote has been sent for approval.');
       (navigation as any).navigate('OrdersTab', {
         screen: 'OrderDetail',
         params: { orderId: updated.id },
@@ -578,71 +804,7 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [canPersist, navigation, persistOrder, validateCustomerDetails]);
-
-  const handleSummary = useCallback(() => {
-    if (!validateCustomerDetails()) return;
-    setError(null);
-    navigation.navigate('QuoteSummary', {
-      summary: {
-        orderId: order?.id || editingOrderId || undefined,
-        orderNumber: order?.orderNumber || draft.orderNumber,
-        createdAt: order?.createdAt || draft.createdAt,
-        status: order?.status || draft.status || 'QUOTE',
-        designId: activeDesign?.id || draft.designId,
-        designNo: activeDesign?.designNo || draft.designNo,
-        designName: activeDesign?.designName || draft.designName || null,
-        imageUrl: activeImage || null,
-        price: Number(displayPrice || draft.unitPrice || 0),
-        selection: {
-          shape,
-          metalColor,
-          style,
-          weight,
-          quality,
-          ringSize,
-        },
-        customerName: customerName.trim() || undefined,
-        customerPhone: customerPhone.trim() || undefined,
-        customerEmail: customerEmail.trim() || undefined,
-        purchaseOrderNumber: purchaseOrderNumber.trim() || undefined,
-        branchName: user?.branchName || undefined,
-        notes: notes.trim() || undefined,
-      },
-    });
-  }, [
-    navigation,
-    order?.id,
-    order?.orderNumber,
-    order?.createdAt,
-    order?.status,
-    editingOrderId,
-    activeDesign?.id,
-    activeDesign?.designNo,
-    activeDesign?.designName,
-    draft.designId,
-    draft.designNo,
-    draft.designName,
-    draft.orderNumber,
-    draft.createdAt,
-    draft.status,
-    activeImage,
-    displayPrice,
-    draft.unitPrice,
-    shape,
-    metalColor,
-    style,
-    weight,
-    quality,
-    ringSize,
-    customerName,
-    customerPhone,
-    customerEmail,
-    purchaseOrderNumber,
-    user?.branchName,
-    notes,
-    validateCustomerDetails,
-  ]);
+  }, [navigation, persistOrder]);
 
   const headerDate = formatQuoteDate(order?.createdAt || draft.createdAt);
   const preparedFor = customerName.trim() || '-';
@@ -656,7 +818,12 @@ const QuoteBuilderScreen = () => {
     value: string,
     options: string[],
   ) => (
-    <View style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === fieldKey ? styles.dropdownFieldWrapActive : null]}>
+    <View
+      ref={(node) => {
+        dropdownFieldRefs.current[fieldKey] = node;
+      }}
+      style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === fieldKey ? styles.dropdownFieldWrapActive : null]}
+    >
       <Text style={styles.specLabel}>{label}</Text>
       <TouchableOpacity style={styles.dropdownFieldCard} activeOpacity={0.9} onPress={() => openDropdown(fieldKey, options, value)}>
         <View style={styles.dropdownValueRow}>
@@ -666,25 +833,20 @@ const QuoteBuilderScreen = () => {
           <Ionicons name="chevron-down" size={14} color="#7D746A" />
         </View>
       </TouchableOpacity>
-      {renderInlineDropdown(fieldKey)}
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.headerRow}>
+    <SafeAreaView ref={screenRef} style={styles.screen} edges={['top']}>
+      <View style={styles.headerRow} onTouchStart={closeDropdown}>
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
           <Ionicons name="chevron-back" size={17} color="#7A6E61" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Quote Builder</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.smallActionBtn} activeOpacity={0.9} onPress={handleSave} disabled={!canPersist}>
-            <Ionicons name="create-outline" size={13} color="#7A6E61" />
-            <Text style={styles.smallActionText}>Edit</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBellBtn}
-            onPress={() => (navigation as any).navigate('OrdersTab')}
+            onPress={handleOpenNotifications}
             activeOpacity={0.88}
           >
             <Ionicons name="notifications-outline" size={16} color="#7A6E61" />
@@ -716,7 +878,18 @@ const QuoteBuilderScreen = () => {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onTouchStart={closeDropdown}
+        onScroll={(event) => {
+          scrollYRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        onScrollBeginDrag={closeDropdown}
+        scrollEventThrottle={16}
+      >
         <View style={styles.editorShell}>
           <View style={styles.purchaseSection}>
             <View style={styles.fieldLabelRow}>
@@ -766,9 +939,9 @@ const QuoteBuilderScreen = () => {
               {renderDropdownField('SHAPE', 'shape', shape, shapeOptions)}
               {renderDropdownField('METAL', 'metalColor', metalColor, metalColorOptions)}
               {renderDropdownField('COVERAGE', 'style', style, styleOptions)}
-              {renderDropdownField('CARAT WEIGHT', 'weight', weight, weightOptions)}
-              {renderDropdownField('DIAMOND', 'quality', quality, qualityOptions)}
-              {renderDropdownField('RING SIZE', 'ringSize', ringSize, ringSizeOptions)}
+              {renderDropdownField('DIA. WEIGHT', 'weight', weight, weightOptions)}
+              {renderDropdownField('DIA. QUALITY', 'quality', quality, qualityOptions)}
+              {renderDropdownField('JEWELRY SIZE', 'ringSize', ringSize, ringSizeOptions)}
             </View>
 
             <View style={styles.notesWrap}>
@@ -781,83 +954,161 @@ const QuoteBuilderScreen = () => {
                 placeholderTextColor="#94897C"
               />
             </View>
-
-            <TouchableOpacity style={styles.saveChangesBtn} onPress={handleSave} disabled={!canPersist} activeOpacity={0.9}>
-              <Text style={styles.saveChangesText}>{saving ? 'Saving...' : 'Save changes'}</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.customerCard}>
+        <View
+          ref={customerCardRef}
+          style={styles.customerCard}
+        >
           <Text style={styles.blockLabel}>CUSTOMER INFO</Text>
-          <TextInput
-            value={customerName}
-            onChangeText={(value) => {
-              setCustomerName(value);
-              clearCustomerError('name');
+          <View
+            ref={(node) => {
+              customerFieldRefs.current.name = node;
             }}
-            placeholder="Customer name"
-            placeholderTextColor="#A29587"
-            style={[styles.customerInput, customerErrors.name ? styles.customerInputError : null]}
-          />
-          {customerErrors.name ? <Text style={styles.customerErrorText}>{customerErrors.name}</Text> : null}
-          <TextInput
-            value={customerPhone}
-            onChangeText={(value) => {
-              setCustomerPhone(value);
-              clearCustomerError('phone');
+            style={styles.customerInputWrap}
+          >
+            <TextInput
+              value={customerName}
+              onChangeText={(value) => {
+                setCustomerName(value);
+                clearCustomerError('name');
+              }}
+              placeholder="Customer name"
+              placeholderTextColor="#A29587"
+              style={[
+                styles.customerInput,
+                customerErrors.name ? styles.customerInputError : null,
+                customerErrors.name ? styles.customerInputWithIcon : null,
+              ]}
+              onFocus={() => focusCustomerField('name')}
+            />
+            {customerErrors.name ? (
+              <Ionicons style={styles.customerErrorIcon} name="alert-circle" size={17} color="#B54040" />
+            ) : null}
+          </View>
+          <View
+            ref={(node) => {
+              customerFieldRefs.current.phone = node;
             }}
-            placeholder="+1 (212) 555-0198"
-            placeholderTextColor="#A29587"
-            keyboardType="phone-pad"
-            style={[styles.customerInput, customerErrors.phone ? styles.customerInputError : null]}
-          />
-          {customerErrors.phone ? <Text style={styles.customerErrorText}>{customerErrors.phone}</Text> : null}
-          <TextInput
-            value={customerEmail}
-            onChangeText={(value) => {
-              setCustomerEmail(value);
-              clearCustomerError('email');
+            style={styles.customerInputWrap}
+          >
+            <TextInput
+              value={customerPhone}
+              onChangeText={(value) => {
+                setCustomerPhone(value);
+                clearCustomerError('phone');
+              }}
+              placeholder="+1 (212) 555-0198"
+              placeholderTextColor="#A29587"
+              keyboardType="phone-pad"
+              style={[
+                styles.customerInput,
+                customerErrors.phone ? styles.customerInputError : null,
+                customerErrors.phone ? styles.customerInputWithIcon : null,
+              ]}
+              onFocus={() => focusCustomerField('phone')}
+            />
+            {customerErrors.phone ? (
+              <Ionicons style={styles.customerErrorIcon} name="alert-circle" size={17} color="#B54040" />
+            ) : null}
+          </View>
+          <View
+            ref={(node) => {
+              customerFieldRefs.current.email = node;
             }}
-            placeholder="customer@email.com"
-            placeholderTextColor="#A29587"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={[styles.customerInput, customerErrors.email ? styles.customerInputError : null]}
-          />
-          {customerErrors.email ? <Text style={styles.customerErrorText}>{customerErrors.email}</Text> : null}
+            style={styles.customerInputWrap}
+          >
+            <TextInput
+              value={customerEmail}
+              onChangeText={(value) => {
+                setCustomerEmail(value);
+                clearCustomerError('email');
+              }}
+              placeholder="customer@email.com"
+              placeholderTextColor="#A29587"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={[
+                styles.customerInput,
+                customerErrors.email ? styles.customerInputError : null,
+                customerErrors.email ? styles.customerInputWithIcon : null,
+              ]}
+              onFocus={() => focusCustomerField('email')}
+            />
+            {customerErrors.email ? (
+              <Ionicons style={styles.customerErrorIcon} name="alert-circle" size={17} color="#B54040" />
+            ) : null}
+          </View>
         </View>
 
-        <View style={{ height: 140 }} />
+        <View style={{ height: keyboardHeight ? keyboardHeight + 28 : FOOTER_SCROLL_CLEARANCE }} />
       </ScrollView>
 
-      {validationToast ? (
-        <View style={styles.validationToast} pointerEvents="none">
-          <Ionicons name="alert-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.validationToastText}>{validationToast}</Text>
-        </View>
-      ) : null}
-
       <View style={styles.bottomBar}>
-        <View style={styles.bottomSmallActions}>
+        <View style={styles.bottomActionsRow}>
           <TouchableOpacity style={styles.smallBtn} onPress={handleSave} disabled={!canPersist} activeOpacity={0.9}>
-            <Text style={styles.smallBtnText}>Save</Text>
+            <Text style={styles.smallBtnText}>{saving ? 'Saving...' : 'Save Quote'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.smallBtn} onPress={handleSummary} activeOpacity={0.9}>
-            <Text style={styles.smallBtnText}>Summary</Text>
+          <TouchableOpacity
+            style={[styles.sendBtn, !canPersist ? styles.sendBtnDisabled : null]}
+            onPress={handleSendForApproval}
+            disabled={!canPersist}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.sendBtnText}>
+              {sending ? 'Sending...' : 'Send For Approval'}
+            </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.sendBtn, !canPersist ? styles.sendBtnDisabled : null]}
-          onPress={handleSendForApproval}
-          disabled={!canPersist}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.sendBtnText}>
-            {sending ? 'Sending...' : 'Send for Approval - close the deal ->'}
-          </Text>
-        </TouchableOpacity>
       </View>
+      {renderDropdownOverlay()}
+      <Modal
+        visible={approvalConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setApprovalConfirmVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmHeaderRow}>
+              <View style={styles.confirmIconWrap}>
+                <Ionicons name="checkmark-done-outline" size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.confirmHeaderText}>
+                <Text style={styles.confirmTitle}>Send For Approval?</Text>
+                <Text style={styles.confirmMessage}>
+                  Order will be generated and kept pending for approval.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.confirmActionsRow}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setApprovalConfirmVisible(false)}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmPrimaryBtn}
+                onPress={handleConfirmSendForApproval}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                focusable
+                hasTVPreferredFocus
+              >
+                <Text style={styles.confirmPrimaryText}>Send For Approval</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <NotificationPopover
+        visible={notificationsVisible}
+        onClose={() => setNotificationsVisible(false)}
+        onOpenNotification={handleOpenNotificationEntry}
+      />
     </SafeAreaView>
   );
 };
@@ -866,6 +1117,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    position: 'relative',
+  },
+  dropdownOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1200,
+    elevation: 40,
   },
   headerRow: {
     height: 56,
@@ -894,22 +1151,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  smallActionBtn: {
-    height: 30,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#DED4C8',
-    backgroundColor: '#FAF8F5',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  smallActionText: {
-    marginLeft: 4,
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#7A6E61',
   },
   headerBellBtn: {
     width: 30,
@@ -1052,7 +1293,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D7C8B2',
     borderRadius: 10,
-    backgroundColor: '#F4EFE5',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 11,
     color: '#6E573B',
     fontSize: 14,
@@ -1173,10 +1414,6 @@ const styles = StyleSheet.create({
   },
   inlineDropdownMenu: {
     position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: 6,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#D9CDBD',
@@ -1188,6 +1425,30 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
     zIndex: 420,
+  },
+  inlineDropdownSearchRow: {
+    height: DROPDOWN_SEARCH_HEIGHT,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE5DA',
+    backgroundColor: '#FBFAF8',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inlineDropdownSearchInput: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 0,
+    fontSize: 12,
+    color: '#2C2620',
+    fontWeight: '600',
+  },
+  inlineDropdownClearBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   inlineDropdownScroll: {
     maxHeight: 176,
@@ -1219,6 +1480,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
+  inlineDropdownEmptyRow: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  inlineDropdownEmptyText: {
+    width: '100%',
+    fontSize: 12,
+    color: '#8F8378',
+    fontWeight: '600',
+    textAlign: 'left',
+  },
   notesWrap: {
     marginBottom: 8,
   },
@@ -1227,23 +1502,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D7C4A2',
     borderRadius: 9,
-    backgroundColor: '#FBF6ED',
+    backgroundColor: '#FFFFFF',
     color: '#2E2721',
     fontSize: 12,
     fontWeight: '500',
     paddingHorizontal: 10,
-  },
-  saveChangesBtn: {
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: '#1B1816',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveChangesText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
   },
   customerCard: {
     marginTop: 10,
@@ -1258,6 +1521,10 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 1,
   },
+  customerInputWrap: {
+    position: 'relative',
+    marginTop: 8,
+  },
   customerInput: {
     height: 40,
     borderWidth: 1,
@@ -1268,42 +1535,103 @@ const styles = StyleSheet.create({
     color: '#342D26',
     fontSize: 13,
     fontWeight: '600',
-    marginTop: 8,
   },
   customerInputError: {
     borderColor: '#B54040',
     backgroundColor: '#FFF7F5',
   },
-  customerErrorText: {
-    marginTop: 4,
-    color: '#B54040',
-    fontSize: 11,
+  customerInputWithIcon: {
+    paddingRight: 34,
+  },
+  customerErrorIcon: {
+    position: 'absolute',
+    right: 10,
+    top: 11,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 26, 21, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+    paddingBottom: Platform.OS === 'ios' ? 86 : 76,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6DCCD',
+    padding: 12,
+    shadowColor: '#201810',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 18,
+  },
+  confirmHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  confirmIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: THEME_ACTION_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  confirmHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  confirmTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#2A241F',
+  },
+  confirmMessage: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#6F665D',
     fontWeight: '600',
   },
-  validationToast: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: Platform.OS === 'ios' ? 128 : 118,
-    minHeight: 42,
-    borderRadius: 12,
-    backgroundColor: '#B54040',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  confirmActionsRow: {
+    marginTop: 12,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#2C1E16',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 8,
-    zIndex: 30,
+    gap: 10,
   },
-  validationToastText: {
-    flex: 1,
-    marginLeft: 8,
+  confirmCancelBtn: {
+    flex: 0.82,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D7CEC2',
+    backgroundColor: '#FAF8F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 13,
+    color: '#6F665D',
+    fontWeight: '800',
+  },
+  confirmPrimaryBtn: {
+    flex: 1.35,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: THEME_ACTION_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmPrimaryText: {
+    fontSize: 13,
     color: '#FFFFFF',
-    fontSize: 12,
     fontWeight: '800',
   },
   bottomBar: {
@@ -1318,15 +1646,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: Platform.OS === 'ios' ? 22 : 12,
   },
-  bottomSmallActions: {
+  bottomActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: 10,
   },
   smallBtn: {
-    width: '31.5%',
-    height: 34,
-    borderRadius: 11,
+    flex: 0.9,
+    minWidth: 0,
+    height: 46,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#D7CEC2',
     backgroundColor: '#FAF8F5',
@@ -1339,9 +1668,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sendBtn: {
+    flex: 1.25,
+    minWidth: 0,
     height: 46,
     borderRadius: 12,
-    backgroundColor: '#1A1715',
+    backgroundColor: THEME_ACTION_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
   },

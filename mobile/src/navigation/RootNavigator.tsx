@@ -290,6 +290,26 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
+  const teamRootScreen = isCompanyAdmin ? 'BranchesHome' : 'TeamList';
+  const resetStackTab = (tabName: string, rootScreen: string) => ({ navigation, route }: any) => ({
+    tabPress: (event: any) => {
+      if (!navigation.isFocused()) return;
+
+      event.preventDefault();
+
+      const state = route.state;
+      if (state?.type === 'stack' && state.key && state.index > 0) {
+        navigation.dispatch({
+          ...StackActions.popToTop(),
+          target: state.key,
+        });
+      }
+
+      navigation.navigate(tabName, {
+        screen: rootScreen,
+      });
+    },
+  });
 
   return (
     <Tabs.Navigator
@@ -357,7 +377,12 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
       })}
     >
       {role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN' ? (
-        <Tabs.Screen name="DashboardTab" component={DashboardNavigator} options={{ title: 'Dashboard' }} />
+        <Tabs.Screen
+          name="DashboardTab"
+          component={DashboardNavigator}
+          options={{ title: 'Dashboard' }}
+          listeners={resetStackTab('DashboardTab', 'DashboardHome')}
+        />
       ) : null}
 
       {isCompanyAdmin ? (
@@ -366,31 +391,25 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         <Tabs.Screen
           name="DesignsTab"
           component={DesignsNavigator}
-          options={{ title: 'Catalog', popToTopOnBlur: true }}
-          listeners={({ navigation, route }) => ({
-            tabPress: (event) => {
-              event.preventDefault();
-
-              const state = (route as any).state;
-              if (state?.type === 'stack' && state.key && state.index > 0) {
-                navigation.dispatch({
-                  ...StackActions.popToTop(),
-                  target: state.key,
-                });
-              }
-
-              (navigation as any).navigate('DesignsTab', {
-                screen: 'CatalogCategories',
-              });
-            },
-          })}
+          options={{ title: 'Catalog' }}
+          listeners={resetStackTab('DesignsTab', 'CatalogCategories')}
         />
       )}
-      <Tabs.Screen name="OrdersTab" component={OrdersNavigator} options={{ title: 'Orders' }} />
+      <Tabs.Screen
+        name="OrdersTab"
+        component={OrdersNavigator}
+        options={{ title: 'Orders' }}
+        listeners={resetStackTab('OrdersTab', 'Orders')}
+      />
       {isCompanyAdmin ? <Tabs.Screen name="PricingTab" component={PricingScreen} options={{ title: 'Pricing' }} /> : null}
       {!isCompanyAdmin ? <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} /> : null}
       {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
-        <Tabs.Screen name="TeamTab" component={TeamNavigator} options={{ title: 'Team' }} />
+        <Tabs.Screen
+          name="TeamTab"
+          component={TeamNavigator}
+          options={{ title: 'Team' }}
+          listeners={resetStackTab('TeamTab', teamRootScreen)}
+        />
       ) : null}
     </Tabs.Navigator>
   );
