@@ -24,8 +24,6 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  app.use('/uploads', express.static(uploadsRoot));
-
   const allowedOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
     .map((origin) => origin.trim().replace(/\/$/, ''))
@@ -40,6 +38,35 @@ async function bootstrap() {
     'http://localhost:8082',
     'http://127.0.0.1:8082',
   ]);
+  const isAllowedCorsOrigin = (origin?: string) => {
+    const requestOrigin = normalizeOrigin(origin);
+    return Boolean(
+      !origin ||
+      (requestOrigin && allowedOriginSet.has(requestOrigin)) ||
+      (requestOrigin && alwaysAllowedLocalWebOrigins.has(requestOrigin)) ||
+      (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin)),
+    );
+  };
+
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && isAllowedCorsOrigin(origin)) {
+      res.header('Access-Control-Allow-Origin', normalizeOrigin(origin));
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Headers', String(req.headers['access-control-request-headers'] || 'Content-Type, Authorization'));
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    }
+
+    if (req.method === 'OPTIONS') {
+      res.status(204).send();
+      return;
+    }
+
+    next();
+  });
+
+  app.use('/uploads', express.static(uploadsRoot));
 
   app.setGlobalPrefix('api');
   app.enableCors({
@@ -49,11 +76,8 @@ async function bootstrap() {
         return;
       }
 
-      const requestOrigin = normalizeOrigin(origin);
       if (
-        (requestOrigin && allowedOriginSet.has(requestOrigin)) ||
-        (requestOrigin && alwaysAllowedLocalWebOrigins.has(requestOrigin)) ||
-        (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))
+        isAllowedCorsOrigin(origin)
       ) {
         callback(null, true);
         return;
