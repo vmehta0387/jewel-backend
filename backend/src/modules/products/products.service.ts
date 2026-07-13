@@ -1896,7 +1896,6 @@ export class ProductsService {
 
     const rows = await qb.getMany();
     const family = rows.length ? rows : [selected];
-    await this.ensureDesignBarcodes(family);
     const designIds = family.map((design) => design.id);
     const [metals, gemstones] = designIds.length
       ? await Promise.all([

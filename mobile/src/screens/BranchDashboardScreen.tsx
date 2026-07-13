@@ -707,7 +707,17 @@ const BranchDashboardScreen = () => {
                     key={item.id}
                     style={styles.trendingCard}
                     activeOpacity={0.9}
-                    onPress={() => navigation.navigate('DesignsTab', { screen: 'CatalogCategories' })}
+                    onPress={() => {
+                      if (item.id.startsWith('fallback-')) {
+                        navigation.navigate('DesignsTab', { screen: 'CatalogCategories' });
+                        return;
+                      }
+
+                      navigation.navigate('DesignsTab', {
+                        screen: 'DesignDetail',
+                        params: { designId: item.id },
+                      });
+                    }}
                   >
                     <View style={styles.trendingImageWrap}>
                       {item.imageUrl ? (

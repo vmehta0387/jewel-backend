@@ -929,6 +929,12 @@ const DesignDetailScreen = () => {
     () => (activeDesign?.gemstones || []).reduce((sum, gem) => sum + Number(gem.wtInCts || 0), 0),
     [activeDesign?.gemstones],
   );
+  const totalMetalNetWt = useMemo(
+    () => (activeDesign?.metals || []).reduce((sum, metal) => sum + Number(metal.netWt || 0), 0),
+    [activeDesign?.metals],
+  );
+  const totalStoneWtGm = useMemo(() => totalGemWt * 0.2, [totalGemWt]);
+  const calculatedGrossWt = useMemo(() => totalMetalNetWt + totalStoneWtGm, [totalMetalNetWt, totalStoneWtGm]);
   const totalStonePieces = useMemo(
     () =>
       (activeDesign?.gemstones || []).reduce((sum, gem) => {
@@ -947,7 +953,6 @@ const DesignDetailScreen = () => {
       }),
     [activeDesign?.gemstones],
   );
-  const firstGem = activeDesign?.gemstones?.[0];
   const heroCaption = useMemo(
     () => String(activeDesign?.designName || activeDesign?.designNo || '').trim(),
     [activeDesign?.designName, activeDesign?.designNo],
@@ -961,19 +966,22 @@ const DesignDetailScreen = () => {
         { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
         { label: 'Jewelry Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
         { label: 'Diamond Type', value: compact(activeDesign?.diamondType || selectedDiamondType) },
-        { label: 'Stone Shape', value: compact(selectedShape || firstGem?.shape) },
         {
           label: 'Total No. of Stones',
           value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '',
         },
         {
           label: 'Approx. Total Carat Wt.',
-          value: toCtwLabel(selectedWeight) || (totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : ''),
+          value: totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : toCtwLabel(selectedWeight),
           highlight: true,
         },
         {
+          label: 'Net Wt.',
+          value: totalMetalNetWt > 0 ? `${formatNumber(totalMetalNetWt, 3)} gm` : '',
+        },
+        {
           label: 'Gross Wt.',
-          value: Number(activeDesign?.grossWeight || 0) > 0 ? `${formatNumber(activeDesign?.grossWeight || 0, 3)} gm` : '',
+          value: calculatedGrossWt > 0 ? `${formatNumber(calculatedGrossWt, 3)} gm` : '',
         },
         { label: 'Tag', value: toTagsLabel(activeDesign?.tags) },
         {
@@ -993,17 +1001,16 @@ const DesignDetailScreen = () => {
       activeDesign?.designDescription,
       activeDesign?.designNo,
       activeDesign?.diamondType,
-      activeDesign?.grossWeight,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
       activeDesign?.tags,
-      firstGem?.shape,
+      calculatedGrossWt,
       selectedDiamondType,
-      selectedShape,
       selectedMetalCaratage,
       selectedRingSize,
       selectedWeight,
       totalGemWt,
+      totalMetalNetWt,
       totalStonePieces,
       hasStonePieces,
     ],

@@ -10,10 +10,17 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
-import { mapNotificationsToEntries, type NotificationFeedEntry, type NotificationTone } from '../utils/appNotifications';
+import {
+  getOrderIdFromNotification,
+  getSpiffClaimTargetFromNotification,
+  mapNotificationsToEntries,
+  type NotificationFeedEntry,
+  type NotificationTone,
+} from '../utils/appNotifications';
 
 type Props = {
   visible: boolean;
@@ -43,6 +50,7 @@ const getNotificationDotStyle = (tone: NotificationTone) => {
 
 const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotification }) => {
   const { token } = useAuth();
+  const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -127,6 +135,31 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     setActiveFilter(nextFilter);
   }, []);
 
+  const navigateFromEntry = useCallback(
+    (entry: NotificationFeedEntry) => {
+      const orderId = getOrderIdFromNotification(entry);
+      if (orderId) {
+        navigation.navigate('OrdersTab', {
+          screen: 'OrderDetail',
+          params: { orderId },
+        });
+        return true;
+      }
+
+      const spiffTarget = getSpiffClaimTargetFromNotification(entry);
+      if (spiffTarget) {
+        navigation.navigate('DashboardTab', {
+          screen: 'SpiffRewards',
+          params: spiffTarget,
+        });
+        return true;
+      }
+
+      return false;
+    },
+    [navigation],
+  );
+
   const handleOpenEntry = useCallback(
     (entry: NotificationFeedEntry) => {
       if (token && !entry.isRead) {
@@ -139,9 +172,12 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
         });
       }
       onClose();
-      onOpenNotification?.(entry);
+      const handled = navigateFromEntry(entry);
+      if (!handled) {
+        onOpenNotification?.(entry);
+      }
     },
-    [onClose, onOpenNotification, token],
+    [navigateFromEntry, onClose, onOpenNotification, token],
   );
 
   const handleRetry = useCallback(() => {
