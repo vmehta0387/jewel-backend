@@ -265,6 +265,7 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
     this.assertReadScope(order, requester);
+    this.assertApprovedOrderEditable(order, requester);
 
     const previousStatus = order.status;
     const scope = this.resolveScope(requester, dto.companyId ?? order.companyId ?? undefined, dto.branchId ?? order.branchId ?? undefined);
@@ -363,6 +364,7 @@ export class OrdersService {
 
   async updateActiveStatus(id: string, isActive: boolean, requester: AuthUser) {
     const order = await this.findOne(id, requester);
+    this.assertApprovedOrderEditable(order, requester);
     order.isActive = isActive;
     return this.orderRepo.save(order);
   }
@@ -625,6 +627,12 @@ export class OrdersService {
 
     if (requester.role === UserRole.SALES_REP && order.salesRepId !== requester.id) {
       throw new ForbiddenException('You cannot access another sales order');
+    }
+  }
+
+  private assertApprovedOrderEditable(order: Pick<Order, 'status'>, requester: AuthUser): void {
+    if (order.status === OrderStatus.APPROVED && requester.role !== UserRole.BRANCH_MANAGER) {
+      throw new ForbiddenException('Only branch managers can edit approved orders');
     }
   }
 
@@ -1090,6 +1098,24 @@ export class OrdersService {
     const branchManagerId = String(order.branch?.branchManager?.id || '').trim();
     if (branchManagerId && !excluded.has(branchManagerId)) {
       ids.add(branchManagerId);
+    }
+
+    if (order.branchId) {
+      const branchManagers = await this.userRepo.find({
+        where: {
+          branchId: order.branchId,
+          role: UserRole.BRANCH_MANAGER,
+          isActive: true,
+        },
+        select: ['id'],
+      });
+
+      branchManagers.forEach((user) => {
+        const userId = String(user.id || '').trim();
+        if (userId && !excluded.has(userId)) {
+          ids.add(userId);
+        }
+      });
     }
 
     if (order.companyId) {

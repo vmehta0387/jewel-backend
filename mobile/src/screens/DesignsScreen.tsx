@@ -667,7 +667,7 @@ const DesignsScreen = () => {
               <Ionicons name="grid-outline" size={14} color="#8D8276" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.searchActionBtn} onPress={openSortMenu} activeOpacity={0.85}>
-              <Ionicons name="camera-outline" size={14} color="#8D8276" />
+              <Ionicons name="options-outline" size={14} color="#8D8276" />
             </TouchableOpacity>
           </View>
 

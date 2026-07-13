@@ -350,27 +350,24 @@ const OrdersScreen = () => {
   const handleContinueEditing = useCallback(
     (order: Order) => {
       if (order.designId) {
-        (navigation as any).navigate('DesignsTab', {
-          screen: 'QuoteBuilder',
-          params: {
-            draft: {
-              orderId: order.id,
-              orderNumber: order.orderNumber,
-              createdAt: order.createdAt,
-              status: order.status,
-              designId: order.designId,
-              designNo: safeText(order.designNo, order.orderNumber),
-              designName: order.designNo || null,
-              imageUrl: order.designImageUrl || null,
-              unitPrice: Number(order.price || 0),
-              shortDescription: order.shortDescription || undefined,
-              selection: parseSelectionFromSummaryText(order.shortDescription),
-              purchaseOrderNumber: order.purchaseOrderNumber || undefined,
-              customerName: order.customerName || undefined,
-              customerPhone: order.customerPhone || undefined,
-              customerEmail: order.customerEmail || undefined,
-              notes: order.notes || undefined,
-            },
+        navigation.navigate('QuoteBuilder', {
+          draft: {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            createdAt: order.createdAt,
+            status: order.status,
+            designId: order.designId,
+            designNo: safeText(order.designNo, order.orderNumber),
+            designName: order.designNo || null,
+            imageUrl: order.designImageUrl || null,
+            unitPrice: Number(order.price || 0),
+            shortDescription: order.shortDescription || undefined,
+            selection: parseSelectionFromSummaryText(order.shortDescription),
+            purchaseOrderNumber: order.purchaseOrderNumber || undefined,
+            customerName: order.customerName || undefined,
+            customerPhone: order.customerPhone || undefined,
+            customerEmail: order.customerEmail || undefined,
+            notes: order.notes || undefined,
           },
         });
         return;

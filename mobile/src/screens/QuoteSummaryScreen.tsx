@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createOrder, fetchOrder, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
-import type { Design } from '../types';
+import type { Design, Order } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
 
@@ -172,12 +172,32 @@ const findDesignByOrderMeta = async (
   return [...byExact].sort((a, b) => parseVersion(a.version) - parseVersion(b.version))[0];
 };
 
+const mergeOrderIntoSummary = (base: QuoteSummaryPayload, order: Order): QuoteSummaryPayload => ({
+  ...base,
+  orderId: order.id || base.orderId,
+  orderNumber: order.orderNumber || base.orderNumber,
+  createdAt: order.createdAt || base.createdAt,
+  status: order.status || base.status,
+  shortDescription: order.shortDescription || base.shortDescription,
+  designId: order.designId || base.designId,
+  designNo: order.designNo || base.designNo,
+  imageUrl: order.designImageUrl || base.imageUrl,
+  price: Number(order.price || base.price || 0),
+  customerName: compact(order.customerName) || base.customerName,
+  customerPhone: compact(order.customerPhone) || base.customerPhone,
+  customerEmail: compact(order.customerEmail) || base.customerEmail,
+  purchaseOrderNumber: compact(order.purchaseOrderNumber) || base.purchaseOrderNumber,
+  branchName: compact(order.branchName) || base.branchName,
+  notes: compact(order.notes) || base.notes,
+});
+
 const QuoteSummaryScreen = () => {
   const route = useRoute<SummaryRoute>();
   const navigation = useNavigation<SummaryNav>();
   const { token, user } = useAuth();
   const { summary } = route.params;
 
+  const [displaySummary, setDisplaySummary] = useState<QuoteSummaryPayload>(summary);
   const [orderId, setOrderId] = useState(summary.orderId);
   const [orderNumber, setOrderNumber] = useState(summary.orderNumber);
   const [currentStatus, setCurrentStatus] = useState(normalizeStatus(summary.status));
@@ -226,6 +246,10 @@ const QuoteSummaryScreen = () => {
         }
 
         if (!active) return;
+        setDisplaySummary((prev) => mergeOrderIntoSummary(prev, order));
+        setOrderId(order.id || summary.orderId);
+        setOrderNumber(order.orderNumber || summary.orderNumber);
+        setCurrentStatus(normalizeStatus(order.status || summary.status));
         setResolvedSelection((prev) => {
           const fromPrev = sanitizeSelection(prev);
           const fromOrder = sanitizeSelection(parsedFromOrder);
@@ -249,7 +273,7 @@ const QuoteSummaryScreen = () => {
     };
   }, [token, summary.orderId, summary.designId]);
 
-  const retailPrice = Number(summary.price || 0);
+  const retailPrice = Number(displaySummary.price || 0);
   const summaryStatus = statusLabel(currentStatus);
 
   const itemLine1 = useMemo(
@@ -283,7 +307,7 @@ const QuoteSummaryScreen = () => {
       setError('Company and branch are required.');
       return;
     }
-    if (!summary.designId) {
+    if (!displaySummary.designId) {
       setError('Design reference is missing for this quote.');
       return;
     }
@@ -292,15 +316,15 @@ const QuoteSummaryScreen = () => {
     setError(null);
     try {
       const payload = {
-        designId: summary.designId,
+        designId: displaySummary.designId,
         shortDescription: [resolvedSelection.metalColor, resolvedSelection.style, resolvedSelection.quality, toCtwLabel(resolvedSelection.weight), resolvedSelection.ringSize]
           .filter(Boolean)
           .join(' - '),
-        purchaseOrderNumber: summary.purchaseOrderNumber || undefined,
-        customerName: summary.customerName || undefined,
-        customerPhone: summary.customerPhone || undefined,
-        customerEmail: summary.customerEmail || undefined,
-        notes: summary.notes || undefined,
+        purchaseOrderNumber: displaySummary.purchaseOrderNumber || undefined,
+        customerName: displaySummary.customerName || undefined,
+        customerPhone: displaySummary.customerPhone || undefined,
+        customerEmail: displaySummary.customerEmail || undefined,
+        notes: displaySummary.notes || undefined,
         status: 'PENDING_APPROVAL',
       };
 
@@ -310,11 +334,12 @@ const QuoteSummaryScreen = () => {
         const updated = await updateOrder(token, nextOrderId, payload);
         nextOrderId = updated.id;
         nextOrderNumber = updated.orderNumber || nextOrderNumber;
+        setDisplaySummary((prev) => mergeOrderIntoSummary(prev, updated));
       } else {
         const created = await createOrder(token, {
           companyId: user.companyId,
           branchId: user.branchId,
-          designId: summary.designId,
+          designId: displaySummary.designId,
           quantity: 1,
           price: retailPrice,
           shortDescription: payload.shortDescription,
@@ -327,6 +352,7 @@ const QuoteSummaryScreen = () => {
         });
         nextOrderId = created.id;
         nextOrderNumber = created.orderNumber || nextOrderNumber;
+        setDisplaySummary((prev) => mergeOrderIntoSummary(prev, created));
       }
 
       setOrderId(nextOrderId);
@@ -338,10 +364,11 @@ const QuoteSummaryScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [token, user?.companyId, user?.branchId, summary, retailPrice, orderId, orderNumber, resolvedSelection]);
+  }, [token, user?.companyId, user?.branchId, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection]);
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const canModifyCurrentOrder = statusKey !== 'APPROVED' || isBranchManager;
 
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
@@ -395,7 +422,12 @@ const QuoteSummaryScreen = () => {
   }, [statusKey, handleSendForApproval]);
 
   const handleModifyOrder = useCallback(() => {
-    const designId = compact(summary.designId);
+    if (!canModifyCurrentOrder) {
+      setError('Only branch managers can edit approved orders.');
+      return;
+    }
+
+    const designId = compact(displaySummary.designId);
     if (!designId) {
       setError('Design reference is missing for this order.');
       return;
@@ -404,27 +436,24 @@ const QuoteSummaryScreen = () => {
     const draft: QuoteBuilderDraft = {
       orderId,
       orderNumber,
-      createdAt: summary.createdAt,
+      createdAt: displaySummary.createdAt,
       status: currentStatus,
       designId,
-      designNo: compact(summary.designNo) || orderNumber || 'Order',
-      designName: summary.designName || summary.designNo || null,
-      imageUrl: summary.imageUrl || null,
+      designNo: compact(displaySummary.designNo) || orderNumber || 'Order',
+      designName: displaySummary.designName || displaySummary.designNo || null,
+      imageUrl: displaySummary.imageUrl || null,
       unitPrice: retailPrice,
-      shortDescription: summary.shortDescription || undefined,
+      shortDescription: displaySummary.shortDescription || undefined,
       selection: sanitizeSelection(resolvedSelection),
-      purchaseOrderNumber: summary.purchaseOrderNumber || undefined,
-      customerName: summary.customerName || undefined,
-      customerPhone: summary.customerPhone || undefined,
-      customerEmail: summary.customerEmail || undefined,
-      notes: summary.notes || undefined,
+      purchaseOrderNumber: displaySummary.purchaseOrderNumber || undefined,
+      customerName: displaySummary.customerName || undefined,
+      customerPhone: displaySummary.customerPhone || undefined,
+      customerEmail: displaySummary.customerEmail || undefined,
+      notes: displaySummary.notes || undefined,
     };
 
-    (navigation as any).navigate('DesignsTab', {
-      screen: 'QuoteBuilder',
-      params: { draft },
-    });
-  }, [currentStatus, navigation, orderId, orderNumber, resolvedSelection, retailPrice, summary]);
+    navigation.navigate('QuoteBuilder', { draft });
+  }, [canModifyCurrentOrder, currentStatus, displaySummary, navigation, orderId, orderNumber, resolvedSelection, retailPrice]);
 
   const handleManagerPendingDecision = useCallback(
     async (nextStatus: 'APPROVED' | 'CANCELLED') => {
@@ -480,21 +509,22 @@ const QuoteSummaryScreen = () => {
           </View>
           <Text style={styles.mainTitle}>Order Summary</Text>
           <Text style={styles.metaText}>
-            Created {formatSummaryDate(summary.createdAt)} - {summary.customerName || 'Customer'}
+            Created {formatSummaryDate(displaySummary.createdAt)} - {displaySummary.customerName || 'Customer'}
           </Text>
           <View style={styles.topDivider} />
           <View style={styles.infoGrid}>
             <View style={styles.infoCell}>
               <Text style={styles.infoLabel}>CUSTOMER</Text>
-              <Text style={styles.infoValue}>{summary.customerName || '-'}</Text>
-              <Text style={styles.infoSub}>{summary.customerEmail || '-'}</Text>
+              <Text style={styles.infoValue}>{displaySummary.customerName || '-'}</Text>
+              <Text style={styles.infoSub}>{displaySummary.customerPhone || '-'}</Text>
+              <Text style={styles.infoSub}>{displaySummary.customerEmail || '-'}</Text>
             </View>
             <View style={styles.infoCell}>
               <Text style={styles.infoLabel}>PURCHASE ORDER</Text>
               <Text style={styles.poValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
-                {summary.purchaseOrderNumber || '-'}
+                {displaySummary.purchaseOrderNumber || '-'}
               </Text>
-              <Text style={styles.infoSub}>{summary.branchName || '-'}</Text>
+              <Text style={styles.infoSub}>{displaySummary.branchName || '-'}</Text>
             </View>
           </View>
         </View>
@@ -502,26 +532,33 @@ const QuoteSummaryScreen = () => {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Order Items</Text>
           <View style={styles.itemRow}>
-            {summary.imageUrl ? (
-              <Image source={{ uri: summary.imageUrl, cache: 'force-cache' }} style={styles.itemImage} />
+            {displaySummary.imageUrl ? (
+              <Image source={{ uri: displaySummary.imageUrl, cache: 'force-cache' }} style={styles.itemImage} />
             ) : (
               <View style={[styles.itemImage, styles.itemImagePlaceholder]}>
                 <Ionicons name="diamond-outline" size={16} color="#B2874A" />
               </View>
             )}
             <View style={styles.itemInfo}>
-              <Text style={styles.itemName}>{summary.designName || summary.designNo || '-'}</Text>
+              <Text style={styles.itemName}>{displaySummary.designName || displaySummary.designNo || '-'}</Text>
               <Text style={styles.itemLine}>{itemLine1}</Text>
               <Text style={styles.itemLine}>{itemLine2}</Text>
               <Text style={styles.itemLine}>{itemLine3}</Text>
-              {summary.notes ? <Text style={styles.itemLine}>Notes: {summary.notes}</Text> : null}
+              {displaySummary.notes ? <Text style={styles.itemLine}>Notes: {displaySummary.notes}</Text> : null}
             </View>
             <Text style={styles.itemPrice}>{formatCurrency(retailPrice).replace('.00', '')}</Text>
           </View>
-          <TouchableOpacity style={styles.modifyBtn} onPress={handleModifyOrder} activeOpacity={0.9}>
-            <Ionicons name="create-outline" size={14} color="#93826F" />
-            <Text style={styles.modifyBtnText}>Modify this order</Text>
-          </TouchableOpacity>
+          {canModifyCurrentOrder ? (
+            <TouchableOpacity style={styles.modifyBtn} onPress={handleModifyOrder} activeOpacity={0.9}>
+              <Ionicons name="create-outline" size={14} color="#93826F" />
+              <Text style={styles.modifyBtnText}>Modify this order</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.modifyLockedBox}>
+              <Ionicons name="lock-closed-outline" size={14} color="#93826F" />
+              <Text style={styles.modifyLockedText}>Only branch managers can edit approved orders.</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -832,6 +869,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8E8072',
     fontWeight: '700',
+  },
+  modifyLockedBox: {
+    marginTop: 10,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4D7C8',
+    backgroundColor: '#FBF7F1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  modifyLockedText: {
+    flexShrink: 1,
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#8E8072',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   statusTrackRow: {
     flexDirection: 'row',

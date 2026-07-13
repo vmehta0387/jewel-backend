@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Keyboard,
+  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -15,6 +17,16 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  PinchGestureHandler,
+  State,
+  type PanGestureHandlerGestureEvent,
+  type PanGestureHandlerStateChangeEvent,
+  type PinchGestureHandlerGestureEvent,
+  type PinchGestureHandlerStateChangeEvent,
+} from 'react-native-gesture-handler';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -317,6 +329,16 @@ const DesignDetailScreen = () => {
   const keyboardHeightRef = useRef(0);
   const keyboardRestoreScrollYRef = useRef<number | null>(null);
   const keyboardManualScrollRef = useRef(false);
+  const lastImageTapAtRef = useRef(0);
+  const lastViewerTapAtRef = useRef(0);
+  const pinchRef = useRef<PinchGestureHandler>(null);
+  const panRef = useRef<PanGestureHandler>(null);
+  const baseScaleRef = useRef(new Animated.Value(1));
+  const pinchScaleRef = useRef(new Animated.Value(1));
+  const panXRef = useRef(new Animated.Value(0));
+  const panYRef = useRef(new Animated.Value(0));
+  const lastScaleRef = useRef(1);
+  const lastPanRef = useRef({ x: 0, y: 0 });
   const screenRef = useRef<View | null>(null);
   const dropdownFieldRefs = useRef<Record<FilterKey, View | null>>({
     diamondType: null,
@@ -343,6 +365,8 @@ const DesignDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [resolvingSelection, setResolvingSelection] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [imageViewerUri, setImageViewerUri] = useState<string | null>(null);
+  const [imageViewerZoomed, setImageViewerZoomed] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
 
   const [selectedShape, setSelectedShape] = useState('');
@@ -478,6 +502,116 @@ const DesignDetailScreen = () => {
       }
     },
     [gallery.length, mediaFrameWidth, selectedImageIndex],
+  );
+
+  const imageViewerScale = useMemo(
+    () => Animated.multiply(baseScaleRef.current, pinchScaleRef.current),
+    [],
+  );
+
+  const resetImageViewerTransform = useCallback(() => {
+    lastScaleRef.current = 1;
+    lastPanRef.current = { x: 0, y: 0 };
+    baseScaleRef.current.setValue(1);
+    pinchScaleRef.current.setValue(1);
+    panXRef.current.setOffset(0);
+    panYRef.current.setOffset(0);
+    panXRef.current.setValue(0);
+    panYRef.current.setValue(0);
+    setImageViewerZoomed(false);
+  }, []);
+
+  const openImageViewer = useCallback((uri: string) => {
+    resetImageViewerTransform();
+    setImageViewerUri(uri);
+  }, [resetImageViewerTransform]);
+
+  const closeImageViewer = useCallback(() => {
+    setImageViewerUri(null);
+    resetImageViewerTransform();
+  }, [resetImageViewerTransform]);
+
+  const zoomImageViewerTo = useCallback((nextScale: number) => {
+    const normalizedScale = Math.max(1, Math.min(nextScale, 4));
+    lastScaleRef.current = normalizedScale;
+    baseScaleRef.current.setValue(normalizedScale);
+    pinchScaleRef.current.setValue(1);
+    lastPanRef.current = { x: 0, y: 0 };
+    panXRef.current.setOffset(0);
+    panYRef.current.setOffset(0);
+    panXRef.current.setValue(0);
+    panYRef.current.setValue(0);
+    setImageViewerZoomed(normalizedScale > 1.02);
+  }, []);
+
+  const handleImageViewerTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastViewerTapAtRef.current <= 320) {
+      lastViewerTapAtRef.current = 0;
+      zoomImageViewerTo(lastScaleRef.current > 1.02 ? 1 : 2);
+      return;
+    }
+    lastViewerTapAtRef.current = now;
+  }, [zoomImageViewerTo]);
+
+  const handlePinchGestureEvent = useMemo(
+    () =>
+      Animated.event<PinchGestureHandlerGestureEvent>(
+        [{ nativeEvent: { scale: pinchScaleRef.current } }],
+        { useNativeDriver: true },
+      ),
+    [],
+  );
+
+  const handlePanGestureEvent = useMemo(
+    () =>
+      Animated.event<PanGestureHandlerGestureEvent>(
+        [{ nativeEvent: { translationX: panXRef.current, translationY: panYRef.current } }],
+        { useNativeDriver: true },
+      ),
+    [],
+  );
+
+  const handlePinchStateChange = useCallback((event: PinchGestureHandlerStateChangeEvent) => {
+    if (event.nativeEvent.oldState !== State.ACTIVE) return;
+    const nextScale = Math.max(1, Math.min(lastScaleRef.current * event.nativeEvent.scale, 4));
+    lastScaleRef.current = nextScale;
+    baseScaleRef.current.setValue(nextScale);
+    pinchScaleRef.current.setValue(1);
+    setImageViewerZoomed(nextScale > 1.02);
+
+    if (nextScale <= 1.02) {
+      lastPanRef.current = { x: 0, y: 0 };
+      panXRef.current.setOffset(0);
+      panYRef.current.setOffset(0);
+      panXRef.current.setValue(0);
+      panYRef.current.setValue(0);
+    }
+  }, []);
+
+  const handlePanStateChange = useCallback((event: PanGestureHandlerStateChangeEvent) => {
+    if (event.nativeEvent.oldState !== State.ACTIVE || lastScaleRef.current <= 1.02) return;
+    lastPanRef.current = {
+      x: lastPanRef.current.x + event.nativeEvent.translationX,
+      y: lastPanRef.current.y + event.nativeEvent.translationY,
+    };
+    panXRef.current.setOffset(lastPanRef.current.x);
+    panYRef.current.setOffset(lastPanRef.current.y);
+    panXRef.current.setValue(0);
+    panYRef.current.setValue(0);
+  }, []);
+
+  const handleMediaImagePress = useCallback(
+    (uri: string) => {
+      const now = Date.now();
+      if (now - lastImageTapAtRef.current <= 320) {
+        lastImageTapAtRef.current = 0;
+        openImageViewer(uri);
+        return;
+      }
+      lastImageTapAtRef.current = now;
+    },
+    [openImageViewer],
   );
 
   useEffect(() => {
@@ -1126,7 +1260,13 @@ const DesignDetailScreen = () => {
                   })}
                   renderItem={({ item }) => (
                     <View style={[styles.mediaSlide, { width: mediaFrameWidth, height: mediaHeight }]}>
-                      <Image source={{ uri: item, cache: 'force-cache' }} style={styles.fixedMediaImage} resizeMode="cover" />
+                      <TouchableOpacity
+                        style={styles.fixedMediaImageTapArea}
+                        activeOpacity={0.96}
+                        onPress={() => handleMediaImagePress(item)}
+                      >
+                        <Image source={{ uri: item, cache: 'force-cache' }} style={styles.fixedMediaImage} resizeMode="cover" />
+                      </TouchableOpacity>
                     </View>
                   )}
                 />
@@ -1347,6 +1487,76 @@ const DesignDetailScreen = () => {
           onClose={() => setNotificationsVisible(false)}
           onOpenNotification={handleOpenNotificationEntry}
         />
+        <Modal visible={Boolean(imageViewerUri)} transparent animationType="fade" onRequestClose={closeImageViewer}>
+          <GestureHandlerRootView style={styles.imageViewerRoot}>
+            <View style={styles.imageViewerOverlay}>
+            <SafeAreaView style={styles.imageViewerSafe} edges={['top', 'bottom']}>
+              <View style={styles.imageViewerHeader}>
+                <TouchableOpacity
+                  style={styles.imageViewerIconBtn}
+                  onPress={closeImageViewer}
+                  activeOpacity={0.85}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Ionicons name="close" size={22} color="#FFFFFF" />
+                </TouchableOpacity>
+                <Text style={styles.imageViewerTitle} numberOfLines={1}>
+                  {activeDesign?.designNo || activeDesign?.designName || 'Design Image'}
+                </Text>
+                <View style={styles.imageViewerHeaderSpacer} />
+              </View>
+
+              <View style={styles.imageViewerGestureArea}>
+                {imageViewerUri ? (
+                  <PinchGestureHandler
+                    ref={pinchRef}
+                    simultaneousHandlers={panRef}
+                    shouldCancelWhenOutside={false}
+                    onGestureEvent={handlePinchGestureEvent}
+                    onHandlerStateChange={handlePinchStateChange}
+                  >
+                    <Animated.View style={styles.imageViewerGestureArea}>
+                      <PanGestureHandler
+                        ref={panRef}
+                        simultaneousHandlers={pinchRef}
+                        enabled={imageViewerZoomed}
+                        shouldCancelWhenOutside={false}
+                        onGestureEvent={handlePanGestureEvent}
+                        onHandlerStateChange={handlePanStateChange}
+                      >
+                        <Animated.View style={styles.imageViewerGestureArea}>
+                          <TouchableOpacity
+                            activeOpacity={1}
+                            style={styles.imageViewerGestureArea}
+                            onPress={handleImageViewerTap}
+                          >
+                          <Animated.Image
+                            source={{ uri: imageViewerUri, cache: 'force-cache' }}
+                            style={[
+                              styles.imageViewerImage,
+                              {
+                                width,
+                                height: windowHeight * 0.78,
+                                transform: [
+                                  { translateX: panXRef.current },
+                                  { translateY: panYRef.current },
+                                  { scale: imageViewerScale },
+                                ],
+                              },
+                            ]}
+                            resizeMode="contain"
+                          />
+                          </TouchableOpacity>
+                        </Animated.View>
+                      </PanGestureHandler>
+                    </Animated.View>
+                  </PinchGestureHandler>
+                ) : null}
+              </View>
+            </SafeAreaView>
+            </View>
+          </GestureHandlerRootView>
+        </Modal>
       </SafeAreaView>
     </View>
   );
@@ -1441,6 +1651,10 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  fixedMediaImageTapArea: {
+    width: '100%',
+    height: '100%',
+  },
   mediaSkeleton: {
     width: '100%',
     height: '100%',
@@ -1497,6 +1711,57 @@ const styles = StyleSheet.create({
   },
   imagePagerTextActive: {
     color: '#FFFFFF',
+  },
+  imageViewerRoot: {
+    flex: 1,
+  },
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.96)',
+  },
+  imageViewerSafe: {
+    flex: 1,
+  },
+  imageViewerHeader: {
+    height: 56,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 20,
+    elevation: 20,
+  },
+  imageViewerTitle: {
+    flex: 1,
+    marginHorizontal: 12,
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  imageViewerHeaderSpacer: {
+    width: 44,
+    height: 44,
+  },
+  imageViewerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(18, 18, 18, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.32)',
+  },
+  imageViewerGestureArea: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  imageViewerImage: {
+    alignSelf: 'center',
   },
   detailScroll: {
     flex: 1,

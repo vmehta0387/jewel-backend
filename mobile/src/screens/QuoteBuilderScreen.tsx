@@ -663,7 +663,9 @@ const QuoteBuilderScreen = () => {
     handleDropdownSelect,
   ]);
 
-  const canPersist = Boolean(token && companyId && branchId && !saving && !sending);
+  const currentOrderStatus = String(order?.status || draft.status || '').toUpperCase();
+  const isApprovedOrderLocked = currentOrderStatus === 'APPROVED' && user?.role !== 'BRANCH_MANAGER';
+  const canPersist = Boolean(token && companyId && branchId && !saving && !sending && !isApprovedOrderLocked);
 
   const clearCustomerError = useCallback((field: keyof CustomerFieldErrors) => {
     setCustomerErrors((prev) => {
@@ -700,6 +702,10 @@ const QuoteBuilderScreen = () => {
   const persistOrder = useCallback(
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
       if (!token || !companyId || !branchId) return null;
+      if (isApprovedOrderLocked) {
+        setError('Only branch managers can edit approved orders.');
+        return null;
+      }
       const payload = {
         designId: activeDesign?.id || draft.designId,
         shortDescription: selectionSummary || undefined,
@@ -759,6 +765,7 @@ const QuoteBuilderScreen = () => {
       customerPhone,
       customerEmail,
       notes,
+      isApprovedOrderLocked,
     ],
   );
 
@@ -1046,8 +1053,19 @@ const QuoteBuilderScreen = () => {
       </ScrollView>
 
       <View style={styles.bottomBar}>
+        {isApprovedOrderLocked ? (
+          <View style={styles.lockedOrderNotice}>
+            <Ionicons name="lock-closed-outline" size={14} color="#8A7C6B" />
+            <Text style={styles.lockedOrderNoticeText}>Only branch managers can edit approved orders.</Text>
+          </View>
+        ) : null}
         <View style={styles.bottomActionsRow}>
-          <TouchableOpacity style={styles.smallBtn} onPress={handleSave} disabled={!canPersist} activeOpacity={0.9}>
+          <TouchableOpacity
+            style={[styles.smallBtn, !canPersist ? styles.actionBtnDisabled : null]}
+            onPress={handleSave}
+            disabled={!canPersist}
+            activeOpacity={0.9}
+          >
             <Text style={styles.smallBtnText}>{saving ? 'Saving...' : 'Save Quote'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -1651,6 +1669,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  lockedOrderNotice: {
+    minHeight: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E4D7C8',
+    backgroundColor: '#FBF7F1',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  lockedOrderNoticeText: {
+    flexShrink: 1,
+    marginLeft: 6,
+    fontSize: 12,
+    color: '#8A7C6B',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   smallBtn: {
     flex: 0.9,
     minWidth: 0,
@@ -1677,6 +1715,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnDisabled: {
+    opacity: 0.6,
+  },
+  actionBtnDisabled: {
     opacity: 0.6,
   },
   sendBtnText: {

@@ -104,6 +104,7 @@ export type DesignsStackParamList = {
 export type OrdersStackParamList = {
   Orders: undefined;
   OrderDetail: { orderId: string };
+  QuoteBuilder: { draft: QuoteBuilderDraft };
   QuoteSummary: { summary: QuoteSummaryPayload };
 };
 
@@ -257,6 +258,7 @@ const OrdersNavigator = () => (
   <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
     <OrdersStack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Orders' }} />
     <OrdersStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Detail' }} />
+    <OrdersStack.Screen name="QuoteBuilder" component={QuoteBuilderScreen} options={{ title: 'Quote Builder' }} />
     <OrdersStack.Screen name="QuoteSummary" component={QuoteSummaryScreen} options={{ title: 'Order Summary' }} />
   </OrdersStack.Navigator>
 );
