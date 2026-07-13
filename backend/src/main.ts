@@ -36,6 +36,10 @@ async function bootstrap() {
     !origin ||
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
     /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin);
+  const alwaysAllowedLocalWebOrigins = new Set([
+    'http://localhost:8082',
+    'http://127.0.0.1:8082',
+  ]);
 
   app.setGlobalPrefix('api');
   app.enableCors({
@@ -48,6 +52,7 @@ async function bootstrap() {
       const requestOrigin = normalizeOrigin(origin);
       if (
         (requestOrigin && allowedOriginSet.has(requestOrigin)) ||
+        (requestOrigin && alwaysAllowedLocalWebOrigins.has(requestOrigin)) ||
         (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin))
       ) {
         callback(null, true);
