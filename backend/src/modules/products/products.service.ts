@@ -1496,6 +1496,7 @@ export class ProductsService {
       collection: string | null;
       version: string;
       totalValue: number;
+      displayPrice?: number;
       imageUrls: string[];
       createdAt: Date;
     }>;
@@ -1522,7 +1523,7 @@ export class ProductsService {
 
     this.applyScopeFilter(qb, requester);
 
-    const designs = await qb.getMany();
+    const designs = await this.applyMobileCatalogRetailPricing(await qb.getMany(), requester);
     const data = await Promise.all(
       designs.map(async (design) => ({
         id: design.id,
@@ -1532,6 +1533,7 @@ export class ProductsService {
         collection: design.collection,
         version: design.version,
         totalValue: Number(design.totalValue || 0),
+        displayPrice: design.displayPrice,
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         createdAt: design.createdAt,
       })),
@@ -1704,18 +1706,23 @@ export class ProductsService {
 
     return Promise.all(
       rows.map(async (design) => {
-        try {
-          const preview = await this.pricingService.calculateDesignRetailPrice({
-            design,
-            companyId: requester.companyId as string,
-            branchId: requester.branchId as string,
-          });
-          return Object.assign(design, { displayPrice: preview.finalPrice });
-        } catch {
-          return Object.assign(design, { displayPrice: Number(design.totalValue || 0) });
-        }
+        const displayPrice = await this.resolveMobileRetailDisplayPrice(design, requester);
+        return Object.assign(design, { displayPrice });
       }),
     );
+  }
+
+  private async resolveMobileRetailDisplayPrice(design: Design, requester: AuthUser): Promise<number> {
+    try {
+      const preview = await this.pricingService.calculateDesignRetailPrice({
+        design,
+        companyId: requester.companyId as string,
+        branchId: requester.branchId as string,
+      });
+      return preview.finalPrice;
+    } catch {
+      return Number(design.totalValue || 0);
+    }
   }
 
   private filterMobileCatalogPriceBand(
@@ -2050,16 +2057,7 @@ export class ProductsService {
       return undefined;
     }
 
-    try {
-      const preview = await this.pricingService.calculateDesignRetailPrice({
-        design,
-        companyId: requester.companyId as string,
-        branchId: requester.branchId as string,
-      });
-      return preview.finalPrice;
-    } catch {
-      return Number(design.totalValue || 0);
-    }
+    return this.resolveMobileRetailDisplayPrice(design, requester);
   }
 
   private getMobileConfiguratorOptionGroups(family: Design[]) {
@@ -2086,7 +2084,12 @@ export class ProductsService {
     }
 
     return Object.fromEntries(
-      Object.entries(groups).map(([key, values]) => [key, Array.from(values.values())]),
+      Object.entries(groups).map(([key, values]) => [
+        key,
+        Array.from(values.values()).sort((a, b) =>
+          a.localeCompare(b, undefined, { numeric: key !== 'ringSize', sensitivity: 'base' }),
+        ),
+      ]),
     );
   }
 

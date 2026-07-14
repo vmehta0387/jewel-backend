@@ -3,7 +3,15 @@ import type { Design, DesignListResponse } from '../types';
 
 export type MobileTrendingDesign = Pick<
   Design,
-  'id' | 'designNo' | 'designName' | 'jewelryGroup' | 'collection' | 'version' | 'totalValue' | 'imageUrls'
+  | 'id'
+  | 'designNo'
+  | 'designName'
+  | 'jewelryGroup'
+  | 'collection'
+  | 'version'
+  | 'totalValue'
+  | 'displayPrice'
+  | 'imageUrls'
 > & {
   createdAt?: string;
 };

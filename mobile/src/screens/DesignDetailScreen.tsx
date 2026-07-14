@@ -129,9 +129,6 @@ const toMetalShortCode = (value?: string | null) => {
   return toMetalCaratageLabel(value);
 };
 
-const toTagsLabel = (values?: string[] | null) =>
-  Array.isArray(values) ? values.map(compact).filter(Boolean).join(', ') : '';
-
 const formatStoneNumber = (value: string | number | null | undefined, decimals = 3) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '';
@@ -1117,12 +1114,6 @@ const DesignDetailScreen = () => {
           label: 'Gross Wt.',
           value: calculatedGrossWt > 0 ? `${formatNumber(calculatedGrossWt, 3)} gm` : '',
         },
-        { label: 'Tag', value: toTagsLabel(activeDesign?.tags) },
-        {
-          label: 'Description',
-          value: compact(activeDesign?.designDescription),
-          multiline: true,
-        },
         {
           label: 'Remarks',
           value: compact(activeDesign?.remarks),
@@ -1132,12 +1123,10 @@ const DesignDetailScreen = () => {
     [
       activeDesign?.collection,
       activeDesign?.barcode,
-      activeDesign?.designDescription,
       activeDesign?.designNo,
       activeDesign?.diamondType,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
-      activeDesign?.tags,
       calculatedGrossWt,
       selectedDiamondType,
       selectedMetalCaratage,

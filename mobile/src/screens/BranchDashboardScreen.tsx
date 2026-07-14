@@ -54,6 +54,7 @@ const FALLBACK_TRENDING_PRODUCTS: TrendingProduct[] = [
   { id: 'fallback-1', title: 'Oval Pave', subtitle: 'WG - Full-Lab', price: 3840, imageUrl: null },
   { id: 'fallback-2', title: 'Tennis Bracelet', subtitle: 'WG - Lab-2ct', price: 5200, imageUrl: null },
 ];
+const TRENDING_SKELETON_IDS = ['trending-skeleton-1', 'trending-skeleton-2'];
 
 const formatRelativeTime = (date: Date): string => {
   const diffMs = Date.now() - date.getTime();
@@ -113,202 +114,216 @@ const BranchDashboardScreen = () => {
       cancelled: number;
     };
   } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   const [pipeline, setPipeline] = useState({ pending: 0, approved: 0, production: 0 });
   const [trendingProducts, setTrendingProducts] = useState<TrendingProduct[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
   const [spiffEarned, setSpiffEarned] = useState(0);
   const [repPerformance, setRepPerformance] = useState<RepPerformanceRow[]>([]);
   const [branchPerformance, setBranchPerformance] = useState<BranchPerformanceRow[]>([]);
   const [companyActiveReps, setCompanyActiveReps] = useState(0);
 
   const loadDashboard = useCallback(async () => {
-    if (!token) return;
-
-    const [summaryRes, trendsRes, ordersRes, designsRes, spiffRes, repsRes] = await Promise.allSettled([
-      fetchOrderSummary(token),
-      fetchOrderTrends(token),
-      fetchOrders(token, 1, 100, 'ALL'),
-      fetchMobileTrendingDesigns(token, 3),
-      fetchSpiffSummary(token),
-      user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
-    ]);
-
-    if (summaryRes.status === 'fulfilled') {
-      setSummary(summaryRes.value);
-      if (summaryRes.value.pipeline) {
-        setPipeline({
-          pending: summaryRes.value.pipeline.pending || 0,
-          approved: summaryRes.value.pipeline.approved || 0,
-          production: summaryRes.value.pipeline.inProduction || 0,
-        });
-      }
+    if (!token) {
+      setStatsLoading(false);
+      setTrendingLoading(false);
+      return;
     }
 
-    let pendingCount = 0;
-    let approvedCount = 0;
-    let productionCount = 0;
+    setStatsLoading(true);
+    setTrendingLoading(true);
 
-    let orderRows: Order[] = [];
-    if (ordersRes.status === 'fulfilled') {
-      orderRows = ordersRes.value.data || [];
-      if (summaryRes.status !== 'fulfilled' || !summaryRes.value.pipeline) {
-        orderRows.forEach((o) => {
-          if (o.status === 'PENDING_APPROVAL' || o.status === 'QUOTE') pendingCount += 1;
-          if (o.status === 'APPROVED') approvedCount += 1;
-          if (o.status === 'IN_PRODUCTION') productionCount += 1;
-        });
-        setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
+    try {
+      const [summaryRes, trendsRes, ordersRes, designsRes, spiffRes, repsRes] = await Promise.allSettled([
+        fetchOrderSummary(token),
+        fetchOrderTrends(token),
+        fetchOrders(token, 1, 100, 'ALL'),
+        fetchMobileTrendingDesigns(token, 3),
+        fetchSpiffSummary(token),
+        user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
+      ]);
+
+      if (summaryRes.status === 'fulfilled') {
+        setSummary(summaryRes.value);
+        if (summaryRes.value.pipeline) {
+          setPipeline({
+            pending: summaryRes.value.pipeline.pending || 0,
+            approved: summaryRes.value.pipeline.approved || 0,
+            production: summaryRes.value.pipeline.inProduction || 0,
+          });
+        }
       }
 
-      if (user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN') {
-        const repAgg = new Map<string, { name: string; sales: number }>();
-        orderRows
-          .filter((order) => order.isActive !== false)
-          .forEach((order) => {
-            const repId = String(order.salesRepId || '').trim();
-            const repName =
-              String(order.salesRepName || '').trim() ||
-              String(order.salesRepEmail || '').trim() ||
-              'Unknown Rep';
-            const key = repId || repName.toLowerCase();
-            const current = repAgg.get(key) || { name: repName, sales: 0 };
-            current.sales += Number(order.price || 0);
-            repAgg.set(key, current);
+      let pendingCount = 0;
+      let approvedCount = 0;
+      let productionCount = 0;
+
+      let orderRows: Order[] = [];
+      if (ordersRes.status === 'fulfilled') {
+        orderRows = ordersRes.value.data || [];
+        if (summaryRes.status !== 'fulfilled' || !summaryRes.value.pipeline) {
+          orderRows.forEach((o) => {
+            if (o.status === 'PENDING_APPROVAL' || o.status === 'QUOTE') pendingCount += 1;
+            if (o.status === 'APPROVED') approvedCount += 1;
+            if (o.status === 'IN_PRODUCTION') productionCount += 1;
+          });
+          setPipeline({ pending: pendingCount, approved: approvedCount, production: productionCount });
+        }
+
+        if (user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN') {
+          const repAgg = new Map<string, { name: string; sales: number }>();
+          orderRows
+            .filter((order) => order.isActive !== false)
+            .forEach((order) => {
+              const repId = String(order.salesRepId || '').trim();
+              const repName =
+                String(order.salesRepName || '').trim() ||
+                String(order.salesRepEmail || '').trim() ||
+                'Unknown Rep';
+              const key = repId || repName.toLowerCase();
+              const current = repAgg.get(key) || { name: repName, sales: 0 };
+              current.sales += Number(order.price || 0);
+              repAgg.set(key, current);
+            });
+
+          const ranked = Array.from(repAgg.entries())
+            .map(([id, value]) => ({
+              id,
+              name: value.name,
+              initial: value.name.charAt(0).toUpperCase() || 'R',
+              sales: Number.isFinite(value.sales) ? value.sales : 0,
+            }))
+            .sort((a, b) => b.sales - a.sales)
+            .slice(0, 3);
+
+          setRepPerformance(ranked);
+        } else {
+          setRepPerformance([]);
+        }
+
+        if (user?.role === 'COMPANY_ADMIN') {
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth();
+          const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
+          const prevYear = prevMonthDate.getFullYear();
+          const prevMonth = prevMonthDate.getMonth();
+
+          const reps = repsRes.status === 'fulfilled' ? (repsRes.value || []) : [];
+          setCompanyActiveReps(reps.filter((rep) => rep.isActive).length);
+
+          const repsByBranchKey = new Map<string, number>();
+          reps.forEach((rep) => {
+            if (!rep.isActive) return;
+            const key = String(rep.branch?.id || rep.branch?.name || '').trim().toLowerCase();
+            if (!key) return;
+            repsByBranchKey.set(key, (repsByBranchKey.get(key) || 0) + 1);
           });
 
-        const ranked = Array.from(repAgg.entries())
-          .map(([id, value]) => ({
-            id,
-            name: value.name,
-            initial: value.name.charAt(0).toUpperCase() || 'R',
-            sales: Number.isFinite(value.sales) ? value.sales : 0,
-          }))
-          .sort((a, b) => b.sales - a.sales)
-          .slice(0, 3);
+          const branchAgg = new Map<
+            string,
+            { branchName: string; currentRevenue: number; previousRevenue: number; currentOrders: number; branchKey: string }
+          >();
 
-        setRepPerformance(ranked);
+          orderRows
+            .filter((order) => order.isActive !== false)
+            .forEach((order) => {
+              const branchName = String(order.branchName || 'Unknown Branch').trim() || 'Unknown Branch';
+              const dynamicOrder = order as Order & { branchId?: string | null };
+              const branchKey = String(dynamicOrder.branchId || branchName).trim().toLowerCase();
+              if (!branchKey) return;
+
+              const created = order.createdAt ? new Date(order.createdAt) : null;
+              if (!created || Number.isNaN(created.getTime())) return;
+
+              const bucket = branchAgg.get(branchKey) || {
+                branchName,
+                currentRevenue: 0,
+                previousRevenue: 0,
+                currentOrders: 0,
+                branchKey,
+              };
+
+              const orderYear = created.getFullYear();
+              const orderMonth = created.getMonth();
+              const orderPrice = Number(order.price || 0);
+
+              if (orderYear === currentYear && orderMonth === currentMonth) {
+                bucket.currentRevenue += orderPrice;
+                bucket.currentOrders += 1;
+              } else if (orderYear === prevYear && orderMonth === prevMonth) {
+                bucket.previousRevenue += orderPrice;
+              }
+
+              branchAgg.set(branchKey, bucket);
+            });
+
+          const calcTrend = (current: number, previous: number) => {
+            if (previous <= 0) return current > 0 ? 100 : 0;
+            return Math.round(((current - previous) / previous) * 100);
+          };
+
+          const performanceRows = Array.from(branchAgg.values())
+            .filter((row) => row.currentRevenue > 0 || row.currentOrders > 0)
+            .map((row) => ({
+              id: row.branchKey,
+              branchName: row.branchName,
+              revenue: row.currentRevenue,
+              orders: row.currentOrders,
+              reps: repsByBranchKey.get(row.branchKey) || 0,
+              trend: calcTrend(row.currentRevenue, row.previousRevenue),
+            }))
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 3);
+
+          setBranchPerformance(performanceRows);
+        } else {
+          setBranchPerformance([]);
+          setCompanyActiveReps(0);
+        }
       } else {
         setRepPerformance([]);
-      }
-
-      if (user?.role === 'COMPANY_ADMIN') {
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
-        const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
-        const prevYear = prevMonthDate.getFullYear();
-        const prevMonth = prevMonthDate.getMonth();
-
-        const reps = repsRes.status === 'fulfilled' ? (repsRes.value || []) : [];
-        setCompanyActiveReps(reps.filter((rep) => rep.isActive).length);
-
-        const repsByBranchKey = new Map<string, number>();
-        reps.forEach((rep) => {
-          if (!rep.isActive) return;
-          const key = String(rep.branch?.id || rep.branch?.name || '').trim().toLowerCase();
-          if (!key) return;
-          repsByBranchKey.set(key, (repsByBranchKey.get(key) || 0) + 1);
-        });
-
-        const branchAgg = new Map<
-          string,
-          { branchName: string; currentRevenue: number; previousRevenue: number; currentOrders: number; branchKey: string }
-        >();
-
-        orderRows
-          .filter((order) => order.isActive !== false)
-          .forEach((order) => {
-            const branchName = String(order.branchName || 'Unknown Branch').trim() || 'Unknown Branch';
-            const dynamicOrder = order as Order & { branchId?: string | null };
-            const branchKey = String(dynamicOrder.branchId || branchName).trim().toLowerCase();
-            if (!branchKey) return;
-
-            const created = order.createdAt ? new Date(order.createdAt) : null;
-            if (!created || Number.isNaN(created.getTime())) return;
-
-            const bucket = branchAgg.get(branchKey) || {
-              branchName,
-              currentRevenue: 0,
-              previousRevenue: 0,
-              currentOrders: 0,
-              branchKey,
-            };
-
-            const orderYear = created.getFullYear();
-            const orderMonth = created.getMonth();
-            const orderPrice = Number(order.price || 0);
-
-            if (orderYear === currentYear && orderMonth === currentMonth) {
-              bucket.currentRevenue += orderPrice;
-              bucket.currentOrders += 1;
-            } else if (orderYear === prevYear && orderMonth === prevMonth) {
-              bucket.previousRevenue += orderPrice;
-            }
-
-            branchAgg.set(branchKey, bucket);
-          });
-
-        const calcTrend = (current: number, previous: number) => {
-          if (previous <= 0) return current > 0 ? 100 : 0;
-          return Math.round(((current - previous) / previous) * 100);
-        };
-
-        const performanceRows = Array.from(branchAgg.values())
-          .filter((row) => row.currentRevenue > 0 || row.currentOrders > 0)
-          .map((row) => ({
-            id: row.branchKey,
-            branchName: row.branchName,
-            revenue: row.currentRevenue,
-            orders: row.currentOrders,
-            reps: repsByBranchKey.get(row.branchKey) || 0,
-            trend: calcTrend(row.currentRevenue, row.previousRevenue),
-          }))
-          .sort((a, b) => b.revenue - a.revenue)
-          .slice(0, 3);
-
-        setBranchPerformance(performanceRows);
-      } else {
         setBranchPerformance([]);
         setCompanyActiveReps(0);
       }
-    } else {
-      setRepPerformance([]);
-      setBranchPerformance([]);
-      setCompanyActiveReps(0);
-    }
 
-    if (trendsRes.status === 'fulfilled' && summaryRes.status !== 'fulfilled') {
-      setSummary(trendsRes.value as any);
-    }
-
-    if (spiffRes.status === 'fulfilled') {
-      const pointsPerDollar = Number(spiffRes.value?.config?.pointsPerDollar || 100);
-      const redeemablePoints = Number(spiffRes.value?.wallet?.availablePoints || 0);
-      const amount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
-      setSpiffEarned(Number.isFinite(amount) ? amount : 0);
-    } else {
-      setSpiffEarned(0);
-    }
-
-    if (designsRes.status === 'fulfilled') {
-      const chosen = (designsRes.value.data || []).slice(0, 3).map((design) => ({
-        id: design.id,
-        title: design.designName || design.designNo || 'Jewelry design',
-        subtitle: `${design.jewelryGroup || 'Jewelry'} - ${design.collection || design.version || 'Catalog'}`,
-        price: Number(design.totalValue ?? 0),
-        imageUrl: design.imageUrls?.[0] || null,
-      }));
-
-      const result = [...chosen];
-      const seenTitles = new Set(result.map((item) => item.title.toLowerCase().trim()));
-      for (const fallback of FALLBACK_TRENDING_PRODUCTS) {
-        if (result.length >= 2) break;
-        const fallbackKey = fallback.title.toLowerCase().trim();
-        if (seenTitles.has(fallbackKey)) continue;
-        result.push(fallback);
-        seenTitles.add(fallbackKey);
+      if (trendsRes.status === 'fulfilled' && summaryRes.status !== 'fulfilled') {
+        setSummary(trendsRes.value as any);
       }
-      setTrendingProducts(result.slice(0, 2));
+
+      if (spiffRes.status === 'fulfilled') {
+        const pointsPerDollar = Number(spiffRes.value?.config?.pointsPerDollar || 100);
+        const redeemablePoints = Number(spiffRes.value?.wallet?.availablePoints || 0);
+        const amount = pointsPerDollar > 0 ? redeemablePoints / pointsPerDollar : 0;
+        setSpiffEarned(Number.isFinite(amount) ? amount : 0);
+      } else {
+        setSpiffEarned(0);
+      }
+
+      if (designsRes.status === 'fulfilled') {
+        const chosen = (designsRes.value.data || []).slice(0, 3).map((design) => ({
+          id: design.id,
+          title: design.designName || design.designNo || 'Jewelry design',
+          subtitle: `${design.jewelryGroup || 'Jewelry'} - ${design.collection || design.version || 'Catalog'}`,
+          price: Number(design.displayPrice ?? design.totalValue ?? 0),
+          imageUrl: design.imageUrls?.[0] || null,
+        }));
+
+        const result = [...chosen];
+        const seenTitles = new Set(result.map((item) => item.title.toLowerCase().trim()));
+        for (const fallback of FALLBACK_TRENDING_PRODUCTS) {
+          if (result.length >= 2) break;
+          const fallbackKey = fallback.title.toLowerCase().trim();
+          if (seenTitles.has(fallbackKey)) continue;
+          result.push(fallback);
+          seenTitles.add(fallbackKey);
+        }
+        setTrendingProducts(result.slice(0, 2));
+      }
+    } finally {
+      setStatsLoading(false);
+      setTrendingLoading(false);
     }
 
   }, [token, user?.id, user?.role, user?.firstName, user?.lastName]);
@@ -396,6 +411,13 @@ const BranchDashboardScreen = () => {
     }).format(Number.isFinite(value) ? value : 0);
 
   const productsToShow = trendingProducts.length ? trendingProducts : FALLBACK_TRENDING_PRODUCTS;
+  const renderStatSkeleton = (accent = false) => (
+    <>
+      <View style={[styles.statSkeletonLine, styles.statSkeletonLabel, accent ? styles.statSkeletonLineSpiff : null]} />
+      <View style={[styles.statSkeletonLine, styles.statSkeletonNumber, accent ? styles.statSkeletonLineSpiff : null]} />
+      <View style={[styles.statSkeletonLine, styles.statSkeletonSub, accent ? styles.statSkeletonLineSpiff : null]} />
+    </>
+  );
   const handleOpenNotificationEntry = useCallback(
     (_entry: NotificationFeedEntry) => {
       navigation.navigate('OrdersTab');
@@ -456,60 +478,78 @@ const BranchDashboardScreen = () => {
 
           <View style={styles.statsHorizontal}>
             <View style={styles.statTile}>
-              <Text
-                style={[styles.statLabel, isCompanyAdmin ? styles.statLabelCompact : null]}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}
-              >
-                {isCompanyAdmin ? 'COMPANY REV' : isBranchManager ? 'BRANCH REV.' : 'TODAY'}
-              </Text>
-              <Text style={styles.statNumber}>
-                {isCompanyAdmin
-                  ? formatMoneyCompact(companyMonthlyRevenue)
-                  : isBranchManager
-                    ? formatMoneyCompact(summary?.branchRevenueTotal)
-                    : formatMoney(summary?.salesToday)}
-              </Text>
-              <Text style={styles.statSubTextGreen}>
-                {isCompanyAdmin
-                  ? `${formatTrend(summary?.monthlyTrend)} this month`
-                  : isBranchManager
-                    ? formatTrend(summary?.monthlyTrend)
-                    : formatTrend(summary?.todayTrend)}
-              </Text>
+              {statsLoading ? (
+                renderStatSkeleton()
+              ) : (
+                <>
+                  <Text
+                    style={[styles.statLabel, isCompanyAdmin ? styles.statLabelCompact : null]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                  >
+                    {isCompanyAdmin ? 'COMPANY REV' : isBranchManager ? 'BRANCH REV.' : 'TODAY'}
+                  </Text>
+                  <Text style={styles.statNumber}>
+                    {isCompanyAdmin
+                      ? formatMoneyCompact(companyMonthlyRevenue)
+                      : isBranchManager
+                        ? formatMoneyCompact(summary?.branchRevenueTotal)
+                        : formatMoney(summary?.salesToday)}
+                  </Text>
+                  <Text style={styles.statSubTextGreen}>
+                    {isCompanyAdmin
+                      ? `${formatTrend(summary?.monthlyTrend)} this month`
+                      : isBranchManager
+                        ? formatTrend(summary?.monthlyTrend)
+                        : formatTrend(summary?.todayTrend)}
+                  </Text>
+                </>
+              )}
             </View>
 
             <View style={styles.statTile}>
-              <Text style={styles.statLabel}>
-                {isCompanyAdmin ? 'ORDERS' : isBranchManager ? 'MY REPS' : 'MONTHLY'}
-              </Text>
-              <Text style={styles.statNumber}>
-                {isCompanyAdmin
-                  ? formatWhole(companyMonthlyOrders)
-                  : isBranchManager
-                    ? formatWhole(summary?.branchSalesRepCount)
-                    : formatMoney(summary?.salesThisMonth)}
-              </Text>
-              <Text style={styles.statSubTextGreen}>
-                {isCompanyAdmin ? 'this month' : isBranchManager ? 'all active' : formatTrend(summary?.monthlyTrend)}
-              </Text>
+              {statsLoading ? (
+                renderStatSkeleton()
+              ) : (
+                <>
+                  <Text style={styles.statLabel}>
+                    {isCompanyAdmin ? 'ORDERS' : isBranchManager ? 'MY REPS' : 'MONTHLY'}
+                  </Text>
+                  <Text style={styles.statNumber}>
+                    {isCompanyAdmin
+                      ? formatWhole(companyMonthlyOrders)
+                      : isBranchManager
+                        ? formatWhole(summary?.branchSalesRepCount)
+                        : formatMoney(summary?.salesThisMonth)}
+                  </Text>
+                  <Text style={styles.statSubTextGreen}>
+                    {isCompanyAdmin ? 'this month' : isBranchManager ? 'all active' : formatTrend(summary?.monthlyTrend)}
+                  </Text>
+                </>
+              )}
             </View>
 
             <View style={[styles.statTile, styles.statTileSpiff]}>
-              <Text style={styles.statLabelSpiff}>
-                {isCompanyAdmin ? 'AVG ORDER' : isBranchManager ? 'PENDING' : 'SPIFF'}
-              </Text>
-              <Text style={styles.statNumberSpiff}>
-                {isCompanyAdmin
-                  ? formatMoneyCompact(companyAvgOrder)
-                  : isBranchManager
-                    ? formatWhole(summary?.pendingApprovalOrders)
-                    : formatMoney(spiffEarned)}
-              </Text>
-              <Text style={styles.statSubTextSpiff}>
-                {isCompanyAdmin ? 'monthly avg' : isBranchManager ? 'needs review' : 'earned'}
-              </Text>
+              {statsLoading ? (
+                renderStatSkeleton(true)
+              ) : (
+                <>
+                  <Text style={styles.statLabelSpiff}>
+                    {isCompanyAdmin ? 'AVG ORDER' : isBranchManager ? 'PENDING' : 'SPIFF'}
+                  </Text>
+                  <Text style={styles.statNumberSpiff}>
+                    {isCompanyAdmin
+                      ? formatMoneyCompact(companyAvgOrder)
+                      : isBranchManager
+                        ? formatWhole(summary?.pendingApprovalOrders)
+                        : formatMoney(spiffEarned)}
+                  </Text>
+                  <Text style={styles.statSubTextSpiff}>
+                    {isCompanyAdmin ? 'monthly avg' : isBranchManager ? 'needs review' : 'earned'}
+                  </Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -702,7 +742,16 @@ const BranchDashboardScreen = () => {
               </View>
 
               <View style={styles.trendingRow}>
-                {productsToShow.map((item) => (
+                {trendingLoading ? TRENDING_SKELETON_IDS.map((id) => (
+                  <View key={id} style={[styles.trendingCard, styles.trendingSkeletonCard]}>
+                    <View style={[styles.trendingImageWrap, styles.trendingSkeletonImage]} />
+                    <View style={styles.trendingBody}>
+                      <View style={[styles.trendingSkeletonLine, styles.trendingSkeletonTitle]} />
+                      <View style={[styles.trendingSkeletonLine, styles.trendingSkeletonMeta]} />
+                      <View style={[styles.trendingSkeletonLine, styles.trendingSkeletonPrice]} />
+                    </View>
+                  </View>
+                )) : productsToShow.map((item) => (
                   <TouchableOpacity
                     key={item.id}
                     style={styles.trendingCard}
@@ -980,6 +1029,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#A27A3D',
+  },
+  statSkeletonLine: {
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#F0E8DF',
+  },
+  statSkeletonLineSpiff: {
+    backgroundColor: '#E9DDCD',
+  },
+  statSkeletonLabel: {
+    width: '62%',
+  },
+  statSkeletonNumber: {
+    width: '72%',
+    height: 20,
+  },
+  statSkeletonSub: {
+    width: '52%',
   },
   sectionHeading: {
     fontSize: 15,
@@ -1316,6 +1383,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  trendingSkeletonCard: {
+    shadowOpacity: 0.03,
+  },
+  trendingSkeletonImage: {
+    backgroundColor: '#F3EEE8',
+  },
+  trendingSkeletonLine: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#F0E8DF',
+  },
+  trendingSkeletonTitle: {
+    width: '76%',
+    height: 13,
+  },
+  trendingSkeletonMeta: {
+    width: '60%',
+    marginTop: 7,
+  },
+  trendingSkeletonPrice: {
+    width: '48%',
+    height: 18,
+    marginTop: 8,
   },
   trendingBody: {
     paddingHorizontal: 8,

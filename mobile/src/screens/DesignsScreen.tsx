@@ -542,7 +542,7 @@ const DesignsScreen = () => {
   const renderSkeletonCards = (ids: string[]) => (
     <View style={styles.skeletonGrid}>
       {ids.map((id) => (
-        <View key={id} style={[styles.cardTouchable, styles.cardTouchableGrid]}>
+        <View key={id} style={[styles.cardTouchable, styles.cardTouchableGrid, styles.skeletonCardShell]}>
           <View style={[styles.designCard, styles.skeletonCard]}>
             <View style={[styles.imageShell, styles.skeletonImage]} />
             <View style={styles.cardBody}>
@@ -665,9 +665,6 @@ const DesignsScreen = () => {
               activeOpacity={0.85}
             >
               <Ionicons name="grid-outline" size={14} color="#8D8276" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.searchActionBtn} onPress={openSortMenu} activeOpacity={0.85}>
-              <Ionicons name="options-outline" size={14} color="#8D8276" />
             </TouchableOpacity>
           </View>
 
@@ -1270,6 +1267,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     width: '100%',
+  },
+  skeletonCardShell: {
+    marginBottom: Platform.OS === 'android' ? 10 : 14,
   },
   skeletonCard: {
     shadowOpacity: 0.03,
