@@ -41,7 +41,7 @@ export type MobileCatalogDesign = Pick<
 export type MobileCatalogQuery = {
   page?: number;
   limit?: number;
-  category?: 'rings' | 'bracelets' | 'studs' | 'necklaces';
+  category?: string;
   search?: string;
   collection?: string;
   diamondType?: string;
@@ -147,14 +147,23 @@ export const fetchMobileCatalogDesigns = (token: string, query: MobileCatalogQue
   );
 };
 
-export type CatalogCategoryCounts = Record<
-  'rings' | 'bracelets' | 'studs' | 'necklaces',
-  { designs: number; versions: number }
->;
+export type CatalogCategoryOption = {
+  id: string;
+  label: string;
+  designs: number;
+  versions: number;
+};
 
 export const fetchCatalogCategoryCounts = (token: string) =>
-  apiRequest<{ data: CatalogCategoryCounts }>(
+  apiRequest<{ data: Record<string, { designs: number; versions: number }> }>(
     '/products/mobile/category-counts',
+    { method: 'GET' },
+    token,
+  );
+
+export const fetchCatalogCategories = (token: string) =>
+  apiRequest<{ data: CatalogCategoryOption[] }>(
+    '/products/mobile/categories',
     { method: 'GET' },
     token,
   );

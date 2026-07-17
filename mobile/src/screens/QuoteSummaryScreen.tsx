@@ -370,6 +370,12 @@ const QuoteSummaryScreen = () => {
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const canModifyCurrentOrder = statusKey !== 'APPROVED' || isBranchManager;
 
+  const handleBackToOrders = useCallback(() => {
+    (navigation as any).navigate('OrdersTab', {
+      screen: 'Orders',
+    });
+  }, [navigation]);
+
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
       return {
@@ -487,7 +493,7 @@ const QuoteSummaryScreen = () => {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.goBack()} activeOpacity={0.9}>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={handleBackToOrders} activeOpacity={0.9}>
           <Ionicons name="chevron-back" size={17} color="#7A6E61" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Summary</Text>

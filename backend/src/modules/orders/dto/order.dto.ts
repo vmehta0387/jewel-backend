@@ -158,6 +158,14 @@ export class FindOrdersQueryDto {
   @IsOptional()
   @IsString()
   deliveryTo?: string;
+
+  @IsOptional()
+  @IsString()
+  createdFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  createdTo?: string;
 }
 
 export class UpdateOrderStatusDto {

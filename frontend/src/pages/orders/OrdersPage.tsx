@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import AlertDialog from '../../components/common/AlertDialog';
 import Pagination from '../../components/common/Pagination';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
@@ -52,6 +53,7 @@ interface BranchOption {
 interface DesignOption {
   id: string;
   designNo: string;
+  barcode?: string | null;
   designName?: string | null;
   version?: string;
   jewelryGroup?: string | null;
@@ -96,6 +98,7 @@ interface DesignGemstone {
 interface DesignDetail {
   id: string;
   designNo: string;
+  barcode?: string | null;
   version?: string;
   designName?: string | null;
   jewelryGroup?: string | null;
@@ -103,9 +106,13 @@ interface DesignDetail {
   jewelrySize?: string | null;
   designStatus?: string | null;
   diamondType?: string | null;
+  stoneInfo?: string | null;
   diamondSpread?: string | null;
   diamondWeight?: string | null;
   diamondQuality?: string | null;
+  goldColour?: string | null;
+  displayPrice?: number | null;
+  totalValue?: number | null;
   metals?: DesignMetal[];
   gemstones?: DesignGemstone[];
   imageUrls?: string[];
@@ -128,11 +135,44 @@ interface OrderFormState {
 }
 
 interface OrderFormErrors {
+  companyId?: string;
+  branchId?: string;
+  designId?: string;
   deliveryDate?: string;
   price?: string;
   quantity?: string;
   totalAmount?: string;
 }
+
+type ConfiguratorKey = 'diamondType' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
+
+type ConfiguratorOptions = Record<ConfiguratorKey, string>;
+
+type ConfiguratorResponse = {
+  selectedDesign: DesignDetail;
+  selectedOptions?: Partial<ConfiguratorOptions> & { metalColor?: string };
+  optionGroups?: Partial<Record<ConfiguratorKey | 'metalColor', string[]>>;
+};
+
+const emptyConfiguratorOptions = (): ConfiguratorOptions => ({
+  diamondType: '',
+  shape: '',
+  style: '',
+  metalCaratage: '',
+  weight: '',
+  quality: '',
+  ringSize: '',
+});
+
+const emptyOptionGroups = (): Record<ConfiguratorKey, string[]> => ({
+  diamondType: [],
+  shape: [],
+  style: [],
+  metalCaratage: [],
+  weight: [],
+  quality: [],
+  ringSize: [],
+});
 
 const defaultForm: OrderFormState = {
   companyId: '',
@@ -179,6 +219,18 @@ const resolvePublicAssetUrl = (rawUrl: string): string => {
   return `${publicAssetsBaseUrl}/${url}`;
 };
 const stripUrlSuffix = (url: string): string => url.split('#')[0].split('?')[0].toLowerCase();
+const getUrlExtension = (url: string): string => {
+  const clean = stripUrlSuffix(url);
+  const match = clean.match(/\.([a-z0-9]+)$/i);
+  return match?.[1]?.toUpperCase() || 'FILE';
+};
+const isImageUrl = (url: string): boolean => {
+  const normalized = (url || '').trim();
+  if (!normalized) return false;
+  if (/^data:image\//i.test(normalized)) return true;
+  const clean = stripUrlSuffix(normalized);
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif'].some((ext) => clean.endsWith(ext));
+};
 const isVideoUrl = (url: string): boolean => {
   const normalized = (url || '').trim();
   if (!normalized) return false;
@@ -186,6 +238,8 @@ const isVideoUrl = (url: string): boolean => {
   const clean = stripUrlSuffix(normalized);
   return ['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg'].some((ext) => clean.endsWith(ext));
 };
+const compactOptions = (values?: string[]): string[] =>
+  Array.from(new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean)));
 
 const formatMoney = (value: number): string =>
   `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -200,6 +254,16 @@ const formatDisplayDate = (value?: string | null): string => {
 const formatNumberInput = (value: number): string => {
   if (!Number.isFinite(value)) return '';
   return Number(value.toFixed(2)).toString();
+};
+const getDesignDefaultPrice = (design?: Pick<DesignDetail, 'displayPrice' | 'totalValue'> | null): number => {
+  const displayPrice = Number(design?.displayPrice ?? 0);
+  if (Number.isFinite(displayPrice) && displayPrice > 0) return displayPrice;
+  const totalValue = Number(design?.totalValue ?? 0);
+  return Number.isFinite(totalValue) && totalValue > 0 ? totalValue : 0;
+};
+const toOrderPriceInput = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return String(Math.round(value));
 };
 const toDateInputValue = (value?: string | Date | null): string => {
   const date = value ? new Date(value) : new Date();
@@ -220,6 +284,17 @@ const getBaseDesignNo = (designNo?: string | null): string =>
     .trim()
     .toUpperCase()
     .replace(/-V\d+$/i, '');
+const buildSelectionDescription = (options: Partial<ConfiguratorOptions>): string =>
+  [
+    options.diamondType ? `Type: ${options.diamondType}` : null,
+    options.metalCaratage ? `Metal: ${options.metalCaratage}` : null,
+    options.ringSize ? `Jewelry Size: ${options.ringSize}` : null,
+    options.style ? `Spread: ${options.style}` : null,
+    options.quality ? `Quality: ${options.quality}` : null,
+    options.weight ? `Weight: ${options.weight}` : null,
+  ]
+    .filter(Boolean)
+    .join(' | ');
 
 function MediaPreview({ url, alt }: { url: string; alt: string }) {
   const resolved = resolvePublicAssetUrl(url);
@@ -237,6 +312,58 @@ function MediaPreview({ url, alt }: { url: string; alt: string }) {
   }
 
   return <img src={resolved} alt={alt} className="h-40 w-full rounded-lg border border-slate-200 object-cover" />;
+}
+
+function MediaFileFallback({ label, compact = false }: { label: string; compact?: boolean }) {
+  return (
+    <div className={`flex h-full w-full flex-col items-center justify-center rounded-lg border border-[#efe7dc] bg-[#fcfaf6] text-[#b4a692] ${compact ? 'gap-1' : 'gap-3'}`}>
+      <svg className={compact ? 'h-6 w-6' : 'h-12 w-12'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
+        <path d="M14 2v5h5" />
+      </svg>
+      <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold uppercase tracking-wide`}>{label}</span>
+    </div>
+  );
+}
+
+function OrderMediaPreview({
+  url,
+  alt,
+  failedMediaUrls,
+  onImageError,
+  className = '',
+}: {
+  url: string;
+  alt: string;
+  failedMediaUrls: Set<string>;
+  onImageError: (url: string) => void;
+  className?: string;
+}) {
+  const resolved = resolvePublicAssetUrl(url);
+  const extension = getUrlExtension(resolved);
+  if (isVideoUrl(resolved)) {
+    return (
+      <video
+        src={resolved}
+        className={`h-full w-full rounded-lg border border-slate-200 bg-slate-50 object-contain ${className}`}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+  if (isImageUrl(resolved) && !failedMediaUrls.has(resolved)) {
+    return (
+      <img
+        src={resolved}
+        alt={alt}
+        className={`h-full w-full rounded-lg border border-slate-200 bg-white object-contain ${className}`}
+        onError={() => onImageError(resolved)}
+      />
+    );
+  }
+  return <MediaFileFallback label={isImageUrl(resolved) ? `${extension} unavailable` : `${extension} file`} />;
 }
 
 function OrderActionIconButton({
@@ -306,6 +433,8 @@ export default function OrdersPage() {
   const orderRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
   const canViewOrders = useMemo(() => {
     if (!currentUser) return false;
     return hasTaskPermission(currentUser, 'ORDER_ENTRIES');
@@ -327,6 +456,7 @@ export default function OrdersPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
   const [activeToggleOrderId, setActiveToggleOrderId] = useState<string | null>(null);
+  const [statusUpdatingOrderId, setStatusUpdatingOrderId] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
   const [formErrors, setFormErrors] = useState<OrderFormErrors>({});
@@ -343,12 +473,21 @@ export default function OrdersPage() {
   const [designDropdownSearch, setDesignDropdownSearch] = useState('');
   const [designDetail, setDesignDetail] = useState<DesignDetail | null>(null);
   const [designMediaUrls, setDesignMediaUrls] = useState<string[]>([]);
-  const [showDesignFilters, setShowDesignFilters] = useState(false);
+  const [configuratorOptionGroups, setConfiguratorOptionGroups] = useState<Record<ConfiguratorKey, string[]>>(emptyOptionGroups);
+  const [selectedConfiguratorOptions, setSelectedConfiguratorOptions] = useState<ConfiguratorOptions>(emptyConfiguratorOptions);
+  const [configuratorLoading, setConfiguratorLoading] = useState(false);
+  const [configuratorError, setConfiguratorError] = useState<string | null>(null);
+  const [resolvingConfigurator, setResolvingConfigurator] = useState(false);
+  const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(() => new Set());
+  const [showDesignPickerModal, setShowDesignPickerModal] = useState(false);
   const [designFilters, setDesignFilters] = useState({
     search: '',
     jewelryGroup: '',
     collection: '',
     metal: '',
+    jewelrySize: '',
+    designStatus: '',
   });
   const [packetLookup, setPacketLookup] = useState<Record<string, string>>({});
   const [viewOrder, setViewOrder] = useState<OrderRow | null>(null);
@@ -356,20 +495,51 @@ export default function OrdersPage() {
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
   const [viewMediaUrls, setViewMediaUrls] = useState<string[]>([]);
   const [pendingStatusChange, setPendingStatusChange] = useState<{ from: string; to: string } | null>(null);
+  const [statusChangeOrder, setStatusChangeOrder] = useState<OrderRow | null>(null);
+  const [statusChangeTarget, setStatusChangeTarget] = useState('');
+  const [pendingOrderStatusChange, setPendingOrderStatusChange] = useState<{
+    order: OrderRow;
+    from: string;
+    to: string;
+  } | null>(null);
+  const [alertDialog, setAlertDialog] = useState<{
+    title: string;
+    message: string;
+    variant?: 'info' | 'success' | 'warning' | 'error';
+  } | null>(null);
   const [filters, setFilters] = useState({
     orderStatus: '',
     companyId: '',
     deliveryFrom: '',
     deliveryTo: '',
+    createdFrom: '',
+    createdTo: '',
   });
   const designSearchDebounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const designRequestSeqRef = useRef(0);
 
   const isEditing = Boolean(editingOrderId);
   const listTableColumnCount = isSuperAdmin ? 13 : 12;
+  const canSelectOrderCompany = isSuperAdmin;
+  const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
+  const roleScopedDefaultForm = useMemo(
+    () => ({
+      ...defaultForm,
+      companyId: currentUser?.role === 'SUPER_ADMIN' ? '' : currentUser?.companyId || '',
+      branchId: isBranchScopedUser ? currentUser?.branchId || '' : '',
+    }),
+    [currentUser?.role, currentUser?.companyId, currentUser?.branchId, isBranchScopedUser],
+  );
 
   const pageOffset = (page - 1) * pageSize;
-  const hasActiveFilters = Boolean(filters.orderStatus || filters.companyId || filters.deliveryFrom || filters.deliveryTo);
+  const hasActiveFilters = Boolean(
+    filters.orderStatus ||
+      filters.companyId ||
+      filters.deliveryFrom ||
+      filters.deliveryTo ||
+      filters.createdFrom ||
+      filters.createdTo,
+  );
   const formTotalAmount = useMemo(
     () => calculateTotalAmount(form.price, form.quantity),
     [form.price, form.quantity],
@@ -379,6 +549,16 @@ export default function OrdersPage() {
     const nextPrice = quantity > 0 ? Number(totalAmount || 0) / quantity : 0;
     setPriceManuallyEdited(true);
     setForm((prev) => ({ ...prev, price: formatNumberInput(nextPrice) }));
+  };
+  const showAlert = (
+    message: string,
+    options: { title?: string; variant?: 'info' | 'success' | 'warning' | 'error' } = {},
+  ) => {
+    setAlertDialog({
+      title: options.title || 'Notice',
+      message,
+      variant: options.variant || 'info',
+    });
   };
 
   const loadOrders = async () => {
@@ -395,6 +575,8 @@ export default function OrdersPage() {
           companyId: filters.companyId || undefined,
           deliveryFrom: filters.deliveryFrom || undefined,
           deliveryTo: filters.deliveryTo || undefined,
+          createdFrom: filters.createdFrom || undefined,
+          createdTo: filters.createdTo || undefined,
         },
       });
       const payload = response.data || {};
@@ -556,9 +738,123 @@ export default function OrdersPage() {
     }
   };
 
+  const resetConfiguratorState = () => {
+    setDesignDetail(null);
+    setDesignMediaUrls([]);
+    setConfiguratorOptionGroups(emptyOptionGroups());
+    setSelectedConfiguratorOptions(emptyConfiguratorOptions());
+    setConfiguratorError(null);
+    setResolvingConfigurator(false);
+    setSelectedMediaIndex(0);
+    setFailedMediaUrls(new Set());
+  };
+
+  const normalizeConfiguratorResponse = (response: ConfiguratorResponse) => {
+    const selectedOptions = response.selectedOptions || {};
+    const optionGroups = response.optionGroups || {};
+    const normalizedOptions: ConfiguratorOptions = {
+      ...emptyConfiguratorOptions(),
+      ...selectedOptions,
+      metalCaratage: selectedOptions.metalCaratage || selectedOptions.metalColor || '',
+    };
+    const normalizedGroups: Record<ConfiguratorKey, string[]> = {
+      diamondType: compactOptions(optionGroups.diamondType),
+      shape: compactOptions(optionGroups.shape),
+      style: compactOptions(optionGroups.style),
+      metalCaratage: compactOptions(optionGroups.metalCaratage || optionGroups.metalColor),
+      weight: compactOptions(optionGroups.weight),
+      quality: compactOptions(optionGroups.quality),
+      ringSize: compactOptions(optionGroups.ringSize),
+    };
+
+    (Object.keys(normalizedGroups) as ConfiguratorKey[]).forEach((key) => {
+      if (!normalizedOptions[key] && normalizedGroups[key][0]) {
+        normalizedOptions[key] = normalizedGroups[key][0];
+      }
+      if (normalizedOptions[key] && !normalizedGroups[key].includes(normalizedOptions[key])) {
+        normalizedGroups[key] = [normalizedOptions[key], ...normalizedGroups[key]];
+      }
+    });
+
+    return {
+      selectedDesign: response.selectedDesign,
+      selectedOptions: normalizedOptions,
+      optionGroups: normalizedGroups,
+    };
+  };
+
+  const applyConfiguratorResponse = async (response: ConfiguratorResponse, preserveManualDescription = false) => {
+    const normalized = normalizeConfiguratorResponse(response);
+    setDesignDetail(normalized.selectedDesign);
+    setConfiguratorOptionGroups(normalized.optionGroups);
+    setSelectedConfiguratorOptions(normalized.selectedOptions);
+    setSelectedMediaIndex(0);
+    setFailedMediaUrls(new Set());
+    setForm((prev) => {
+      const generatedDescription = buildSelectionDescription(normalized.selectedOptions);
+      const defaultPrice = toOrderPriceInput(getDesignDefaultPrice(normalized.selectedDesign));
+      const shouldSyncPrice = !editingOrderId && !priceManuallyEdited && defaultPrice;
+      return {
+        ...prev,
+        designId: normalized.selectedDesign.id,
+        price: shouldSyncPrice ? defaultPrice : prev.price,
+        quantity: prev.quantity || '1',
+        shortDescription: preserveManualDescription && prev.shortDescription ? prev.shortDescription : generatedDescription,
+      };
+    });
+    const familyMedia = await loadDesignFamilyMedia(normalized.selectedDesign);
+    setDesignMediaUrls(familyMedia);
+  };
+
+  const loadDesignConfigurator = async (designId: string, preserveManualDescription = false) => {
+    if (!designId) {
+      resetConfiguratorState();
+      return;
+    }
+    setConfiguratorLoading(true);
+    setConfiguratorError(null);
+    try {
+      const response = await api.get(`/products/mobile/configurator/${encodeURIComponent(designId)}`);
+      await applyConfiguratorResponse(response.data, preserveManualDescription);
+    } catch (error: any) {
+      resetConfiguratorState();
+      setConfiguratorError(error?.response?.data?.message || 'Unable to load design configurator.');
+    } finally {
+      setConfiguratorLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadOrders();
   }, [page, pageSize, filters, canViewOrders, showInactive]);
+
+  useEffect(() => {
+    const today = toDateInputValue();
+    const view = searchParams.get('view');
+    const nextFilters = {
+      orderStatus: searchParams.get('orderStatus') || '',
+      companyId: searchParams.get('companyId') || '',
+      deliveryFrom: searchParams.get('deliveryFrom') || '',
+      deliveryTo: searchParams.get('deliveryTo') || '',
+      createdFrom: searchParams.get('createdFrom') || '',
+      createdTo: searchParams.get('createdTo') || '',
+    };
+    let nextShowInactive = false;
+
+    if (view === 'due-today') {
+      nextFilters.deliveryFrom = today;
+      nextFilters.deliveryTo = today;
+    } else if (view === 'received-today') {
+      nextFilters.createdFrom = today;
+      nextFilters.createdTo = today;
+    } else if (view === 'active') {
+      nextShowInactive = false;
+    }
+
+    setPage(1);
+    setShowInactive(nextShowInactive);
+    setFilters(nextFilters);
+  }, [searchParams]);
 
   useEffect(() => {
     if (!canViewOrders) return;
@@ -605,9 +901,18 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!showAddModal) return;
     if (editingOrderId) return;
-    if (!form.designId || !form.companyId || !form.branchId) {
+    if (!form.designId) {
       if (!priceManuallyEdited) {
         setForm((prev) => ({ ...prev, price: '' }));
+      }
+      return;
+    }
+    if (!form.companyId || !form.branchId) {
+      if (!priceManuallyEdited) {
+        const fallbackPrice = designDetail?.id === form.designId ? toOrderPriceInput(getDesignDefaultPrice(designDetail)) : '';
+        if (fallbackPrice) {
+          setForm((prev) => ({ ...prev, price: prev.price || fallbackPrice, quantity: prev.quantity || '1' }));
+        }
       }
       return;
     }
@@ -623,48 +928,29 @@ export default function OrdersPage() {
         });
         const nextPrice = response.data?.finalPrice;
         if (nextPrice !== undefined && nextPrice !== null) {
-          setForm((prev) => ({ ...prev, price: String(Math.round(Number(nextPrice) || 0)) }));
+          setForm((prev) => ({ ...prev, price: toOrderPriceInput(Number(nextPrice)), quantity: prev.quantity || '1' }));
         }
       } catch {
-        // ignore preview failures
+        const fallbackPrice = designDetail?.id === form.designId ? toOrderPriceInput(getDesignDefaultPrice(designDetail)) : '';
+        if (fallbackPrice) {
+          setForm((prev) => ({ ...prev, price: prev.price || fallbackPrice, quantity: prev.quantity || '1' }));
+        }
       }
     };
     fetchPrice();
-  }, [form.designId, form.companyId, form.branchId, showAddModal, editingOrderId, priceManuallyEdited]);
-
-  useEffect(() => {
-    const designId = form.designId;
-    if (!designId) {
-      setDesignDetail(null);
-      setDesignMediaUrls([]);
-      return;
-    }
-
-    let cancelled = false;
-    const fetchDetail = async () => {
-      try {
-        const response = await api.get(`/products/${designId}`);
-        const detail = response.data || null;
-        if (cancelled) return;
-        setDesignDetail(detail);
-        const familyMedia = await loadDesignFamilyMedia(detail);
-        if (cancelled) return;
-        setDesignMediaUrls(familyMedia);
-      } catch {
-        if (cancelled) return;
-        setDesignDetail(null);
-        setDesignMediaUrls([]);
-      }
-    };
-
-    fetchDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [form.designId]);
+  }, [form.designId, form.companyId, form.branchId, showAddModal, editingOrderId, priceManuallyEdited, designDetail]);
 
   const handleSaveOrder = async () => {
     const nextErrors: OrderFormErrors = {};
+    if (!form.companyId) {
+      nextErrors.companyId = 'Company is required.';
+    }
+    if (!form.branchId) {
+      nextErrors.branchId = 'Branch is required.';
+    }
+    if (!form.designId) {
+      nextErrors.designId = 'Design is required.';
+    }
     if (!form.deliveryDate) {
       nextErrors.deliveryDate = 'Delivery date is required.';
     } else if (deliveryDateMin && form.deliveryDate < deliveryDateMin) {
@@ -682,6 +968,10 @@ export default function OrdersPage() {
 
     setFormErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
+      showAlert(Object.values(nextErrors).filter(Boolean).join('\n'), {
+        title: 'Please complete required fields',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -711,17 +1001,16 @@ export default function OrdersPage() {
       setShowAddModal(false);
       setEditingOrderId(null);
       setEditingDesignNo('');
-      setForm(defaultForm);
+      setForm(roleScopedDefaultForm);
       setFormErrors({});
       setDeliveryDateMin(toDateInputValue());
-      setDesignDetail(null);
-      setDesignMediaUrls([]);
+      resetConfiguratorState();
       await loadOrders();
     } catch (err: any) {
       const message =
         err?.response?.data?.message ||
         (editingOrderId ? 'Failed to update order' : 'Failed to create order');
-      alert(message);
+      showAlert(message, { title: 'Unable to save order', variant: 'error' });
     } finally {
       setSavingOrder(false);
     }
@@ -834,8 +1123,7 @@ export default function OrdersPage() {
     setFormErrors({});
     setDeliveryDateMin(toDateInputValue(order.createdAt));
     setOrderNumber(order.orderNumber || '');
-    setDesignDetail(null);
-    setDesignMediaUrls([]);
+    resetConfiguratorState();
 
     try {
       const { detail, design } = await fetchOrderWithDesign(order.id);
@@ -859,13 +1147,13 @@ export default function OrdersPage() {
       if (detail.companyId) {
         loadBranches(detail.companyId);
       }
-      setDesignDetail(design);
-      setDesignMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
       setEditOrderLoading(false);
-      void loadPackets();
-      void loadDesignFamilyMedia(design).then((familyMedia) => {
-        setDesignMediaUrls(familyMedia);
-      });
+      if (detail.designId) {
+        void loadDesignConfigurator(detail.designId, true);
+      } else {
+        setDesignDetail(design);
+        setDesignMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
+      }
     } catch {
       setForm({
         companyId: order.companyId || '',
@@ -894,6 +1182,95 @@ export default function OrdersPage() {
     setPendingStatusChange({ from: form.status, to: nextStatus });
   };
 
+  const openOrderStatusChange = (order: OrderRow) => {
+    setStatusChangeOrder(order);
+    setStatusChangeTarget(order.status || '');
+  };
+
+  const closeOrderStatusChange = () => {
+    setStatusChangeOrder(null);
+    setStatusChangeTarget('');
+  };
+
+  const requestOrderStatusChange = () => {
+    if (!statusChangeOrder || !statusChangeTarget || statusChangeTarget === statusChangeOrder.status) return;
+    setPendingOrderStatusChange({
+      order: statusChangeOrder,
+      from: statusChangeOrder.status,
+      to: statusChangeTarget,
+    });
+    closeOrderStatusChange();
+  };
+
+  const confirmOrderStatusChange = async () => {
+    if (!pendingOrderStatusChange) return;
+    try {
+      setStatusUpdatingOrderId(pendingOrderStatusChange.order.id);
+      await api.patch(`/orders/${pendingOrderStatusChange.order.id}/status`, {
+        status: pendingOrderStatusChange.to,
+      });
+      setPendingOrderStatusChange(null);
+      await loadOrders();
+    } catch (error: any) {
+      showAlert(error?.response?.data?.message || 'Unable to change order status.', {
+        title: 'Status update failed',
+        variant: 'error',
+      });
+    } finally {
+      setStatusUpdatingOrderId(null);
+    }
+  };
+
+  const handleConfiguratorOptionChange = async (key: ConfiguratorKey, value: string) => {
+    if (!form.designId || !value) return;
+    const nextOptions = { ...selectedConfiguratorOptions, [key]: value };
+    setSelectedConfiguratorOptions(nextOptions);
+    setResolvingConfigurator(true);
+    setConfiguratorError(null);
+
+    try {
+      const params = new URLSearchParams();
+      (Object.keys(nextOptions) as ConfiguratorKey[]).forEach((optionKey) => {
+        if (nextOptions[optionKey]) {
+          params.set(optionKey, nextOptions[optionKey]);
+        }
+      });
+      params.set('selectedKey', key);
+      const response = await api.get(
+        `/products/mobile/configurator/${encodeURIComponent(form.designId)}/resolve?${params.toString()}`,
+      );
+      await applyConfiguratorResponse(response.data);
+      setPriceManuallyEdited(false);
+    } catch (error: any) {
+      setConfiguratorError(error?.response?.data?.message || 'Unable to update design selection.');
+    } finally {
+      setResolvingConfigurator(false);
+    }
+  };
+
+  const selectDesignForOrder = (designId: string, closePicker = false) => {
+    setPriceManuallyEdited(false);
+    setForm((prev) => ({ ...prev, designId }));
+    if (designId) {
+      setFormErrors((prev) => ({ ...prev, designId: undefined, price: undefined, totalAmount: undefined }));
+    }
+    void loadDesignConfigurator(designId);
+    if (closePicker) {
+      setShowDesignPickerModal(false);
+    }
+  };
+
+  const resetDesignFilters = () => {
+    setDesignFilters({
+      search: '',
+      jewelryGroup: '',
+      collection: '',
+      metal: '',
+      jewelrySize: '',
+      designStatus: '',
+    });
+  };
+
   const selectedDesignLabel = useMemo(() => {
     if (!designDetail) return '-';
     return formatDesignLabel(designDetail.designNo, designDetail.version);
@@ -906,8 +1283,23 @@ export default function OrdersPage() {
     return formatDesignLabel(matched?.designNo, matched?.version);
   }, [selectedDesignLabel, editingDesignNo, designOptions, form.designId]);
   const designSelectOptions = useMemo(
-    () =>
-      designOptions
+    () => {
+      const rows = [...designOptions];
+      if (designDetail && !rows.some((option) => option.id === designDetail.id)) {
+        rows.unshift({
+          id: designDetail.id,
+          designNo: designDetail.designNo,
+          designName: designDetail.designName,
+          version: designDetail.version,
+          jewelryGroup: designDetail.jewelryGroup,
+          collection: designDetail.collection,
+          jewelrySize: designDetail.jewelrySize,
+          goldColour: designDetail.goldColour,
+          designStatus: designDetail.designStatus,
+          stoneInfo: designDetail.stoneInfo,
+        });
+      }
+      return rows
         .filter((option) => {
           const search = designFilters.search.trim().toLowerCase();
           const haystack = [
@@ -929,13 +1321,16 @@ export default function OrdersPage() {
           if (designFilters.jewelryGroup && option.jewelryGroup !== designFilters.jewelryGroup) return false;
           if (designFilters.collection && option.collection !== designFilters.collection) return false;
           if (designFilters.metal && option.goldColour !== designFilters.metal) return false;
+          if (designFilters.jewelrySize && option.jewelrySize !== designFilters.jewelrySize) return false;
+          if (designFilters.designStatus && option.designStatus !== designFilters.designStatus) return false;
           return true;
         })
         .map((option) => ({
         value: option.id,
         label: formatDesignLabel(option.designNo, option.version),
-      })),
-    [designOptions, designFilters],
+      }));
+    },
+    [designOptions, designFilters, designDetail],
   );
   const designFilterOptions = useMemo(() => {
     const uniqueSorted = (values: Array<string | null | undefined>) =>
@@ -951,20 +1346,59 @@ export default function OrdersPage() {
           .map((option) => option.collection),
       ),
       metals: uniqueSorted(designOptions.map((option) => option.goldColour)),
+      jewelrySizes: uniqueSorted(designOptions.map((option) => option.jewelrySize)),
+      designStatuses: uniqueSorted(designOptions.map((option) => option.designStatus)),
     };
   }, [designOptions, designFilters.jewelryGroup]);
   const hasActiveDesignFilters = Boolean(
-    designFilters.search || designFilters.jewelryGroup || designFilters.collection || designFilters.metal,
+    designFilters.search ||
+      designFilters.jewelryGroup ||
+      designFilters.collection ||
+      designFilters.metal ||
+      designFilters.jewelrySize ||
+      designFilters.designStatus,
   );
-
-  const metalsDisplay = useMemo(() => {
-    if (!designDetail?.metals?.length) return [];
-    return designDetail.metals.map((metal) => metal.metalCaratage || metal.goldColour || '').filter(Boolean);
-  }, [designDetail]);
+  const filteredDesignOptions = useMemo(
+    () =>
+      designSelectOptions
+        .map((option) => designOptions.find((row) => row.id === option.value) || (designDetail?.id === option.value ? designDetail : null))
+        .filter((row): row is DesignOption | DesignDetail => Boolean(row)),
+    [designSelectOptions, designOptions, designDetail],
+  );
 
   const mediaUrls = useMemo(() => {
     return designMediaUrls.filter((url) => url && url.trim());
   }, [designMediaUrls]);
+  useEffect(() => {
+    if (!mediaUrls.length && selectedMediaIndex !== 0) {
+      setSelectedMediaIndex(0);
+      return;
+    }
+    if (mediaUrls.length && selectedMediaIndex >= mediaUrls.length) {
+      setSelectedMediaIndex(0);
+    }
+  }, [mediaUrls.length, selectedMediaIndex]);
+  const selectedMediaUrl = mediaUrls[selectedMediaIndex] || mediaUrls[0] || '';
+  const configuratorFields = useMemo(
+    () => [
+      { key: 'metalCaratage' as ConfiguratorKey, label: 'Metal' },
+      { key: 'style' as ConfiguratorKey, label: 'Coverage' },
+      { key: 'quality' as ConfiguratorKey, label: 'Dia. Quality' },
+      { key: 'weight' as ConfiguratorKey, label: 'Dia. Weight' },
+      { key: 'ringSize' as ConfiguratorKey, label: 'Jewelry Size' },
+      { key: 'diamondType' as ConfiguratorKey, label: 'Diamond Type' },
+      { key: 'shape' as ConfiguratorKey, label: 'Shape' },
+    ],
+    [],
+  );
+  const markMediaFailed = (url: string) => {
+    setFailedMediaUrls((current) => {
+      if (current.has(url)) return current;
+      const next = new Set(current);
+      next.add(url);
+      return next;
+    });
+  };
 
   const resolvePacketName = (packetId?: string | null): string => {
     if (!packetId) return '-';
@@ -984,7 +1418,10 @@ export default function OrdersPage() {
       await api.patch(`/orders/${order.id}/active`, { isActive: nextActive });
       await loadOrders();
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to update order status.');
+      showAlert(error?.response?.data?.message || 'Unable to update order status.', {
+        title: 'Order update failed',
+        variant: 'error',
+      });
     } finally {
       setActiveToggleOrderId(null);
     }
@@ -1099,7 +1536,7 @@ export default function OrdersPage() {
       const doc = iframe.contentWindow?.document;
       if (!doc || !iframe.contentWindow) {
         document.body.removeChild(iframe);
-        window.alert('Unable to open print view.');
+        showAlert('Unable to open print view.', { title: 'Print unavailable', variant: 'warning' });
         return;
       }
 
@@ -1115,7 +1552,10 @@ export default function OrdersPage() {
         }, 500);
       };
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to print order.');
+      showAlert(error?.response?.data?.message || 'Unable to print order.', {
+        title: 'Print failed',
+        variant: 'error',
+      });
     } finally {
       setPrintingOrderId(null);
     }
@@ -1156,11 +1596,10 @@ export default function OrdersPage() {
             onClick={() => {
               setEditingOrderId(null);
               setEditingDesignNo('');
-              setForm(defaultForm);
+              setForm(roleScopedDefaultForm);
               setFormErrors({});
               setDeliveryDateMin(toDateInputValue());
-              setDesignDetail(null);
-              setDesignMediaUrls([]);
+              resetConfiguratorState();
               setBranches([]);
               setPriceManuallyEdited(false);
               setShowAddModal(true);
@@ -1229,6 +1668,8 @@ export default function OrdersPage() {
                   companyId: '',
                   deliveryFrom: '',
                   deliveryTo: '',
+                  createdFrom: '',
+                  createdTo: '',
                 });
               }}
             >
@@ -1253,7 +1694,7 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">TOTAL AMOUNT</th>
                   <th className="app-table-head-cell">Status</th>
                   <th className="app-table-head-cell">Created</th>
-                  <th className="app-table-head-cell">Action</th>
+                  <th className="app-table-head-cell min-w-[190px]">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1293,8 +1734,8 @@ export default function OrdersPage() {
                     <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">
                       {order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}
                     </td>
-                    <td className="app-table-cell text-sm">
-                      <div className="flex flex-wrap gap-1.5">
+                    <td className="app-table-cell min-w-[190px] text-sm">
+                      <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                         <OrderActionIconButton
                           title="View Order"
                           onClick={() => openViewModal(order)}
@@ -1325,6 +1766,23 @@ export default function OrdersPage() {
                               <path d="M6 9V4h12v5" />
                               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                               <path d="M6 14h12v6H6z" />
+                            </svg>
+                          )}
+                        </OrderActionIconButton>
+                        <OrderActionIconButton
+                          title="Change Status"
+                          onClick={() => openOrderStatusChange(order)}
+                          className="border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={statusUpdatingOrderId === order.id}
+                        >
+                          {statusUpdatingOrderId === order.id ? (
+                            <span className="text-[10px] font-semibold">...</span>
+                          ) : (
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 12a9 9 0 0 1 15.5-6.2" />
+                              <path d="M18.5 2.5v3.8h-3.8" />
+                              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+                              <path d="M5.5 21.5v-3.8h3.8" />
                             </svg>
                           )}
                         </OrderActionIconButton>
@@ -1410,9 +1868,9 @@ export default function OrdersPage() {
             setEditingDesignNo('');
             setFormErrors({});
             setDeliveryDateMin(toDateInputValue());
-            setDesignMediaUrls([]);
+            resetConfiguratorState();
           }}
-          size="max-w-6xl"
+          size="max-w-7xl"
         >
           {editOrderLoading ? (
             <div className="flex min-h-[280px] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-600">
@@ -1430,126 +1888,130 @@ export default function OrdersPage() {
                 General Information
               </div>
               <div className="space-y-4 p-4">
-                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
-                  <div className={!isEditing && showDesignFilters ? 'md:col-span-3 xl:col-span-4' : ''}>
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="text-sm font-medium text-slate-700">Design No*</label>
-                      {!isEditing && (
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-primary-700 hover:text-primary-800"
-                          onClick={() => setShowDesignFilters((prev) => !prev)}
-                        >
-                          {showDesignFilters ? 'Hide filters' : 'Advanced filter'}
-                        </button>
+                <fieldset className="rounded-xl border border-[#ead7b5] bg-[#fffaf2] px-4 pb-4 pt-3 shadow-sm">
+                  <legend className="rounded-full border border-[#ead7b5] bg-white px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#9a6a2f]">Filter</legend>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.35fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_auto] xl:items-end">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <label className="text-sm font-medium text-slate-700">Design No</label>
+                        {!isEditing && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-[#c9954f] hover:bg-[#fff8ed] hover:text-slate-900"
+                            onClick={() => {
+                              setShowDesignPickerModal(true);
+                              openDesignDropdown();
+                            }}
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 5h18" />
+                              <path d="M6 12h12" />
+                              <path d="M10 19h4" />
+                            </svg>
+                            Advanced filter
+                          </button>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                          value={editingDesignLabel}
+                          disabled
+                          readOnly
+                        />
+                      ) : (
+                        <SearchableSelect
+                          value={form.designId}
+                          onChange={(value) => selectDesignForOrder(value)}
+                          options={designSelectOptions}
+                          placeholder="Select Design"
+                          filterOptions={false}
+                          loading={designOptionsLoading}
+                          loadingText="Loading designs..."
+                          hasMore={designOptionsPage < designOptionsTotalPages}
+                          onOpen={openDesignDropdown}
+                          onSearchChange={handleDesignDropdownSearch}
+                          onLoadMore={loadMoreDesigns}
+                        />
+                      )}
+                      {formErrors.designId && (
+                        <p id="design-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.designId}
+                        </p>
                       )}
                     </div>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        className="mt-1 w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
-                        value={editingDesignLabel}
-                        disabled
-                        readOnly
-                      />
-                    ) : (
-                      <SearchableSelect
-                        className="mt-1"
-                        value={form.designId}
-                        onChange={(value) => {
-                          setPriceManuallyEdited(false);
-                          setForm((prev) => ({ ...prev, designId: value }));
-                        }}
-                        options={designSelectOptions}
-                        placeholder="Select Design"
-                        filterOptions={false}
-                        loading={designOptionsLoading}
-                        loadingText="Loading designs..."
-                        hasMore={designOptionsPage < designOptionsTotalPages}
-                        onOpen={openDesignDropdown}
-                        onSearchChange={handleDesignDropdownSearch}
-                        onLoadMore={loadMoreDesigns}
-                      />
-                    )}
-                    {!isEditing && showDesignFilters && (
-                      <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          <div>
-                            <label className="text-xs font-semibold text-slate-600">Search</label>
-                            <input
-                              type="text"
-                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                              value={designFilters.search}
-                              placeholder="Design, version, stone..."
-                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, search: event.target.value }))}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-slate-600">Category</label>
-                            <select
-                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                              value={designFilters.jewelryGroup}
-                              onChange={(event) =>
-                                setDesignFilters((prev) => ({ ...prev, jewelryGroup: event.target.value, collection: '' }))
-                              }
-                            >
-                              <option value="">All Categories</option>
-                              {designFilterOptions.jewelryGroups.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-slate-600">Collection</label>
-                            <select
-                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                              value={designFilters.collection}
-                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, collection: event.target.value }))}
-                            >
-                              <option value="">All Collections</option>
-                              {designFilterOptions.collections.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-slate-600">Metal</label>
-                            <select
-                              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                              value={designFilters.metal}
-                              onChange={(event) => setDesignFilters((prev) => ({ ...prev, metal: event.target.value }))}
-                            >
-                              <option value="">All Metals</option>
-                              {designFilterOptions.metals.map((value) => (
-                                <option key={value} value={value}>{value}</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
-                          <span>{designSelectOptions.length} matching design{designSelectOptions.length === 1 ? '' : 's'}</span>
-                          <Button
-                            variant="secondary"
-                            type="button"
-                            disabled={!hasActiveDesignFilters}
-                            onClick={() => setDesignFilters({ search: '', jewelryGroup: '', collection: '', metal: '' })}
-                          >
-                            Reset Design Filters
-                          </Button>
-                        </div>
-                      </div>
-                    )}
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Category</label>
+                      <select
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={designFilters.jewelryGroup}
+                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelryGroup: event.target.value, collection: '' }))}
+                      >
+                        <option value="">All Categories</option>
+                        {designFilterOptions.jewelryGroups.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Size</label>
+                      <select
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={designFilters.jewelrySize}
+                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
+                      >
+                        <option value="">All Sizes</option>
+                        {designFilterOptions.jewelrySizes.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Metal</label>
+                      <select
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={designFilters.metal}
+                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, metal: event.target.value }))}
+                      >
+                        <option value="">All Metals</option>
+                        {designFilterOptions.metals.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        disabled={!hasActiveDesignFilters}
+                        onClick={resetDesignFilters}
+                      >
+                        Reset
+                      </Button>
+                    </div>
                   </div>
+                </fieldset>
 
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(220px,0.75fr)]">
                   <div>
                     <label className="text-sm font-medium text-slate-700">Company*</label>
                     <select
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                        formErrors.companyId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                      } ${
+                        !canSelectOrderCompany ? 'appearance-none bg-none' : ''
+                      }`}
                       value={form.companyId}
-                      disabled={isEditing}
+                      disabled={!canSelectOrderCompany}
+                      aria-invalid={Boolean(formErrors.companyId)}
+                      aria-describedby={formErrors.companyId ? 'company-error' : undefined}
                       onChange={(event) => {
                         setPriceManuallyEdited(false);
                         setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '' }));
+                        setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined }));
                       }}
                     >
                       <option value="">Select Company</option>
@@ -1559,17 +2021,31 @@ export default function OrdersPage() {
                         </option>
                       ))}
                     </select>
+                    {formErrors.companyId && (
+                      <p id="company-error" className="mt-1 text-xs font-medium text-rose-600">
+                        {formErrors.companyId}
+                      </p>
+                    )}
                   </div>
 
                   <div>
                     <label className="text-sm font-medium text-slate-700">Branch*</label>
                     <select
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                        formErrors.branchId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                      } ${
+                        !canSelectOrderBranch || !form.companyId ? 'appearance-none bg-none' : ''
+                      }`}
                       value={form.branchId}
-                      disabled={isEditing || !form.companyId}
+                      disabled={!canSelectOrderBranch || !form.companyId}
+                      aria-invalid={Boolean(formErrors.branchId)}
+                      aria-describedby={formErrors.branchId ? 'branch-error' : undefined}
                       onChange={(event) => {
                         setPriceManuallyEdited(false);
                         setForm((prev) => ({ ...prev, branchId: event.target.value }));
+                        setFormErrors((prev) => ({ ...prev, branchId: undefined }));
                       }}
                     >
                       <option value="">Select Branch</option>
@@ -1579,13 +2055,19 @@ export default function OrdersPage() {
                         </option>
                       ))}
                     </select>
+                    {formErrors.branchId && (
+                      <p id="branch-error" className="mt-1 text-xs font-medium text-rose-600">
+                        {formErrors.branchId}
+                      </p>
+                    )}
                   </div>
 
                   <div>
                     <label className="text-sm font-medium text-slate-700">Status*</label>
                     <select
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="mt-1 w-full appearance-none rounded border border-slate-300 bg-none px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={form.status}
+                      disabled
                       onChange={(event) => requestStatusChange(event.target.value)}
                     >
                       {orderStatusOptions.map((status) => (
@@ -1594,74 +2076,6 @@ export default function OrdersPage() {
                         </option>
                       ))}
                     </select>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Category</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.jewelryGroup || '-'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Sub Category</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.collection || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.jewelrySize || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Design Status</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.designStatus || '-'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Diamond Type</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.diamondType || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.diamondSpread || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.diamondWeight || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
-                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {designDetail?.diamondQuality || '-'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Metal</label>
-                    <div className="mt-1 flex min-h-[42px] flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      {metalsDisplay.length ? metalsDisplay.map((value) => (
-                        <span key={value} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                          {value}
-                        </span>
-                      )) : <span className="text-slate-500">-</span>}
-                    </div>
                   </div>
 
                   <div>
@@ -1697,6 +2111,158 @@ export default function OrdersPage() {
                       </p>
                     )}
                   </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+                  <div className="md:col-span-3 xl:col-span-4">
+                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#9a7a4c]">Ring Configurator</div>
+                          <div className="mt-1 text-lg font-bold text-slate-900">{selectedDesignLabel}</div>
+                          <div className="text-sm text-slate-500">{designDetail?.designName || designDetail?.jewelryGroup || 'Select a design to configure order details.'}</div>
+                        </div>
+                        {(configuratorLoading || resolvingConfigurator) && (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                            {configuratorLoading ? 'Loading design...' : 'Updating selection...'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                        <div className="space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4 xl:min-h-[520px]">
+                          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Options</div>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {configuratorFields.map(({ key, label }) => {
+                              const options = configuratorOptionGroups[key];
+                              const value = selectedConfiguratorOptions[key];
+                              if (!options.length && !value) return null;
+                              return (
+                                <div key={key}>
+                                  <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</label>
+                                  {options.length > 1 && options.length <= 4 ? (
+                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                      {options.map((option) => {
+                                        const active = option === value;
+                                        return (
+                                          <button
+                                            key={option}
+                                            type="button"
+                                            disabled={resolvingConfigurator}
+                                            onClick={() => handleConfiguratorOptionChange(key, option)}
+                                            className={`min-h-[24px] max-w-full rounded-full border px-2 py-0.5 text-[10px] font-bold leading-tight transition ${
+                                              active
+                                                ? 'border-[#c9954f] bg-[#fff8ed] text-slate-950 ring-2 ring-[#ead7b5]'
+                                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                            } disabled:cursor-wait disabled:opacity-70`}
+                                          >
+                                            <span className="block truncate">{option}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : options.length > 1 ? (
+                                    <select
+                                      className="mt-1 w-full rounded-full border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                      value={value}
+                                      disabled={resolvingConfigurator}
+                                      onChange={(event) => handleConfiguratorOptionChange(key, event.target.value)}
+                                    >
+                                      {options.map((option) => (
+                                        <option key={option} value={option}>{option}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <div className="mt-1 inline-flex min-h-[24px] max-w-full items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold leading-tight text-slate-900">
+                                      <span className="truncate">{value || options[0] || '-'}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {configuratorError && (
+                            <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                              {configuratorError}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-4">
+                          <div
+                            className="mx-auto flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                            style={{ width: '200px', height: '200px', maxWidth: '200px', maxHeight: '200px' }}
+                          >
+                            {selectedMediaUrl ? (
+                              <OrderMediaPreview
+                                url={selectedMediaUrl}
+                                alt={selectedDesignLabel}
+                                failedMediaUrls={failedMediaUrls}
+                                onImageError={markMediaFailed}
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-400">
+                                No media available
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+                            {mediaUrls.length ? (
+                              <div className="flex gap-2">
+                                {mediaUrls.map((url, index) => {
+                                  const resolved = resolvePublicAssetUrl(url);
+                                  const active = index === selectedMediaIndex;
+                                  return (
+                                    <button
+                                      key={`${url}-${index}`}
+                                      type="button"
+                                      className={`h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-white p-1 transition ${
+                                        active ? 'border-[#c9954f] ring-2 ring-[#ead7b5]' : 'border-slate-200 hover:border-slate-300'
+                                      }`}
+                                      onClick={() => setSelectedMediaIndex(index)}
+                                      title={`${getUrlExtension(resolved)} file`}
+                                    >
+                                      {isImageUrl(resolved) && !failedMediaUrls.has(resolved) ? (
+                                        <img
+                                          src={resolved}
+                                          alt={`${selectedDesignLabel}-${index + 1}`}
+                                          className="h-full w-full rounded object-cover"
+                                          onError={() => markMediaFailed(resolved)}
+                                        />
+                                      ) : isVideoUrl(resolved) ? (
+                                        <div className="flex h-full w-full items-center justify-center rounded bg-slate-900/5 text-[10px] font-bold text-slate-500">
+                                          VIDEO
+                                        </div>
+                                      ) : (
+                                        <MediaFileFallback label={getUrlExtension(resolved)} compact />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="flex h-20 items-center justify-center text-center text-xs font-semibold text-slate-400">
+                                No files
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Product Specifications</div>
+                            <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                              <div><span className="text-slate-500">Category</span><div className="font-semibold text-slate-900">{designDetail?.jewelryGroup || '-'}</div></div>
+                              <div><span className="text-slate-500">Status</span><div className="font-semibold text-slate-900">{designDetail?.designStatus || '-'}</div></div>
+                              <div><span className="text-slate-500">Diamond Type</span><div className="font-semibold text-slate-900">{designDetail?.diamondType || '-'}</div></div>
+                              <div><span className="text-slate-500">Diamond Spread</span><div className="font-semibold text-slate-900">{designDetail?.diamondSpread || '-'}</div></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1740,72 +2306,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-cyan-200/70 bg-white shadow-sm ring-1 ring-cyan-900/5">
-              <div className="border-b border-cyan-200/60 bg-cyan-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan-800">
-                Stone Information
-              </div>
-              <div className="app-table-shell">
-                <div className="app-table-scroll scrollbar-top">
-                  <table className="app-table app-table-compact w-full">
-                    <thead>
-                      <tr>
-                        <th className="app-table-head-cell">Packet</th>
-                        <th className="app-table-head-cell">Stone</th>
-                        <th className="app-table-head-cell">Shape</th>
-                        <th className="app-table-head-cell">Size</th>
-                        <th className="app-table-head-cell">Color</th>
-                        <th className="app-table-head-cell">Quality</th>
-                        <th className="app-table-head-cell">Wt/Pcs</th>
-                        <th className="app-table-head-cell">Pcs</th>
-                        <th className="app-table-head-cell">Wt (Cts)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {designDetail?.gemstones?.length ? (
-                        designDetail.gemstones.map((gem, index) => (
-                          <tr key={gem.id || index} className="app-table-row">
-                            <td className="app-table-cell text-sm text-slate-700">{resolvePacketName(gem.packetId)}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.stone || '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.shape || '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.size || '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.color || '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.quality || '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtPerPcs)}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{gem.pcs ?? '-'}</td>
-                            <td className="app-table-cell text-sm text-slate-700">{formatWeight(gem.wtInCts)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={9} className="app-table-empty">No stone information</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
-                <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
-                  Images & Videos
-                </div>
-                <div className="p-4">
-                  {mediaUrls.length ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {mediaUrls.map((url, index) => (
-                        <MediaPreview key={`${url}-${index}`} url={url} alt={`${selectedDesignLabel}-${index}`} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex h-36 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
-                      No media available for this design.
-                    </div>
-                  )}
-                </div>
-              </div>
-
+            <div>
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
                 <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
                   Order Pricing & Notes
@@ -1813,7 +2314,7 @@ export default function OrdersPage() {
                 <div className="space-y-4 p-4">
                   <div className="grid gap-4 md:grid-cols-3">
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Price @</label>
+                      <label className="text-sm font-medium text-slate-700">Price @*</label>
                       <div className="mt-1 flex">
                         <input
                           type="number"
@@ -1845,7 +2346,7 @@ export default function OrdersPage() {
                       )}
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-700">No. of Pcs</label>
+                      <label className="text-sm font-medium text-slate-700">No. of Pcs*</label>
                       <input
                         type="number"
                         className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
@@ -1873,7 +2374,7 @@ export default function OrdersPage() {
                       )}
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT</label>
+                      <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT*</label>
                       <div className="mt-1 flex">
                         <input
                           type="number"
@@ -1937,14 +2438,14 @@ export default function OrdersPage() {
                 setEditingDesignNo('');
                 setFormErrors({});
                 setDeliveryDateMin(toDateInputValue());
-                setDesignMediaUrls([]);
+                resetConfiguratorState();
               }}
             >
               Close
             </Button>
             <Button
               type="button"
-              disabled={savingOrder || !form.designId || !form.companyId || !form.branchId}
+              disabled={savingOrder}
               onClick={handleSaveOrder}
             >
               {savingOrder ? 'Saving...' : isEditing ? 'Update' : 'Save'}
@@ -1974,6 +2475,259 @@ export default function OrdersPage() {
               >
                 Yes
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {statusChangeOrder && (
+        <Modal title="Change order status" onClose={closeOrderStatusChange} size="max-w-md">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700">
+              <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Order</div>
+              <div className="mt-1 font-semibold text-slate-900">{statusChangeOrder.orderNumber}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Current status: <span className="font-semibold text-slate-700">{statusChangeOrder.status}</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">New Status</label>
+              <select
+                className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                value={statusChangeTarget}
+                onChange={(event) => setStatusChangeTarget(event.target.value)}
+              >
+                {orderStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" type="button" onClick={closeOrderStatusChange}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!statusChangeTarget || statusChangeTarget === statusChangeOrder.status}
+                onClick={requestOrderStatusChange}
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {pendingOrderStatusChange && (
+        <Modal title="Confirm order status" onClose={() => setPendingOrderStatusChange(null)} size="max-w-md">
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              Change order <span className="font-semibold">{pendingOrderStatusChange.order.orderNumber}</span> status from{' '}
+              <span className="font-semibold">{pendingOrderStatusChange.from}</span> to{' '}
+              <span className="font-semibold">{pendingOrderStatusChange.to}</span>?
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                type="button"
+                disabled={statusUpdatingOrderId === pendingOrderStatusChange.order.id}
+                onClick={() => setPendingOrderStatusChange(null)}
+              >
+                No
+              </Button>
+              <Button
+                type="button"
+                disabled={statusUpdatingOrderId === pendingOrderStatusChange.order.id}
+                onClick={confirmOrderStatusChange}
+              >
+                {statusUpdatingOrderId === pendingOrderStatusChange.order.id ? 'Updating...' : 'Yes'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {showDesignPickerModal && (
+        <Modal title="Select Design" onClose={() => setShowDesignPickerModal(false)} size="max-w-7xl">
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm font-bold uppercase tracking-[0.14em] text-slate-600">Advanced Filters</div>
+                <button
+                  type="button"
+                  className="text-xs font-bold text-[#9a6a2f] hover:text-[#7c5222]"
+                  disabled={!hasActiveDesignFilters}
+                  onClick={resetDesignFilters}
+                >
+                  Clear all filters
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Search</label>
+                  <input
+                    type="text"
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.search}
+                    placeholder="Design no, version..."
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, search: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Category</label>
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.jewelryGroup}
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelryGroup: event.target.value, collection: '' }))}
+                  >
+                    <option value="">All Categories</option>
+                    {designFilterOptions.jewelryGroups.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Sub Category</label>
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.collection}
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, collection: event.target.value }))}
+                  >
+                    <option value="">All Sub Categories</option>
+                    {designFilterOptions.collections.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Jewelry Size</label>
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.jewelrySize}
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
+                  >
+                    <option value="">All Sizes</option>
+                    {designFilterOptions.jewelrySizes.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Metal Info</label>
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.metal}
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, metal: event.target.value }))}
+                  >
+                    <option value="">All Metals</option>
+                    {designFilterOptions.metals.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Status</label>
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    value={designFilters.designStatus}
+                    onChange={(event) => setDesignFilters((prev) => ({ ...prev, designStatus: event.target.value }))}
+                  >
+                    <option value="">All Statuses</option>
+                    {designFilterOptions.designStatuses.map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+                <div className="text-sm font-bold text-slate-800">
+                  Designs <span className="font-semibold text-slate-500">({filteredDesignOptions.length})</span>
+                </div>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  disabled={designOptionsLoading || designOptionsPage >= designOptionsTotalPages}
+                  onClick={loadMoreDesigns}
+                >
+                  {designOptionsLoading ? 'Loading...' : 'Load More'}
+                </Button>
+              </div>
+              <div className="max-h-[500px] overflow-auto">
+                {filteredDesignOptions.length ? (
+                  <table className="w-full min-w-[1040px] border-collapse text-left">
+                    <thead className="sticky top-0 z-10 bg-slate-50">
+                      <tr className="border-b border-slate-200 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                        <th className="w-10 px-3 py-3"></th>
+                        <th className="w-12 px-2 py-3">#</th>
+                        <th className="w-64 px-3 py-3">Design</th>
+                        <th className="px-3 py-3">Barcode</th>
+                        <th className="px-3 py-3">Category</th>
+                        <th className="px-3 py-3">Size</th>
+                        <th className="px-3 py-3">Metal</th>
+                        <th className="px-3 py-3">Collection</th>
+                        <th className="px-3 py-3">Stone</th>
+                        <th className="px-3 py-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDesignOptions.map((design, index) => {
+                        const selected = design.id === form.designId;
+                        const cover = design.imageUrls?.[0] || '';
+                        const resolvedCover = cover ? resolvePublicAssetUrl(cover) : '';
+                        return (
+                          <tr
+                            key={design.id}
+                            className={`cursor-pointer border-b border-slate-100 transition hover:bg-[#fffaf2] ${
+                              selected ? 'bg-[#fff8ed]' : 'bg-white'
+                            }`}
+                            onClick={() => selectDesignForOrder(design.id, true)}
+                          >
+                            <td className="px-3 py-3">
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                readOnly
+                                className="h-4 w-4 rounded border-slate-300 text-[#c9954f] focus:ring-[#c9954f]"
+                              />
+                            </td>
+                            <td className="px-2 py-3 text-sm font-medium text-slate-500">{index + 1}</td>
+                            <td className="px-3 py-3">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                                  {resolvedCover && isImageUrl(resolvedCover) ? (
+                                    <img src={resolvedCover} alt={design.designNo} className="h-full w-full object-cover" />
+                                  ) : (
+                                    <MediaFileFallback label="N/A" compact />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-bold text-slate-900">{design.designNo || '-'}</div>
+                                  <div className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                    {design.version ? `${design.version.toUpperCase()} Ver.` : '1 Ver.'}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-sm font-semibold text-slate-700">{design.barcode || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.jewelryGroup || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.jewelrySize || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.goldColour || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.collection || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.stoneInfo || '-'}</td>
+                            <td className="px-3 py-3 text-sm font-semibold text-slate-700">{design.designStatus || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="m-3 flex min-h-[180px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
+                    No designs match these filters.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </Modal>
@@ -2221,6 +2975,13 @@ export default function OrdersPage() {
           )}
         </Modal>
       )}
+      <AlertDialog
+        open={Boolean(alertDialog)}
+        title={alertDialog?.title}
+        message={alertDialog?.message || ''}
+        variant={alertDialog?.variant}
+        onClose={() => setAlertDialog(null)}
+      />
     </div>
   );
 }

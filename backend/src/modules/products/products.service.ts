@@ -32,6 +32,7 @@ import {
   FindMobileCatalogProductsQueryDto,
   FindMobileTrendingProductsQueryDto,
   FindProductsQueryDto,
+  MobileCatalogCategory,
   PricingIncrementBy,
   ProductDurationType,
   ResolveMobileDesignConfiguratorQueryDto,
@@ -47,6 +48,7 @@ import { Design } from './entities/design.entity';
 import { DesignFinding } from './entities/design-finding.entity';
 import { DesignGemstone } from './entities/design-gemstone.entity';
 import { DesignHistory } from './entities/design-history.entity';
+import { MetalPriceHistory } from './entities/metal-price-history.entity';
 import { DesignLabor } from './entities/design-labor.entity';
 import { DesignMetal } from './entities/design-metal.entity';
 import { DesignPricingIncrementBy, DesignPricingTier } from './entities/design-pricing-tier.entity';
@@ -345,6 +347,8 @@ export class ProductsService {
     private readonly stlFileRepo: Repository<DesignStlFile>,
     @InjectRepository(DesignHistory)
     private readonly historyRepo: Repository<DesignHistory>,
+    @InjectRepository(MetalPriceHistory)
+    private readonly metalPriceHistoryRepo: Repository<MetalPriceHistory>,
     @InjectRepository(StonePacket)
     private readonly packetRepo: Repository<StonePacket>,
     @InjectRepository(DesignMaster)
@@ -1753,27 +1757,57 @@ export class ProductsService {
     });
   }
 
+  private readonly mobileCatalogCategories = [
+    { id: MobileCatalogCategory.RINGS, label: 'Rings', hints: ['ring'] },
+    // { id: MobileCatalogCategory.BRACELETS, label: 'Bracelets', hints: ['bracelet', 'bangle'] },
+    // { id: MobileCatalogCategory.STUDS, label: 'Studs', hints: ['stud', 'earring'] },
+    // { id: MobileCatalogCategory.NECKLACES, label: 'Necklaces', hints: ['necklace', 'pendant', 'chain'] },
+  ] as const;
+
+  async findMobileCategories(
+    requester: AuthUser,
+  ): Promise<{
+    data: Array<{
+      id: MobileCatalogCategory;
+      label: string;
+      designs: number;
+      versions: number;
+    }>;
+  }> {
+    const counts = await this.getMobileCategoryCounts(requester);
+    return {
+      data: this.mobileCatalogCategories
+        .map((category) => ({
+          id: category.id,
+          label: category.label,
+          designs: counts[category.id]?.designs || 0,
+          versions: counts[category.id]?.versions || 0,
+        }))
+        .filter((category) => category.designs > 0 || category.versions > 0),
+    };
+  }
+
   async findMobileCategoryCounts(
     requester: AuthUser,
   ): Promise<{
-    data: Record<'rings' | 'bracelets' | 'studs' | 'necklaces', { designs: number; versions: number }>;
+    data: Record<MobileCatalogCategory, { designs: number; versions: number }>;
   }> {
-    const categories = {
-      rings: ['ring'],
-      bracelets: ['bracelet', 'bangle'],
-      studs: ['stud', 'earring'],
-      necklaces: ['necklace', 'pendant', 'chain'],
-    } as const;
+    return { data: await this.getMobileCategoryCounts(requester) };
+  }
 
-    const result: Record<keyof typeof categories, { designs: number; versions: number }> = {
-      rings: { designs: 0, versions: 0 },
-      bracelets: { designs: 0, versions: 0 },
-      studs: { designs: 0, versions: 0 },
-      necklaces: { designs: 0, versions: 0 },
-    };
+  private async getMobileCategoryCounts(
+    requester: AuthUser,
+  ): Promise<Record<MobileCatalogCategory, { designs: number; versions: number }>> {
+    const result = this.mobileCatalogCategories.reduce(
+      (acc, category) => {
+        acc[category.id] = { designs: 0, versions: 0 };
+        return acc;
+      },
+      {} as Record<MobileCatalogCategory, { designs: number; versions: number }>,
+    );
 
     await Promise.all(
-      (Object.keys(categories) as Array<keyof typeof categories>).map(async (key) => {
+      this.mobileCatalogCategories.map(async (category) => {
         const qb = this.designRepo
           .createQueryBuilder('design')
           .select('COUNT(1)', 'versions')
@@ -1791,8 +1825,8 @@ export class ProductsService {
 
         qb.andWhere(
           new Brackets((sqb) => {
-            categories[key].forEach((hint, index) => {
-              const param = `${key}Hint${index}`;
+            category.hints.forEach((hint, index) => {
+              const param = `${category.id}Hint${index}`;
               const condition = [
                 `LOWER(design.jewelryGroup) LIKE :${param}`,
                 `LOWER(design.collection) LIKE :${param}`,
@@ -1810,14 +1844,14 @@ export class ProductsService {
         );
 
         const row = await qb.getRawOne<{ designs?: string | number; versions?: string | number }>();
-        result[key] = {
+        result[category.id] = {
           designs: Math.trunc(this.toNumber(row?.designs || 0)),
           versions: Math.trunc(this.toNumber(row?.versions || 0)),
         };
       }),
     );
 
-    return { data: result };
+    return result;
   }
 
   async findMobileConfigurator(id: string, requester: AuthUser): Promise<any> {
@@ -1847,7 +1881,6 @@ export class ProductsService {
 
     this.assertReadScope(selected, requester);
 
-    const baseDesignNo = this.normalizeBaseDesignNo(selected.designNo);
     const familyDesignId = selected.familyDesignId || selected.id;
     const qb = this.designRepo
       .createQueryBuilder('design')
@@ -1869,6 +1902,7 @@ export class ProductsService {
         'design.diamondWeight',
         'design.diamondQuality',
         'design.goldColour',
+        'design.stoneInfo',
         'design.tags',
         'design.designDescription',
         'design.remarks',
@@ -1884,43 +1918,31 @@ export class ProductsService {
       .addOrderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC')
       .addOrderBy('design.createdAt', 'ASC');
 
-    if (selected.familyDesignId) {
-      qb.andWhere('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId });
-    } else {
-      qb.andWhere(
-        new Brackets((where) => {
-          where
-            .where('design.id = :familyDesignId', { familyDesignId })
-            .orWhere('design.designNo = :baseDesignNo', { baseDesignNo })
-            .orWhere('design.designNo LIKE :versionedBaseDesignNo', {
-              versionedBaseDesignNo: `${baseDesignNo}-V%`,
-            });
-        }),
-      );
-    }
+    qb.andWhere('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId });
 
     this.applyScopeFilter(qb, requester);
 
     const rows = await qb.getMany();
     const family = rows.length ? rows : [selected];
     const designIds = family.map((design) => design.id);
-    const [metals, gemstones] = designIds.length
-      ? await Promise.all([
-          this.metalRepo.find({
-            where: { designId: In(designIds) },
-            order: { sortOrder: 'ASC', createdAt: 'ASC' },
-          }),
-          this.gemstoneRepo.find({
-            where: { designId: In(designIds) },
-            order: { sortOrder: 'ASC', createdAt: 'ASC' },
-          }),
-        ])
-      : [[], []];
+    const metals = designIds.length
+      ? await this.metalRepo.find({
+          where: { designId: In(designIds) },
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        })
+      : [];
+    // Design gemstones are intentionally not loaded for the mobile detail/configurator response right now.
+    // const gemstones = designIds.length
+    //   ? await this.gemstoneRepo.find({
+    //       where: { designId: In(designIds) },
+    //       order: { sortOrder: 'ASC', createdAt: 'ASC' },
+    //     })
+    //   : [];
     const metalsByDesign = this.groupByDesignId(metals);
-    const gemstonesByDesign = this.groupByDesignId(gemstones);
     for (const design of family) {
       design.metals = metalsByDesign.get(design.id) || [];
-      design.gemstones = gemstonesByDesign.get(design.id) || [];
+      // design.gemstones = gemstonesByDesign.get(design.id) || [];
+      design.gemstones = [];
     }
     return family;
   }
@@ -2034,18 +2056,19 @@ export class ProductsService {
         totalWt: Number(metal.totalWt || 0),
         value: Number(metal.value || 0),
       })),
-      gemstones: await this.withGemstonePacketNames((design.gemstones || []).map((gem) => ({
-        packetId: gem.packetId,
-        stone: gem.stone,
-        shape: gem.shape,
-        size: gem.size,
-        color: gem.color,
-        quality: gem.quality,
-        stoneType: gem.stoneType,
-        wtPerPcs: Number(gem.wtPerPcs || 0),
-        wtInCts: Number(gem.wtInCts || 0),
-        pcs: Number(gem.pcs || 0),
-      }))),
+      // Design gemstones are hidden on mobile for now, so do not include them in this payload.
+      // gemstones: await this.withGemstonePacketNames((design.gemstones || []).map((gem) => ({
+      //   packetId: gem.packetId,
+      //   stone: gem.stone,
+      //   shape: gem.shape,
+      //   size: gem.size,
+      //   color: gem.color,
+      //   quality: gem.quality,
+      //   stoneType: gem.stoneType,
+      //   wtPerPcs: Number(gem.wtPerPcs || 0),
+      //   wtInCts: Number(gem.wtInCts || 0),
+      //   pcs: Number(gem.pcs || 0),
+      // }))),
     };
   }
 
@@ -2139,16 +2162,13 @@ export class ProductsService {
       if (text) values[key].add(text);
     };
 
-    add('diamondType', this.resolveMobileConfiguratorDiamondType(design));
+    add('diamondType', design.diamondType);
+    add('shape', design.stoneInfo);
     add('style', design.diamondSpread);
+    add('metalCaratage', design.goldColour);
     add('weight', design.diamondWeight);
     add('quality', design.diamondQuality);
     add('ringSize', design.jewelrySize);
-    this.getUsedMetalCaratageCandidates(design).forEach((value) => add('metalCaratage', value));
-    for (const gem of design.gemstones || []) {
-      add('shape', gem.shape);
-      add('quality', gem.quality);
-    }
 
     return Object.fromEntries(
       Object.entries(values).map(([key, set]) => [key, Array.from(set)]),
@@ -2282,18 +2302,14 @@ export class ProductsService {
     return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
   }
 
-  private applyMobileCategoryFilter(qb: any, category?: 'rings' | 'bracelets' | 'studs' | 'necklaces') {
+  private applyMobileCategoryFilter(qb: any, category?: MobileCatalogCategory) {
     if (!category) return;
-    const hints: Record<NonNullable<typeof category>, string[]> = {
-      rings: ['ring'],
-      bracelets: ['bracelet', 'bangle'],
-      studs: ['stud', 'earring'],
-      necklaces: ['necklace', 'pendant', 'chain'],
-    };
+    const categoryConfig = this.mobileCatalogCategories.find((item) => item.id === category);
+    if (!categoryConfig) return;
 
     qb.andWhere(
       new Brackets((sqb) => {
-        hints[category].forEach((hint, index) => {
+        categoryConfig.hints.forEach((hint, index) => {
           const param = `mobileCategoryHint${index}`;
           const condition = [
             `LOWER(design.jewelryGroup) LIKE :${param}`,
@@ -4399,6 +4415,16 @@ export class ProductsService {
     const savedMaster = await this.designMasterRepo.save(master);
 
     if (savedMaster.masterType === DesignMasterType.METAL_NAME) {
+      await this.metalPriceHistoryRepo.save(
+        this.metalPriceHistoryRepo.create({
+          masterId: savedMaster.id,
+          marketPricePerOunce: this.toNumber(savedMaster.marketPricePerOunce) || 0,
+          marketPricePerGm: this.toNumber(savedMaster.marketPricePerGm) || 0,
+          livePricePerGm: this.toNumber(savedMaster.livePricePerGm) || 0,
+          changedBy: requester.id,
+        }),
+      );
+
       const affectedMetalCaratages = await this.syncMetalCaratageRatesForMetalName(
         savedMaster.value,
         requester.id,
@@ -4950,6 +4976,40 @@ export class ProductsService {
       return { updatedDesigns: 0, totalDesigns: 0 };
     }
 
+    const matchingDesignIds = new Set<string>();
+
+    if (packetIds.size > 0) {
+      const gemstones = await this.gemstoneRepo.find({
+        select: ['designId'],
+        where: {
+          packetId: In(Array.from(packetIds)),
+        },
+      });
+      for (const g of gemstones) {
+        if (g.designId) {
+          matchingDesignIds.add(g.designId);
+        }
+      }
+    }
+
+    if (metalCaratageKeys.size > 0) {
+      const metals = await this.metalRepo.find({
+        select: ['designId'],
+        where: {
+          goldColour: In(Array.from(metalCaratageKeys)),
+        },
+      });
+      for (const m of metals) {
+        if (m.designId) {
+          matchingDesignIds.add(m.designId);
+        }
+      }
+    }
+
+    if (matchingDesignIds.size === 0) {
+      return { updatedDesigns: 0, totalDesigns: 0 };
+    }
+
     const metalRateMap = await this.getMetalCaratageRateMap();
     const packetRows = packetIds.size
       ? await this.packetRepo.find({
@@ -4963,6 +5023,9 @@ export class ProductsService {
     );
 
     const designs = await this.designRepo.find({
+      where: {
+        id: In(Array.from(matchingDesignIds)),
+      },
       relations: ['metals', 'gemstones', 'labors', 'findings'],
     });
 
@@ -7988,5 +8051,24 @@ export class ProductsService {
 
       return 0;
     });
+  }
+
+  async getMetalPriceHistory(masterId: string): Promise<any[]> {
+    const history = await this.metalPriceHistoryRepo.find({
+      where: { masterId },
+      relations: ['changedByUser'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return history.map((entry) => ({
+      id: entry.id,
+      marketPricePerOunce: this.toNumber(entry.marketPricePerOunce),
+      marketPricePerGm: this.toNumber(entry.marketPricePerGm),
+      livePricePerGm: this.toNumber(entry.livePricePerGm),
+      createdAt: entry.createdAt,
+      changedBy: entry.changedByUser
+        ? `${entry.changedByUser.firstName || ''} ${entry.changedByUser.lastName || ''}`.trim() || entry.changedByUser.email
+        : 'System',
+    }));
   }
 }

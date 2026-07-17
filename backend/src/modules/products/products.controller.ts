@@ -94,6 +94,11 @@ export class ProductsController {
     return this.productsService.findMobileCategoryCounts(req.user);
   }
 
+  @Get('mobile/categories')
+  findMobileCategories(@Request() req: { user: AuthUser }) {
+    return this.productsService.findMobileCategories(req.user);
+  }
+
   @Get('mobile/configurator/:id')
   findMobileConfigurator(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findMobileConfigurator(id, req.user);
@@ -300,6 +305,11 @@ export class ProductsController {
     @Request() req: { user: AuthUser },
   ) {
     return this.productsService.updateMasterStatus(id, dto.isActive, req.user);
+  }
+
+  @Get('masters/:id/price-history')
+  getMetalPriceHistory(@Param('id') id: string) {
+    return this.productsService.getMetalPriceHistory(id);
   }
 
   @Get(':id/history')

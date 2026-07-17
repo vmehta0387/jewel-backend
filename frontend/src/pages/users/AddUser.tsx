@@ -3,12 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
+import PermissionMatrix from '../../components/permissions/PermissionMatrix';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
-  TASK_PERMISSION_OPTIONS,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
 import { getStoredUser } from '../../utils/auth';
@@ -92,9 +92,6 @@ export default function AddUser() {
     taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
-  const visiblePermissionOptions = TASK_PERMISSION_OPTIONS.filter((permission) =>
-    allowedPermissionsForRole.includes(permission.value),
-  );
   const canCustomizePermissions = isSuperAdmin;
 
   useEffect(() => {
@@ -185,20 +182,6 @@ export default function AddUser() {
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
       taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
     }));
-  };
-
-  const handlePermissionToggle = (permission: TaskPermission) => {
-    if (!canCustomizePermissions) return;
-    if (!allowedPermissionsForRole.includes(permission)) return;
-    setFormData((prev) => {
-      const exists = prev.taskPermissions.includes(permission);
-      return {
-        ...prev,
-        taskPermissions: exists
-          ? prev.taskPermissions.filter((item) => item !== permission)
-          : [...prev.taskPermissions, permission],
-      };
-    });
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -442,59 +425,16 @@ export default function AddUser() {
           </div>
         </Card>
 
-        <Card title="Task Permissions">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-600">
-                {canCustomizePermissions
-                  ? 'Select what this user is allowed to access. Use defaults to reset by role.'
-                  : 'Task permissions for this role are fixed by policy.'}
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!canCustomizePermissions}
-                onClick={() =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[prev.role],
-                  }))
-                }
-              >
-                Use Role Defaults
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {visiblePermissionOptions.map((permission) => {
-                const checked = formData.taskPermissions.includes(permission.value);
-                return (
-                  <label
-                    key={permission.value}
-                    className={`border rounded-lg p-3 cursor-pointer ${
-                      checked ? 'border-primary-300 bg-primary-50' : 'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!canCustomizePermissions}
-                        onChange={() => handlePermissionToggle(permission.value)}
-                        className="mt-1 w-4 h-4 text-primary-600"
-                      />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{permission.label}</p>
-                        <p className="text-xs text-gray-600 mt-1">{permission.description}</p>
-                      </div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-            {errors.taskPermissions && <p className="text-sm text-red-600">{errors.taskPermissions}</p>}
-          </div>
+        <Card title="Permissions">
+          <PermissionMatrix
+            value={formData.taskPermissions}
+            allowedPermissions={allowedPermissionsForRole}
+            defaultPermissions={DEFAULT_TASK_PERMISSIONS_BY_ROLE[formData.role]}
+            role={formData.role}
+            canEdit={canCustomizePermissions}
+            error={errors.taskPermissions}
+            onChange={(taskPermissions) => setFormData((prev) => ({ ...prev, taskPermissions }))}
+          />
         </Card>
 
         <div className="flex gap-3 sticky bottom-0 bg-white py-4 border-t">

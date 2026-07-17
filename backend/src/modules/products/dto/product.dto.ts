@@ -25,6 +25,13 @@ export enum PricingIncrementBy {
   FLAT = 'FLAT',
 }
 
+export enum MobileCatalogCategory {
+  RINGS = 'rings',
+  // BRACELETS = 'bracelets',
+  // STUDS = 'studs',
+  // NECKLACES = 'necklaces',
+}
+
 export class DesignMetalDto {
   @IsString()
   @IsOptional()
@@ -791,9 +798,9 @@ export class FindMobileCatalogProductsQueryDto {
   @IsOptional()
   limit?: number;
 
-  @IsIn(['rings', 'bracelets', 'studs', 'necklaces'])
+  @IsEnum(MobileCatalogCategory)
   @IsOptional()
-  category?: 'rings' | 'bracelets' | 'studs' | 'necklaces';
+  category?: MobileCatalogCategory;
 
   @IsString()
   @IsOptional()

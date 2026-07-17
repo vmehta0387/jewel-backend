@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Platform,
@@ -9,54 +9,50 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { StackActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { fetchCatalogCategoryCounts } from '../api/designs';
+import { fetchCatalogCategories, type CatalogCategoryOption } from '../api/designs';
 import type { CatalogPresetCategory } from '../navigation/RootNavigator';
 import NotificationPopover from '../components/NotificationPopover';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 
 type CategoryOption = {
-  key: CatalogPresetCategory;
+  id: CatalogPresetCategory;
   label: string;
+  designs: number;
+  versions: number;
 };
 
-const CATEGORY_OPTIONS: CategoryOption[] = [
-  { key: 'rings', label: 'Rings' },
-  { key: 'bracelets', label: 'Bracelets' },
-  { key: 'studs', label: 'Studs' },
-  { key: 'necklaces', label: 'Necklaces' },
-];
-
-const CATEGORY_IMAGES: Record<CatalogPresetCategory, any> = {
+const CATEGORY_IMAGES: Record<string, any> = {
   rings: require('../../assets/rings.png'),
   bracelets: require('../../assets/bracelet.png'),
   studs: require('../../assets/studs.png'),
   necklaces: require('../../assets/necklace.png'),
 };
 
-type CategoryCountStats = {
-  designs: number;
-  versions: number;
-};
+const DEFAULT_CATEGORY_IMAGE = CATEGORY_IMAGES.rings;
 
-const EMPTY_COUNTS: Record<CatalogPresetCategory, CategoryCountStats> = {
-  rings: { designs: 0, versions: 0 },
-  bracelets: { designs: 0, versions: 0 },
-  studs: { designs: 0, versions: 0 },
-  necklaces: { designs: 0, versions: 0 },
-};
+const normalizeCategoryOptions = (rows: CatalogCategoryOption[] = []): CategoryOption[] =>
+  rows
+    .map((row) => ({
+      id: String(row.id || '').trim(),
+      label: String(row.label || row.id || '').trim(),
+      designs: Number(row.designs || 0),
+      versions: Number(row.versions || 0),
+    }))
+    .filter((row) => row.id && row.label);
 
 const CatalogCategoryScreen = () => {
   const navigation = useNavigation<any>();
   const { user, token } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const [search, setSearch] = useState('');
-  const [categoryCounts, setCategoryCounts] = useState<Record<CatalogPresetCategory, CategoryCountStats>>(EMPTY_COUNTS);
-  const [countsLoading, setCountsLoading] = useState(true);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const autoOpenedCategoryRef = useRef('');
 
   const showDashboardBack = useMemo(
     () => user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP',
@@ -65,6 +61,10 @@ const CatalogCategoryScreen = () => {
 
   const openDesigns = (params?: { presetCategory?: CatalogPresetCategory; prefillSearch?: string }) => {
     navigation.navigate('Designs', params);
+  };
+
+  const replaceWithDesigns = (params?: { presetCategory?: CatalogPresetCategory; prefillSearch?: string }) => {
+    navigation.dispatch(StackActions.replace('Designs', params));
   };
 
   const handleSearchSubmit = () => {
@@ -87,32 +87,37 @@ const CatalogCategoryScreen = () => {
     [navigation],
   );
 
-  const renderCategoryGlyph = (key: CatalogPresetCategory) => {
-    return <Image source={CATEGORY_IMAGES[key]} style={styles.categoryIconImage} resizeMode="contain" />;
+  const renderCategoryGlyph = (id: CatalogPresetCategory) => {
+    return <Image source={CATEGORY_IMAGES[id] || DEFAULT_CATEGORY_IMAGE} style={styles.categoryIconImage} resizeMode="contain" />;
   };
 
-  const loadCategoryCounts = useCallback(async () => {
+  const loadCategories = useCallback(async () => {
     if (!token) {
-      setCategoryCounts(EMPTY_COUNTS);
-      setCountsLoading(false);
+      setCategories([]);
+      setCategoriesLoading(false);
       return;
     }
 
-    setCountsLoading(true);
+    setCategoriesLoading(true);
     try {
-      const response = await fetchCatalogCategoryCounts(token);
-      setCategoryCounts(response.data || EMPTY_COUNTS);
+      const response = await fetchCatalogCategories(token);
+      const nextCategories = normalizeCategoryOptions(response.data || []);
+      setCategories(nextCategories);
+      if (nextCategories.length === 1 && autoOpenedCategoryRef.current !== nextCategories[0].id) {
+        autoOpenedCategoryRef.current = nextCategories[0].id;
+        replaceWithDesigns({ presetCategory: nextCategories[0].id });
+      }
     } catch {
-      setCategoryCounts(EMPTY_COUNTS);
+      setCategories([]);
     } finally {
-      setCountsLoading(false);
+      setCategoriesLoading(false);
     }
   }, [token]);
 
   useFocusEffect(
     useCallback(() => {
-      loadCategoryCounts();
-    }, [loadCategoryCounts]),
+      loadCategories();
+    }, [loadCategories]),
   );
 
   return (
@@ -168,22 +173,22 @@ const CatalogCategoryScreen = () => {
         <Text style={styles.sectionTitle}>What are you selling?</Text>
 
         <View style={styles.grid}>
-          {CATEGORY_OPTIONS.map((option) => (
+          {categories.map((option) => (
             <TouchableOpacity
-              key={option.key}
+              key={option.id}
               style={styles.gridItem}
               activeOpacity={0.9}
-              onPress={() => openDesigns({ presetCategory: option.key })}
+              onPress={() => openDesigns({ presetCategory: option.id })}
             >
-              <View style={styles.categoryCircle}>{renderCategoryGlyph(option.key)}</View>
+              <View style={styles.categoryCircle}>{renderCategoryGlyph(option.id)}</View>
               <Text style={styles.categoryLabel}>{option.label}</Text>
               <Text style={styles.categoryMeta}>
-                {countsLoading
+                {categoriesLoading
                   ? 'Loading...'
-                  : `${categoryCounts[option.key].designs} ${
-                      categoryCounts[option.key].designs === 1 ? 'design' : 'designs'
-                    } - ${categoryCounts[option.key].versions} ${
-                      categoryCounts[option.key].versions === 1 ? 'version' : 'versions'
+                  : `${option.designs} ${
+                      option.designs === 1 ? 'design' : 'designs'
+                    } - ${option.versions} ${
+                      option.versions === 1 ? 'version' : 'versions'
                     }`}
               </Text>
             </TouchableOpacity>

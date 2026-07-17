@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Keyboard,
+  LayoutChangeEvent,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -129,11 +130,40 @@ const toMetalShortCode = (value?: string | null) => {
   return toMetalCaratageLabel(value);
 };
 
-const formatStoneNumber = (value: string | number | null | undefined, decimals = 3) => {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '';
-  return formatNumber(numeric, decimals);
+const getMediaExtension = (uri?: string | null) => {
+  const cleanUri = String(uri || '').split('?')[0].split('#')[0];
+  const fileName = cleanUri.split('/').pop() || '';
+  const match = fileName.match(/\.([a-zA-Z0-9]+)$/);
+  return match?.[1]?.toLowerCase() || '';
 };
+
+const imageMediaExtensions = new Set(['avif', 'bmp', 'gif', 'heic', 'heif', 'jpeg', 'jpg', 'png', 'webp']);
+const videoMediaExtensions = new Set(['m4v', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm']);
+
+const getMediaFileIcon = (uri?: string | null) => {
+  const extension = getMediaExtension(uri);
+  if (videoMediaExtensions.has(extension)) return 'videocam-outline' as const;
+  if (extension === 'stl' || extension === 'obj' || extension === '3dm') return 'cube-outline' as const;
+  if (extension === 'pdf') return 'document-text-outline' as const;
+  if (['xls', 'xlsx', 'csv'].includes(extension)) return 'grid-outline' as const;
+  if (['doc', 'docx', 'txt'].includes(extension)) return 'document-text-outline' as const;
+  if (['zip', 'rar', '7z'].includes(extension)) return 'archive-outline' as const;
+  return 'document-outline' as const;
+};
+
+const getMediaFileLabel = (uri?: string | null) => {
+  const extension = getMediaExtension(uri);
+  if (!extension) return 'File unavailable';
+  if (imageMediaExtensions.has(extension)) return `${extension.toUpperCase()} unavailable`;
+  if (videoMediaExtensions.has(extension)) return `${extension.toUpperCase()} video`;
+  return `${extension.toUpperCase()} file`;
+};
+
+// const formatStoneNumber = (value: string | number | null | undefined, decimals = 3) => {
+//   const numeric = Number(value);
+//   if (!Number.isFinite(numeric)) return '';
+//   return formatNumber(numeric, decimals);
+// };
 
 const getMetalOptionsFromDesign = (design: Design) => {
   const metals = design.metals || [];
@@ -248,69 +278,70 @@ const OptionSection = ({
   );
 };
 
-const hasGemstoneValue = (gem: NonNullable<Design['gemstones']>[number]) => {
-  const numericValues = [gem.wtPerPcs, gem.pcs, gem.wtInCts].map(Number);
-  return (
-    [gem.stone, gem.shape, gem.size, gem.color, gem.quality].some(hasDisplayValue) ||
-    numericValues.some((value) => Number.isFinite(value) && value > 0)
-  );
-};
-
-const GemstoneGrid = ({ gemstones }: { gemstones: NonNullable<Design['gemstones']> }) => {
-  const visibleGemstones = gemstones.filter(hasGemstoneValue);
-  if (!visibleGemstones.length) return null;
-
-  return (
-    <View style={styles.gemstoneCard}>
-      <Text style={styles.specTitle}>DESIGN GEMSTONES</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
-        <View style={styles.gemstoneTable}>
-          <View style={[styles.gemstoneTableRow, styles.gemstoneHeaderRow]}>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneStoneCell]}>Stone</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Shape</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Size</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Color</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Quality</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt/Pcs</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneSmallNumberCell]}>Pcs</Text>
-            <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt(Cts)</Text>
-          </View>
-          {visibleGemstones.map((gem, index) => (
-            <View
-              key={`gem-row-${gem.packetId || gem.stone || index}-${index}`}
-              style={[styles.gemstoneTableRow, index === visibleGemstones.length - 1 ? styles.gemstoneTableRowLast : null]}
-            >
-              <Text style={[styles.gemstoneCell, styles.gemstoneStoneCell]} numberOfLines={1}>
-                {compact(gem.stone)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
-                {compact(gem.shape)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
-                {compact(gem.size)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
-                {compact(gem.color)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
-                {compact(gem.quality)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
-                {formatStoneNumber(gem.wtPerPcs)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneSmallNumberCell]}>
-                {formatStoneNumber(gem.pcs, 0)}
-              </Text>
-              <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
-                {formatStoneNumber(gem.wtInCts)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
-};
+// Design gemstones are hidden for now, but kept here so the table can be restored later.
+// const hasGemstoneValue = (gem: NonNullable<Design['gemstones']>[number]) => {
+//   const numericValues = [gem.wtPerPcs, gem.pcs, gem.wtInCts].map(Number);
+//   return (
+//     [gem.stone, gem.shape, gem.size, gem.color, gem.quality].some(hasDisplayValue) ||
+//     numericValues.some((value) => Number.isFinite(value) && value > 0)
+//   );
+// };
+//
+// const GemstoneGrid = ({ gemstones }: { gemstones: NonNullable<Design['gemstones']> }) => {
+//   const visibleGemstones = gemstones.filter(hasGemstoneValue);
+//   if (!visibleGemstones.length) return null;
+//
+//   return (
+//     <View style={styles.gemstoneCard}>
+//       <Text style={styles.specTitle}>DESIGN GEMSTONES</Text>
+//       <ScrollView horizontal showsHorizontalScrollIndicator={false} nestedScrollEnabled>
+//         <View style={styles.gemstoneTable}>
+//           <View style={[styles.gemstoneTableRow, styles.gemstoneHeaderRow]}>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneStoneCell]}>Stone</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Shape</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Size</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Color</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneTextCell]}>Quality</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt/Pcs</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneSmallNumberCell]}>Pcs</Text>
+//             <Text style={[styles.gemstoneHeaderCell, styles.gemstoneNumberCell]}>Wt(Cts)</Text>
+//           </View>
+//           {visibleGemstones.map((gem, index) => (
+//             <View
+//               key={`gem-row-${gem.packetId || gem.stone || index}-${index}`}
+//               style={[styles.gemstoneTableRow, index === visibleGemstones.length - 1 ? styles.gemstoneTableRowLast : null]}
+//             >
+//               <Text style={[styles.gemstoneCell, styles.gemstoneStoneCell]} numberOfLines={1}>
+//                 {compact(gem.stone)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+//                 {compact(gem.shape)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+//                 {compact(gem.size)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+//                 {compact(gem.color)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneTextCell]} numberOfLines={1}>
+//                 {compact(gem.quality)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
+//                 {formatStoneNumber(gem.wtPerPcs)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneSmallNumberCell]}>
+//                 {formatStoneNumber(gem.pcs, 0)}
+//               </Text>
+//               <Text style={[styles.gemstoneCell, styles.gemstoneNumberCell]}>
+//                 {formatStoneNumber(gem.wtInCts)}
+//               </Text>
+//             </View>
+//           ))}
+//         </View>
+//       </ScrollView>
+//     </View>
+//   );
+// };
 
 const DesignDetailScreen = () => {
   const { token, user } = useAuth();
@@ -319,7 +350,6 @@ const DesignDetailScreen = () => {
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width, height: windowHeight } = useWindowDimensions();
   const mediaHeight = Math.min(178, Math.max(136, width * 0.38));
-  const mediaFrameWidth = Math.max(220, width - 28);
   const mediaListRef = useRef<FlatList<string> | null>(null);
   const detailScrollRef = useRef<ScrollView | null>(null);
   const detailScrollYRef = useRef(0);
@@ -362,6 +392,8 @@ const DesignDetailScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [resolvingSelection, setResolvingSelection] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [mediaViewportWidth, setMediaViewportWidth] = useState(0);
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(() => new Set());
   const [imageViewerUri, setImageViewerUri] = useState<string | null>(null);
   const [imageViewerZoomed, setImageViewerZoomed] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
@@ -483,10 +515,20 @@ const DesignDetailScreen = () => {
 
   useEffect(() => {
     setSelectedImageIndex(0);
+    setFailedMediaUrls(new Set());
   }, [activeDesignId]);
 
   const gallery = useMemo(() => activeDesign?.imageUrls?.filter(Boolean) || [], [activeDesign?.imageUrls]);
+  const mediaFallbackWidth = Math.max(1, width - 28);
+  const mediaFrameWidth = mediaViewportWidth || mediaFallbackWidth;
   const activeImage = gallery[selectedImageIndex] || gallery[0];
+  const hasPreviousMedia = selectedImageIndex > 0;
+  const hasNextMedia = selectedImageIndex < gallery.length - 1;
+
+  const handleMediaLayout = useCallback((event: LayoutChangeEvent) => {
+    const nextWidth = Math.max(1, Math.round(event.nativeEvent.layout.width));
+    setMediaViewportWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
+  }, []);
 
   const handleMediaSwipeEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -500,6 +542,28 @@ const DesignDetailScreen = () => {
     },
     [gallery.length, mediaFrameWidth, selectedImageIndex],
   );
+
+  const goToMediaIndex = useCallback(
+    (index: number) => {
+      if (!gallery.length) return;
+      const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
+      setSelectedImageIndex(boundedIndex);
+      mediaListRef.current?.scrollToOffset({
+        offset: mediaFrameWidth * boundedIndex,
+        animated: true,
+      });
+    },
+    [gallery.length, mediaFrameWidth],
+  );
+
+  const markMediaFailed = useCallback((uri: string) => {
+    setFailedMediaUrls((current) => {
+      if (current.has(uri)) return current;
+      const next = new Set(current);
+      next.add(uri);
+      return next;
+    });
+  }, []);
 
   const imageViewerScale = useMemo(
     () => Animated.multiply(baseScaleRef.current, pinchScaleRef.current),
@@ -618,7 +682,7 @@ const DesignDetailScreen = () => {
       animated: true,
       viewPosition: 0,
     });
-  }, [gallery.length, selectedImageIndex]);
+  }, [gallery.length, mediaFrameWidth, selectedImageIndex]);
 
   const displayPrice = useMemo(
     () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.displayPrice ?? activeDesign.totalValue ?? 0 : 0),
@@ -708,7 +772,7 @@ const DesignDetailScreen = () => {
     if (!activeDesign) return;
     const shortDescription = [
       selectedDiamondType ? `Type: ${selectedDiamondType}` : null,
-      selectedMetalCaratage ? `Metal Caratage: ${toMetalCaratageLabel(selectedMetalCaratage)}` : null,
+      selectedMetalCaratage ? `Metal: ${toMetalCaratageLabel(selectedMetalCaratage)}` : null,
       selectedRingSize ? `Jewelry Size: ${selectedRingSize}` : null,
       selectedStyle ? `Spread: ${selectedStyle}` : null,
       selectedQuality ? `Quality: ${selectedQuality}` : null,
@@ -1056,34 +1120,6 @@ const DesignDetailScreen = () => {
     keepDropdownAboveKeyboard,
   ]);
 
-  const totalGemWt = useMemo(
-    () => (activeDesign?.gemstones || []).reduce((sum, gem) => sum + Number(gem.wtInCts || 0), 0),
-    [activeDesign?.gemstones],
-  );
-  const totalMetalNetWt = useMemo(
-    () => (activeDesign?.metals || []).reduce((sum, metal) => sum + Number(metal.netWt || 0), 0),
-    [activeDesign?.metals],
-  );
-  const totalStoneWtGm = useMemo(() => totalGemWt * 0.2, [totalGemWt]);
-  const calculatedGrossWt = useMemo(() => totalMetalNetWt + totalStoneWtGm, [totalMetalNetWt, totalStoneWtGm]);
-  const totalStonePieces = useMemo(
-    () =>
-      (activeDesign?.gemstones || []).reduce((sum, gem) => {
-        const row = gem as { pcs?: number | string; Pcs?: number | string };
-        const pieces = Number(row.pcs ?? row.Pcs ?? 0);
-        return sum + (Number.isFinite(pieces) ? Math.max(0, pieces) : 0);
-      }, 0),
-    [activeDesign?.gemstones],
-  );
-  const hasStonePieces = useMemo(
-    () =>
-      (activeDesign?.gemstones || []).some((gem) => {
-        const row = gem as { pcs?: number | string; Pcs?: number | string };
-        const pieces = Number(row.pcs ?? row.Pcs);
-        return Number.isFinite(pieces) && pieces > 0;
-      }),
-    [activeDesign?.gemstones],
-  );
   const heroCaption = useMemo(
     () => String(activeDesign?.designName || activeDesign?.designNo || '').trim(),
     [activeDesign?.designName, activeDesign?.designNo],
@@ -1093,26 +1129,13 @@ const DesignDetailScreen = () => {
       [
         { label: 'Design No.', value: compact(activeDesign?.designNo) },
         { label: 'QR Code No.', value: compact(activeDesign?.barcode) },
-        { label: 'Sub-category', value: compact(activeDesign?.collection) },
-        { label: 'Metal Caratage', value: toMetalCaratageLabel(selectedMetalCaratage) },
-        { label: 'Jewelry Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
+        { label: 'Metal', value: toMetalCaratageLabel(selectedMetalCaratage) },
+        { label: 'Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
         { label: 'Diamond Type', value: compact(activeDesign?.diamondType || selectedDiamondType) },
         {
-          label: 'Total No. of Stones',
-          value: hasStonePieces ? formatNumber(totalStonePieces, 0) : '',
-        },
-        {
           label: 'Approx. Total Carat Wt.',
-          value: totalGemWt > 0 ? `${formatNumber(totalGemWt, 2)} ctw` : toCtwLabel(selectedWeight),
+          value: toCtwLabel(selectedWeight),
           highlight: true,
-        },
-        {
-          label: 'Net Wt.',
-          value: totalMetalNetWt > 0 ? `${formatNumber(totalMetalNetWt, 3)} gm` : '',
-        },
-        {
-          label: 'Gross Wt.',
-          value: calculatedGrossWt > 0 ? `${formatNumber(calculatedGrossWt, 3)} gm` : '',
         },
         {
           label: 'Remarks',
@@ -1121,21 +1144,15 @@ const DesignDetailScreen = () => {
         },
       ].filter((row) => hasDisplayValue(row.value)),
     [
-      activeDesign?.collection,
       activeDesign?.barcode,
       activeDesign?.designNo,
       activeDesign?.diamondType,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
-      calculatedGrossWt,
       selectedDiamondType,
       selectedMetalCaratage,
       selectedRingSize,
       selectedWeight,
-      totalGemWt,
-      totalMetalNetWt,
-      totalStonePieces,
-      hasStonePieces,
     ],
   );
 
@@ -1221,7 +1238,7 @@ const DesignDetailScreen = () => {
           </View>
 
           <View style={[styles.fixedMediaCard, { height: mediaHeight + 70 }]}>
-            <View style={[styles.fixedMediaImageShell, { height: mediaHeight }]}>
+            <View style={[styles.fixedMediaImageShell, { height: mediaHeight }]} onLayout={handleMediaLayout}>
               {resolvingSelection ? (
                 renderMediaSkeleton()
               ) : gallery.length ? (
@@ -1238,7 +1255,7 @@ const DesignDetailScreen = () => {
                   onMomentumScrollEnd={handleMediaSwipeEnd}
                   onScrollToIndexFailed={(info) => {
                     mediaListRef.current?.scrollToOffset({
-                      offset: info.averageItemLength * info.index,
+                      offset: mediaFrameWidth * info.index,
                       animated: false,
                     });
                   }}
@@ -1247,17 +1264,39 @@ const DesignDetailScreen = () => {
                     offset: mediaFrameWidth * index,
                     index,
                   })}
-                  renderItem={({ item }) => (
-                    <View style={[styles.mediaSlide, { width: mediaFrameWidth, height: mediaHeight }]}>
-                      <TouchableOpacity
-                        style={styles.fixedMediaImageTapArea}
-                        activeOpacity={0.96}
-                        onPress={() => handleMediaImagePress(item)}
-                      >
-                        <Image source={{ uri: item, cache: 'force-cache' }} style={styles.fixedMediaImage} resizeMode="cover" />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  style={{ width: mediaFrameWidth }}
+                  renderItem={({ item }) => {
+                    const extension = getMediaExtension(item);
+                    const canPreviewImage = imageMediaExtensions.has(extension) && !failedMediaUrls.has(item);
+
+                    return (
+                      <View style={[styles.mediaSlide, { width: mediaFrameWidth, height: mediaHeight }]}>
+                        {canPreviewImage ? (
+                          <TouchableOpacity
+                            style={styles.fixedMediaImageTapArea}
+                            activeOpacity={0.96}
+                            onPress={() => handleMediaImagePress(item)}
+                          >
+                            <Image
+                              source={{ uri: item, cache: 'force-cache' }}
+                              style={styles.fixedMediaImage}
+                              resizeMode="contain"
+                              onError={() => markMediaFailed(item)}
+                            />
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.mediaFileFallback}>
+                            <View style={styles.mediaFileIconWrap}>
+                              <Ionicons name={getMediaFileIcon(item)} size={42} color="#D4C4AE" />
+                            </View>
+                            <Text style={styles.mediaFileLabel} numberOfLines={1}>
+                              {getMediaFileLabel(item)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  }}
                 />
               ) : (
                 <View style={styles.placeholderHero}>
@@ -1265,6 +1304,24 @@ const DesignDetailScreen = () => {
                   <Text style={styles.placeholderText}>Image coming soon</Text>
                 </View>
               )}
+              {!resolvingSelection && gallery.length > 1 && hasPreviousMedia ? (
+                <TouchableOpacity
+                  style={[styles.mediaNavButton, styles.mediaNavButtonLeft]}
+                  onPress={() => goToMediaIndex(selectedImageIndex - 1)}
+                  activeOpacity={0.72}
+                >
+                  <Ionicons name="chevron-back" size={24} color="rgba(42, 36, 31, 0.28)" />
+                </TouchableOpacity>
+              ) : null}
+              {!resolvingSelection && gallery.length > 1 && hasNextMedia ? (
+                <TouchableOpacity
+                  style={[styles.mediaNavButton, styles.mediaNavButtonRight]}
+                  onPress={() => goToMediaIndex(selectedImageIndex + 1)}
+                  activeOpacity={0.72}
+                >
+                  <Ionicons name="chevron-forward" size={24} color="rgba(42, 36, 31, 0.28)" />
+                </TouchableOpacity>
+              ) : null}
             </View>
             {resolvingSelection ? (
               <View style={[styles.skeletonLine, styles.mediaCaptionSkeleton]} />
@@ -1281,7 +1338,7 @@ const DesignDetailScreen = () => {
                     key={`gallery-chip-${index}`}
                     style={[styles.imagePagerChip, selectedImageIndex === index ? styles.imagePagerChipActive : null]}
                     onPress={() => {
-                      setSelectedImageIndex(index);
+                      goToMediaIndex(index);
                     }}
                     activeOpacity={0.88}
                   >
@@ -1451,7 +1508,7 @@ const DesignDetailScreen = () => {
           </View>
           ) : null}
 
-          <GemstoneGrid gemstones={activeDesign.gemstones || []} />
+          {/* <GemstoneGrid gemstones={activeDesign.gemstones || []} /> */}
         </ScrollView>
 
         <View style={styles.bottomSummary} onTouchStart={handleOutsideDropdownTouchStart}>
@@ -1586,7 +1643,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     marginLeft: 4,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: '#4B433A',
   },
@@ -1616,7 +1673,7 @@ const styles = StyleSheet.create({
   },
   headerBellBadgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: '800',
   },
   fixedMediaCard: {
@@ -1635,6 +1692,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   fixedMediaImage: {
     width: '100%',
@@ -1660,9 +1718,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  mediaFileFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  mediaFileIconWrap: {
+    width: 78,
+    height: 78,
+    borderRadius: 16,
+    backgroundColor: '#FCFAF6',
+    borderWidth: 1,
+    borderColor: '#EFE7DC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaFileLabel: {
+    marginTop: 9,
+    maxWidth: '86%',
+    color: '#B4A692',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  mediaNavButton: {
+    position: 'absolute',
+    top: '50%',
+    width: 44,
+    height: 54,
+    marginTop: -27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  mediaNavButtonLeft: {
+    left: 0,
+  },
+  mediaNavButtonRight: {
+    right: 0,
+  },
   mediaCaption: {
     marginTop: 6,
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.8,
     color: '#80786F',
     fontWeight: '700',
@@ -1694,7 +1794,7 @@ const styles = StyleSheet.create({
     borderColor: '#201D19',
   },
   imagePagerText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#7B7369',
   },
@@ -1724,7 +1824,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 12,
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '800',
     textAlign: 'center',
   },
@@ -1783,7 +1883,7 @@ const styles = StyleSheet.create({
     elevation: 18,
   },
   sectionLabel: {
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 1.2,
     fontWeight: '700',
     color: '#81786E',
@@ -1821,7 +1921,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(124, 102, 80, 0.22)',
   },
   metalChipText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#4A3E35',
   },
@@ -1845,7 +1945,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F3EF',
   },
   optionChipText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: '#5A5148',
   },
@@ -1878,7 +1978,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   dualFieldValue: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#2C2620',
     fontWeight: '700',
     flex: 1,
@@ -1890,7 +1990,7 @@ const styles = StyleSheet.create({
   },
   dualFieldHint: {
     marginTop: 3,
-    fontSize: 9,
+    fontSize: 11,
     color: '#A0968B',
     fontWeight: '600',
   },
@@ -1910,7 +2010,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   singleDropdownValue: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#2C2620',
     fontWeight: '700',
     flex: 1,
@@ -1944,7 +2044,7 @@ const styles = StyleSheet.create({
     height: '100%',
     paddingHorizontal: 8,
     paddingVertical: 0,
-    fontSize: 12,
+    fontSize: 14,
     color: '#2C2620',
     fontWeight: '600',
   },
@@ -1975,7 +2075,7 @@ const styles = StyleSheet.create({
   },
   inlineDropdownOptionText: {
     width: '100%',
-    fontSize: 12,
+    fontSize: 14,
     color: '#38312A',
     fontWeight: '600',
     textAlign: 'left',
@@ -1993,7 +2093,7 @@ const styles = StyleSheet.create({
   },
   inlineDropdownEmptyText: {
     width: '100%',
-    fontSize: 12,
+    fontSize: 14,
     color: '#8F8378',
     fontWeight: '600',
     textAlign: 'left',
@@ -2012,7 +2112,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   specTitle: {
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 1,
     fontWeight: '800',
     color: '#7E6F5C',
@@ -2035,13 +2135,13 @@ const styles = StyleSheet.create({
   },
   specLabel: {
     flex: 0.9,
-    fontSize: 12,
+    fontSize: 13,
     color: '#6D665D',
   },
   specValue: {
     flex: 1.15,
     marginLeft: 10,
-    fontSize: 12,
+    fontSize: 13,
     color: '#2A241F',
     fontWeight: '700',
     textAlign: 'right',
@@ -2084,7 +2184,7 @@ const styles = StyleSheet.create({
   },
   gemstoneHeaderCell: {
     paddingHorizontal: 8,
-    fontSize: 10,
+    fontSize: 12,
     letterSpacing: 0.7,
     color: '#7E6F5C',
     fontWeight: '800',
@@ -2092,7 +2192,7 @@ const styles = StyleSheet.create({
   },
   gemstoneCell: {
     paddingHorizontal: 8,
-    fontSize: 11,
+    fontSize: 13,
     color: '#2A241F',
     fontWeight: '700',
   },
@@ -2117,7 +2217,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gemstoneEmptyText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#8F8378',
     fontWeight: '600',
   },
@@ -2196,11 +2296,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   placeholderText: {
-    fontSize: 13,
+    fontSize: 15,
     color: '#8a786a',
   },
   emptyOption: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#8E8E93',
   },
   stateScreen: {
@@ -2226,7 +2326,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   stateTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: '#231913',
     marginBottom: 8,
@@ -2249,7 +2349,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: '#fffdf8',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
   },
 });

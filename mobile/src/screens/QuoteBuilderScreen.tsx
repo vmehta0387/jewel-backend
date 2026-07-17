@@ -679,14 +679,11 @@ const QuoteBuilderScreen = () => {
 
   const validateCustomerDetails = useCallback(() => {
     const nextErrors: CustomerFieldErrors = {};
-    const name = customerName.trim();
     const phone = customerPhone.trim();
     const email = customerEmail.trim();
     const phoneDigits = phone.replace(/\D/g, '');
 
-    if (!name) nextErrors.name = 'Customer name is required.';
-    if (!phone) nextErrors.phone = 'Customer phone is required.';
-    else if (phoneDigits.length < 7 || phoneDigits.length > 15) nextErrors.phone = 'Enter a valid phone number.';
+    if (phone && (phoneDigits.length < 7 || phoneDigits.length > 15)) nextErrors.phone = 'Enter a valid phone number.';
     if (email && !emailPattern.test(email)) nextErrors.email = 'Enter a valid email address.';
 
     setCustomerErrors(nextErrors);

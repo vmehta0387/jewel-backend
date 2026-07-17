@@ -36,7 +36,7 @@ export type RootStackParamList = {
   App: undefined;
 };
 
-export type CatalogPresetCategory = 'rings' | 'bracelets' | 'studs' | 'necklaces';
+export type CatalogPresetCategory = string;
 
 export type QuoteBuilderDraft = {
   orderId?: string;

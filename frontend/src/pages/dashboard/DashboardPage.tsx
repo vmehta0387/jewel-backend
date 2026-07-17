@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import api from '../../services/api';
@@ -113,6 +114,28 @@ function parseOptionalNumber(value: string): number | null {
 
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toDateParam(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getCurrentWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const start = new Date(now);
+  start.setDate(now.getDate() + mondayOffset);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start: toDateParam(start), end: toDateParam(end) };
+}
+
+function getLastSevenDaysRange(): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return { start: toDateParam(start), end: toDateParam(end) };
 }
 
 function DashboardStatIcon({
@@ -293,29 +316,36 @@ function MiniLineChart({ values }: { values: number[] }) {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const didLoadStatsRef = useRef(false);
 
-  const [goldModalOpen, setGoldModalOpen] = useState(false);
-  const [goldLoading, setGoldLoading] = useState(false);
-  const [goldSaving, setGoldSaving] = useState(false);
-  const [goldError, setGoldError] = useState<string | null>(null);
+  const [metals, setMetals] = useState<MetalMasterRow[]>([]);
   const [goldMaster, setGoldMaster] = useState<MetalMasterRow | null>(null);
-  const [goldValue, setGoldValue] = useState('Gold');
-  const [goldAliasName, setGoldAliasName] = useState('G');
-  const [goldDescription, setGoldDescription] = useState('');
-  const [goldMarketPricePerOunce, setGoldMarketPricePerOunce] = useState('');
-  const [goldMarketPricePerGm, setGoldMarketPricePerGm] = useState('');
-  const [goldLivePricePerGm, setGoldLivePricePerGm] = useState('');
+  const [platMaster, setPlatMaster] = useState<MetalMasterRow | null>(null);
 
-  const [packetModalOpen, setPacketModalOpen] = useState(false);
-  const [packetLoading, setPacketLoading] = useState(false);
+  const [metalModalOpen, setMetalModalOpen] = useState(false);
+  const [metalLoading, setMetalLoading] = useState(false);
+  const [metalSaving, setMetalSaving] = useState(false);
+  const [metalError, setMetalError] = useState<string | null>(null);
+
+  const [selectedMetalId, setSelectedMetalId] = useState('');
+  const [priceOunce, setPriceOunce] = useState('');
+  const [priceGm, setPriceGm] = useState('');
+  const [livePriceGm, setLivePriceGm] = useState('');
+  const [packetSearchModalOpen, setPacketSearchModalOpen] = useState(false);
+  const [packetSearchQuery, setPacketSearchQuery] = useState('');
+  const [packetsLoaded, setPacketsLoaded] = useState(false);
+  const [packetDropdownFilter, setPacketDropdownFilter] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
   const [packetRows, setPacketRows] = useState<PacketRow[]>([]);
   const [selectedPacketId, setSelectedPacketId] = useState('');
   const [selectedPacketPrice, setSelectedPacketPrice] = useState('');
+  const [packetDraftPrices, setPacketDraftPrices] = useState<Record<string, string>>({});
 
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -348,68 +378,90 @@ export default function DashboardPage() {
     () => packetRows.find((row) => row.id === selectedPacketId) ?? null,
     [packetRows, selectedPacketId],
   );
+  const changedPacketPriceRows = useMemo(
+    () =>
+      packetRows.filter((row) => {
+        const draft = packetDraftPrices[row.id] ?? '';
+        const current = row.sellingPrice !== null && row.sellingPrice !== undefined ? String(row.sellingPrice) : '';
+        return draft.trim() !== current.trim();
+      }),
+    [packetRows, packetDraftPrices],
+  );
 
-  const packetInfo = useMemo(() => {
-    if (!selectedPacket) {
-      return '';
+  const openOrdersView = (view: 'received-today' | 'due-today' | 'sales-this-week' | 'last-7-days' | 'active') => {
+    if (view === 'sales-this-week') {
+      const week = getCurrentWeekRange();
+      navigate(`/orders?view=sales-this-week&createdFrom=${week.start}&createdTo=${week.end}`);
+      return;
     }
-
-    return [selectedPacket.stone, selectedPacket.shape, selectedPacket.size, selectedPacket.cut, selectedPacket.color, selectedPacket.quality]
-      .filter((value) => !!value)
-      .join(', ');
-  }, [selectedPacket]);
-
-  const hydrateGoldForm = (row: MetalMasterRow) => {
-    setGoldMaster(row);
-    setGoldValue(row.value || 'Gold');
-    setGoldAliasName(row.aliasName || row.value || 'Gold');
-    setGoldDescription(row.description || '');
-    setGoldMarketPricePerOunce(
-      row.marketPricePerOunce !== null && row.marketPricePerOunce !== undefined
-        ? String(row.marketPricePerOunce)
-        : '',
-    );
-    setGoldMarketPricePerGm(
-      row.marketPricePerGm !== null && row.marketPricePerGm !== undefined
-        ? String(row.marketPricePerGm)
-        : '',
-    );
-    setGoldLivePricePerGm(
-      row.livePricePerGm !== null && row.livePricePerGm !== undefined
-        ? String(row.livePricePerGm)
-        : '',
-    );
+    if (view === 'last-7-days') {
+      const range = getLastSevenDaysRange();
+      navigate(`/orders?view=last-7-days&createdFrom=${range.start}&createdTo=${range.end}`);
+      return;
+    }
+    navigate(`/orders?view=${view}`);
   };
 
-  const fetchGoldMaster = async () => {
-    setGoldLoading(true);
-    setGoldError(null);
+
+
+  const fetchMetals = async () => {
+    setMetalLoading(true);
+    setMetalError(null);
     try {
       const response = await api.get('/products/masters', {
-        params: { type: 'METAL_NAME', status: 'ALL', search: 'Gold' },
+        params: { type: 'METAL_NAME', status: 'ALL' },
       });
 
       const rows = Array.isArray(response.data?.data) ? response.data.data : [];
-      const match =
+      setMetals(rows);
+
+      const gold =
         rows.find((row: MetalMasterRow) => row.value?.trim().toLowerCase() === 'gold') ||
         rows.find((row: MetalMasterRow) => row.aliasName?.trim().toLowerCase() === 'gold') ||
         null;
+      
+      const plat =
+        rows.find((row: MetalMasterRow) => row.value?.trim().toLowerCase() === 'platinum') ||
+        rows.find((row: MetalMasterRow) => row.aliasName?.trim().toLowerCase() === 'pt') ||
+        null;
 
-      if (!match) {
-        throw new Error('Gold metal master was not found.');
-      }
-
-      hydrateGoldForm(match);
+      if (gold) setGoldMaster(gold);
+      if (plat) setPlatMaster(plat);
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        'Unable to load Gold metal master.';
-      setGoldError(message);
+        'Unable to load metal masters.';
+      setMetalError(message);
     } finally {
-      setGoldLoading(false);
+      setMetalLoading(false);
     }
   };
+
+  useEffect(() => {
+    const selected = metals.find((m) => m.id === selectedMetalId);
+    if (selected) {
+      setPriceOunce(
+        selected.marketPricePerOunce !== null && selected.marketPricePerOunce !== undefined
+          ? String(selected.marketPricePerOunce)
+          : '',
+      );
+      setPriceGm(
+        selected.marketPricePerGm !== null && selected.marketPricePerGm !== undefined
+          ? String(selected.marketPricePerGm)
+          : '',
+      );
+      setLivePriceGm(
+        selected.livePricePerGm !== null && selected.livePricePerGm !== undefined
+          ? String(selected.livePricePerGm)
+          : '',
+      );
+    } else {
+      setPriceOunce('');
+      setPriceGm('');
+      setLivePriceGm('');
+    }
+  }, [selectedMetalId, metals]);
 
   const fetchCompaniesCount = async (): Promise<number> => {
     const response = await api.get('/companies', {
@@ -516,7 +568,6 @@ export default function DashboardPage() {
   };
 
   const fetchPackets = async () => {
-    setPacketLoading(true);
     setPacketError(null);
     try {
       const response = await api.get('/products/packets', {
@@ -525,10 +576,19 @@ export default function DashboardPage() {
 
       const rows = Array.isArray(response.data?.data) ? response.data.data : [];
       setPacketRows(rows);
+      setPacketDraftPrices(
+        Object.fromEntries(
+          rows.map((row: PacketRow) => [
+            row.id,
+            row.sellingPrice !== null && row.sellingPrice !== undefined ? String(row.sellingPrice) : '',
+          ]),
+        ),
+      );
 
       if (rows.length === 0) {
         setSelectedPacketId('');
         setSelectedPacketPrice('');
+        setPacketDraftPrices({});
         return;
       }
 
@@ -545,8 +605,13 @@ export default function DashboardPage() {
         error?.message ||
         'Unable to load stone packets.';
       setPacketError(message);
-    } finally {
-      setPacketLoading(false);
+    }
+  };
+
+  const ensurePacketsLoaded = async () => {
+    if (!packetsLoaded) {
+      await fetchPackets();
+      setPacketsLoaded(true);
     }
   };
 
@@ -556,6 +621,7 @@ export default function DashboardPage() {
     }
     didLoadStatsRef.current = true;
     void loadStats();
+    void fetchMetals();
   }, []);
 
   useEffect(() => {
@@ -570,90 +636,96 @@ export default function DashboardPage() {
     );
   }, [selectedPacket]);
 
-  const handleGoldMarketPricePerOunceChange = (value: string) => {
-    setGoldMarketPricePerOunce(value);
+  const handlePriceOunceChange = (value: string) => {
+    setPriceOunce(value);
     const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return;
     }
-    const perGm = (parsed / 31.1035).toFixed(2);
-    if (perGm !== goldMarketPricePerGm) {
-      setGoldMarketPricePerGm(perGm);
+    const perGm = (parsed / 31.1035).toFixed(4);
+    if (perGm !== priceGm) {
+      setPriceGm(perGm);
     }
   };
 
-  const handleGoldLivePricePerGmChange = (value: string) => {
-    setGoldLivePricePerGm(value);
+  const handleLivePriceGmChange = (value: string) => {
+    setLivePriceGm(value);
     const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return;
     }
-    const perGm = parsed.toFixed(2);
+    const perGm = parsed.toFixed(4);
     const perOunce = (parsed * 31.1035).toFixed(2);
-    if (perGm !== goldMarketPricePerGm) {
-      setGoldMarketPricePerGm(perGm);
+    if (perGm !== priceGm) {
+      setPriceGm(perGm);
     }
-    if (perOunce !== goldMarketPricePerOunce) {
-      setGoldMarketPricePerOunce(perOunce);
+    if (perOunce !== priceOunce) {
+      setPriceOunce(perOunce);
     }
   };
 
-  const openGoldModal = async () => {
-    setGoldModalOpen(true);
-    await fetchGoldMaster();
+  const openMetalModal = (defaultId?: string) => {
+    setMetalError(null);
+    setMetalModalOpen(true);
+    if (defaultId) {
+      setSelectedMetalId(defaultId);
+    } else if (metals.length > 0) {
+      setSelectedMetalId(metals[0].id);
+    }
   };
 
-  const openPacketModal = async () => {
-    setPacketModalOpen(true);
-    await fetchPackets();
-  };
 
-  const handleGoldSubmit = async (event: FormEvent<HTMLFormElement>) => {
+
+  const handleMetalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!goldMaster) {
-      setGoldError('Gold metal master was not found.');
+    if (!selectedMetalId) {
+      setMetalError('Please select a metal.');
       return;
     }
 
-    const marketPricePerOunce = parseOptionalNumber(goldMarketPricePerOunce);
-    const marketPricePerGm = parseOptionalNumber(goldMarketPricePerGm);
-    const livePricePerGm = parseOptionalNumber(goldLivePricePerGm);
+    const marketPricePerOunce = parseOptionalNumber(priceOunce);
+    const marketPricePerGm = parseOptionalNumber(priceGm);
+    const livePricePerGm = parseOptionalNumber(livePriceGm);
 
-    if (!goldValue.trim() || !goldAliasName.trim()) {
-      setGoldError('Metal name and alias name are required.');
-      return;
-    }
     if (marketPricePerOunce === null || marketPricePerGm === null) {
-      setGoldError('Market Price/Ounce and Market Price/Gms are required.');
+      setMetalError('Market Price/Ounce and Market Price/Gms are required.');
       return;
     }
 
-    setGoldSaving(true);
-    setGoldError(null);
+    setMetalSaving(true);
+    setMetalError(null);
     try {
-      await api.put(`/products/masters/${goldMaster.id}`, {
-        value: goldValue.trim(),
-        aliasName: goldAliasName.trim(),
-        description: goldDescription.trim() || null,
+      const selected = metals.find((m) => m.id === selectedMetalId);
+      if (!selected) {
+        throw new Error('Selected metal not found.');
+      }
+
+      await api.put(`/products/masters/${selectedMetalId}`, {
+        value: selected.value,
+        aliasName: selected.aliasName || selected.value,
+        description: selected.description || null,
         marketPricePerOunce,
         marketPricePerGm,
         livePricePerGm: livePricePerGm ?? marketPricePerGm,
       });
-      await fetchGoldMaster();
-      setGoldModalOpen(false);
+
+      await fetchMetals();
+      setMetalModalOpen(false);
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        'Unable to update Gold pricing.';
-      setGoldError(message);
+        'Unable to update metal pricing.';
+      setMetalError(message);
     } finally {
-      setGoldSaving(false);
+      setMetalSaving(false);
     }
   };
 
-  const handlePacketSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+
+
+  const handleDirectPacketPriceSave = async (event?: FormEvent) => {
+    if (event) event.preventDefault();
 
     if (!selectedPacket) {
       setPacketError('Select a packet first.');
@@ -673,12 +745,54 @@ export default function DashboardPage() {
         sellingPrice,
       });
       await fetchPackets();
-      setPacketModalOpen(false);
+      setSelectedPacketId('');
+      setSelectedPacketPrice('');
+      setPacketDropdownFilter('');
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        'Unable to update packet pricing.';
+        'Unable to update packet price.';
+      setPacketError(message);
+    } finally {
+      setPacketSaving(false);
+    }
+  };
+
+  const handleBulkPacketPriceSave = async () => {
+    if (!changedPacketPriceRows.length) return;
+
+    const updates = changedPacketPriceRows.map((row) => {
+      const sellingPrice = parseOptionalNumber(packetDraftPrices[row.id] ?? '');
+      return { row, sellingPrice };
+    });
+    const invalid = updates.find((item) => item.sellingPrice === null);
+    if (invalid) {
+      setPacketError(`Selling price is required for packet ${invalid.row.packetName}.`);
+      return;
+    }
+
+    setPacketSaving(true);
+    setPacketError(null);
+    try {
+      await Promise.all(
+        updates.map(({ row, sellingPrice }) =>
+          api.put(`/products/packets/${row.id}`, {
+            sellingPrice,
+          }),
+        ),
+      );
+      await fetchPackets();
+      if (selectedPacketId) {
+        const nextSelected = packetRows.find((row) => row.id === selectedPacketId);
+        const nextDraft = nextSelected ? packetDraftPrices[nextSelected.id] : '';
+        setSelectedPacketPrice(nextDraft || selectedPacketPrice);
+      }
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Unable to update packet prices.';
       setPacketError(message);
     } finally {
       setPacketSaving(false);
@@ -722,7 +836,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => navigate('/companies')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-indigo-700">
                 Total Companies
@@ -735,11 +849,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="companies" />
             </span>
-          </div>
+          </button>
         </Card>
         
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => navigate('/branches')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-sky-700">
                 Total Branches
@@ -752,11 +866,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 border border-sky-100 text-sky-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="branches" />
             </span>
-          </div>
+          </button>
         </Card>
 
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => navigate('/products')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-violet-700">
                 Design Families
@@ -769,11 +883,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 border border-violet-100 text-violet-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="designs" />
             </span>
-          </div>
+          </button>
         </Card>
 
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => navigate('/products')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-emerald-700">
                 Versions
@@ -786,7 +900,7 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-sm transition-transform group-hover:scale-110">
               <DashboardStatIcon kind="variants" />
             </span>
-          </div>
+          </button>
         </Card>
       </div>
 
@@ -812,7 +926,7 @@ export default function DashboardPage() {
 
       <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => openOrdersView('received-today')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-blue-700">
                 Orders Received
@@ -825,11 +939,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="received" />
             </span>
-          </div>
+          </button>
         </Card>
         
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => openOrdersView('due-today')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-amber-700">
                 Orders Due Today
@@ -842,11 +956,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="due" />
             </span>
-          </div>
+          </button>
         </Card>
 
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => openOrdersView('sales-this-week')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-emerald-700">
                 Sales This Week
@@ -859,11 +973,11 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="sales" />
             </span>
-          </div>
+          </button>
         </Card>
 
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
-          <div className="flex items-start justify-between gap-6">
+          <button type="button" onClick={() => openOrdersView('active')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-rose-700">
                 Active Orders
@@ -876,60 +990,65 @@ export default function DashboardPage() {
             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 shadow-sm transition-transform group-hover:scale-110">
               <OrderSummaryIcon kind="active" />
             </span>
-          </div>
+          </button>
         </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="text-sm font-bold tracking-wider text-indigo-700">
-                Orders Trend
-              </p>
-              <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
-              <p className="mt-1 text-sm font-medium text-slate-500">
-                {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
-              </p>
+          <button type="button" onClick={() => openOrdersView('last-7-days')} className="block w-full text-left">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-indigo-700">
+                  Orders Trend
+                </p>
+                <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  {formatCount(orderTrends.reduce((sum, row) => sum + (row.orders || 0), 0))} orders
+                </p>
+              </div>
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+                <OrderSummaryIcon kind="received" />
+              </span>
             </div>
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
-              <OrderSummaryIcon kind="received" />
-            </span>
-          </div>
-          <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
-            <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
-          </div>
+            <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
+              <MiniBarChart values={orderTrends.map((row) => row.orders || 0)} />
+            </div>
+          </button>
         </Card>
         
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="text-sm font-bold tracking-wider text-indigo-700">
-                Sales Trend
-              </p>
-              <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
-              <p className="mt-1 text-sm font-medium text-slate-500">
-                {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
-              </p>
+          <button type="button" onClick={() => openOrdersView('last-7-days')} className="block w-full text-left">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-sm font-bold tracking-wider text-indigo-700">
+                  Sales Trend
+                </p>
+                <p className="mt-2 text-xl font-bold tracking-tight text-slate-800">Last 7 days</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  {formatCurrency(orderTrends.reduce((sum, row) => sum + (row.sales || 0), 0))}
+                </p>
+              </div>
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
+                <OrderSummaryIcon kind="sales" />
+              </span>
             </div>
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 shadow-sm">
-              <OrderSummaryIcon kind="sales" />
-            </span>
-          </div>
-          <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
-            <MiniLineChart values={orderTrends.map((row) => row.sales || 0)} />
-          </div>
+            <div className="mt-6 rounded-2xl border border-slate-200/50 bg-white/60 backdrop-blur-sm px-5 py-5 shadow-inner">
+              <MiniLineChart values={orderTrends.map((row) => row.sales || 0)} />
+            </div>
+          </button>
         </Card>
       </div>
 
       {isSuperAdmin ? (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 mt-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 mt-2">
+          {/* Gold Price Card */}
           <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
             <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
               <div className="space-y-5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex flex-col justify-center">
-                    <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-indigo-600 transition-colors">Live Gold Price</h2>
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-amber-600 transition-colors">Live Gold Price</h2>
                   </div>
                   <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-500 shadow-soft ring-1 ring-slate-200">
                     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -961,12 +1080,6 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 </div>
-
-                {goldError ? (
-                  <p className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-2.5 text-sm font-medium text-rose-700 shadow-sm">
-                    {goldError}
-                  </p>
-                ) : null}
               </div>
 
               <div className="flex flex-col gap-4 border-t border-slate-200/60 pt-5 mt-6 sm:flex-row sm:items-center sm:justify-between">
@@ -974,19 +1087,73 @@ export default function DashboardPage() {
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   {formatTimestamp(goldMaster?.updatedAt)}
                 </p>
-                <Button type="button" size="sm" onClick={() => void openGoldModal()} disabled={goldLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                  {goldLoading ? 'Loading...' : 'Update Gold Price'}
+                <Button type="button" size="sm" onClick={() => openMetalModal(goldMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                  {metalLoading ? 'Loading...' : 'Update Gold Price'}
                 </Button>
               </div>
             </div>
           </Card>
 
+          {/* Platinum Price Card */}
           <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
             <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
               <div className="space-y-5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex flex-col justify-center">
+                    <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-slate-500 transition-colors">Live Platinum Price</h2>
+                  </div>
+                  <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-soft ring-1 ring-slate-200">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3c-3.2 3.8-5 6-5 9a5 5 0 1 0 10 0c0-3-1.8-5.2-5-9Z" />
+                    </svg>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">/ Ounce</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-slate-800">
+                      <span className="text-slate-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(platMaster?.marketPricePerOunce)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">/ Gm</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-slate-800">
+                      <span className="text-slate-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(platMaster?.marketPricePerGm)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 shadow-sm px-4 py-3">
+                    <p className="text-[0.80rem] font-bold tracking-wider text-indigo-700">Live / Gm</p>
+                    <p className="mt-1.5 text-[0.95rem] font-bold text-indigo-700">
+                      <span className="text-indigo-400 font-medium text-xs mr-1">$</span>
+                      {formatMoney(platMaster?.livePricePerGm)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4 border-t border-slate-200/60 pt-5 mt-6 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {formatTimestamp(platMaster?.updatedAt)}
+                </p>
+                <Button type="button" size="sm" onClick={() => openMetalModal(platMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                  {metalLoading ? 'Loading...' : 'Update Platinum Price'}
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Packet Price Card */}
+          <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
+            <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between space-y-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col justify-center">
                     <h2 className="text-xl font-bold tracking-tight text-slate-800 group-hover:text-indigo-600 transition-colors">Live Packet Price</h2>
+                    <p className="text-xs text-slate-500 font-medium">Total: {packetRows.length} Packets</p>
                   </div>
                   <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-sky-500 shadow-soft ring-1 ring-slate-200">
                     <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -996,42 +1163,182 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200/50 bg-white shadow-sm px-4 py-3">
-                    <p className="text-[0.80rem] font-bold tracking-wider text-slate-700">Total Packets</p>
-                    <p className="mt-1.5 text-lg font-bold text-slate-800">{packetRows.length}</p>
+                {/* Custom Searchable Dropdown selector and advanced search */}
+                <div className="flex items-center gap-2 relative">
+                  <div className="flex-1 relative">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await ensurePacketsLoaded();
+                        setDropdownOpen(!dropdownOpen);
+                      }}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-300 px-3 py-2 text-xs bg-white text-slate-700 hover:border-slate-400 focus:border-indigo-500 focus:outline-none transition-colors"
+                    >
+                      <span className="truncate font-medium">
+                        {selectedPacket ? selectedPacket.packetName : 'Select Packet'}
+                      </span>
+                      <span className="text-slate-400 text-[10px] ml-1">▼</span>
+                    </button>
+
+                    {dropdownOpen && (
+                      <>
+                        {/* Backdrop overlay to close when clicking outside */}
+                        <div className="fixed inset-0 z-30" onClick={() => setDropdownOpen(false)} />
+                        
+                        {/* Dropdown Options Popup with embedded search bar */}
+                        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-40 overflow-hidden flex flex-col max-h-64">
+                          <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-1.5">
+                            <span className="text-[10px]">🔍</span>
+                            <input
+                              type="text"
+                              className="flex-1 text-xs bg-transparent focus:outline-none placeholder-slate-400"
+                              placeholder="Search packets..."
+                              value={packetDropdownFilter}
+                              onChange={(e) => setPacketDropdownFilter(e.target.value)}
+                              autoFocus
+                            />
+                            {packetDropdownFilter && (
+                              <button
+                                type="button"
+                                onClick={() => setPacketDropdownFilter('')}
+                                className="text-slate-400 hover:text-slate-600 text-[10px]"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="overflow-y-auto divide-y divide-slate-100 max-h-48">
+                            {packetRows
+                              .filter((p) =>
+                                p.packetName.toLowerCase().includes(packetDropdownFilter.toLowerCase())
+                              )
+                              .map((packet) => (
+                                <button
+                                  key={packet.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedPacketId(packet.id);
+                                    setDropdownOpen(false);
+                                    setPacketDropdownFilter('');
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 hover:text-indigo-600 transition-colors font-medium flex items-center justify-between ${
+                                    packet.id === selectedPacketId ? 'bg-indigo-50 text-indigo-600' : 'text-slate-700'
+                                  }`}
+                                >
+                                  <span className="truncate">{packet.packetName}</span>
+                                  {packet.stone && (
+                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-2">
+                                      {packet.stone}
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            {packetRows.filter((p) =>
+                              p.packetName.toLowerCase().includes(packetDropdownFilter.toLowerCase())
+                            ).length === 0 && (
+                              <div className="px-3 py-4 text-xs text-slate-400 italic text-center">
+                                No matching packets found.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 shadow-sm px-4 py-3 md:col-span-2 flex flex-col justify-center">
-                    <div className="flex justify-between items-start">
-                      <p className="text-[0.80rem] font-bold tracking-wider text-indigo-700">Selected</p>
-                      {selectedPacket ? (
-                        <p className="text-[0.95rem] font-bold text-indigo-700">
-                          <span className="text-indigo-400 font-medium text-xs mr-1">$</span>
-                          {formatMoney(selectedPacket.sellingPrice)}
-                        </p>
-                      ) : null}
-                    </div>
-                    <p className="mt-1.5 truncate text-[0.95rem] font-bold text-slate-800">
-                      {selectedPacket?.packetName || 'No packet selected'}
-                    </p>
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await ensurePacketsLoaded();
+                      setPacketSearchModalOpen(true);
+                    }}
+                    className="p-2 bg-white hover:bg-slate-100 text-slate-600 rounded-xl transition-colors border border-slate-200 shadow-sm flex items-center justify-center shrink-0 self-stretch animate-fade-in"
+                    title="Advanced Search"
+                  >
+                    <span className="text-sm">🔍</span>
+                  </button>
                 </div>
 
+                {/* Selected packet specs */}
+                {selectedPacket ? (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl border border-slate-200/50 bg-white/60 p-3 text-xs text-slate-600 shadow-inner">
+                    <div>
+                      <span className="font-semibold text-slate-400 block">Stone:</span>
+                      <span className="font-bold text-slate-800">{selectedPacket.stone || '--'}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-400 block">Shape:</span>
+                      <span className="font-bold text-slate-800">{selectedPacket.shape || '--'}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-400 block">Size:</span>
+                      <span className="font-bold text-slate-800">{selectedPacket.size || '--'}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-400 block">Color / Quality:</span>
+                      <span className="font-bold text-slate-800">
+                        {selectedPacket.color || '--'} / {selectedPacket.quality || '--'}
+                      </span>
+                    </div>
+                    <div className="col-span-2 border-t border-slate-200/50 pt-2 mt-1 grid grid-cols-2 gap-x-3">
+                      <div>
+                        <span className="font-semibold text-slate-400 block">Weight Per Pc:</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedPacket.weightPerPc !== null && selectedPacket.weightPerPc !== undefined
+                            ? `${formatMoney(selectedPacket.weightPerPc, 3)} ${selectedPacket.weightUnit || 'CTS'}`
+                            : '--'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-400 block">Price In:</span>
+                        <span className="font-bold text-slate-800">{selectedPacket.priceIn || 'WT'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white/30 p-6 text-center text-xs text-slate-400 italic">
+                    Select a packet to review specifications.
+                  </div>
+                )}
+
+                {/* Packet errors */}
                 {packetError ? (
-                  <p className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-2.5 text-sm font-medium text-rose-700 shadow-sm">
+                  <p className="rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-2 text-[0.80rem] font-medium text-rose-700 shadow-sm">
                     {packetError}
                   </p>
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-4 border-t border-slate-200/60 pt-5 mt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  {formatTimestamp(selectedPacket?.updatedAt)}
-                </p>
-                <Button type="button" size="sm" onClick={() => void openPacketModal()} disabled={packetLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                  {packetLoading ? 'Loading...' : 'Update Packet Price'}
-                </Button>
+              {/* Inline pricing form & footer */}
+              <div className="border-t border-slate-200/60 pt-4 flex flex-col space-y-3">
+                {selectedPacket ? (
+                  <form onSubmit={handleDirectPacketPriceSave} className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="w-full rounded-xl border border-slate-300 pl-7 pr-3 py-1.5 text-xs bg-white focus:border-indigo-500 focus:outline-none"
+                        value={selectedPacketPrice}
+                        onChange={(e) => setSelectedPacketPrice(e.target.value)}
+                        placeholder="0.00"
+                        required
+                      />
+                    </div>
+                    <Button type="submit" size="sm" disabled={packetSaving} className="rounded-xl shadow-sm text-xs py-1.5">
+                      {packetSaving ? 'Saving...' : 'Save Price'}
+                    </Button>
+                  </form>
+                ) : null}
+
+                <div className="flex items-center justify-between">
+                  <p className="text-[0.70rem] font-medium text-slate-400 flex items-center gap-1.5">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    {formatTimestamp(selectedPacket?.updatedAt)}
+                  </p>
+                </div>
               </div>
             </div>
           </Card>
@@ -1039,34 +1346,30 @@ export default function DashboardPage() {
       ) : null}
 
       <ActionModal
-        open={goldModalOpen}
-        title="Update Gold Metal Master"
-        description="This uses the same Gold metal master values that feed metal caratage pricing."
-        onClose={() => setGoldModalOpen(false)}
+        open={metalModalOpen}
+        title="Update Metal Prices"
+        description="Select a metal master to update its live pricing variables and view update history."
+        onClose={() => setMetalModalOpen(false)}
       >
-        <form onSubmit={handleGoldSubmit} className="space-y-4">
+        <form onSubmit={handleMetalSubmit} className="space-y-5">
           <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-              <input
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-sm font-medium text-slate-700">Select Metal*</label>
+              <select
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldValue}
-                onChange={(event) => setGoldValue(event.target.value)}
-                placeholder="Gold"
+                value={selectedMetalId}
+                onChange={(event) => setSelectedMetalId(event.target.value)}
                 required
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-              <input
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldAliasName}
-                onChange={(event) => setGoldAliasName(event.target.value)}
-                placeholder="G"
-                required
-              />
+              >
+                <option value="">Select Metal</option>
+                {metals.map((metal) => (
+                  <option key={metal.id} value={metal.id}>
+                    {metal.value}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Market Price/Ounce*</label>
@@ -1075,8 +1378,8 @@ export default function DashboardPage() {
                 min="0"
                 step="0.01"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldMarketPricePerOunce}
-                onChange={(event) => handleGoldMarketPricePerOunceChange(event.target.value)}
+                value={priceOunce}
+                onChange={(event) => handlePriceOunceChange(event.target.value)}
                 required
               />
             </div>
@@ -1087,45 +1390,37 @@ export default function DashboardPage() {
                 min="0"
                 step="0.0001"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldMarketPricePerGm}
-                onChange={(event) => setGoldMarketPricePerGm(event.target.value)}
+                value={priceGm}
+                onChange={(event) => setPriceGm(event.target.value)}
                 required
               />
             </div>
-            <div>
+            <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-slate-700">Live Price/Gms*</label>
               <input
                 type="number"
                 min="0"
                 step="0.0001"
                 className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldLivePricePerGm}
-                onChange={(event) => handleGoldLivePricePerGmChange(event.target.value)}
+                value={livePriceGm}
+                onChange={(event) => handleLivePriceGmChange(event.target.value)}
                 required
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-              <textarea
-                className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={goldDescription}
-                onChange={(event) => setGoldDescription(event.target.value)}
-                placeholder="Description"
               />
             </div>
           </div>
 
-          {goldError ? (
+          {metalError ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {goldError}
+              {metalError}
             </p>
           ) : null}
 
+
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button type="submit" size="sm" disabled={goldSaving || goldLoading}>
-              {goldSaving ? 'Saving...' : 'Save'}
+            <Button type="submit" size="sm" disabled={metalSaving || metalLoading}>
+              {metalSaving ? 'Saving...' : 'Save'}
             </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setGoldModalOpen(false)}>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setMetalModalOpen(false)}>
               Close
             </Button>
           </div>
@@ -1133,89 +1428,127 @@ export default function DashboardPage() {
       </ActionModal>
 
       <ActionModal
-        open={packetModalOpen}
-        title="Update Packet Selling Price"
-        description="Choose a packet and update its live selling price. The backend will refresh dependent design gemstone values."
-        onClose={() => setPacketModalOpen(false)}
+        open={packetSearchModalOpen}
+        title="Find Stone Packet"
+        description="Search through stone packets by name, stone, shape, size, color, quality, and select one to update its price."
+        onClose={() => setPacketSearchModalOpen(false)}
       >
-        <form onSubmit={handlePacketSubmit} className="space-y-4">
-          <p className="text-sm font-medium text-rose-700">* Required fields</p>
+        <div className="space-y-4">
+          <input
+            type="text"
+            className="w-full rounded-xl border border-slate-300 px-4 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+            placeholder="Search by name, stone, shape, size, color, quality..."
+            value={packetSearchQuery}
+            onChange={(e) => setPacketSearchQuery(e.target.value)}
+          />
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Packet*</label>
-              <select
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={selectedPacketId}
-                onChange={(event) => setSelectedPacketId(event.target.value)}
-                required
-              >
-                <option value="">Select Packet</option>
-                {packetRows.map((packet) => (
-                  <option key={packet.id} value={packet.id}>
-                    {packet.packetName}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Packet Info</label>
-              <div className="min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
-                {packetInfo || 'Select a packet to review its stone details.'}
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Price In</label>
-              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {selectedPacket?.priceIn === 'PCS' ? 'PCS' : 'WT'}
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Weight/Pc</label>
-              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {selectedPacket
-                  ? `${formatMoney(selectedPacket.weightPerPc, 3)} ${selectedPacket.weightUnit || 'CTS'}`
-                  : '0.000 CTS'}
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Selling Price*</label>
-              <div className="flex">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  value={selectedPacketPrice}
-                  onChange={(event) => setSelectedPacketPrice(event.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-                <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">
-                  USD
-                </span>
-              </div>
-            </div>
+          <div className="overflow-x-auto max-h-96 rounded-xl border border-slate-200 shadow-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-xs text-slate-700 bg-white">
+              <thead className="bg-slate-50 sticky top-0 font-semibold text-slate-600">
+                <tr>
+                  <th className="px-4 py-3">Packet Name</th>
+                  <th className="px-4 py-3">Stone</th>
+                  <th className="px-4 py-3">Shape</th>
+                  <th className="px-4 py-3">Size</th>
+                  <th className="px-4 py-3">Color</th>
+                  <th className="px-4 py-3">Quality</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Price</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {packetRows
+                  .filter((p) => {
+                    const q = packetSearchQuery.toLowerCase();
+                    return (
+                      p.packetName.toLowerCase().includes(q) ||
+                      (p.stone || '').toLowerCase().includes(q) ||
+                      (p.shape || '').toLowerCase().includes(q) ||
+                      (p.size || '').toLowerCase().includes(q) ||
+                      (p.color || '').toLowerCase().includes(q) ||
+                      (p.quality || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map((packet) => {
+                    const draftPrice = packetDraftPrices[packet.id] ?? '';
+                    const currentPrice =
+                      packet.sellingPrice !== null && packet.sellingPrice !== undefined ? String(packet.sellingPrice) : '';
+                    const changed = draftPrice.trim() !== currentPrice.trim();
+                    return (
+                      <tr key={packet.id} className={`transition-colors ${changed ? 'bg-amber-50/60' : 'hover:bg-slate-50'}`}>
+                        <td className="px-4 py-3 font-semibold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            {packet.packetName}
+                            {changed && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.62rem] font-bold text-amber-700">
+                                Changed
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">{packet.stone || '--'}</td>
+                        <td className="px-4 py-3">{packet.shape || '--'}</td>
+                        <td className="px-4 py-3">{packet.size || '--'}</td>
+                        <td className="px-4 py-3">{packet.color || '--'}</td>
+                        <td className="px-4 py-3">{packet.quality || '--'}</td>
+                        <td className="px-4 py-3">
+                          <div className="relative w-28">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.70rem] font-bold text-slate-400">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className={`w-full rounded-lg border bg-white py-1.5 pl-6 pr-2 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
+                                changed ? 'border-amber-300 ring-1 ring-amber-100' : 'border-slate-200'
+                              }`}
+                              value={draftPrice}
+                              onChange={(event) =>
+                                setPacketDraftPrices((prev) => ({ ...prev, [packet.id]: event.target.value }))
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPacketId(packet.id);
+                              setSelectedPacketPrice(packetDraftPrices[packet.id] ?? '');
+                              setPacketSearchModalOpen(false);
+                            }}
+                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold rounded-lg transition-colors border border-indigo-100 text-[0.70rem]"
+                          >
+                            Select
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </div>
-
-          {packetError ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {packetError}
-            </p>
-          ) : null}
-
-          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button type="submit" size="sm" disabled={packetSaving || packetLoading}>
-              {packetSaving ? 'Saving...' : 'Save'}
-            </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={() => setPacketModalOpen(false)}>
+          
+          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs font-semibold text-slate-500">
+              {changedPacketPriceRows.length
+                ? `${changedPacketPriceRows.length} price change${changedPacketPriceRows.length === 1 ? '' : 's'} pending`
+                : 'No pending price changes'}
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={packetSaving || !changedPacketPriceRows.length}
+                onClick={handleBulkPacketPriceSave}
+              >
+                {packetSaving ? 'Saving...' : 'Save Price Changes'}
+              </Button>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setPacketSearchModalOpen(false)}>
               Close
             </Button>
+            </div>
           </div>
-        </form>
+        </div>
       </ActionModal>
     </div>
   );

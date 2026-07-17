@@ -92,6 +92,18 @@ export class OrdersService {
       });
     }
 
+    if (query.createdFrom?.trim()) {
+      qb.andWhere('DATE(order.createdAt) >= :createdFrom', {
+        createdFrom: query.createdFrom.trim(),
+      });
+    }
+
+    if (query.createdTo?.trim()) {
+      qb.andWhere('DATE(order.createdAt) <= :createdTo', {
+        createdTo: query.createdTo.trim(),
+      });
+    }
+
     if (query.search?.trim()) {
       const search = `%${query.search.trim()}%`;
       qb.andWhere(

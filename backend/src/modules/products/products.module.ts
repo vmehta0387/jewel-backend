@@ -14,6 +14,7 @@ import { DesignVendor } from './entities/design-vendor.entity';
 import { DesignRelevant } from './entities/design-relevant.entity';
 import { DesignStlFile } from './entities/design-stl-file.entity';
 import { DesignHistory } from './entities/design-history.entity';
+import { MetalPriceHistory } from './entities/metal-price-history.entity';
 import { StonePacket } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
@@ -38,6 +39,7 @@ import { PricingModule } from '../pricing/pricing.module';
       DesignRelevant,
       DesignStlFile,
       DesignHistory,
+      MetalPriceHistory,
       StonePacket,
       DesignMaster,
       DesignMediaLibrary,

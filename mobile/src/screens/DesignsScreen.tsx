@@ -176,11 +176,22 @@ const getDesignMetals = (design: Design) =>
     ...(design.metals || []).flatMap((metal) => [metal.goldColour, metal.metalCaratage]),
   ]);
 
-const PRESET_CATEGORY_TITLES: Record<CatalogPresetCategory, string> = {
+const PRESET_CATEGORY_TITLES: Record<string, string> = {
   rings: 'Eternity Rings',
   bracelets: 'Bracelets',
   studs: 'Studs',
   necklaces: 'Necklaces',
+};
+
+const formatPresetCategoryTitle = (preset?: string) => {
+  const key = String(preset || '').trim();
+  if (!key) return '';
+  if (PRESET_CATEGORY_TITLES[key]) return PRESET_CATEGORY_TITLES[key];
+  return key
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
 };
 
 // Keep helper at module scope so stale fast-refresh closures always find it.
@@ -473,17 +484,14 @@ const DesignsScreen = () => {
 
   const catalogTitle = useMemo(() => {
     const preset = route.params?.presetCategory;
-    if (preset && PRESET_CATEGORY_TITLES[preset]) return PRESET_CATEGORY_TITLES[preset];
+    if (preset) return formatPresetCategoryTitle(preset);
     if (selectedCategory !== 'All') return selectedCategory;
     return 'Browse Catalog';
   }, [route.params?.presetCategory, selectedCategory]);
 
   const searchPlaceholder = useMemo(() => {
     const preset = route.params?.presetCategory;
-    if (preset === 'rings') return 'Search rings...';
-    if (preset === 'bracelets') return 'Search bracelets...';
-    if (preset === 'studs') return 'Search studs...';
-    if (preset === 'necklaces') return 'Search necklaces...';
+    if (preset) return `Search ${formatPresetCategoryTitle(preset).toLowerCase()}...`;
     return 'Search products...';
   }, [route.params?.presetCategory]);
 
@@ -905,7 +913,7 @@ const styles = StyleSheet.create({
   },
   pageTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 19,
     color: '#443D35',
     fontWeight: '700',
   },
@@ -935,7 +943,7 @@ const styles = StyleSheet.create({
   },
   bellBadgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
   },
   searchShell: {
@@ -951,7 +959,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     marginLeft: 7,
-    fontSize: 14,
+    fontSize: 15,
     color: '#2F2923',
     height: 40,
     backgroundColor: 'transparent',
@@ -1000,7 +1008,7 @@ const styles = StyleSheet.create({
     borderColor: '#1D1A17',
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6A5F56',
   },
@@ -1035,7 +1043,7 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   subChip: {
@@ -1054,7 +1062,7 @@ const styles = StyleSheet.create({
     borderColor: '#C6973F',
   },
   subChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#6A5F56',
     fontWeight: '600',
   },
@@ -1086,7 +1094,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   sortTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#2C1E16',
     marginBottom: 8,
@@ -1094,7 +1102,7 @@ const styles = StyleSheet.create({
   filterSectionTitle: {
     marginTop: 8,
     marginBottom: 6,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#5E5045',
   },
@@ -1119,7 +1127,7 @@ const styles = StyleSheet.create({
     borderColor: '#C6973F',
   },
   modalChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#6A5F56',
     fontWeight: '600',
   },
@@ -1151,7 +1159,7 @@ const styles = StyleSheet.create({
     borderColor: '#C6973F',
   },
   sortOptionText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#6A5F56',
     fontWeight: '600',
   },
@@ -1174,7 +1182,7 @@ const styles = StyleSheet.create({
     borderColor: '#DCC8B2',
   },
   sortActionText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#6A5A4D',
     fontWeight: '700',
   },
@@ -1188,7 +1196,7 @@ const styles = StyleSheet.create({
   error: {
     marginTop: 12,
     color: '#b14b42',
-    fontSize: 13,
+    fontSize: 14,
   },
   listContent: {
     paddingHorizontal: 18,
@@ -1244,19 +1252,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   designName: {
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 17,
     fontWeight: '700',
     color: '#2B251F',
     minHeight: 18,
   },
   designMeta: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#8A8178',
     marginTop: 1,
   },
   designPrice: {
-    fontSize: 17,
+    fontSize: 18,
     lineHeight: 19,
     fontWeight: '800',
     color: '#B2874A',
@@ -1319,7 +1327,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   emptyTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     color: '#2b2019',
     marginBottom: 6,
