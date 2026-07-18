@@ -11,7 +11,9 @@ import { mkdir, writeFile } from 'fs/promises';
 import { User } from '../users/entities/user.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
+
 
 @Injectable()
 export class AuthService {
@@ -138,6 +140,54 @@ export class AuthService {
     return this.toAuthUser(user);
   }
 
+  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<AuthUser> {
+    const user = await this.userRepo.findOne({
+      where: { id: userId, isActive: true },
+      relations: ['branch', 'company'],
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (dto.password) {
+      if (!dto.currentPassword) {
+        throw new BadRequestException('Current password is required to set a new password');
+      }
+      const isMatch = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new BadRequestException('Incorrect current password');
+      }
+      user.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    if (dto.email) {
+      const normalizedEmail = dto.email.trim().toLowerCase();
+      if (normalizedEmail !== user.email) {
+        const existing = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+        if (existing) {
+          throw new BadRequestException('Email address is already in use');
+        }
+        user.email = normalizedEmail;
+      }
+    }
+
+    if (dto.firstName !== undefined) {
+      user.firstName = dto.firstName.trim();
+    }
+    if (dto.lastName !== undefined) {
+      user.lastName = dto.lastName.trim();
+    }
+    if (dto.phone !== undefined) {
+      user.phone = dto.phone.trim();
+    }
+    if (dto.photoUrl !== undefined) {
+      user.photoUrl = dto.photoUrl;
+    }
+
+    await this.userRepo.save(user);
+    return this.toAuthUser(user);
+  }
+
   private async validateUser(email: string, password: string): Promise<User> {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.userRepo.findOne({
@@ -173,6 +223,7 @@ export class AuthService {
       companyId: this.resolveCompanyId(user),
       branchId: user.branchId || null,
       photoUrl: await this.resolvePhotoUrl(user.photoUrl || null),
+      phone: user.phone || null,
       taskPermissions: user.taskPermissions || [],
       companyName: user.company?.companyName || null,
       branchName: user.branch?.name || null,

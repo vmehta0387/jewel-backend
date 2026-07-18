@@ -434,6 +434,7 @@ export default function OrdersPage() {
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const canViewCostPrice = isSuperAdmin || isCompanyAdmin || currentUser?.role === 'BRANCH_MANAGER';
   const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
   const canViewOrders = useMemo(() => {
     if (!currentUser) return false;
@@ -519,7 +520,7 @@ export default function OrdersPage() {
   const designRequestSeqRef = useRef(0);
 
   const isEditing = Boolean(editingOrderId);
-  const listTableColumnCount = isSuperAdmin ? 13 : 12;
+  const listTableColumnCount = canViewCostPrice ? 13 : 12;
   const canSelectOrderCompany = isSuperAdmin;
   const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
   const roleScopedDefaultForm = useMemo(
@@ -940,6 +941,43 @@ export default function OrdersPage() {
     fetchPrice();
   }, [form.designId, form.companyId, form.branchId, showAddModal, editingOrderId, priceManuallyEdited, designDetail]);
 
+  const confirmPurchaseOrderReuse = async (payload: {
+    companyId: string;
+    branchId: string;
+    purchaseOrderNumber: string;
+  }) => {
+    const poNumber = payload.purchaseOrderNumber.trim();
+    if (!poNumber) return true;
+
+    try {
+      const response = await api.get('/orders/po-usage', {
+        params: {
+          companyId: payload.companyId,
+          branchId: payload.branchId,
+          purchaseOrderNumber: poNumber,
+          excludeOrderId: editingOrderId || undefined,
+        },
+      });
+      const count = Number(response.data?.count || 0);
+      if (count <= 0) return true;
+
+      const sampleOrders = Array.isArray(response.data?.orders)
+        ? response.data.orders
+            .slice(0, 3)
+            .map((order: any) => [order?.orderNumber, order?.status].filter(Boolean).join(' - '))
+            .filter(Boolean)
+        : [];
+      const suffix = sampleOrders.length ? `\n\nExisting item(s):\n${sampleOrders.join('\n')}` : '';
+      return window.confirm(`This PO has already been used for ${count} item(s). Continue?${suffix}`);
+    } catch (error: any) {
+      showAlert(error?.response?.data?.message || 'Unable to verify PO usage.', {
+        title: 'PO check failed',
+        variant: 'error',
+      });
+      return false;
+    }
+  };
+
   const handleSaveOrder = async () => {
     const nextErrors: OrderFormErrors = {};
     if (!form.companyId) {
@@ -957,7 +995,7 @@ export default function OrdersPage() {
       nextErrors.deliveryDate = 'Delivery date cannot be before order creation date.';
     }
     if (!form.price || Number(form.price) <= 0) {
-      nextErrors.price = 'Price @ is required.';
+      nextErrors.price = 'Sale Price @ is required.';
     }
     if (!form.quantity || Number(form.quantity) <= 0) {
       nextErrors.quantity = 'No. of Pcs is required.';
@@ -992,6 +1030,13 @@ export default function OrdersPage() {
         purchaseOrderNumber: form.purchaseOrderNumber?.trim() || '',
         notes: form.notes?.trim() || '',
       };
+
+      const canContinue = await confirmPurchaseOrderReuse({
+        companyId: payload.companyId,
+        branchId: payload.branchId,
+        purchaseOrderNumber: payload.purchaseOrderNumber,
+      });
+      if (!canContinue) return;
 
       if (editingOrderId) {
         await api.put(`/orders/${editingOrderId}`, payload);
@@ -1484,8 +1529,8 @@ export default function OrdersPage() {
             <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
             <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
             <div><span class="label">Quantity</span>${order.quantity}</div>
-            ${isSuperAdmin ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
-            <div><span class="label">Price</span>${formatMoney(Number(order.price || 0))}</div>
+            ${canViewCostPrice ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
+            <div><span class="label">Sale Price</span>${formatMoney(Number(order.price || 0))}</div>
             <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
             <div><span class="label">Customer Name</span>${order.customerName || '-'}</div>
             <div><span class="label">Customer Phone</span>${order.customerPhone || '-'}</div>
@@ -1689,8 +1734,8 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">Branch</th>
                   <th className="app-table-head-cell">Delivery</th>
                   <th className="app-table-head-cell">Qty</th>
-                  {isSuperAdmin && <th className="app-table-head-cell">Cost Price</th>}
-                  <th className="app-table-head-cell">Price</th>
+                  {canViewCostPrice && <th className="app-table-head-cell">Cost Price</th>}
+                  <th className="app-table-head-cell">Sale Price</th>
                   <th className="app-table-head-cell">TOTAL AMOUNT</th>
                   <th className="app-table-head-cell">Status</th>
                   <th className="app-table-head-cell">Created</th>
@@ -1721,7 +1766,7 @@ export default function OrdersPage() {
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{formatDisplayDate(order.deliveryDate)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{Number(order.quantity || 0)}</td>
-                    {isSuperAdmin && (
+                    {canViewCostPrice && (
                       <td className="app-table-cell text-sm text-slate-700">
                         {order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}
                       </td>
@@ -2314,7 +2359,7 @@ export default function OrdersPage() {
                 <div className="space-y-4 p-4">
                   <div className="grid gap-4 md:grid-cols-3">
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Price @*</label>
+                      <label className="text-sm font-medium text-slate-700">Sale Price @*</label>
                       <div className="mt-1 flex">
                         <input
                           type="number"
@@ -2820,7 +2865,7 @@ export default function OrdersPage() {
               </div>
               </div>
               <div>
-              <label className="text-sm font-medium text-slate-700">Price</label>
+              <label className="text-sm font-medium text-slate-700">Sale Price</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
                 {formatMoney(Number(viewOrder?.price || 0))}
               </div>
@@ -2831,7 +2876,7 @@ export default function OrdersPage() {
                 {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
               </div>
               </div>
-            {isSuperAdmin && (
+            {canViewCostPrice && (
               <div>
                 <label className="text-sm font-medium text-slate-700">Cost Price</label>
                 <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">

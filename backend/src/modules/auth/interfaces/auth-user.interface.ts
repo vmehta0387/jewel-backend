@@ -10,6 +10,7 @@ export interface AuthUser {
   companyId: string | null;
   branchId: string | null;
   photoUrl: string | null;
+  phone?: string | null;
   taskPermissions: TaskPermission[];
   companyName?: string | null;
   branchName?: string | null;

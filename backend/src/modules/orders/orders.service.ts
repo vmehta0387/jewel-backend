@@ -11,7 +11,7 @@ import { User } from '../users/entities/user.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
-import { CreateOrderDto, FindOrdersQueryDto, UpdateOrderDto } from './dto/order.dto';
+import { CreateOrderDto, FindOrdersQueryDto, FindPurchaseOrderUsageQueryDto, UpdateOrderDto } from './dto/order.dto';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffService } from '../spiff/spiff.service';
@@ -45,6 +45,46 @@ export class OrdersService {
     const currentMax = Number.parseInt(raw?.maxSeq || '0', 10);
     const next = Number.isFinite(currentMax) ? currentMax + 1 : 1;
     return { orderNumber: `OR-${String(next).padStart(4, '0')}` };
+  }
+
+  async getPurchaseOrderUsage(query: FindPurchaseOrderUsageQueryDto, requester: AuthUser) {
+    const purchaseOrderNumber = query.purchaseOrderNumber?.trim();
+    if (!purchaseOrderNumber) {
+      return { count: 0, orders: [] };
+    }
+
+    const scope = this.resolveScope(requester, query.companyId, query.branchId);
+    if (!scope.companyId || !scope.branchId) {
+      throw new BadRequestException('Company and branch are required');
+    }
+
+    const qb = this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.design', 'design')
+      .where('order.companyId = :companyId', { companyId: scope.companyId })
+      .andWhere('order.branchId = :branchId', { branchId: scope.branchId })
+      .andWhere('LOWER(TRIM(order.purchaseOrderNumber)) = :purchaseOrderNumber', {
+        purchaseOrderNumber: purchaseOrderNumber.toLowerCase(),
+      })
+      .orderBy('order.createdAt', 'DESC')
+      .take(10);
+
+    if (query.excludeOrderId?.trim()) {
+      qb.andWhere('order.id != :excludeOrderId', { excludeOrderId: query.excludeOrderId.trim() });
+    }
+
+    const [orders, count] = await qb.getManyAndCount();
+    return {
+      count,
+      orders: orders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        designNo: order.design?.designNo ?? null,
+        customerName: order.customerName,
+        createdAt: order.createdAt,
+      })),
+    };
   }
 
   async findAll(query: FindOrdersQueryDto, requester: AuthUser) {
@@ -126,7 +166,7 @@ export class OrdersService {
           branchName: order.branch?.name ?? null,
           designNo: order.design?.designNo ?? null,
           designVersion: order.design?.version ?? null,
-          costPrice: order.design ? this.roundMoney(this.toNumber(order.design.totalValue ?? 0)) : null,
+          costPrice: await this.resolveVisibleCostPrice(order, requester),
           salesRepName: this.getSalesRepDisplayName(order),
           salesRepEmail: order.salesRep?.email ?? null,
           branchManagerName: this.getBranchManagerDisplayName(order),
@@ -165,7 +205,7 @@ export class OrdersService {
       branchName: order.branch?.name ?? null,
       designNo: order.design?.designNo ?? null,
       designVersion: order.design?.version ?? null,
-      costPrice: order.design ? this.roundMoney(this.toNumber(order.design.totalValue ?? 0)) : null,
+      costPrice: await this.resolveVisibleCostPrice(order, requester),
       salesRepName: this.getSalesRepDisplayName(order),
       salesRepEmail: order.salesRep?.email ?? null,
       branchManagerName: this.getBranchManagerDisplayName(order),
@@ -677,12 +717,37 @@ export class OrdersService {
   }): Promise<{
     baseCost: number;
     companyMultiplier: number;
+    companyPrice: number;
     branchMultiplier: number;
     effectiveMultiplier: number;
     pricingSource: 'COMPANY' | 'BRANCH';
     finalPrice: number;
   }> {
     return this.pricingService.calculateDesignRetailPrice(params);
+  }
+
+  private async resolveVisibleCostPrice(order: Order, requester: AuthUser): Promise<number | null> {
+    if (!order.design) return null;
+
+    const pricing = await this.calculateOrderPrice({
+      design: order.design,
+      companyId: order.companyId ?? undefined,
+      branchId: order.branchId ?? undefined,
+    });
+
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return this.roundMoney(pricing.baseCost);
+    }
+
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      return pricing.companyPrice;
+    }
+
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      return pricing.finalPrice;
+    }
+
+    return null;
   }
 
   private toNumber(value: unknown): number {

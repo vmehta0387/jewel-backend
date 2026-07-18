@@ -8,6 +8,7 @@ import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   CreateOrderDto,
+  FindPurchaseOrderUsageQueryDto,
   FindOrdersQueryDto,
   UpdateOrderActiveStatusDto,
   UpdateOrderDto,
@@ -30,6 +31,14 @@ export class OrdersController {
     return this.ordersService.getNextOrderNumber();
   }
 
+  @Get('po-usage')
+  getPurchaseOrderUsage(
+    @Query() query: FindPurchaseOrderUsageQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.ordersService.getPurchaseOrderUsage(query, req.user);
+  }
+
   @Get('price-preview')
   getPricePreview(
     @Request() req: { user: AuthUser },
@@ -38,7 +47,7 @@ export class OrdersController {
     @Query('branchId') branchId?: string,
   ) {
     if (!designId || !companyId || !branchId) {
-      return { baseCost: 0, companyMultiplier: 1, branchMultiplier: 1, finalPrice: 0 };
+      return { baseCost: 0, companyMultiplier: 1, companyPrice: 0, branchMultiplier: 1, finalPrice: 0 };
     }
     return this.ordersService.getPricePreview({ designId, companyId, branchId }, req.user);
   }

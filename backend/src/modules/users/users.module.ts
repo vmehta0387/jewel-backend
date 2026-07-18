@@ -8,9 +8,16 @@ import { AuthModule } from '../auth/auth.module';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { PermissionModule as PermissionModuleEntity } from '../permissions/entities/permission-module.entity';
+import { PermissionAction } from '../permissions/entities/permission-action.entity';
+import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Company, Branch]), AuthModule, NotificationsModule],
+  imports: [
+    TypeOrmModule.forFeature([User, Company, Branch, PermissionModuleEntity, PermissionAction, UserPermissionAction]),
+    AuthModule,
+    NotificationsModule,
+  ],
   controllers: [UsersController, BranchEmployeesController],
   providers: [UsersService],
   exports: [UsersService],

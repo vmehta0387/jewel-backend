@@ -1407,6 +1407,7 @@ export class ProductsService {
             imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
             imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
             stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
+            ...(await this.resolveDesignVisiblePrices(design, requester)),
             updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
           };
         }),
@@ -1438,6 +1439,7 @@ export class ProductsService {
           imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
           imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
           stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
+          ...(await this.resolveDesignVisiblePrices(design, requester)),
           updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
         };
       }),
@@ -1693,6 +1695,10 @@ export class ProductsService {
   }
 
   private shouldApplyMobileCatalogRetailPricing(requester: AuthUser): boolean {
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      return Boolean(requester.companyId);
+    }
+
     return (
       (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) &&
       Boolean(requester.companyId) &&
@@ -1717,16 +1723,72 @@ export class ProductsService {
   }
 
   private async resolveMobileRetailDisplayPrice(design: Design, requester: AuthUser): Promise<number> {
+    const branchId =
+      requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP
+        ? requester.branchId || undefined
+        : undefined;
+
     try {
       const preview = await this.pricingService.calculateDesignRetailPrice({
         design,
         companyId: requester.companyId as string,
-        branchId: requester.branchId as string,
+        branchId,
       });
       return preview.finalPrice;
     } catch {
       return Number(design.totalValue || 0);
     }
+  }
+
+  private async resolveDesignRetailDisplayPrice(design: Design, requester: AuthUser): Promise<number | undefined> {
+    if (!this.shouldApplyMobileCatalogRetailPricing(requester)) {
+      return undefined;
+    }
+
+    return this.resolveMobileRetailDisplayPrice(design, requester);
+  }
+
+  private async resolveDesignVisiblePrices(
+    design: Design,
+    requester: AuthUser,
+  ): Promise<{ displayCostPrice: number }> {
+    const baseCost = Number(design.totalValue || 0);
+
+    if (requester.role === UserRole.COMPANY_ADMIN && requester.companyId) {
+      try {
+        const preview = await this.pricingService.calculateDesignRetailPrice({
+          design,
+          companyId: requester.companyId,
+          branchId: design.branchId || undefined,
+        });
+        return {
+          displayCostPrice: preview.companyPrice,
+        };
+      } catch {
+        return {
+          displayCostPrice: baseCost,
+        };
+      }
+    }
+
+    if (requester.role === UserRole.BRANCH_MANAGER && requester.companyId && requester.branchId) {
+      try {
+        const preview = await this.pricingService.calculateDesignRetailPrice({
+          design,
+          companyId: requester.companyId,
+          branchId: requester.branchId,
+        });
+        return {
+          displayCostPrice: preview.finalPrice,
+        };
+      } catch {
+        return {
+          displayCostPrice: baseCost,
+        };
+      }
+    }
+
+    return { displayCostPrice: baseCost };
   }
 
   private filterMobileCatalogPriceBand(
@@ -2541,6 +2603,7 @@ export class ProductsService {
       imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
       imageUrls: resolvedImageUrls,
       stlFileUrl: resolvedStlFileUrl,
+      ...(await this.resolveDesignVisiblePrices(design, requester)),
       updatedByName,
       relevantDesigns: (design.relevantDesignLinks || []).map((link) => ({
         id: link.relatedDesign?.id,
@@ -3084,6 +3147,10 @@ export class ProductsService {
   }
 
   async getHistory(id: string, requester: AuthUser): Promise<any[]> {
+    if (requester.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Only Super Admin can view design history');
+    }
+
     await this.getDesignForRead(id, requester);
 
     const history = await this.historyRepo.find({
@@ -4609,19 +4676,11 @@ export class ProductsService {
   }
 
   private isDesignWriteUser(requester: AuthUser): boolean {
-    return (
-      requester.role === UserRole.SUPER_ADMIN ||
-      requester.role === UserRole.COMPANY_ADMIN ||
-      requester.role === UserRole.BRANCH_MANAGER
-    );
+    return requester.role === UserRole.SUPER_ADMIN;
   }
 
   private canCreateDesign(requester: AuthUser): boolean {
-    if (this.isDesignWriteUser(requester)) {
-      return true;
-    }
-
-    return this.hasDesignEntriesPermission(requester);
+    return requester.role === UserRole.SUPER_ADMIN;
   }
 
   private hasDesignEntriesPermission(requester: AuthUser): boolean {

@@ -24,6 +24,10 @@ import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-e
 import { CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
+import {
+  PermissionDataScope,
+  UserPermissionAction,
+} from '../permissions/entities/user-permission-action.entity';
 
 export interface UserResponse {
   id: string;
@@ -40,6 +44,10 @@ export interface UserResponse {
   isOnline: boolean;
   lastSeenAt: Date | null;
   taskPermissions: TaskPermission[];
+  detailedPermissions: {
+    actionKey: string;
+    dataScope: PermissionDataScope;
+  }[];
   company: {
     id: string;
     companyName: string;
@@ -85,6 +93,8 @@ export class UsersService {
     private companyRepo: Repository<Company>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
+    @InjectRepository(UserPermissionAction)
+    private userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -209,9 +219,19 @@ export class UsersService {
     }
 
     const users = await usersQuery.getMany();
-    const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
+    const userIds = users.map((user) => user.id);
+    const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
+      this.getManagedCompaniesMap(userIds),
+      this.getUserDetailedPermissionsMap(userIds),
+    ]);
     return Promise.all(
-      users.map((user) => this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || [])),
+      users.map((user) =>
+        this.mapToUserResponse(
+          user,
+          managedCompaniesMap.get(user.id) || [],
+          detailedPermissionsMap.get(user.id) || [],
+        ),
+      ),
     );
   }
 
@@ -229,8 +249,15 @@ export class UsersService {
       this.assertCompanyAdminCanManageUser(requester, user);
     }
 
-    const managedCompaniesMap = await this.getManagedCompaniesMap([user.id]);
-    return this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || []);
+    const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
+      this.getManagedCompaniesMap([user.id]),
+      this.getUserDetailedPermissionsMap([user.id]),
+    ]);
+    return this.mapToUserResponse(
+      user,
+      managedCompaniesMap.get(user.id) || [],
+      detailedPermissionsMap.get(user.id) || [],
+    );
   }
 
   async create(dto: CreateUserDto, requester?: AuthUser): Promise<UserResponse> {
@@ -250,6 +277,10 @@ export class UsersService {
     const scopedOrg = await this.resolveScope(dto.role, dto.companyId, dto.branchId);
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    const normalizedDetailedPermissions =
+      dto.detailedPermissions !== undefined
+        ? this.normalizeDetailedPermissions(dto.detailedPermissions)
+        : undefined;
     const user = this.userRepo.create({
       id: randomUUID(),
       email: normalizedEmail,
@@ -262,10 +293,16 @@ export class UsersService {
       phone: dto.phone?.trim() || null,
       photoUrl: this.normalizePhotoStoragePath(dto.photoUrl?.trim() || null),
       isActive: dto.isActive ?? true,
-      taskPermissions: this.normalizePermissions(dto.taskPermissions, dto.role),
+      taskPermissions:
+        normalizedDetailedPermissions !== undefined
+          ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role)
+          : this.normalizePermissions(dto.taskPermissions, dto.role),
     });
 
     const saved = await this.userRepo.save(user);
+    if (normalizedDetailedPermissions !== undefined) {
+      await this.replaceUserDetailedPermissions(saved.id, normalizedDetailedPermissions);
+    }
     const response = await this.findOne(saved.id, requester);
     await this.safeNotifyUserCreated(saved, response, requester);
     return response;
@@ -332,15 +369,25 @@ export class UsersService {
     user.companyId = scopedOrg.companyId;
     user.branchId = scopedOrg.branchId;
 
+    const normalizedDetailedPermissions =
+      dto.detailedPermissions !== undefined
+        ? this.normalizeDetailedPermissions(dto.detailedPermissions)
+        : undefined;
     const permissionsInput =
       dto.taskPermissions !== undefined
         ? dto.taskPermissions
         : dto.role !== undefined
-          ? undefined
+          ? []
           : user.taskPermissions || [];
-    user.taskPermissions = this.normalizePermissions(permissionsInput, nextRole);
+    user.taskPermissions =
+      normalizedDetailedPermissions !== undefined
+        ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, nextRole)
+        : this.normalizePermissions(permissionsInput, nextRole);
 
     await this.userRepo.save(user);
+    if (normalizedDetailedPermissions !== undefined || dto.role !== undefined) {
+      await this.replaceUserDetailedPermissions(id, normalizedDetailedPermissions || []);
+    }
     const response = await this.findOne(id, requester);
     if (previousRole !== user.role) {
       await this.safeNotifyUserRoleChanged(user, response, previousRole, requester);
@@ -737,9 +784,19 @@ export class UsersService {
       relations: ['company', 'branch'],
     });
 
-    const managedCompaniesMap = await this.getManagedCompaniesMap(users.map((user) => user.id));
+    const userIds = users.map((user) => user.id);
+    const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
+      this.getManagedCompaniesMap(userIds),
+      this.getUserDetailedPermissionsMap(userIds),
+    ]);
     return Promise.all(
-      users.map((user) => this.mapToUserResponse(user, managedCompaniesMap.get(user.id) || [])),
+      users.map((user) =>
+        this.mapToUserResponse(
+          user,
+          managedCompaniesMap.get(user.id) || [],
+          detailedPermissionsMap.get(user.id) || [],
+        ),
+      ),
     );
   }
 
@@ -897,6 +954,129 @@ export class UsersService {
     if (!company) {
       throw new NotFoundException('Company not found');
     }
+  }
+
+  private normalizeDetailedPermissions(
+    permissions: Array<{ actionKey?: string; dataScope?: PermissionDataScope }> | undefined,
+  ): { actionKey: string; dataScope: PermissionDataScope }[] {
+    if (!permissions?.length) {
+      return [];
+    }
+
+    const normalized = new Map<string, PermissionDataScope>();
+    permissions.forEach((permission) => {
+      const actionKey = String(permission.actionKey || '').trim();
+      if (!actionKey) return;
+      const dataScope = Object.values(PermissionDataScope).includes(permission.dataScope as PermissionDataScope)
+        ? (permission.dataScope as PermissionDataScope)
+        : PermissionDataScope.OWN;
+      normalized.set(actionKey, dataScope);
+    });
+
+    return Array.from(normalized.entries()).map(([actionKey, dataScope]) => ({ actionKey, dataScope }));
+  }
+
+  private deriveLegacyPermissionsFromDetailed(
+    detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[],
+    role: UserRole,
+  ): TaskPermission[] {
+    const permissions = detailedPermissions
+      .map((permission) => this.resolveLegacyPermissionForAction(permission.actionKey))
+      .filter((permission): permission is TaskPermission => Boolean(permission));
+
+    return this.normalizePermissions(permissions, role);
+  }
+
+  private resolveLegacyPermissionForAction(actionKey: string): TaskPermission | null {
+    const key = actionKey.trim().toLowerCase();
+    if (!key) return null;
+    if (key.startsWith('company.') || key.startsWith('organization.company')) return TaskPermission.COMPANY_MANAGEMENT;
+    if (key.startsWith('branch.') || key.startsWith('organization.branch')) return TaskPermission.BRANCH_MANAGEMENT;
+    if (key.startsWith('user.') || key.startsWith('mobile.dashboard.quick_actions.team')) return TaskPermission.USER_MANAGEMENT;
+    if (key.startsWith('design.') || key.startsWith('version.') || key.startsWith('catalog.') || key.startsWith('master.')) {
+      return TaskPermission.DESIGN_ENTRIES;
+    }
+    if (key.startsWith('order.') || key.startsWith('mobile.order.') || key.startsWith('spiff.') || key.startsWith('mobile.spiff.')) {
+      return TaskPermission.ORDER_ENTRIES;
+    }
+    if (key.includes('approval')) return TaskPermission.ORDER_APPROVALS;
+    if (key.startsWith('pricing.') || key.startsWith('mobile.pricing.') || key.includes('price_activity')) {
+      return TaskPermission.PRICING_CONFIGURATION;
+    }
+    if (key.startsWith('dashboard.') || key.startsWith('mobile.dashboard.') || key.startsWith('notification.') || key.startsWith('ai.')) {
+      return TaskPermission.VIEW_REPORTS;
+    }
+    return null;
+  }
+
+  private async replaceUserDetailedPermissions(
+    userId: string,
+    permissions: { actionKey: string; dataScope: PermissionDataScope }[],
+  ): Promise<void> {
+    try {
+      await this.userPermissionActionRepo.delete({ userId });
+    } catch (error) {
+      if (this.isMissingPermissionTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+    if (!permissions.length) {
+      return;
+    }
+
+    const rows = permissions.map((permission) =>
+      this.userPermissionActionRepo.create({
+        id: randomUUID(),
+        userId,
+        actionKey: permission.actionKey,
+        dataScope: permission.dataScope,
+      }),
+    );
+    try {
+      await this.userPermissionActionRepo.save(rows);
+    } catch (error) {
+      if (this.isMissingPermissionTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private async getUserDetailedPermissionsMap(
+    userIds: string[],
+  ): Promise<Map<string, { actionKey: string; dataScope: PermissionDataScope }[]>> {
+    const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+    const map = new Map<string, { actionKey: string; dataScope: PermissionDataScope }[]>();
+    uniqueUserIds.forEach((userId) => map.set(userId, []));
+    if (!uniqueUserIds.length) {
+      return map;
+    }
+
+    let rows: UserPermissionAction[] = [];
+    try {
+      rows = await this.userPermissionActionRepo.find({
+        where: { userId: In(uniqueUserIds) },
+        order: { actionKey: 'ASC' },
+      });
+    } catch (error) {
+      if (this.isMissingPermissionTableError(error)) {
+        return map;
+      }
+      throw error;
+    }
+    rows.forEach((row) => {
+      const target = map.get(row.userId) || [];
+      target.push({ actionKey: row.actionKey, dataScope: row.dataScope });
+      map.set(row.userId, target);
+    });
+    return map;
+  }
+
+  private isMissingPermissionTableError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    const message = String((error as { message?: string })?.message || '').toLowerCase();
+    return code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions');
   }
 
   private normalizePermissions(
@@ -1232,6 +1412,7 @@ export class UsersService {
   private toResponse(
     user: User,
     managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+    detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[] = [],
   ): UserResponse {
     return {
       id: user.id,
@@ -1248,6 +1429,7 @@ export class UsersService {
       isOnline: this.isUserOnline(user),
       lastSeenAt: user.lastSeenAt || null,
       taskPermissions: user.taskPermissions || [],
+      detailedPermissions,
       company: user.company
         ? {
             id: user.company.id,
@@ -1271,8 +1453,9 @@ export class UsersService {
   private async mapToUserResponse(
     user: User,
     managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+    detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[] = [],
   ): Promise<UserResponse> {
-    const response = this.toResponse(user, managedCompanies);
+    const response = this.toResponse(user, managedCompanies, detailedPermissions);
     return {
       ...response,
       photoUrl: await this.resolveUserPhotoUrl(response.photoStoragePath),

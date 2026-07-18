@@ -32,6 +32,7 @@ import NotificationPopover from '../components/NotificationPopover';
 import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
+import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -701,6 +702,16 @@ const QuoteBuilderScreen = () => {
       if (!token || !companyId || !branchId) return null;
       if (isApprovedOrderLocked) {
         setError('Only branch managers can edit approved orders.');
+        return null;
+      }
+      if (!(await confirmPurchaseOrderReuse({
+        token,
+        companyId,
+        branchId,
+        purchaseOrderNumber,
+        excludeOrderId: order?.id || editingOrderId,
+        onError: setError,
+      }))) {
         return null;
       }
       const payload = {

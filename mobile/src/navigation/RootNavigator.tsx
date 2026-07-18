@@ -27,6 +27,7 @@ import BranchDashboardScreen from '../screens/BranchDashboardScreen';
 import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import PricingScreen from '../screens/PricingScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 import type { BranchEmployee, UserRole } from '../types';
 import type { MobileConfiguratorResponse } from '../api/designs';
 import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
@@ -111,6 +112,7 @@ export type OrdersStackParamList = {
 export type DashboardStackParamList = {
   DashboardHome: undefined;
   SpiffRewards: { claimId?: string; claimNumber?: string } | undefined;
+  UserProfile: undefined;
 };
 
 export type TeamStackParamList = {
@@ -267,6 +269,7 @@ const DashboardNavigator = () => (
   <DashboardStack.Navigator screenOptions={{ headerShown: false }}>
     <DashboardStack.Screen name="DashboardHome" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
     <DashboardStack.Screen name="SpiffRewards" component={SpiffRewardsScreen} options={{ title: 'Spiff Rewards' }} />
+    <DashboardStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'My Profile' }} />
   </DashboardStack.Navigator>
 );
 

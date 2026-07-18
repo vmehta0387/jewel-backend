@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
-import PermissionMatrix from '../../components/permissions/PermissionMatrix';
+import PermissionMatrix, { DetailedPermission } from '../../components/permissions/PermissionMatrix';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
@@ -37,6 +37,7 @@ interface FormState {
   photoUrl: string;
   isActive: boolean;
   taskPermissions: TaskPermission[];
+  detailedPermissions: DetailedPermission[];
 }
 
 function roleNeedsCompany(role: UserRole): boolean {
@@ -89,7 +90,8 @@ export default function AddUser() {
     phone: '',
     photoUrl: '',
     isActive: true,
-    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
+    taskPermissions: [],
+    detailedPermissions: [],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
   const canCustomizePermissions = isSuperAdmin;
@@ -180,7 +182,8 @@ export default function AddUser() {
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
+      taskPermissions: [],
+      detailedPermissions: [],
     }));
   };
 
@@ -207,6 +210,7 @@ export default function AddUser() {
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
         taskPermissions: normalizedPermissions,
+        detailedPermissions: formData.detailedPermissions,
       });
 
       navigate('/users');
@@ -428,12 +432,14 @@ export default function AddUser() {
         <Card title="Permissions">
           <PermissionMatrix
             value={formData.taskPermissions}
+            detailedValue={formData.detailedPermissions}
             allowedPermissions={allowedPermissionsForRole}
             defaultPermissions={DEFAULT_TASK_PERMISSIONS_BY_ROLE[formData.role]}
             role={formData.role}
             canEdit={canCustomizePermissions}
             error={errors.taskPermissions}
             onChange={(taskPermissions) => setFormData((prev) => ({ ...prev, taskPermissions }))}
+            onDetailedChange={(detailedPermissions) => setFormData((prev) => ({ ...prev, detailedPermissions }))}
           />
         </Card>
 

@@ -131,6 +131,7 @@ interface ApiDesignRow {
   collection?: string | null;
   stoneInfo?: string | null;
   totalValue?: number | string | null;
+  displayCostPrice?: number | string | null;
   tags?: unknown;
   stage?: string | null;
   designStatus?: string | null;
@@ -436,7 +437,7 @@ const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
   { key: 'metalInfo', label: 'Metal Info' },
   { key: 'collection', label: 'Sub Category' },
   { key: 'stoneInfo', label: 'Stone Info' },
-  { key: 'price', label: 'Price' },
+  { key: 'price', label: 'Cost Price' },
   { key: 'tags', label: 'Tags' },
   { key: 'stage', label: 'Stage' },
   { key: 'status', label: 'Status' },
@@ -458,7 +459,7 @@ const DEFAULT_DESIGN_LIST_COLUMNS: DesignListColumnKey[] = [
 
 const DESIGN_LIST_PAGE_SIZE = 15;
 const VERSION_LIST_PAGE_SIZE = 50;
-const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v3';
+const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v5';
 
 interface VersionFamilyListState {
   rows: DesignRow[];
@@ -813,7 +814,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     goldColour: getDesignMetalSummary(design) || 'N/A',
     collection: design.collection || 'General',
     stoneInfo: getDesignStoneSummary(design) || 'N/A',
-    price: parseNumericValue(design.totalValue),
+    price: parseNumericValue(design.displayCostPrice ?? design.totalValue),
     tags,
     stage: design.stage || '',
     status: design.designStatus || '',
@@ -1630,28 +1631,14 @@ function Modal({
 
 export default function ProductsPage() {
   const currentUser = useMemo(() => getStoredUser(), []);
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const usesScopedDesignInfoView = currentUser?.role === 'COMPANY_ADMIN' || currentUser?.role === 'BRANCH_MANAGER';
   const canModifyExistingDesigns = useMemo(() => {
-    if (!currentUser) {
-      return false;
-    }
-
-    return (
-      currentUser.role === 'SUPER_ADMIN' ||
-      currentUser.role === 'COMPANY_ADMIN' ||
-      currentUser.role === 'BRANCH_MANAGER'
-    );
-  }, [currentUser]);
+    return isSuperAdmin;
+  }, [isSuperAdmin]);
   const canCreateDesign = useMemo(() => {
-    if (!currentUser) {
-      return false;
-    }
-
-    if (canModifyExistingDesigns) {
-      return true;
-    }
-
-    return currentUser.taskPermissions.includes('DESIGN_ENTRIES');
-  }, [canModifyExistingDesigns, currentUser]);
+    return isSuperAdmin;
+  }, [isSuperAdmin]);
 
   const [rows, setRows] = useState<DesignRow[]>(() => designSeed.slice(0, 0));
   const [rowsLoading, setRowsLoading] = useState(false);
@@ -1712,6 +1699,7 @@ export default function ProductsPage() {
     status: '',
     goldColour: '',
     stonePacket: '',
+    diamondShape: '',
   });
   const [metalRows, setMetalRows] = useState<MetalRow[]>([{
     id: makeId(),
@@ -2086,6 +2074,18 @@ export default function ProductsPage() {
       totalValue: parseNumericValue(detailDesign?.totalValue),
     };
   }, [detailAllLabors.length, detailDesign, detailLabors, detailOverheadRows]);
+  const scopedDesignCostPrice = useMemo(() => {
+    const detailVisiblePrice = parseNumericValue(detailDesign?.displayCostPrice);
+    if (detailVisiblePrice > 0) {
+      return detailVisiblePrice;
+    }
+
+    if (selected && selected.id === selectedId) {
+      return selected.price;
+    }
+
+    return parseNumericValue(detailInfo?.price);
+  }, [detailDesign?.displayCostPrice, detailInfo?.price, selected, selectedId]);
   const detailPacketNameMap = useMemo(() => {
     const next = new Map<string, string>();
     packetOptions.forEach((packet) => {
@@ -2563,6 +2563,7 @@ export default function ProductsPage() {
           designStatus: filters.status || undefined,
           goldColour: filters.goldColour || undefined,
           stone: filters.stonePacket || undefined,
+          shape: filters.diamondShape || undefined,
         },
       });
       const mappedRows = ((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow);
@@ -6555,22 +6556,25 @@ const createDefaultVendorRow = (): VendorRow => ({
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowInactive(!showInactive)}
-              className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold whitespace-nowrap transition-all ${
-                showInactive ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-500/10'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              <svg style={{ width: '1rem', height: '1rem', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.076m10.725 10.725L21 21m-2.571-2.571L12 12m0 0L8.429 8.429M3 3l3.293 3.293m0 0l4.242 4.242M9.88 9.88l1.694 1.694" />
-              </svg>
-              <span>{showInactive ? 'Hide Inactive' : 'Show Inactive'}</span>
-            </button>
+            {isSuperAdmin ? (
+              <button
+                type="button"
+                onClick={() => setShowInactive(!showInactive)}
+                className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold whitespace-nowrap transition-all ${
+                  showInactive ? 'border-amber-200 bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-500/10'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <svg style={{ width: '1rem', height: '1rem', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.076m10.725 10.725L21 21m-2.571-2.571L12 12m0 0L8.429 8.429M3 3l3.293 3.293m0 0l4.242 4.242M9.88 9.88l1.694 1.694" />
+                </svg>
+                <span>{showInactive ? 'Hide Inactive' : 'Show Inactive'}</span>
+              </button>
+            ) : null}
           </div>
           
           <div className="flex items-center gap-3">
+            {isSuperAdmin ? (
             <div className="relative" ref={actionsDropdownRef}>
               <button
                 type="button"
@@ -6654,17 +6658,20 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </div>
               )}
             </div>
+            ) : null}
 
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
-              onClick={openAdd}
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              <span>Add New Design</span>
-            </button>
+            {canCreateDesign ? (
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
+                onClick={openAdd}
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                <span>Add New Design</span>
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -6692,6 +6699,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   status: '',
                   goldColour: '',
                   stonePacket: '',
+                  diamondShape: '',
                 })}
               >
                 Clear all filters
@@ -6747,6 +6755,18 @@ const createDefaultVendorRow = (): VendorRow => ({
                 />
               </div>
               <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Diamond Shape</label>
+                <SearchableSelect
+                  value={filters.diamondShape}
+                  onChange={(val) => setFilters((prev) => ({ ...prev, diamondShape: val }))}
+                  options={[
+                    { value: '', label: 'All Shapes' },
+                    ...masterOptions.packetShapes.map(o => ({ value: o.value, label: o.value }))
+                  ]}
+                  placeholder="All Shapes"
+                />
+              </div>
+              <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Status</label>
                 <SearchableSelect
                   value={filters.status}
@@ -6792,7 +6812,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 {isColumnVisible('metalInfo') ? <th className="app-table-head-cell w-48 min-w-48 max-w-48">Metal Info</th> : null}
                 {isColumnVisible('collection') ? <th className="app-table-head-cell">Sub Category</th> : null}
                 {isColumnVisible('stoneInfo') ? <th className="app-table-head-cell w-48 min-w-48 max-w-48">Stone Info</th> : null}
-                {isColumnVisible('price') ? <th className="app-table-head-cell">Price</th> : null}
+                {isColumnVisible('price') ? <th className="app-table-head-cell">Cost Price</th> : null}
                 {isColumnVisible('tags') ? <th className="app-table-head-cell">Tags</th> : null}
                 {isColumnVisible('stage') ? <th className="app-table-head-cell">Stage</th> : null}
                 {isColumnVisible('status') ? <th className="app-table-head-cell">Status</th> : null}
@@ -6855,8 +6875,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                       <button
                         type="button"
                         className="text-sm font-bold text-slate-900 transition-colors hover:text-indigo-600 focus:outline-none"
-                        onClick={() => openEdit(row)}
-                        title={row.designName ? `${row.designNo} ? ${row.designName}` : 'Edit design'}
+                        onClick={() => {
+                          if (canModifyExistingDesigns) {
+                            openEdit(row);
+                            return;
+                          }
+                          setSelectedId(row.id);
+                          setModal('info');
+                        }}
+                        title={row.designName ? `${row.designNo} - ${row.designName}` : canModifyExistingDesigns ? 'Edit design' : 'View design'}
                       >
                         {row.designNo}
                       </button>
@@ -6929,12 +6956,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                   <td className="py-4 px-3 text-left">
                     <div className="flex items-center justify-start gap-1.5">
                       <Action label="View" onClick={() => { setSelectedId(row.id); setModal('info'); }} />
-                      <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
                       <Action
                         label={versionsLabel}
                         onClick={() => toggleVersionsForDesign(row)}
                         loading={versionsLoading}
                       />
+                      {isSuperAdmin ? (
+                        <Action label="History" onClick={() => { setSelectedId(row.id); setModal('history'); }} />
+                      ) : null}
                       {canCreateDesign ? (
                         <Action label="Version Builder" onClick={() => openVersionBuilder(row)} />
                       ) : null}
@@ -10926,6 +10955,82 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
             {shouldShowInfoSkeleton ? (
               <DesignInfoSkeleton />
+            ) : isInfoDetailReady && usesScopedDesignInfoView ? (
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
+                <div className="rounded border border-gray-200">
+                  <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Design Information</div>
+                  <table className="min-w-full text-sm">
+                    <tbody>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Design No</td><td className="px-3 py-2">{detailInfo.designNo}</td><td className="px-3 py-2 font-medium">Version</td><td className="px-3 py-2">{detailInfo.version || 'V1'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Barcode</td><td className="px-3 py-2 font-mono font-semibold">{detailInfo.barcode || '-'}</td><td className="px-3 py-2 font-medium">Primary Version</td><td className="px-3 py-2">{detailInfo.isPrimary ? 'Yes' : 'No'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Design Name</td><td className="px-3 py-2">{detailInfo.designName || '-'}</td><td className="px-3 py-2 font-medium">Stage</td><td className="px-3 py-2">{detailInfo.stage || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Category</td><td className="px-3 py-2">{detailInfo.jewelryGroup || '-'}</td><td className="px-3 py-2 font-medium">Sub Category</td><td className="px-3 py-2">{detailInfo.collection || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Jewelry Size</td><td className="px-3 py-2">{detailInfo.jewelrySize || '-'}</td><td className="px-3 py-2 font-medium">Design Status</td><td className="px-3 py-2">{detailInfo.designStatus || detailInfo.status || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Type</td><td className="px-3 py-2">{detailInfo.diamondType || '-'}</td><td className="px-3 py-2 font-medium">Diamond Spread</td><td className="px-3 py-2">{detailInfo.diamondSpread || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Diamond Wt</td><td className="px-3 py-2">{detailInfo.diamondWeight || '-'}</td><td className="px-3 py-2 font-medium">Diamond Quality</td><td className="px-3 py-2">{detailInfo.diamondQuality || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Cost Price</td><td className="px-3 py-2 font-semibold">{formatMoney(scopedDesignCostPrice)}</td><td className="px-3 py-2 font-medium">Remarks</td><td className="px-3 py-2">{detailInfo.remarks || '-'}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Tags</td><td className="px-3 py-2">{normalizeStringArray(detailInfo.tags).join(', ') || '-'}</td><td className="px-3 py-2 font-medium">Modified</td><td className="px-3 py-2">{formatDetailDateTime(detailInfo.updatedAt || detailInfo.modifiedAt)}</td></tr>
+                      <tr className="border-b"><td className="px-3 py-2 font-medium">Description</td><td className="px-3 py-2" colSpan={3}>{detailInfo.designDescription || '-'}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-4">
+                  <div className="rounded border border-gray-200">
+                    <div className="border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">Gallery Media</div>
+                    <div className="p-3">
+                      {detailGalleryUrls.length ? (
+                        <div className="space-y-3">
+                          <MediaPreview
+                            url={detailGalleryUrls[0]}
+                            alt={`${detailInfo.designNo} primary`}
+                            className="h-44 w-full rounded border border-gray-300 object-cover"
+                            controls={isVideoUrl(detailGalleryUrls[0])}
+                          />
+                          {detailGalleryUrls.length > 1 ? (
+                            <div className="grid grid-cols-3 gap-2">
+                              {detailGalleryUrls.slice(1).map((url, index) => (
+                                <MediaPreview
+                                  key={`${url}-${index}`}
+                                  url={url}
+                                  alt={`${detailInfo.designNo} gallery ${index + 2}`}
+                                  className="h-16 w-full rounded border border-gray-200 object-cover"
+                                />
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="flex h-36 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs font-semibold text-gray-500">
+                          No gallery media
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded border border-gray-200">
+                    <div className="flex items-center justify-between border-b border-gray-200/60 bg-gray-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-gray-800 backdrop-blur-sm">
+                      <span className="text-sm font-semibold text-gray-800">3D STL Model</span>
+                      {detailStlUrl ? (
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-[#81A6C6] hover:text-[#6f93b0]"
+                          onClick={() => setShowStlViewerModal(true)}
+                        >
+                          Expand Viewer
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="p-3">
+                      {detailStlUrl ? (
+                        <StlViewer designId={detailInfo.id} className="h-72" />
+                      ) : (
+                        <div className="flex h-48 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-xs font-semibold text-gray-500">
+                          No STL uploaded
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : isInfoDetailReady ? (
               <>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">

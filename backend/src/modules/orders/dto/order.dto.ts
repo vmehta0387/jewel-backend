@@ -168,6 +168,21 @@ export class FindOrdersQueryDto {
   createdTo?: string;
 }
 
+export class FindPurchaseOrderUsageQueryDto {
+  @IsUUID()
+  companyId: string;
+
+  @IsUUID()
+  branchId: string;
+
+  @IsString()
+  purchaseOrderNumber: string;
+
+  @IsOptional()
+  @IsUUID()
+  excludeOrderId?: string;
+}
+
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
   status: OrderStatus;

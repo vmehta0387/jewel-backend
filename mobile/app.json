@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.app.blitznyc",
+      "bundleIdentifier": "com.vmehta0387.mobile",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to securely sign in."
       }
@@ -26,7 +26,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.app.blitznyc"
+      "package": "com.vmehta0387.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"

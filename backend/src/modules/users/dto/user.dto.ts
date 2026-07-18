@@ -1,6 +1,8 @@
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TaskPermission } from '../../../common/enums/task-permission.enum';
 import { UserRole } from '../../../common/enums/user-role.enum';
+import { PermissionDataScope } from '../../permissions/entities/user-permission-action.entity';
 
 export class FindUsersQueryDto {
   @IsOptional()
@@ -22,6 +24,15 @@ export class FindUsersQueryDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+}
+
+export class UserPermissionActionDto {
+  @IsString()
+  actionKey: string;
+
+  @IsOptional()
+  @IsEnum(PermissionDataScope)
+  dataScope?: PermissionDataScope;
 }
 
 export class CreateUserDto {
@@ -61,6 +72,12 @@ export class CreateUserDto {
   @IsArray()
   @IsEnum(TaskPermission, { each: true })
   taskPermissions?: TaskPermission[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UserPermissionActionDto)
+  detailedPermissions?: UserPermissionActionDto[];
 
   @IsOptional()
   @IsBoolean()
@@ -109,6 +126,12 @@ export class UpdateUserDto {
   @IsArray()
   @IsEnum(TaskPermission, { each: true })
   taskPermissions?: TaskPermission[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => UserPermissionActionDto)
+  detailedPermissions?: UserPermissionActionDto[];
 
   @IsOptional()
   @IsBoolean()

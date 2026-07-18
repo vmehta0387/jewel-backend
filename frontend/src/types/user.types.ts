@@ -25,6 +25,10 @@ export interface UserRecord {
   photoStoragePath?: string | null;
   isActive: boolean;
   taskPermissions: TaskPermission[];
+  detailedPermissions?: Array<{
+    actionKey: string;
+    dataScope: 'OWN' | 'BRANCH' | 'COMPANY';
+  }>;
   company: UserCompanySummary | null;
   managedCompanies: UserCompanySummary[];
   branch: UserBranchSummary | null;

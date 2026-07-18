@@ -26,7 +26,7 @@ type AuthContextValue = {
   biometricSignIn: () => Promise<void>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
   signOut: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (updatedUser?: AuthUser) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -236,9 +236,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => setUnauthorizedHandler(null);
   }, [signOut]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (updatedUser?: AuthUser) => {
     if (!token) return;
-    const me = await meApi(token);
+    const me = updatedUser || await meApi(token);
     setUser(me);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
   }, [token]);

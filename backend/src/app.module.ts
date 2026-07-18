@@ -11,6 +11,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 import { AiModule } from './modules/ai/ai.module';
 import { SpiffModule } from './modules/spiff/spiff.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AiModule,
     SpiffModule,
     NotificationsModule,
+    PermissionsModule,
   ],
 })
 export class AppModule {}

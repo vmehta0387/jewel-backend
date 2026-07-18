@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
-import PermissionMatrix from '../../components/permissions/PermissionMatrix';
+import PermissionMatrix, { DetailedPermission } from '../../components/permissions/PermissionMatrix';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
@@ -38,6 +38,7 @@ interface FormState {
   photoUrl: string;
   isActive: boolean;
   taskPermissions: TaskPermission[];
+  detailedPermissions: DetailedPermission[];
 }
 
 function roleNeedsCompany(role: UserRole): boolean {
@@ -77,6 +78,7 @@ export default function EditUser() {
     photoUrl: '',
     isActive: true,
     taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE.COMPANY_ADMIN,
+    detailedPermissions: [],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
   const canCustomizePermissions = isSuperAdmin;
@@ -120,10 +122,8 @@ export default function EditUser() {
         phone: user.phone || '',
         photoUrl: user.photoStoragePath || user.photoUrl || '',
         isActive: user.isActive,
-        taskPermissions:
-          sanitizedTaskPermissions.length > 0
-            ? sanitizedTaskPermissions
-            : DEFAULT_TASK_PERMISSIONS_BY_ROLE[user.role],
+        taskPermissions: sanitizedTaskPermissions,
+        detailedPermissions: user.detailedPermissions || [],
       });
 
       if (isCompanyAdmin && companyAdminCompanyId) {
@@ -197,7 +197,8 @@ export default function EditUser() {
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
+      taskPermissions: [],
+      detailedPermissions: [],
     }));
   };
 
@@ -223,6 +224,7 @@ export default function EditUser() {
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
         taskPermissions: normalizedPermissions,
+        detailedPermissions: formData.detailedPermissions,
       };
 
       if (formData.password.trim()) {
@@ -452,12 +454,14 @@ export default function EditUser() {
         <Card title="Permissions">
           <PermissionMatrix
             value={formData.taskPermissions}
+            detailedValue={formData.detailedPermissions}
             allowedPermissions={allowedPermissionsForRole}
             defaultPermissions={DEFAULT_TASK_PERMISSIONS_BY_ROLE[formData.role]}
             role={formData.role}
             canEdit={canCustomizePermissions}
             error={errors.taskPermissions}
             onChange={(taskPermissions) => setFormData((prev) => ({ ...prev, taskPermissions }))}
+            onDetailedChange={(detailedPermissions) => setFormData((prev) => ({ ...prev, detailedPermissions }))}
           />
         </Card>
 

@@ -291,7 +291,7 @@ const OrderDetailScreen = () => {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Order & Fulfillment</Text>
           <View style={styles.detailsList}>
-            <DetailRow label="Price" value={formatCompactCurrency(order.price)} boldValue />
+            <DetailRow label="Sale Price" value={formatCompactCurrency(order.price)} boldValue />
             <DetailRow label="Quantity" value={order.quantity} />
             <DetailRow label="Delivery Date" value={formatDateLocal(order.deliveryDate)} />
             <DetailRow label="Purchase Order" value={order.purchaseOrderNumber} />

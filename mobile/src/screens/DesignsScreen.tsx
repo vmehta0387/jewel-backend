@@ -783,6 +783,23 @@ const DesignsScreen = () => {
                       })}
                     </ScrollView>
 
+                    <Text style={styles.filterSectionTitle}>Diamond Shape</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {['All', ...shapeOptions].map((item) => {
+                        const selected = item === draftShape;
+                        return (
+                          <TouchableOpacity
+                            key={`m-shape-${item}`}
+                            style={[styles.modalChip, selected ? styles.modalChipActive : null]}
+                            onPress={() => setDraftShape(item)}
+                            activeOpacity={0.85}
+                          >
+                            <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
                     <Text style={styles.filterSectionTitle}>Price</Text>
                     <View style={styles.priceBandGrid}>
                       {PRICE_BAND_OPTIONS.map((option) => {

@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { createOrder } from '../api/orders';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
+import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 import { colors, radii, spacing } from '../theme';
 
 const formatMoney = (value: number) =>
@@ -82,6 +83,16 @@ const CartScreen = () => {
     setPlacingOrder(true);
     setError(null);
     try {
+      if (!(await confirmPurchaseOrderReuse({
+        token,
+        companyId: user.companyId,
+        branchId: user.branchId,
+        purchaseOrderNumber,
+        onError: setError,
+      }))) {
+        return;
+      }
+
       for (const item of items) {
         await createOrder(token, {
           companyId: user.companyId,

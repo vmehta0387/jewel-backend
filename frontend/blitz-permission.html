@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BLITZ Simple Permission Builder</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --app-bg:#f7f5f2; --panel:#fff; --ink:#25211e; --muted:#756e68;
+      --line:#e6e0da; --line-strong:#d7cec5; --blue:#0d6efd; --blue-soft:#edf4ff;
+      --gold:#b57b0d; --gold-soft:#fff6df; --green:#16803d; --green-soft:#eaf8ee;
+      --red:#b42318; --red-soft:#fff0ef; --sidebar:210px;
+      --shadow:0 8px 28px rgba(57,43,31,.07);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;color:var(--ink);background:#f2efeb;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px}
+    button,input{font-size:inherit}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow)}
+    .badge-soft{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border:1px solid transparent;border-radius:99px;font-size:9px;font-weight:700;white-space:nowrap}
+    .badge-blue{color:#0b5ed7;background:var(--blue-soft);border-color:#d7e7ff}
+    .badge-green{color:#146c35;background:var(--green-soft);border-color:#c8ebd3}
+    .badge-red{color:#a02117;background:var(--red-soft);border-color:#f1ceca}
+    .badge-gray{color:#625c56;background:#f3f1ef;border-color:#e2ded9}
+    .builder{overflow:hidden}
+    .builder-head{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:15px 16px;border-bottom:1px solid var(--line)}
+    .builder-title{margin:0;font-size:16px;font-weight:720}
+    .builder-copy{margin-top:3px;color:var(--muted);font-size:10px}
+    .builder-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .selection-count{padding:6px 9px;color:#5f5852;background:#f8f6f3;border:1px solid var(--line);border-radius:8px;font-size:10px;font-weight:650}
+    .builder-grid{display:grid;grid-template-columns:minmax(210px,.72fr) minmax(300px,1fr) minmax(360px,1.35fr);min-height:660px}
+    .builder-column{min-width:0;background:#fff;border-right:1px solid var(--line)}
+    .builder-column:last-child{border-right:0;background:#fcfbfa}
+    .column-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-height:68px;padding:13px 14px;border-bottom:1px solid var(--line)}
+    .step-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:720}
+    .step-number{width:23px;height:23px;display:inline-flex;align-items:center;justify-content:center;color:#8c5d04;background:var(--gold-soft);border:1px solid #e1b65e;border-radius:50%;font-size:10px;font-weight:750}
+    .column-copy{margin:4px 0 0 31px;color:var(--muted);font-size:9px;line-height:1.4}
+    .column-tools{padding:10px 12px;border-bottom:1px solid var(--line)}
+    .module-list{max-height:580px;overflow:auto;padding:8px}
+    .module-item{width:100%;display:grid;grid-template-columns:31px minmax(0,1fr) auto;align-items:center;gap:9px;margin-bottom:6px;padding:9px;text-align:left;color:inherit;background:#fff;border:1px solid var(--line);border-radius:9px;transition:.15s ease}
+    .module-item:hover{border-color:#c9baaa;transform:translateY(-1px)}
+    .module-item.active{background:#fffaf0;border-color:#cf941f;box-shadow:0 0 0 2px rgba(207,148,31,.09)}
+    .module-icon{width:31px;height:31px;display:inline-flex;align-items:center;justify-content:center;color:#3d3834;background:#f3f0ec;border-radius:8px;font-size:14px}
+    .module-name{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .module-meta{margin-top:2px;color:var(--muted);font-size:8px}
+    .module-count{min-width:26px;padding:3px 5px;text-align:center;color:#5e5751;background:#f4f2ef;border-radius:99px;font-size:8px;font-weight:700}
+    .action-list{max-height:525px;overflow:auto;padding:8px}
+    .action-card{display:grid;grid-template-columns:20px minmax(0,1fr) auto;align-items:center;gap:8px;margin-bottom:6px;padding:9px;background:#fff;border:1px solid var(--line);border-radius:9px;cursor:grab;transition:.15s ease}
+    .action-card:hover{border-color:#a9c6f4;box-shadow:0 4px 12px rgba(13,110,253,.06)}
+    .action-card.dragging{opacity:.45}
+    .action-card.added{cursor:default;background:#f7fbf8;border-color:#d5eadb}
+    .drag-handle{color:#a29b94;font-size:13px}
+    .action-name{font-size:10px;font-weight:680}
+    .action-meta{display:flex;align-items:center;gap:5px;margin-top:3px;color:var(--muted);font-size:8px}
+    .platform{padding:2px 5px;color:#0b5ed7;background:#edf4ff;border-radius:5px;font-size:7px;font-weight:750;text-transform:uppercase}
+    .icon-button{width:25px;height:25px;display:inline-flex;align-items:center;justify-content:center;padding:0;color:var(--blue);background:#fff;border:1px solid #bad1f4;border-radius:7px}
+    .action-card.added .icon-button{color:var(--green);background:var(--green-soft);border-color:#cce7d5}
+    .drop-shell{height:592px;padding:8px}
+    .drop-zone{height:100%;overflow:auto;padding:8px;background:#fff;border:1px dashed #cfc3b6;border-radius:10px;transition:.16s ease}
+    .drop-zone.drag-over{background:#f2f7ff;border-color:var(--blue);box-shadow:inset 0 0 0 2px rgba(13,110,253,.08)}
+    .drop-empty{height:100%;min-height:260px;display:flex;align-items:center;justify-content:center;padding:30px;text-align:center;color:var(--muted)}
+    .drop-empty-icon{width:52px;height:52px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px;color:#8f8173;background:#f5f1ec;border-radius:50%;font-size:22px}
+    .selected-group{margin-bottom:9px;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:9px}
+    .selected-group:last-child{margin-bottom:0}
+    .selected-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:#f7f5f2;border-bottom:1px solid var(--line)}
+    .selected-group-title{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:720}
+    .selected-group-controls{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+    .module-scope{display:flex;align-items:center;gap:5px}
+    .module-scope label{margin:0;color:var(--muted);font-size:7px;font-weight:750;letter-spacing:.04em;text-transform:uppercase}
+    .module-scope select{width:108px;min-height:27px;padding-top:3px;padding-bottom:3px;font-size:8px}
+    .selected-action{display:grid;grid-template-columns:minmax(0,1fr) 125px auto;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid #eeeae6}
+    .selected-action:last-child{border-bottom:0}
+    .selected-action-name{font-size:9px;font-weight:650}
+    .action-scope label{display:block;margin-bottom:3px;color:var(--muted);font-size:7px;font-weight:750;letter-spacing:.04em;text-transform:uppercase}
+    .action-scope select{min-height:27px;padding-top:3px;padding-bottom:3px;font-size:8px}
+    .no-scope{display:inline-flex;align-items:center;gap:4px;color:#8a837c;font-size:8px}
+    .remove-action{width:23px;height:23px;display:inline-flex;align-items:center;justify-content:center;padding:0;color:#8a8077;background:#fff;border:1px solid var(--line);border-radius:6px}
+    .remove-action:hover{color:var(--red);border-color:#efb9b4;background:var(--red-soft)}
+    .empty-filter{padding:40px 18px;text-align:center;color:var(--muted);font-size:10px}
+    .save-state{display:none;align-items:center;gap:5px;color:var(--green);font-size:10px;font-weight:650}
+    .save-state.show{display:inline-flex}
+    .component-page{height:100vh;padding:8px}
+    .component-page .builder{height:100%;display:flex;flex-direction:column}
+    .component-page .builder-head{flex:0 0 auto}
+    .component-page .builder-grid{min-height:0;flex:1}
+    .component-page .builder-column{display:flex;min-height:0;flex-direction:column}
+    .component-page .column-head,.component-page .column-tools{flex:0 0 auto}
+    .component-page .module-list,.component-page .action-list{min-height:0;max-height:none;flex:1}
+    .component-page .drop-shell{height:auto;min-height:0;flex:1}
+    @media(max-width:1180px){.builder-grid{grid-template-columns:220px minmax(280px,1fr) minmax(330px,1.2fr)}}
+    @media(max-width:840px){
+      .builder-grid{grid-template-columns:1fr;min-height:0}.builder-column{border-right:0;border-bottom:1px solid var(--line)}.module-list,.action-list{max-height:350px}.drop-shell{height:auto}.drop-zone{min-height:380px;max-height:560px}
+      .component-page{height:auto;min-height:100vh}.component-page .builder{height:auto}.component-page .builder-column{min-height:430px}.component-page .module-list,.component-page .action-list{max-height:350px;flex:none}.component-page .drop-shell{min-height:400px;flex:none}
+    }
+    @media(max-width:575.98px){.builder-head{align-items:flex-start;flex-direction:column}.builder-actions{width:100%;justify-content:space-between}.column-head{min-height:0}.selected-group-head{align-items:flex-start;flex-direction:column}.selected-group-controls{width:100%;justify-content:space-between}.selected-action{grid-template-columns:minmax(0,1fr) auto}.action-scope{grid-column:1 / -1;grid-row:2}.remove-action{grid-column:2;grid-row:1}}
+  </style>
+</head>
+<body>
+  <main class="component-page">
+      <section class="panel builder">
+        <div class="builder-head">
+          <div><h1 class="builder-title">Simple Permission Builder</h1><div class="builder-copy">Direct module actions with simple Own, Branch or Company data scope.</div></div>
+          <div class="builder-actions"><span class="save-state" id="saveState"><i class="bi bi-check-circle-fill"></i>Saved locally</span><span class="selection-count"><strong id="selectedCount">0</strong> actions allowed</span><button class="btn btn-sm btn-primary" id="saveBtn" type="button"><i class="bi bi-floppy me-1"></i>Save permissions</button></div>
+        </div>
+
+        <div class="builder-grid">
+          <section class="builder-column" aria-label="Modules">
+            <div class="column-head"><div><div class="step-label"><span class="step-number">1</span>Modules</div><p class="column-copy">Choose one module.</p></div><span class="badge-soft badge-gray" id="moduleTotal"></span></div>
+            <div class="column-tools"><div class="input-group input-group-sm"><span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span><input class="form-control border-start-0" id="moduleSearch" placeholder="Search modules"></div></div>
+            <div class="module-list" id="moduleList"></div>
+          </section>
+
+          <section class="builder-column" aria-label="Module actions">
+            <div class="column-head"><div><div class="step-label"><span class="step-number">2</span><span id="actionPanelTitle">Actions</span></div><p class="column-copy" id="actionPanelCopy">Only selected module actions appear here.</p></div><button class="btn btn-sm btn-outline-primary" id="addAllBtn" type="button"><i class="bi bi-plus-lg me-1"></i>Add all</button></div>
+            <div class="column-tools"><div class="input-group input-group-sm"><span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span><input class="form-control border-start-0" id="actionSearch" placeholder="Search selected module actions"></div></div>
+            <div class="action-list" id="actionList"></div>
+          </section>
+
+          <section class="builder-column" aria-label="Allowed actions">
+            <div class="column-head"><div><div class="step-label"><span class="step-number">3</span>Allowed actions & scope</div><p class="column-copy">Actions are grouped by module. Set Own, Branch or Company data scope.</p></div><button class="btn btn-sm btn-outline-danger" id="clearBtn" type="button"><i class="bi bi-trash3 me-1"></i>Clear</button></div>
+            <div class="drop-shell"><div class="drop-zone" id="dropZone"></div></div>
+          </section>
+        </div>
+      </section>
+  </main>
+
+  <script>
+    const modules = [
+      {id:'dashboard',label:'Dashboard & Reports',icon:'bi-bar-chart-line',actions:[
+        ['dashboard.view','View dashboard','Core access','web'],['dashboard.totals.view','View totals','Totals','web'],['dashboard.order_activity.view','View order activity','Order activity','web'],['dashboard.order_activity.received_today.view','Received today','Order activity','web'],['dashboard.order_activity.due_today.view','Due today','Order activity','web'],['dashboard.order_activity.sales_week.view','Sales this week','Order activity','web'],['dashboard.order_activity.active_orders.view','Active orders','Order activity','web'],['dashboard.order_activity.trends.view','Order trends','Order activity','web'],['dashboard.price_activity.view','Price activity','Price activity','web'],['dashboard.price_activity.gold_price.view','View gold price','Price activity','web'],['dashboard.price_activity.gold_price.update','Update gold price','Price activity','web',true],['dashboard.price_activity.packet_price.view','View packet price','Price activity','web'],['dashboard.price_activity.packet_price.update','Update packet price','Price activity','web',true],['mobile.dashboard.view','View mobile dashboard','Mobile access','mobile'],['mobile.dashboard.totals.view','Mobile totals','Mobile totals','mobile'],['mobile.dashboard.quick_actions.view','Quick actions','Quick actions','mobile'],['mobile.dashboard.quick_actions.orders.view','Orders shortcut','Quick actions','mobile'],['mobile.dashboard.quick_actions.spiff.view','SPIFF shortcut','Quick actions','mobile'],['mobile.dashboard.quick_actions.catalog.view','Catalog shortcut','Quick actions','mobile'],['mobile.dashboard.quick_actions.branches.view','Branches shortcut','Quick actions','mobile'],['mobile.dashboard.quick_actions.team.view','Team shortcut','Quick actions','mobile'],['mobile.dashboard.quick_actions.pricing.view','Pricing shortcut','Quick actions','mobile'],['mobile.dashboard.trending.view','Trending designs','Trending','mobile'],['mobile.dashboard.trending.price.view','Trending prices','Trending','mobile'],['mobile.dashboard.trending.open_design','Open trending design','Trending','mobile'],['mobile.dashboard.pipeline.view','Sales pipeline','Pipeline','mobile'],['mobile.dashboard.performance.rep.view','Rep performance','Performance','mobile'],['mobile.dashboard.performance.branch.view','Branch performance','Performance','mobile'],['mobile.dashboard.notifications.view','Dashboard notifications','Utility','mobile'],['mobile.dashboard.profile_photo.update','Update profile photo','Utility','mobile']
+      ]},
+      {id:'design',label:'Design Engine',icon:'bi-gem',actions:[
+        ['design.view','View designs','Core access','web'],['design.create','Create design','Design records','web'],['design.edit','Edit design','Design records','web'],['design.activate','Activate or deactivate design','Design records','web',true],['design.set_primary','Set primary design','Version control','web'],['design.history.view','View design history','Review','web'],['design.media.upload','Upload media','Media','web'],['design.import','Import designs','Bulk tools','web',true],['design.export','Export designs','Bulk tools','web',true],['mobile.design.view','View mobile designs','Mobile access','mobile'],['mobile.design.detail.view','View mobile design detail','Mobile detail','mobile'],['mobile.design.specifications.view','View specifications','Mobile detail','mobile'],['mobile.design.price.view','View design price','Mobile detail','mobile',true],['mobile.design.quote.create','Start quote or order','Mobile detail','mobile']
+      ]},
+      {id:'versions',label:'Design Versions',icon:'bi-diagram-3',actions:[
+        ['design.version.view','View versions','Versions','web'],['design.version.create','Create version','Versions','web'],['design.version.build','Use version builder','Versions','web'],['design.version.set_primary','Set primary version','Versions','web',true]
+      ]},
+      {id:'catalog',label:'Mobile Catalog & Quotes',icon:'bi-phone',actions:[
+        ['catalog.view','View catalog','Catalog','mobile'],['catalog.configure','Configure design','Catalog','mobile'],['quote.create','Create quote','Quote workflow','mobile'],['quote.edit','Edit quote','Quote workflow','mobile'],['quote.send_for_approval','Send for approval','Quote workflow','mobile',true]
+      ]},
+      {id:'orders',label:'Orders & Approvals',icon:'bi-receipt-cutoff',actions:[
+        ['order.view','View orders','Order access','web'],['order.create','Create order','Order entries','web'],['order.edit','Edit order','Order entries','web'],['order.status_update','Update order status','Approvals','web',true],['order.approve','Approve order','Approvals','web',true],['order.reject','Reject or cancel order','Approvals','web',true],['order.price_preview','Preview calculated price','Pricing','web'],['order.price_override','Override final price','Pricing','web',true],['order.cost_price.view','View cost price','Pricing','web',true],['mobile.order.view','View mobile orders','Mobile access','mobile'],['mobile.order.create','Create mobile order','Mobile entries','mobile'],['mobile.order.edit','Edit mobile order','Mobile entries','mobile'],['mobile.order.status_update','Update mobile status','Mobile approvals','mobile',true],['mobile.order.approve','Approve mobile order','Mobile approvals','mobile',true],['mobile.order.reject','Reject mobile order','Mobile approvals','mobile',true],['mobile.order.price_preview','Preview mobile price','Mobile pricing','mobile']
+      ]},
+      {id:'masters',label:'Masters & Packets',icon:'bi-layers',actions:[
+        ['master.view','View masters','Masters','web'],['master.create','Create master','Masters','web'],['master.edit','Edit master','Masters','web'],['master.status_update','Update master status','Masters','web',true],['master.import','Import masters','Bulk tools','web',true],['packet.view','View stone packets','Stone packets','web'],['packet.create','Create stone packet','Stone packets','web'],['packet.edit','Edit stone packet','Stone packets','web'],['packet.selling_price.update','Update packet selling price','Stone packets','web',true]
+      ]},
+      {id:'pricing',label:'Pricing Configuration',icon:'bi-cash-coin',actions:[
+        ['pricing.view','View pricing','Pricing access','web'],['pricing.company.update','Update company markup','Markup rules','web',true],['pricing.branch.update','Update branch markup','Markup rules','web',true],['pricing.base.create','Create global base price','Base prices','web',true],['pricing.base.edit','Edit global base price','Base prices','web',true],['pricing.recalculate','Recalculate designs','Maintenance','web',true],['mobile.pricing.view','View mobile pricing','Mobile pricing','mobile'],['mobile.pricing.company.update','Update company pricing','Mobile pricing','mobile',true],['mobile.pricing.branch.update','Update branch pricing','Mobile pricing','mobile',true],['mobile.pricing.gold.update','Update gold price','Mobile pricing','mobile',true]
+      ]},
+      {id:'organization',label:'Companies & Branches',icon:'bi-buildings',actions:[
+        ['company.view','View companies','Companies','web'],['company.create','Create company','Companies','web'],['company.edit','Edit company','Companies','web'],['company.status_update','Update company status','Companies','web',true],['branch.view','View branches','Branches','both'],['branch.create','Create branch','Branches','web'],['branch.edit','Edit branch','Branches','web'],['branch.pricing.manage','Manage branch pricing','Branches','both',true]
+      ]},
+      {id:'users',label:'Users & Team',icon:'bi-people',actions:[
+        ['user.view','View users','Users','web'],['user.create','Create user','Users','web'],['user.edit','Edit user','Users','web'],['user.status_update','Update user status','Users','web',true],['user.permissions.manage','Manage user permissions','Permissions','web',true],['user.import','Import or export users','Bulk tools','web',true],['team.employee.manage','Manage branch team','Mobile team','mobile']
+      ]},
+      {id:'spiff',label:'SPIFF Rewards',icon:'bi-stars',actions:[
+        ['spiff.view','View web SPIFF','SPIFF access','web'],['spiff.claim.create','Submit claim','Claims','web'],['spiff.claim.review','Review claim','Claims','web',true],['spiff.claim.fulfill','Fulfill claim','Claims','web',true],['spiff.config.edit','Edit SPIFF configuration','Configuration','web',true],['mobile.spiff.view','View mobile SPIFF','Mobile access','mobile'],['mobile.spiff.claim.create','Submit mobile claim','Mobile claims','mobile'],['mobile.spiff.claim.review','Review mobile claim','Mobile claims','mobile',true],['mobile.spiff.leaderboard.view','View leaderboard','Leaderboard','mobile']
+      ]},
+      {id:'notifications',label:'Notifications',icon:'bi-bell',actions:[
+        ['notification.view','View web notifications','Web notifications','web'],['notification.read','Update web read state','Web notifications','web'],['mobile.notification.view','View mobile notifications','Mobile notifications','mobile'],['mobile.notification.read','Update mobile read state','Mobile notifications','mobile'],['mobile.notification.push.register','Register push device','Push notifications','mobile']
+      ]},
+      {id:'ai',label:'AI Sales Assistant',icon:'bi-lightning-charge',actions:[
+        ['mobile.ai.view','Open AI Sales','AI access','mobile'],['mobile.ai.catalog.search','Search catalog with AI','AI tools','mobile'],['mobile.ai.orders.lookup','Look up orders with AI','AI tools','mobile',true],['mobile.ai.pricing.view','View AI pricing response','AI tools','mobile',true]
+      ]}
+    ].map(module=>({...module,actions:module.actions.map(action=>({id:action[0],label:action[1],group:action[2],platform:action[3],sensitive:Boolean(action[4]),moduleId:module.id}))}));
+
+    const allActions=modules.flatMap(module=>module.actions);
+    const actionMap=new Map(allActions.map(action=>[action.id,action]));
+    const moduleMap=new Map(modules.map(module=>[module.id,module]));
+    const storageKey='blitz_simple_permissions_v2';
+    const defaults=['dashboard.view','dashboard.totals.view','design.view','mobile.design.view','order.view','order.create','mobile.order.view','catalog.view','quote.create','notification.view'];
+    const scopeOptions=[['own','Own'],['branch','Branch'],['company','Company']];
+    const moduleDefaultScope={dashboard:'own',design:'branch',versions:'company',catalog:'own',orders:'own',masters:'company',pricing:'company',organization:'branch',users:'branch',spiff:'own',notifications:'own',ai:'own'};
+    const noScopeActions=new Set(['dashboard.view','mobile.dashboard.view','mobile.dashboard.quick_actions.view','mobile.dashboard.quick_actions.orders.view','mobile.dashboard.quick_actions.spiff.view','mobile.dashboard.quick_actions.catalog.view','mobile.dashboard.quick_actions.branches.view','mobile.dashboard.quick_actions.team.view','mobile.dashboard.quick_actions.pricing.view','mobile.dashboard.profile_photo.update','mobile.notification.push.register']);
+    let selectedModuleId='dashboard';
+    const initialState=loadSaved();
+    let allowed=new Set(initialState.actions);
+    let scopes={...initialState.scopes};
+
+    const escapeHtml=(value='')=>String(value).replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+    function loadSaved(){
+      try{
+        const value=JSON.parse(localStorage.getItem(storageKey));
+        if(Array.isArray(value))return{actions:value.filter(id=>actionMap.has(id)),scopes:{}};
+        if(value&&Array.isArray(value.actions))return{actions:value.actions.filter(id=>actionMap.has(id)),scopes:value.scopes&&typeof value.scopes==='object'?value.scopes:{}};
+      }catch(_){}
+      return{actions:defaults,scopes:{}};
+    }
+    function supportsScope(action){return !noScopeActions.has(action.id)}
+    function scopeFor(action){return supportsScope(action)?(scopes[action.id]||moduleDefaultScope[action.moduleId]||'own'):null}
+    function scopeSelectHtml(action){
+      if(!supportsScope(action))return '<span class="no-scope"><i class="bi bi-dash-circle"></i>No data scope</span>';
+      const current=scopeFor(action);
+      return `<div class="action-scope"><label for="scope-${action.id}">Data scope</label><select class="form-select form-select-sm" id="scope-${action.id}" data-action-scope="${action.id}">${scopeOptions.map(([value,label])=>`<option value="${value}" ${value===current?'selected':''}>${label}</option>`).join('')}</select></div>`;
+    }
+    function commonModuleScope(actions){
+      const values=[...new Set(actions.filter(supportsScope).map(scopeFor))];
+      return values.length===1?values[0]:'mixed';
+    }
+    function moduleScopeSelectHtml(module,actions){
+      const scoped=actions.filter(supportsScope);
+      if(!scoped.length)return '<span class="no-scope"><i class="bi bi-dash-circle"></i>No scoped data</span>';
+      const current=commonModuleScope(scoped);
+      return `<div class="module-scope"><label for="module-scope-${module.id}">Set all scope</label><select class="form-select form-select-sm" id="module-scope-${module.id}" data-module-scope="${module.id}">${current==='mixed'?'<option value="mixed" selected disabled>Mixed scopes</option>':''}${scopeOptions.map(([value,label])=>`<option value="${value}" ${value===current?'selected':''}>${label}</option>`).join('')}</select></div>`;
+    }
+    function selectedCountFor(moduleId){return moduleMap.get(moduleId).actions.filter(action=>allowed.has(action.id)).length}
+    function markChanged(){document.getElementById('saveState').classList.remove('show')}
+
+    function renderModules(){
+      const query=document.getElementById('moduleSearch').value.trim().toLowerCase();
+      const visible=modules.filter(module=>!query||module.label.toLowerCase().includes(query));
+      document.getElementById('moduleTotal').textContent=`${modules.length} modules`;
+      document.getElementById('moduleList').innerHTML=visible.map(module=>`<button class="module-item ${module.id===selectedModuleId?'active':''}" data-module-id="${module.id}" type="button"><span class="module-icon"><i class="bi ${module.icon}"></i></span><span class="min-w-0"><span class="module-name d-block">${escapeHtml(module.label)}</span><span class="module-meta">${module.actions.length} available actions</span></span><span class="module-count">${selectedCountFor(module.id)}/${module.actions.length}</span></button>`).join('')||'<div class="empty-filter">No module found.</div>';
+      document.querySelectorAll('[data-module-id]').forEach(button=>button.addEventListener('click',()=>{selectedModuleId=button.dataset.moduleId;document.getElementById('actionSearch').value='';renderAll()}));
+    }
+
+    function renderActions(){
+      const module=moduleMap.get(selectedModuleId);
+      const query=document.getElementById('actionSearch').value.trim().toLowerCase();
+      const visible=module.actions.filter(action=>!query||`${action.label} ${action.group}`.toLowerCase().includes(query));
+      document.getElementById('actionPanelTitle').textContent=module.label;
+      document.getElementById('actionPanelCopy').textContent=`${visible.length} of ${module.actions.length} actions shown. Drag or use + to allow.`;
+      document.getElementById('actionList').innerHTML=visible.map(action=>{
+        const added=allowed.has(action.id);
+        return `<div class="action-card ${added?'added':''}" draggable="${!added}" data-action-id="${action.id}"><i class="bi ${added?'bi-check2':'bi-grip-vertical'} drag-handle"></i><div class="min-w-0"><div class="action-name">${escapeHtml(action.label)}</div><div class="action-meta"><span>${escapeHtml(action.group)}</span><span class="platform">${escapeHtml(action.platform)}</span>${action.sensitive?'<span class="badge-soft badge-red">Sensitive</span>':''}</div></div><button class="icon-button" data-add-action="${action.id}" type="button" ${added?'disabled':''} title="${added?'Already allowed':'Add permission'}"><i class="bi ${added?'bi-check-lg':'bi-plus-lg'}"></i></button></div>`;
+      }).join('')||'<div class="empty-filter">No action found.</div>';
+      document.querySelectorAll('.action-card[draggable="true"]').forEach(card=>{
+        card.addEventListener('dragstart',event=>{card.classList.add('dragging');event.dataTransfer.setData('text/plain',card.dataset.actionId);event.dataTransfer.effectAllowed='copy'});
+        card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+      });
+      document.querySelectorAll('[data-add-action]').forEach(button=>button.addEventListener('click',()=>addAction(button.dataset.addAction)));
+    }
+
+    function renderAllowed(){
+      const groups=modules.map(module=>({module,actions:module.actions.filter(action=>allowed.has(action.id))})).filter(group=>group.actions.length);
+      const zone=document.getElementById('dropZone');
+      document.getElementById('selectedCount').textContent=allowed.size;
+      if(!groups.length){zone.innerHTML='<div class="drop-empty"><div><span class="drop-empty-icon"><i class="bi bi-box-arrow-in-down"></i></span><div class="fw-semibold text-dark">Drop actions here</div><div class="mt-1">Selected permissions will appear module-wise.</div></div></div>';return}
+      zone.innerHTML=groups.map(({module,actions})=>`<div class="selected-group"><div class="selected-group-head"><div class="selected-group-title"><span class="module-icon" style="width:25px;height:25px;font-size:11px"><i class="bi ${module.icon}"></i></span>${escapeHtml(module.label)}<span class="badge-soft badge-blue">${actions.length}</span></div><div class="selected-group-controls">${moduleScopeSelectHtml(module,actions)}<button class="btn btn-sm btn-link text-danger p-0 text-decoration-none" data-remove-module="${module.id}" type="button" style="font-size:8px">Remove module</button></div></div>${actions.map(action=>`<div class="selected-action"><div><div class="selected-action-name">${escapeHtml(action.label)}</div><div class="action-meta"><span>${escapeHtml(action.group)}</span><span class="platform">${escapeHtml(action.platform)}</span>${action.sensitive?'<span class="badge-soft badge-red">Sensitive</span>':''}</div></div>${scopeSelectHtml(action)}<button class="remove-action" data-remove-action="${action.id}" type="button" title="Remove permission"><i class="bi bi-x-lg"></i></button></div>`).join('')}</div>`).join('');
+      document.querySelectorAll('[data-remove-action]').forEach(button=>button.addEventListener('click',()=>removeAction(button.dataset.removeAction)));
+      document.querySelectorAll('[data-action-scope]').forEach(select=>select.addEventListener('change',()=>{scopes[select.dataset.actionScope]=select.value;markChanged();renderAllowed()}));
+      document.querySelectorAll('[data-module-scope]').forEach(select=>select.addEventListener('change',()=>{moduleMap.get(select.dataset.moduleScope).actions.filter(action=>allowed.has(action.id)&&supportsScope(action)).forEach(action=>{scopes[action.id]=select.value});markChanged();renderAllowed()}));
+      document.querySelectorAll('[data-remove-module]').forEach(button=>button.addEventListener('click',()=>{moduleMap.get(button.dataset.removeModule).actions.forEach(action=>{allowed.delete(action.id);delete scopes[action.id]});markChanged();renderAll()}));
+    }
+
+    function addAction(id){if(!actionMap.has(id)||allowed.has(id))return;allowed.add(id);const action=actionMap.get(id);if(supportsScope(action)&&!scopes[id])scopes[id]=moduleDefaultScope[action.moduleId]||'own';markChanged();renderAll()}
+    function removeAction(id){allowed.delete(id);delete scopes[id];markChanged();renderAll()}
+    function renderAll(){renderModules();renderActions();renderAllowed()}
+
+    document.getElementById('moduleSearch').addEventListener('input',renderModules);
+    document.getElementById('actionSearch').addEventListener('input',renderActions);
+    document.getElementById('addAllBtn').addEventListener('click',()=>{const query=document.getElementById('actionSearch').value.trim().toLowerCase();moduleMap.get(selectedModuleId).actions.filter(action=>!query||`${action.label} ${action.group}`.toLowerCase().includes(query)).forEach(action=>{allowed.add(action.id);if(supportsScope(action)&&!scopes[action.id])scopes[action.id]=moduleDefaultScope[action.moduleId]||'own'});markChanged();renderAll()});
+    document.getElementById('clearBtn').addEventListener('click',()=>{allowed.clear();scopes={};markChanged();renderAll()});
+    document.getElementById('saveBtn').addEventListener('click',()=>{localStorage.setItem(storageKey,JSON.stringify({actions:[...allowed],scopes}));document.getElementById('saveState').classList.add('show')});
+    const dropZone=document.getElementById('dropZone');
+    dropZone.addEventListener('dragover',event=>{event.preventDefault();event.dataTransfer.dropEffect='copy';dropZone.classList.add('drag-over')});
+    dropZone.addEventListener('dragleave',event=>{if(!dropZone.contains(event.relatedTarget))dropZone.classList.remove('drag-over')});
+    dropZone.addEventListener('drop',event=>{event.preventDefault();dropZone.classList.remove('drag-over');addAction(event.dataTransfer.getData('text/plain'))});
+    renderAll();
+  </script>
+</body>
+</html>

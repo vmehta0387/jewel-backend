@@ -41,6 +41,7 @@ interface GlobalRateMaps {
 export type DesignRetailPriceResult = {
   baseCost: number;
   companyMultiplier: number;
+  companyPrice: number;
   branchMultiplier: number;
   effectiveMultiplier: number;
   pricingSource: 'COMPANY' | 'BRANCH';
@@ -584,18 +585,24 @@ export class PricingService {
       );
     }
 
+    const companyPrice = this.roundMoney(baseCost * companyMultiplier);
+
     if (params.branchId) {
-      branchPricing = await this.resolveBranchPricing(params.branchId, baseCost, params.companyId);
+      branchPricing = await this.resolveBranchPricing(params.branchId, companyPrice, params.companyId);
     }
 
     const pricingSource = branchPricing.applies ? 'BRANCH' : 'COMPANY';
-    const effectiveMultiplier = branchPricing.applies ? branchPricing.multiplier : companyMultiplier;
-    const finalPrice = this.roundMoney(baseCost * effectiveMultiplier);
+    const branchMultiplier = branchPricing.applies ? branchPricing.multiplier : 1;
+    const effectiveMultiplier = companyMultiplier * branchMultiplier;
+    const finalPrice = branchPricing.applies
+      ? this.roundMoney(companyPrice * branchMultiplier)
+      : companyPrice;
 
     return {
       baseCost,
       companyMultiplier,
-      branchMultiplier: branchPricing.applies ? branchPricing.multiplier : 1,
+      companyPrice,
+      branchMultiplier,
       effectiveMultiplier,
       pricingSource,
       finalPrice,

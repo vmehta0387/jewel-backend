@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import type { Design, Order } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
+import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
@@ -327,6 +328,17 @@ const QuoteSummaryScreen = () => {
         notes: displaySummary.notes || undefined,
         status: 'PENDING_APPROVAL',
       };
+
+      if (!(await confirmPurchaseOrderReuse({
+        token,
+        companyId: user.companyId,
+        branchId: user.branchId,
+        purchaseOrderNumber: payload.purchaseOrderNumber,
+        excludeOrderId: orderId,
+        onError: setError,
+      }))) {
+        return;
+      }
 
       let nextOrderId = orderId;
       let nextOrderNumber = orderNumber;

@@ -812,9 +812,15 @@ const BranchDashboardScreen = () => {
               <TouchableWithoutFeedback>
                 <View style={[styles.menuPopoutWindow, { top: menuPosition.top, left: menuPosition.left }]}>
                   <View style={styles.menuPopInnerData}>
-                    <TouchableOpacity style={styles.menuHitRow} onPress={handleChangePhoto} disabled={uploadingPhoto}>
-                      <Text style={styles.menuHitText}>{uploadingPhoto ? 'Uploading...' : 'Update Photo'}</Text>
-                      <Ionicons name="image-outline" size={16} color="#4B433C" />
+                    <TouchableOpacity
+                      style={styles.menuHitRow}
+                      onPress={() => {
+                        setProfileMenuVisible(false);
+                        navigation.navigate('UserProfile');
+                      }}
+                    >
+                      <Text style={styles.menuHitText}>View Profile</Text>
+                      <Ionicons name="person-outline" size={16} color="#4B433C" />
                     </TouchableOpacity>
                     <View style={styles.menuDividerH} />
                     <TouchableOpacity

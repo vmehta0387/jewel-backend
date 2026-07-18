@@ -1,4 +1,4 @@
-﻿import { apiRequest } from './client';
+import { apiRequest } from './client';
 import type { AuthUser } from '../types';
 
 export type LoginResponse = { accessToken: string; user: AuthUser };
@@ -27,3 +27,17 @@ export const uploadMyPhoto = (
     token,
   );
 };
+
+export const updateMyProfile = (
+  token: string,
+  data: Partial<AuthUser> & { password?: string; currentPassword?: string },
+) =>
+  apiRequest<AuthUser>(
+    '/auth/me',
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+    token,
+  );
+

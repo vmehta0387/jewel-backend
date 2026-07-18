@@ -47,13 +47,42 @@ export const fetchOrderTrends = (token: string) =>
 export const fetchOrder = (token: string, id: string) =>
   apiRequest<Order>(`/orders/${id}`, { method: 'GET' }, token);
 
+export const fetchPurchaseOrderUsage = (
+  token: string,
+  params: {
+    companyId: string;
+    branchId: string;
+    purchaseOrderNumber: string;
+    excludeOrderId?: string | null;
+  },
+) => {
+  const query = new URLSearchParams({
+    companyId: params.companyId,
+    branchId: params.branchId,
+    purchaseOrderNumber: params.purchaseOrderNumber,
+  });
+  if (params.excludeOrderId) query.set('excludeOrderId', params.excludeOrderId);
+
+  return apiRequest<{
+    count: number;
+    orders: Array<{
+      id: string;
+      orderNumber: string;
+      status: string;
+      designNo?: string | null;
+      customerName?: string | null;
+      createdAt?: string;
+    }>;
+  }>(`/orders/po-usage?${query.toString()}`, { method: 'GET' }, token);
+};
+
 export const fetchPricePreview = (
   token: string,
   designId: string,
   companyId: string,
   branchId: string,
 ) =>
-  apiRequest<{ baseCost: number; companyMultiplier: number; branchMultiplier: number; finalPrice: number }>(
+  apiRequest<{ baseCost: number; companyMultiplier: number; companyPrice: number; branchMultiplier: number; finalPrice: number }>(
     `/orders/price-preview?designId=${encodeURIComponent(designId)}&companyId=${encodeURIComponent(
       companyId,
     )}&branchId=${encodeURIComponent(branchId)}`,
