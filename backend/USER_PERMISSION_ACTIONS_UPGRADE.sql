@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS permission_actions (
     'VIEW_REPORTS'
   ) NULL,
   supports_scope TINYINT(1) NOT NULL DEFAULT 1,
-  sensitive TINYINT(1) NOT NULL DEFAULT 0,
+  `sensitive` TINYINT(1) NOT NULL DEFAULT 0,
   sort_order INT NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -52,8 +52,5 @@ CREATE TABLE IF NOT EXISTS user_permission_actions (
   PRIMARY KEY (id),
   UNIQUE KEY uq_user_permission_action (user_id, action_key),
   KEY idx_user_permission_actions_user (user_id),
-  KEY idx_user_permission_actions_action (action_key),
-  CONSTRAINT fk_user_permission_actions_user
-    FOREIGN KEY (user_id) REFERENCES users (id)
-    ON DELETE CASCADE
+  KEY idx_user_permission_actions_action (action_key)
 );
