@@ -1759,9 +1759,9 @@ export class ProductsService {
 
   private readonly mobileCatalogCategories = [
     { id: MobileCatalogCategory.RINGS, label: 'Rings', hints: ['ring'] },
-    // { id: MobileCatalogCategory.BRACELETS, label: 'Bracelets', hints: ['bracelet', 'bangle'] },
-    // { id: MobileCatalogCategory.STUDS, label: 'Studs', hints: ['stud', 'earring'] },
-    // { id: MobileCatalogCategory.NECKLACES, label: 'Necklaces', hints: ['necklace', 'pendant', 'chain'] },
+    { id: MobileCatalogCategory.BRACELETS, label: 'Bracelets', hints: ['bracelet', 'bangle'] },
+    { id: MobileCatalogCategory.STUDS, label: 'Studs', hints: ['stud', 'earring'] },
+    { id: MobileCatalogCategory.NECKLACES, label: 'Necklaces', hints: ['necklace', 'pendant', 'chain'] },
   ] as const;
 
   async findMobileCategories(

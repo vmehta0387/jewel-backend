@@ -27,9 +27,9 @@ export enum PricingIncrementBy {
 
 export enum MobileCatalogCategory {
   RINGS = 'rings',
-  // BRACELETS = 'bracelets',
-  // STUDS = 'studs',
-  // NECKLACES = 'necklaces',
+  BRACELETS = 'bracelets',
+  STUDS = 'studs',
+  NECKLACES = 'necklaces',
 }
 
 export class DesignMetalDto {
