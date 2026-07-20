@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TaskPermission, UserRole } from '../../types/auth.types';
 import api from '../../services/api';
+import AlertDialog from '../common/AlertDialog';
 
 type DataScope = 'NONE' | 'OWN' | 'BRANCH' | 'COMPANY' | 'ALL';
+type PlatformFilter = 'all' | 'web' | 'mobile';
 export type DetailedPermission = {
   actionKey: string;
   dataScope: Exclude<DataScope, 'NONE' | 'ALL'>;
@@ -74,6 +76,69 @@ const MODULE_DEFAULT_SCOPE: Record<string, DataScope> = {
   notification: 'OWN',
   ai: 'OWN',
 };
+
+const HIDDEN_PERMISSION_MODULES = new Set([
+  'design',
+  'version',
+  'catalog',
+  'notification',
+  'ai',
+]);
+
+const HIDDEN_PERMISSION_ACTIONS = new Set([
+  'dashboard.view',
+  'dashboard.totals.view',
+  'dashboard.order_activity.view',
+  'dashboard.order_activity.received_today.view',
+  'dashboard.order_activity.due_today.view',
+  'dashboard.order_activity.sales_week.view',
+  'dashboard.order_activity.active_orders.view',
+  'dashboard.order_activity.trends.view',
+  'mobile.dashboard.view',
+  'mobile.dashboard.totals.view',
+  'mobile.dashboard.quick_actions.view',
+  'mobile.dashboard.quick_actions.orders.view',
+  'mobile.dashboard.quick_actions.spiff.view',
+  'mobile.dashboard.quick_actions.catalog.view',
+  'mobile.dashboard.quick_actions.branches.view',
+  'mobile.dashboard.quick_actions.team.view',
+  'mobile.dashboard.quick_actions.pricing.view',
+  'mobile.dashboard.trending.view',
+  'mobile.dashboard.trending.price.view',
+  'mobile.dashboard.trending.open_design',
+  'mobile.dashboard.pipeline.view',
+  'mobile.dashboard.performance.rep.view',
+  'mobile.dashboard.performance.branch.view',
+  'mobile.dashboard.notifications.view',
+  'mobile.dashboard.profile_photo.update',
+  'order.view',
+  'order.create',
+  'order.edit',
+  'order.approve',
+  'order.reject',
+  'order.price_preview',
+  'order.price_override',
+  'order.cost_price.view',
+  'mobile.order.view',
+  'mobile.order.create',
+  'mobile.order.edit',
+  'mobile.order.status_update',
+  'mobile.order.approve',
+  'mobile.order.reject',
+  'mobile.order.price_preview',
+  'packet.view',
+  'packet.create',
+  'packet.edit',
+  'packet.selling_price.update',
+  'pricing.view',
+  'pricing.base.create',
+  'pricing.base.edit',
+  'pricing.recalculate',
+  'mobile.pricing.view',
+  'mobile.pricing.company.update',
+  'mobile.pricing.branch.update',
+  'mobile.pricing.gold.update',
+]);
 
 const MODULES: PermissionModule[] = [
   {
@@ -391,7 +456,47 @@ const MODULES: PermissionModule[] = [
   },
 ];
 
+const filterPermissionCatalog = (modules: PermissionModule[]) =>
+  modules
+    .filter((module) => !HIDDEN_PERMISSION_MODULES.has(module.key))
+    .map((module) => ({
+      ...module,
+      actions: module.actions.filter((action) => !HIDDEN_PERMISSION_ACTIONS.has(action.key)),
+    }))
+    .filter((module) => module.actions.length > 0);
+
 const selectedSet = (value: TaskPermission[]) => new Set(value);
+
+const PLATFORM_FILTER_OPTIONS: Array<{ value: PlatformFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'web', label: 'Web' },
+  { value: 'mobile', label: 'Mobile' },
+];
+
+const ACTION_TREE: Record<string, string[]> = {
+  'dashboard.price_activity.view': [
+    'dashboard.price_activity.gold_price.view',
+    'dashboard.price_activity.gold_price.update',
+    'dashboard.price_activity.packet_price.view',
+    'dashboard.price_activity.packet_price.update',
+  ],
+};
+
+const CHILD_ACTION_PARENT = Object.entries(ACTION_TREE).reduce<Record<string, string>>((acc, [parentKey, childKeys]) => {
+  childKeys.forEach((childKey) => {
+    acc[childKey] = parentKey;
+  });
+  return acc;
+}, {});
+
+const normalizeTreeSelection = (actions: Set<string>) => {
+  const next = new Set(actions);
+  Object.entries(ACTION_TREE).forEach(([parentKey, childKeys]) => {
+    if (next.has(parentKey)) return;
+    childKeys.forEach((childKey) => next.delete(childKey));
+  });
+  return next;
+};
 
 const getLegacyPermissionsFromActions = (
   actionKeys: Set<string>,
@@ -441,14 +546,19 @@ export default function PermissionMatrix({
   const [selectedModuleId, setSelectedModuleId] = useState('dashboard');
   const [moduleSearch, setModuleSearch] = useState('');
   const [actionSearch, setActionSearch] = useState('');
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
+  const [expandedTreeKeys, setExpandedTreeKeys] = useState<Set<string>>(() => new Set());
+  const [expandedSelectedTreeKeys, setExpandedSelectedTreeKeys] = useState<Set<string>>(() => new Set(Object.keys(ACTION_TREE)));
+  const [pendingTreeRemoval, setPendingTreeRemoval] = useState<{ childKey: string; parentKey: string; parentLabel: string } | null>(null);
   const [remoteModules, setRemoteModules] = useState<PermissionModule[]>([]);
-  const catalogModules = remoteModules.length > 0 ? remoteModules : MODULES;
+  const rawCatalogModules = remoteModules.length > 0 ? remoteModules : MODULES;
+  const catalogModules = useMemo(() => filterPermissionCatalog(rawCatalogModules), [rawCatalogModules]);
   
   const [dataScopes, setDataScopes] = useState<Record<string, DataScope>>({});
   const [selectedActions, setSelectedActions] = useState<Set<string>>(() =>
     detailedValue !== undefined
-      ? new Set(detailedValue.map((permission) => permission.actionKey))
-      : getActionKeysFromLegacyPermissions(selectedSet(value))
+      ? normalizeTreeSelection(new Set(detailedValue.map((permission) => permission.actionKey).filter((key) => !HIDDEN_PERMISSION_ACTIONS.has(key))))
+      : normalizeTreeSelection(getActionKeysFromLegacyPermissions(selectedSet(value), catalogModules))
   );
 
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -487,17 +597,20 @@ export default function PermissionMatrix({
 
   useEffect(() => {
     if (detailedValue !== undefined) {
-      setSelectedActions(new Set(detailedValue.map((permission) => permission.actionKey)));
+      const visibleActionKeys = new Set(catalogModules.flatMap((module) => module.actions.map((action) => action.key)));
+      setSelectedActions(normalizeTreeSelection(new Set(detailedValue.map((permission) => permission.actionKey).filter((key) => visibleActionKeys.has(key)))));
       setDataScopes(() => {
         const next: Record<string, DataScope> = {};
         detailedValue.forEach((permission) => {
-          next[permission.actionKey] = permission.dataScope;
+          if (visibleActionKeys.has(permission.actionKey)) {
+            next[permission.actionKey] = permission.dataScope;
+          }
         });
         return next;
       });
       return;
     }
-    setSelectedActions(getActionKeysFromLegacyPermissions(permissions, catalogModules));
+    setSelectedActions(normalizeTreeSelection(getActionKeysFromLegacyPermissions(permissions, catalogModules)));
   }, [catalogModules, detailedValue, permissions, role]);
 
   const allActions = useMemo(() => catalogModules.flatMap((m) => m.actions), [catalogModules]);
@@ -509,10 +622,11 @@ export default function PermissionMatrix({
   };
 
   const emitSelectionChange = (nextActions: Set<string>, nextScopes = dataScopes) => {
-    onChange(getLegacyPermissionsFromActions(nextActions, allowed, catalogModules));
+    const normalizedActions = normalizeTreeSelection(nextActions);
+    onChange(getLegacyPermissionsFromActions(normalizedActions, allowed, catalogModules));
     if (!onDetailedChange) return;
     onDetailedChange(
-      Array.from(nextActions)
+      Array.from(normalizedActions)
         .filter((key) => actionMap.has(key))
         .sort()
         .map((actionKey) => ({
@@ -540,13 +654,86 @@ export default function PermissionMatrix({
     return mod.actions.filter((a) => selectedActions.has(a.key)).length;
   };
 
+  const matchesPlatformFilter = (action: PermissionAction) => {
+    if (platformFilter === 'all') return true;
+    return action.platform === platformFilter || action.platform === 'both';
+  };
+
+  const isChildActionLocked = (action: PermissionAction, actionSet = selectedActions) => {
+    const parentKey = CHILD_ACTION_PARENT[action.key];
+    return Boolean(parentKey && !actionSet.has(parentKey));
+  };
+
+  const isLastSelectedTreeChild = (actionKey: string, actionSet = selectedActions) => {
+    const parentKey = CHILD_ACTION_PARENT[actionKey];
+    if (!parentKey || !actionSet.has(parentKey)) return false;
+    const selectedChildCount = (ACTION_TREE[parentKey] || []).filter((childKey) => actionSet.has(childKey)).length;
+    return selectedChildCount <= 1 && actionSet.has(actionKey);
+  };
+
+  const canAddActionToSelection = (action: PermissionAction, actionSet: Set<string>) => {
+    if (action.legacyPermission && !allowed.has(action.legacyPermission)) return false;
+    if (isChildActionLocked(action, actionSet)) return false;
+    return true;
+  };
+
+  const addActionWithChildren = (action: PermissionAction, actionSet: Set<string>) => {
+    if (!canAddActionToSelection(action, actionSet)) return;
+    actionSet.add(action.key);
+    ACTION_TREE[action.key]?.forEach((childKey) => {
+      const childAction = actionMap.get(childKey);
+      if (childAction && canAddActionToSelection(childAction, actionSet)) {
+        actionSet.add(childKey);
+      }
+    });
+  };
+
+  const toggleTree = (key: string) => {
+    setExpandedTreeKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectedTree = (key: string) => {
+    setExpandedSelectedTreeKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const PlatformToggle = () => (
+    <div className="platform-toggle" role="group" aria-label="Filter actions by platform">
+      {PLATFORM_FILTER_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={platformFilter === option.value ? 'active' : ''}
+          onClick={() => setPlatformFilter(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const addAction = (key: string) => {
     if (!canEdit || selectedActions.has(key)) return;
     const action = actionMap.get(key);
-    if (!action || !action.legacyPermission || !allowed.has(action.legacyPermission)) return;
+    if (!action) return;
     
     const next = new Set(selectedActions);
-    next.add(key);
+    addActionWithChildren(action, next);
     setSelectedActions(next);
     emitSelectionChange(next);
   };
@@ -554,9 +741,33 @@ export default function PermissionMatrix({
   const removeAction = (key: string) => {
     if (!canEdit) return;
     const next = new Set(selectedActions);
+
+    if (isLastSelectedTreeChild(key)) {
+      const parentKey = CHILD_ACTION_PARENT[key];
+      const parentAction = parentKey ? actionMap.get(parentKey) : null;
+      if (!parentKey) return;
+      setPendingTreeRemoval({
+        childKey: key,
+        parentKey,
+        parentLabel: parentAction?.label || 'the parent action',
+      });
+      return;
+    }
+
     next.delete(key);
+    ACTION_TREE[key]?.forEach((childKey) => next.delete(childKey));
     setSelectedActions(next);
     emitSelectionChange(next);
+  };
+
+  const confirmTreeRemoval = () => {
+    if (!pendingTreeRemoval) return;
+    const next = new Set(selectedActions);
+    next.delete(pendingTreeRemoval.parentKey);
+    ACTION_TREE[pendingTreeRemoval.parentKey]?.forEach((childKey) => next.delete(childKey));
+    setSelectedActions(next);
+    emitSelectionChange(next);
+    setPendingTreeRemoval(null);
   };
 
   const addAllModuleActions = () => {
@@ -568,9 +779,9 @@ export default function PermissionMatrix({
     const needle = actionSearch.trim().toLowerCase();
     
     mod.actions.forEach((a) => {
-      if (!a.legacyPermission || !allowed.has(a.legacyPermission)) return;
+      if (!matchesPlatformFilter(a)) return;
       if (needle && !`${a.label} ${a.group}`.toLowerCase().includes(needle)) return;
-      next.add(a.key);
+      addActionWithChildren(a, next);
     });
 
     setSelectedActions(next);
@@ -673,16 +884,28 @@ export default function PermissionMatrix({
     const mod = moduleMap.get(selectedModuleId);
     if (!mod) return [];
     const needle = actionSearch.trim().toLowerCase();
-    return mod.actions.filter((a) => !needle || `${a.label} ${a.group}`.toLowerCase().includes(needle));
-  }, [selectedModuleId, actionSearch, moduleMap]);
+    return mod.actions.filter((a) => {
+      if (selectedActions.has(a.key)) return false;
+      const parentKey = CHILD_ACTION_PARENT[a.key];
+      if (parentKey && selectedActions.has(parentKey)) return false;
+      return matchesPlatformFilter(a) && (!needle || `${a.label} ${a.group}`.toLowerCase().includes(needle));
+    });
+  }, [selectedModuleId, actionSearch, moduleMap, platformFilter, selectedActions]);
+
+  const visibleActions = useMemo(() => {
+    return filteredActions.filter((action) => {
+      const parentKey = CHILD_ACTION_PARENT[action.key];
+      return !parentKey || selectedActions.has(parentKey) || expandedTreeKeys.has(parentKey);
+    });
+  }, [filteredActions, expandedTreeKeys, selectedActions]);
 
   // Allowed groups list (Column 3)
   const allowedGroups = useMemo(() => {
     return catalogModules.map((m) => {
-      const active = m.actions.filter((a) => selectedActions.has(a.key));
+      const active = m.actions.filter((a) => selectedActions.has(a.key) && matchesPlatformFilter(a));
       return { module: m, actions: active };
     }).filter((g) => g.actions.length > 0);
-  }, [catalogModules, selectedActions]);
+  }, [catalogModules, selectedActions, platformFilter]);
 
   return (
     <div className="permission-matrix-container">
@@ -903,10 +1126,12 @@ export default function PermissionMatrix({
         .permission-matrix-container .builder-grid {
           display: grid;
           grid-template-columns: minmax(215px, 0.72fr) minmax(300px, 1fr) minmax(360px, 1.35fr);
-          min-height: 600px;
+          height: min(600px, calc(100vh - 220px));
+          min-height: 420px;
         }
         .permission-matrix-container .builder-column {
           min-width: 0;
+          min-height: 0;
           background: #fff;
           border-right: 1px solid #e6e0da;
           display: flex;
@@ -925,6 +1150,13 @@ export default function PermissionMatrix({
           padding: 13px 14px;
           border-bottom: 1px solid #e6e0da;
           flex: 0 0 auto;
+        }
+        .permission-matrix-container .column-head-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 8px;
+          flex-wrap: wrap;
         }
         .permission-matrix-container .step-label {
           display: flex;
@@ -961,6 +1193,7 @@ export default function PermissionMatrix({
           overflow-y: auto;
           padding: 8px;
           flex: 1;
+          min-height: 0;
         }
         .permission-matrix-container .module-item {
           width: 100%;
@@ -1023,6 +1256,7 @@ export default function PermissionMatrix({
           overflow-y: auto;
           padding: 8px;
           flex: 1;
+          min-height: 0;
         }
         .permission-matrix-container .action-card {
           display: grid;
@@ -1049,6 +1283,51 @@ export default function PermissionMatrix({
           background: #f7fbf8;
           border-color: #d5eadb;
         }
+        .permission-matrix-container .action-card.tree-parent {
+          border-color: #bdd3f6;
+          box-shadow: inset 3px 0 0 #8bb7f0;
+        }
+        .permission-matrix-container .action-card.tree-child {
+          position: relative;
+          margin-left: 22px;
+          grid-template-columns: 18px minmax(0, 1fr) auto;
+          background: #fffdfb;
+        }
+        .permission-matrix-container .action-card.tree-child::before {
+          content: "";
+          position: absolute;
+          left: -13px;
+          top: -7px;
+          width: 13px;
+          height: calc(50% + 7px);
+          border-left: 1px solid #d8cec3;
+          border-bottom: 1px solid #d8cec3;
+          border-bottom-left-radius: 7px;
+        }
+        .permission-matrix-container .action-card.child-locked {
+          cursor: not-allowed;
+          background: #f8f6f3;
+        }
+        .permission-matrix-container .tree-toggle {
+          width: 19px;
+          height: 19px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          color: #3866a3;
+          background: #edf4ff;
+          border: 1px solid #cfe0f8;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 10px;
+          transition: all 0.15s ease;
+        }
+        .permission-matrix-container .tree-toggle:hover {
+          color: #164985;
+          background: #e2efff;
+          border-color: #a9c6f4;
+        }
         .permission-matrix-container .drag-handle {
           color: #a29b94;
           font-size: 13px;
@@ -1073,6 +1352,36 @@ export default function PermissionMatrix({
           font-size: 7px;
           font-weight: 750;
           text-transform: uppercase;
+        }
+        .permission-matrix-container .platform-toggle {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px;
+          background: #f6f3ef;
+          border: 1px solid #e2dcd5;
+          border-radius: 8px;
+        }
+        .permission-matrix-container .platform-toggle button {
+          min-width: 42px;
+          height: 24px;
+          padding: 0 8px;
+          color: #625c56;
+          background: transparent;
+          border: 0;
+          border-radius: 6px;
+          font-size: 9px;
+          font-weight: 720;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .permission-matrix-container .platform-toggle button:hover {
+          color: #25211e;
+          background: #fff;
+        }
+        .permission-matrix-container .platform-toggle button.active {
+          color: #8c5d04;
+          background: #fff;
+          box-shadow: 0 1px 4px rgba(57,43,31,.08);
         }
         .permission-matrix-container .icon-button {
           width: 25px;
@@ -1103,6 +1412,7 @@ export default function PermissionMatrix({
         }
         .permission-matrix-container .drop-zone {
           flex: 1;
+          min-height: 0;
           overflow-y: auto;
           padding: 8px;
           background: #fff;
@@ -1139,7 +1449,7 @@ export default function PermissionMatrix({
         }
         .permission-matrix-container .selected-group {
           margin-bottom: 9px;
-          overflow: hidden;
+          overflow: visible;
           background: #fff;
           border: 1px solid #e6e0da;
           border-radius: 9px;
@@ -1194,16 +1504,60 @@ export default function PermissionMatrix({
           display: grid;
           grid-template-columns: minmax(0, 1fr) 125px auto;
           align-items: center;
-          gap: 9px;
-          padding: 8px 10px;
-          border-bottom: 1px solid #eeeae6;
+          gap: 8px;
+          margin: 6px 8px;
+          padding: 9px;
+          background: #fff;
+          border: 1px solid #e6e0da;
+          border-radius: 9px;
+          transition: all 0.15s ease;
         }
         .permission-matrix-container .selected-action:last-child {
-          border-bottom: 0;
+          margin-bottom: 8px;
+        }
+        .permission-matrix-container .selected-action.tree-parent {
+          background: #fff;
+          border-color: #bdd3f6;
+          box-shadow: inset 3px 0 0 #8bb7f0;
+        }
+        .permission-matrix-container .selected-action.tree-child {
+          position: relative;
+          margin-left: 30px;
+          background: #fffdfb;
+        }
+        .permission-matrix-container .selected-action.tree-child::before {
+          content: "";
+          position: absolute;
+          left: -13px;
+          top: -7px;
+          width: 13px;
+          height: calc(50% + 7px);
+          border-left: 1px solid #d8cec3;
+          border-bottom: 1px solid #d8cec3;
+          border-bottom-left-radius: 7px;
+        }
+        .permission-matrix-container .selected-action.inactive-child {
+          color: #8a837c;
+          background: #f8f6f3;
+          border-color: #e6e0da;
+          opacity: 0.72;
+        }
+        .permission-matrix-container .selected-action.inactive-child .selected-action-name,
+        .permission-matrix-container .selected-action.inactive-child .action-meta {
+          color: #8a837c;
         }
         .permission-matrix-container .selected-action-name {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 10px;
+          font-weight: 680;
+        }
+        .permission-matrix-container .selected-tree-toggle {
+          width: 18px;
+          height: 18px;
+          flex: 0 0 auto;
           font-size: 9px;
-          font-weight: 650;
         }
         .permission-matrix-container .action-scope label {
           display: block;
@@ -1247,6 +1601,15 @@ export default function PermissionMatrix({
           border-color: #efb9b4;
           background: #fff0ef;
         }
+        .permission-matrix-container .restore-action {
+          color: #0d6efd;
+          border-color: #bad1f4;
+        }
+        .permission-matrix-container .restore-action:hover {
+          color: #0b5ed7;
+          border-color: #a9c6f4;
+          background: #edf4ff;
+        }
         .permission-matrix-container .empty-filter {
           padding: 40px 18px;
           text-align: center;
@@ -1285,6 +1648,10 @@ export default function PermissionMatrix({
           }
           .permission-matrix-container .column-head {
             min-height: 0;
+          }
+          .permission-matrix-container .column-head-actions {
+            width: 100%;
+            justify-content: space-between;
           }
           .permission-matrix-container .selected-group-head {
             align-items: flex-start;
@@ -1406,15 +1773,18 @@ export default function PermissionMatrix({
                 </div>
                 <p className="column-copy">Drag cards or tap + to allow.</p>
               </div>
-              <button 
-                type="button" 
-                className="btn btn-sm btn-outline-primary"
-                onClick={addAllModuleActions}
-                disabled={!canEdit}
-              >
-                <i className="bi bi-plus-lg me-1" />
-                Add all
-              </button>
+              <div className="column-head-actions">
+                <PlatformToggle />
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={addAllModuleActions}
+                  disabled={!canEdit}
+                >
+                  <i className="bi bi-plus-lg me-1" />
+                  Add all
+                </button>
+              </div>
             </div>
             <div className="column-tools">
               <div className="input-group">
@@ -1431,17 +1801,21 @@ export default function PermissionMatrix({
               </div>
             </div>
             <div className="action-list">
-              {filteredActions.length > 0 ? (
-                filteredActions.map((a) => {
+              {visibleActions.length > 0 ? (
+                visibleActions.map((a) => {
                   const added = selectedActions.has(a.key);
                   const legacyAllowed = a.legacyPermission ? allowed.has(a.legacyPermission) : true;
-                  const isActionDisabled = !canEdit || !legacyAllowed;
+                  const isTreeParent = Boolean(ACTION_TREE[a.key]);
+                  const isTreeExpanded = expandedTreeKeys.has(a.key);
+                  const isTreeChild = Boolean(CHILD_ACTION_PARENT[a.key]);
+                  const childLocked = isChildActionLocked(a);
+                  const isActionDisabled = !canEdit || !legacyAllowed || childLocked;
                   
                   return (
                     <div
                       key={a.key}
-                      className={`action-card ${added ? 'added' : ''} ${draggingKey === a.key ? 'dragging' : ''}`}
-                      draggable={canEdit && !added && legacyAllowed}
+                      className={`action-card ${added ? 'added' : ''} ${draggingKey === a.key ? 'dragging' : ''} ${isTreeParent ? 'tree-parent' : ''} ${isTreeChild ? 'tree-child' : ''} ${childLocked ? 'child-locked' : ''}`}
+                      draggable={canEdit && !added && legacyAllowed && !childLocked}
                       onDragStart={(e) => handleDragStart(e, a.key)}
                       onDragEnd={handleDragEnd}
                       onTouchStart={() => handleTouchStart(a.key)}
@@ -1449,7 +1823,18 @@ export default function PermissionMatrix({
                       onTouchEnd={handleTouchEnd}
                       style={{ opacity: isActionDisabled ? 0.6 : 1 }}
                     >
-                      <i className={`bi ${added ? 'bi-check2' : 'bi-grip-vertical'} drag-handle`} />
+                      {isTreeParent ? (
+                        <button
+                          type="button"
+                          className="tree-toggle"
+                          onClick={() => toggleTree(a.key)}
+                          title={isTreeExpanded ? 'Collapse actions' : 'Expand actions'}
+                        >
+                          <i className={`bi ${isTreeExpanded ? 'bi-chevron-down' : 'bi-chevron-right'}`} />
+                        </button>
+                      ) : (
+                        <i className={`bi ${added ? 'bi-check2' : 'bi-grip-vertical'} drag-handle`} />
+                      )}
                       <div className="min-w-0">
                         <div className="action-name text-slate-800">{a.label}</div>
                         <div className="action-meta">
@@ -1457,6 +1842,7 @@ export default function PermissionMatrix({
                           {a.platform && <span className="platform">{a.platform}</span>}
                           {a.sensitive && <span className="badge-soft badge-red">Sensitive</span>}
                           {!legacyAllowed && <span className="badge-soft badge-gray">Role Locked</span>}
+                          {childLocked && <span className="badge-soft badge-gray">Parent Required</span>}
                         </div>
                       </div>
                       <button
@@ -1464,7 +1850,7 @@ export default function PermissionMatrix({
                         className="icon-button"
                         onClick={() => addAction(a.key)}
                         disabled={added || isActionDisabled}
-                        title={added ? 'Already allowed' : 'Add permission'}
+                        title={childLocked ? 'Allow parent permission first' : added ? 'Already allowed' : 'Add permission'}
                       >
                         <i className={`bi ${added ? 'bi-check-lg' : 'bi-plus-lg'}`} />
                       </button>
@@ -1487,15 +1873,18 @@ export default function PermissionMatrix({
                 </div>
                 <p className="column-copy">Define data visibility levels.</p>
               </div>
-              <button 
-                type="button" 
-                className="btn btn-sm btn-outline-danger"
-                onClick={clearAll}
-                disabled={!canEdit || selectedActions.size === 0}
-              >
-                <i className="bi bi-trash3 me-1" />
-                Clear
-              </button>
+              <div className="column-head-actions">
+                <PlatformToggle />
+                <button 
+                  type="button" 
+                  className="btn btn-sm btn-outline-danger"
+                  onClick={clearAll}
+                  disabled={!canEdit || selectedActions.size === 0}
+                >
+                  <i className="bi bi-trash3 me-1" />
+                  Clear
+                </button>
+              </div>
             </div>
             
             <div className="drop-shell">
@@ -1521,6 +1910,12 @@ export default function PermissionMatrix({
                     const isMixed = commonModuleScope(mActs) === 'mixed';
                     const activeScope = isMixed ? 'mixed' : commonModuleScope(mActs);
                     const modScopedActions = mActs.filter(supportsScope);
+                    const selectedActionKeys = new Set(mActs.map((act) => act.key));
+                    const displayActions = m.actions.filter((act) => {
+                      if (selectedActionKeys.has(act.key)) return true;
+                      const parentKey = CHILD_ACTION_PARENT[act.key];
+                      return Boolean(parentKey && selectedActionKeys.has(parentKey));
+                    });
                     
                     return (
                       <div key={m.key} className="selected-group">
@@ -1573,13 +1968,33 @@ export default function PermissionMatrix({
                         </div>
 
                         {/* Group Selected Actions list */}
-                        {mActs.map((act) => {
+                        {displayActions.filter((act) => {
+                          const parentKey = CHILD_ACTION_PARENT[act.key];
+                          return !parentKey || expandedSelectedTreeKeys.has(parentKey);
+                        }).map((act) => {
                           const currentScope = scopeFor(act);
                           const isScoped = supportsScope(act);
+                          const isSelected = selectedActionKeys.has(act.key);
+                          const isTreeChild = Boolean(CHILD_ACTION_PARENT[act.key]);
+                          const isTreeParent = Boolean(ACTION_TREE[act.key]);
+                          const isTreeExpanded = expandedSelectedTreeKeys.has(act.key);
+                          const isLastTreeChild = isSelected && isLastSelectedTreeChild(act.key);
                           return (
-                            <div key={act.key} className="selected-action">
+                            <div key={act.key} className={`selected-action ${isTreeParent ? 'tree-parent' : ''} ${isTreeChild ? 'tree-child' : ''} ${!isSelected ? 'inactive-child' : ''}`}>
                               <div>
-                                <div className="selected-action-name text-slate-800">{act.label}</div>
+                                <div className="selected-action-name text-slate-800">
+                                  {isTreeParent && (
+                                    <button
+                                      type="button"
+                                      className="tree-toggle selected-tree-toggle"
+                                      onClick={() => toggleSelectedTree(act.key)}
+                                      title={isTreeExpanded ? 'Collapse actions' : 'Expand actions'}
+                                    >
+                                      <i className={`bi ${isTreeExpanded ? 'bi-chevron-down' : 'bi-chevron-right'}`} />
+                                    </button>
+                                  )}
+                                  <span>{act.label}</span>
+                                </div>
                                 <div className="action-meta">
                                   <span>{act.group}</span>
                                   {act.platform && <span className="platform">{act.platform}</span>}
@@ -1587,7 +2002,7 @@ export default function PermissionMatrix({
                                 </div>
                               </div>
 
-                              {isScoped ? (
+                              {isScoped && isSelected ? (
                                 <div className="action-scope">
                                   <label>Data Scope</label>
                                   <select
@@ -1608,19 +2023,25 @@ export default function PermissionMatrix({
                                 </div>
                               ) : (
                                 <span className="no-scope">
-                                  <i className="bi bi-dash-circle" />
-                                  No data scope
+                                  <i className={`bi ${isSelected ? 'bi-dash-circle' : 'bi-pause-circle'}`} />
+                                  {isSelected ? 'No data scope' : 'Not allowed'}
                                 </span>
                               )}
 
                               <button
                                 type="button"
-                                className="remove-action"
-                                onClick={() => removeAction(act.key)}
+                                className={`remove-action ${!isSelected ? 'restore-action' : ''}`}
+                                onClick={() => isSelected ? removeAction(act.key) : addAction(act.key)}
                                 disabled={!canEdit}
-                                title="Remove permission"
+                                title={
+                                  !isSelected
+                                    ? 'Allow permission'
+                                    : isLastTreeChild
+                                      ? 'Remove this last child and move parent to not allowed'
+                                      : 'Remove permission'
+                                }
                               >
-                                <i className="bi bi-x-lg" />
+                                <i className={`bi ${isSelected ? 'bi-x-lg' : 'bi-plus-lg'}`} />
                               </button>
                             </div>
                           );
@@ -1670,6 +2091,17 @@ export default function PermissionMatrix({
       )}
 
       {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+
+      <AlertDialog
+        open={Boolean(pendingTreeRemoval)}
+        title="Remove parent permission?"
+        message={`If you remove the last sub-action, ${pendingTreeRemoval?.parentLabel || 'the parent action'} will also move to not allowed. Do you want to continue?`}
+        variant="warning"
+        confirmLabel="Yes, remove"
+        cancelLabel="Cancel"
+        onClose={() => setPendingTreeRemoval(null)}
+        onConfirm={confirmTreeRemoval}
+      />
     </div>
   );
 }

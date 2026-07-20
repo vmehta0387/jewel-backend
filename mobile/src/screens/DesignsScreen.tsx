@@ -23,7 +23,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
 import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
-import type { Design } from '../types';
+import { fetchAllGroupedMasters } from '../api/masters';
+import type { Design, GroupedMastersResponse } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 
@@ -215,6 +216,7 @@ const DesignsScreen = () => {
   const route = useRoute<RouteProp<DesignsStackParamList, 'Designs'>>();
   const numColumns = 2;
   const [designs, setDesigns] = useState<Design[]>([]);
+  const [masters, setMasters] = useState<GroupedMastersResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showInitialSkeleton, setShowInitialSkeleton] = useState(false);
@@ -225,7 +227,6 @@ const DesignsScreen = () => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCollection, setSelectedCollection] = useState('All');
-  const [collectionOptions, setCollectionOptions] = useState<string[]>(['All']);
   const [selectedShape, setSelectedShape] = useState('All');
   const [selectedDiamondType, setSelectedDiamondType] = useState('All');
   const [selectedPriceBand, setSelectedPriceBand] = useState<PriceBand>('ALL');
@@ -249,18 +250,20 @@ const DesignsScreen = () => {
 
   const catalogQuery = useMemo<MobileCatalogQuery>(
     () => ({
-      category: route.params?.presetCategory,
+      category: toLower(selectedCategory) !== 'all' ? selectedCategory : undefined,
       search: search.trim() || undefined,
-      collection: selectedCollection !== 'All' ? selectedCollection : undefined,
-      diamondType: selectedDiamondType !== 'All' ? selectedDiamondType : undefined,
+      collection: toLower(selectedCollection) !== 'all' ? selectedCollection : undefined,
+      diamondType: toLower(selectedDiamondType) !== 'all' ? selectedDiamondType : undefined,
+      shape: toLower(selectedShape) !== 'all' ? selectedShape : undefined,
       priceBand: selectedPriceBand,
       sort: sortOption,
     }),
     [
-      route.params?.presetCategory,
+      selectedCategory,
       search,
       selectedCollection,
       selectedDiamondType,
+      selectedShape,
       selectedPriceBand,
       sortOption,
     ],
@@ -302,13 +305,6 @@ const DesignsScreen = () => {
 
       if (requestSeqRef.current !== requestId) return;
 
-      if (!activeQuery.collection) {
-        setCollectionOptions((current) => {
-          const previous = append ? current.filter((item) => item !== 'All') : [];
-          return withAllOption([...previous, ...rows.map((design) => design.collection)]);
-        });
-      }
-
       setDesigns((current) => {
         if (!append) return rows;
         const seen = new Set(current.map((item) => item.id));
@@ -344,6 +340,25 @@ const DesignsScreen = () => {
     [],
   );
 
+  useEffect(() => {
+    const loadFilters = async () => {
+      if (!token) return;
+      try {
+        const response = await fetchAllGroupedMasters(token);
+        setMasters(response);
+      } catch (err) {
+        console.error('Failed to load masters for filters:', err);
+      }
+    };
+    loadFilters();
+  }, [token]);
+
+  useEffect(() => {
+    if (route.params?.presetCategory) {
+      setSelectedCategory(route.params.presetCategory);
+    }
+  }, [route.params?.presetCategory]);
+
   const loadMoreDesigns = useCallback(() => {
     if (loading || loadingMore || loadingMoreRef.current || page >= totalPages) return;
     loadDesigns(page + 1, true);
@@ -369,18 +384,17 @@ const DesignsScreen = () => {
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
   }, []);
-
   const categories = useMemo(() => {
+    if (!masters) return ['All'];
     const orderedGroups = Array.from(
       new Set(
-        designs
-          .map((design) => design.jewelryGroup?.trim())
-          .filter(Boolean) as string[],
+        masters.jewelryGroups
+          .map((item) => item.value?.trim())
+          .filter(Boolean)
       ),
     );
-
     return ['All', ...orderedGroups];
-  }, [designs]);
+  }, [masters]);
 
   useEffect(() => {
     const presetSearch = String(route.params?.prefillSearch || '').trim();
@@ -390,84 +404,29 @@ const DesignsScreen = () => {
   }, [route.params?.prefillSearch]);
 
   const collections = useMemo(() => {
+    if (!masters) return ['All'];
     const sourceOptions =
-      selectedCategory === 'All'
-        ? collectionOptions
-        : designs
-            .filter((design) => toLower(design.jewelryGroup) === toLower(selectedCategory))
-            .map((design) => design.collection);
+      toLower(selectedCategory) === 'all'
+        ? masters.collections.map((item) => item.value)
+        : masters.collections
+            .filter((item) => toLower(item.jewelryGroup || '') === toLower(selectedCategory))
+            .map((item) => item.value);
 
-    return withAllOption(sourceOptions.filter((item) => item !== 'All'));
-  }, [collectionOptions, designs, selectedCategory]);
+    return withAllOption(sourceOptions);
+  }, [masters, selectedCategory]);
 
-  const shapeOptions = useMemo(
-    () => uniqueNonEmpty(designs.flatMap((design) => getDesignShapes(design))),
-    [designs],
-  );
+  const shapeOptions = useMemo(() => {
+    if (!masters) return [];
+    return uniqueNonEmpty(masters.packetShapes.map((item) => item.value));
+  }, [masters]);
 
-  const diamondTypeOptions = useMemo(
-    () => ['All', ...uniqueNonEmpty(designs.flatMap((design) => getDesignDiamondTypes(design)))],
-    [designs],
-  );
-
+  const diamondTypeOptions = useMemo(() => {
+    if (!masters) return ['All'];
+    return ['All', ...uniqueNonEmpty(masters.diamondTypes.map((item) => item.value))];
+  }, [masters]);
   const filteredDesigns = useMemo(() => {
-    const term = search.trim().toLowerCase();
-
-    const filtered = designs.filter((design) => {
-      const matchesCategory =
-        selectedCategory === 'All' || toLower(design.jewelryGroup) === toLower(selectedCategory);
-      const matchesCollection =
-        selectedCollection === 'All' || toLower(design.collection) === toLower(selectedCollection);
-      const matchesShape =
-        selectedShape === 'All' ||
-        getDesignShapes(design).some((shape) => toLower(shape) === toLower(selectedShape));
-      const matchesDiamondType =
-        selectedDiamondType === 'All' ||
-        getDesignDiamondTypes(design).some((type) => toLower(type) === toLower(selectedDiamondType));
-      const designPrice = Number(getDisplayPrice(design, user?.role) || 0);
-      const matchesPriceBand =
-        selectedPriceBand === 'ALL' ||
-        (selectedPriceBand === 'UNDER_2000' && designPrice < 2000) ||
-        (selectedPriceBand === 'BETWEEN_2000_5000' && designPrice >= 2000 && designPrice <= 5000) ||
-        (selectedPriceBand === 'ABOVE_5000' && designPrice > 5000);
-      const matchesSearch = !term || getSearchableFields(design).some((value) => value.includes(term));
-
-      return (
-        matchesCategory &&
-        matchesCollection &&
-        matchesShape &&
-        matchesDiamondType &&
-        matchesPriceBand &&
-        matchesSearch
-      );
-    });
-
-    const sorted = [...filtered];
-    const getPrice = (design: Design) => Number(getDisplayPrice(design, user?.role) || 0);
-    const getDesignNo = (design: Design) => String(design.designNo || '').toLowerCase();
-
-    if (sortOption === 'priceAsc') {
-      sorted.sort((a, b) => getPrice(a) - getPrice(b));
-    } else if (sortOption === 'priceDesc') {
-      sorted.sort((a, b) => getPrice(b) - getPrice(a));
-    } else if (sortOption === 'designAsc') {
-      sorted.sort((a, b) => getDesignNo(a).localeCompare(getDesignNo(b)));
-    } else if (sortOption === 'designDesc') {
-      sorted.sort((a, b) => getDesignNo(b).localeCompare(getDesignNo(a)));
-    }
-
-    return sorted;
-  }, [
-    designs,
-    search,
-    selectedCategory,
-    selectedCollection,
-    selectedShape,
-    selectedDiamondType,
-    selectedPriceBand,
-    sortOption,
-    user?.role,
-  ]);
+    return designs;
+  }, [designs]);
 
   const useCollectionRibbon = useMemo(
     () => collections.some((item) => toLower(item) !== 'all'),
@@ -679,7 +638,9 @@ const DesignsScreen = () => {
           <View style={styles.filterRow}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipList}>
               {ribbonTabs.map((item) => {
-                const selected = useCollectionRibbon ? item === selectedCollection : item === selectedCategory;
+                const selected = useCollectionRibbon
+                  ? toLower(item) === toLower(selectedCollection)
+                  : toLower(item) === toLower(selectedCategory);
                 return (
                   <TouchableOpacity
                     key={`collection-ribbon-${item}`}

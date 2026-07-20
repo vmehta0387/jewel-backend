@@ -798,9 +798,13 @@ export class FindMobileCatalogProductsQueryDto {
   @IsOptional()
   limit?: number;
 
-  @IsEnum(MobileCatalogCategory)
+  @IsString()
   @IsOptional()
-  category?: MobileCatalogCategory;
+  category?: string;
+
+  @IsString()
+  @IsOptional()
+  shape?: string;
 
   @IsString()
   @IsOptional()

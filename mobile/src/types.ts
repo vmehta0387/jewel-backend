@@ -176,3 +176,44 @@ export type MasterOption = {
   aliasName?: string | null;
   jewelryGroupId?: string | null;
 };
+
+export type GroupedMastersResponse = {
+  jewelryGroups: MasterOption[];
+  collections: Array<MasterOption & { jewelryGroupId?: string; jewelryGroup?: string }>;
+  jewelrySizes: Array<MasterOption & { jewelryGroupId?: string; jewelryGroup?: string }>;
+  tags: MasterOption[];
+  designStatuses: MasterOption[];
+  stages: MasterOption[];
+  metalNames: Array<
+    MasterOption & {
+      marketPricePerOunce?: number;
+      marketPricePerGm?: number;
+      livePricePerGm?: number;
+    }
+  >;
+  metalColors: Array<MasterOption & { metalName?: string }>;
+  metalPurities: Array<MasterOption & { metalName?: string; purityPercentage?: number }>;
+  metalCaratages: Array<
+    MasterOption & {
+      metalName?: string;
+      metalColor?: string;
+      metalPurity?: string;
+      purityPercentage?: number;
+      defaultWastagePercent?: number;
+      livePricePerGm?: number;
+    }
+  >;
+  goldColours: Array<MasterOption & { wastagePercent?: number }>;
+  diamondTypes: MasterOption[];
+  diamondSpreads: MasterOption[];
+  diamondWeights: MasterOption[];
+  diamondQualities: MasterOption[];
+  vendorNames: MasterOption[];
+  laborHeads: MasterOption[];
+  packetStones: MasterOption[];
+  packetShapes: MasterOption[];
+  packetSizes: MasterOption[];
+  packetCuts: MasterOption[];
+  packetColors: MasterOption[];
+  packetQualities: MasterOption[];
+};

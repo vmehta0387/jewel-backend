@@ -9,7 +9,9 @@ interface AlertDialogProps {
   message: string;
   variant?: AlertDialogVariant;
   confirmLabel?: string;
+  cancelLabel?: string;
   onClose: () => void;
+  onConfirm?: () => void;
 }
 
 const variantStyles: Record<AlertDialogVariant, { badge: string; icon: JSX.Element; title: string }> = {
@@ -64,11 +66,14 @@ export default function AlertDialog({
   message,
   variant = 'info',
   confirmLabel = 'OK',
+  cancelLabel = 'Cancel',
   onClose,
+  onConfirm,
 }: AlertDialogProps) {
   if (!open) return null;
 
   const styles = variantStyles[variant];
+  const isConfirmation = Boolean(onConfirm);
 
   return createPortal(
     <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-[2px]">
@@ -103,8 +108,13 @@ export default function AlertDialog({
             </svg>
           </button>
         </div>
-        <div className="flex justify-end bg-slate-50/70 px-5 py-4">
-          <Button type="button" onClick={onClose}>
+        <div className="flex justify-end gap-2 bg-slate-50/70 px-5 py-4">
+          {isConfirmation && (
+            <Button type="button" variant="secondary" onClick={onClose}>
+              {cancelLabel}
+            </Button>
+          )}
+          <Button type="button" variant={variant === 'error' || variant === 'warning' ? 'danger' : 'primary'} onClick={onConfirm || onClose}>
             {confirmLabel}
           </Button>
         </div>

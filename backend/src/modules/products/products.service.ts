@@ -1628,6 +1628,18 @@ export class ProductsService {
       qb.andWhere('design.diamondType = :diamondType', { diamondType: query.diamondType.trim() });
     }
 
+    if (query.shape?.trim()) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM design_gemstones dg_shape
+          WHERE dg_shape.design_id = design.id
+            AND LOWER(dg_shape.shape) = LOWER(:shape)
+        )`,
+        { shape: query.shape.trim() },
+      );
+    }
+
     const useRetailPricing = this.shouldApplyMobileCatalogRetailPricing(requester);
     const priceBand = query.priceBand || 'ALL';
     if (!useRetailPricing && priceBand === 'UNDER_2000') {
@@ -2364,10 +2376,17 @@ export class ProductsService {
     return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
   }
 
-  private applyMobileCategoryFilter(qb: any, category?: MobileCatalogCategory) {
+  private applyMobileCategoryFilter(qb: any, category?: string) {
     if (!category) return;
-    const categoryConfig = this.mobileCatalogCategories.find((item) => item.id === category);
-    if (!categoryConfig) return;
+    const lower = category.trim().toLowerCase();
+    const categoryConfig = this.mobileCatalogCategories.find(
+      (item) => item.id === lower || item.label.toLowerCase() === lower,
+    );
+
+    if (!categoryConfig) {
+      qb.andWhere('LOWER(design.jewelryGroup) = :category', { category: lower });
+      return;
+    }
 
     qb.andWhere(
       new Brackets((sqb) => {

@@ -1,4 +1,4 @@
-﻿import { apiRequest } from './client';
+import { apiRequest } from './client';
 import type { Design, DesignListResponse } from '../types';
 
 export type MobileTrendingDesign = Pick<
@@ -45,6 +45,7 @@ export type MobileCatalogQuery = {
   search?: string;
   collection?: string;
   diamondType?: string;
+  shape?: string;
   priceBand?: 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
   sort?: 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
 };
