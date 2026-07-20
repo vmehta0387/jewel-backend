@@ -774,7 +774,7 @@ const OrdersScreen = () => {
     <SafeAreaView style={styles.screen} edges={['top']}>
       <View style={styles.brandHeader} onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}>
         <View style={styles.brandLeft}>
-          <Ionicons name="flash-sharp" size={23} color="#C89D5A" style={styles.brandBoltIcon} />
+          <Image source={require('../../assets/icon.png')} style={[styles.brandBoltIcon, { width: 23, height: 23, resizeMode: 'contain' }]} />
           <View>
             <Text style={styles.brandTitle}>BLITZ NYC</Text>
             <Text style={styles.brandSub}>Built for closers</Text>

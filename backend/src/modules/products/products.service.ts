@@ -1247,9 +1247,7 @@ export class ProductsService {
       });
     }
 
-    if (query.primaryOnly) {
-      qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
-    }
+    qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
 
     if (query.collection?.trim()) {
       qb.andWhere('design.collection LIKE :collection', {
@@ -2532,9 +2530,7 @@ export class ProductsService {
       });
     }
 
-    if (query.primaryOnly) {
-      qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
-    }
+    qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
 
     if (query.collection?.trim()) {
       qb.andWhere('design.collection LIKE :collection', {

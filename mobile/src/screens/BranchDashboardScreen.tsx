@@ -431,7 +431,7 @@ const BranchDashboardScreen = () => {
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
             <View style={styles.logoWrapRow}>
-              <Ionicons name="flash-sharp" size={23} color="#C89D5A" style={styles.headBoltIcon} />
+              <Image source={require('../../assets/icon.png')} style={[styles.headBoltIcon, { width: 23, height: 23, resizeMode: 'contain' }]} />
               <View style={styles.headTextGroup}>
                 <Text style={styles.headBlitz}>BLITZ NYC</Text>
                 <Text style={styles.headSub}>Built for closers</Text>

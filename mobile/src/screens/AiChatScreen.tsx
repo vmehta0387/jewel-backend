@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -208,7 +209,7 @@ const AiChatScreen = () => {
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <View style={styles.headerLeftWrap}>
-            <Ionicons name="flash-sharp" size={24} color="#C89D5A" style={styles.headerBolt} />
+            <Image source={require('../../assets/icon.png')} style={[styles.headerBolt, { width: 24, height: 24, resizeMode: 'contain' }]} />
             <View style={styles.headerTextWrap}>
               <Text style={styles.headerTitle} numberOfLines={1}>
                 BLITZ AI
@@ -253,7 +254,7 @@ const AiChatScreen = () => {
                 <View key={item.id} style={[styles.messageRow, isAssistant ? styles.messageRowLeft : styles.messageRowRight]}>
                   {isAssistant ? (
                     <View style={styles.assistantBoltBadge}>
-                      <Ionicons name="flash-sharp" size={13} color="#C89D5A" />
+                      <Image source={require('../../assets/icon.png')} style={{ width: 13, height: 13, resizeMode: 'contain' }} />
                     </View>
                   ) : null}
 
