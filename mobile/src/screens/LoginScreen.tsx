@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -63,10 +64,10 @@ const LoginScreen = () => {
         >
           <View style={styles.content}>
             <View style={styles.brandRow}>
-              <Ionicons name="flash-sharp" size={42} color="#B78A46" style={styles.brandIcon} />
-              <Text style={styles.brandTitle}>BLITZ</Text>
-              <Text style={styles.brandSubtitle}>NEW YORK CITY</Text>
-              <View style={styles.tinyLine} />
+              <Image
+                source={require('../../assets/login-logo.png')}
+                style={{ width: 220, height: 110, resizeMode: 'contain' }}
+              />
             </View>
 
             <View style={styles.cardContainer}>

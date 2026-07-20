@@ -33,7 +33,9 @@ async function bootstrap() {
   const isDevLocalOrigin = (origin?: string) =>
     !origin ||
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-    /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin);
+    /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin) ||
+    /^https?:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/.test(origin) ||
+    /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+(:\d+)?$/.test(origin);
   const alwaysAllowedLocalWebOrigins = new Set([
     'http://localhost:8082',
     'http://127.0.0.1:8082',
@@ -44,27 +46,11 @@ async function bootstrap() {
       !origin ||
       (requestOrigin && allowedOriginSet.has(requestOrigin)) ||
       (requestOrigin && alwaysAllowedLocalWebOrigins.has(requestOrigin)) ||
-      (process.env.NODE_ENV !== 'production' && isDevLocalOrigin(origin)),
+      isDevLocalOrigin(requestOrigin),
     );
   };
 
-  app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && isAllowedCorsOrigin(origin)) {
-      res.header('Access-Control-Allow-Origin', normalizeOrigin(origin));
-      res.header('Vary', 'Origin');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Headers', String(req.headers['access-control-request-headers'] || 'Content-Type, Authorization'));
-      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    }
 
-    if (req.method === 'OPTIONS') {
-      res.status(204).send();
-      return;
-    }
-
-    next();
-  });
 
   app.use('/uploads', express.static(uploadsRoot));
 
@@ -87,7 +73,7 @@ async function bootstrap() {
       callback(null, false);
     },
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: '*',
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

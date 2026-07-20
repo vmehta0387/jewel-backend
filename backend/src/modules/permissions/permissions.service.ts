@@ -61,10 +61,6 @@ const HIDDEN_PERMISSION_ACTIONS = new Set([
   'pricing.base.create',
   'pricing.base.edit',
   'pricing.recalculate',
-  'mobile.pricing.view',
-  'mobile.pricing.company.update',
-  'mobile.pricing.branch.update',
-  'mobile.pricing.gold.update',
 ]);
 
 @Injectable()
