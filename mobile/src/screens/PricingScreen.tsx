@@ -21,6 +21,7 @@ import {
   updateCompanyAdminBranchPricing,
   updateCompanyAdminCompanyPricing,
 } from '../api/pricing';
+import { hasActionPermission } from '../utils/permissions';
 
 type ApplyMode = 'COMPANY' | 'BRANCH';
 type EditableSlab = {
@@ -66,6 +67,9 @@ const PricingScreen = () => {
     () => settings?.branches?.find((branch) => branch.id === selectedBranchId) || null,
     [settings?.branches, selectedBranchId],
   );
+  const canViewPricing = hasActionPermission(user, 'mobile.pricing.view');
+  const canUpdateCompanyPricing = hasActionPermission(user, 'mobile.pricing.company.update');
+  const canUpdateBranchPricing = hasActionPermission(user, 'mobile.pricing.branch.update');
 
   const syncEditorFromSettings = useCallback(
     (next: CompanyAdminPricingSettingsResponse, nextMode: ApplyMode, branchId?: string) => {
@@ -184,6 +188,10 @@ const PricingScreen = () => {
 
   const save = useCallback(async () => {
     if (!token) return;
+    if ((mode === 'COMPANY' && !canUpdateCompanyPricing) || (mode === 'BRANCH' && !canUpdateBranchPricing)) {
+      Alert.alert('Pricing', 'You do not have permission to update this pricing level.');
+      return;
+    }
     const multiplier = Number(markupInput || 1);
     if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 10) {
       Alert.alert('Pricing', 'Mark-up must be between 1 and 10.');
@@ -214,18 +222,18 @@ const PricingScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [markupInput, mode, parsePayloadSlabs, selectedBranchId, syncEditorFromSettings, token]);
+  }, [canUpdateBranchPricing, canUpdateCompanyPricing, markupInput, mode, parsePayloadSlabs, selectedBranchId, syncEditorFromSettings, token]);
 
   const previewMultiplier = Number(markupInput || 1);
   const previewSell = Number.isFinite(previewMultiplier) ? PREVIEW_COST * previewMultiplier : PREVIEW_COST;
 
-  if (user?.role !== 'COMPANY_ADMIN') {
+  if (user?.role !== 'COMPANY_ADMIN' || !canViewPricing) {
     return (
       <View style={styles.screen}>
         <SafeAreaView style={styles.safe} edges={['top']}>
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyTitle}>Pricing</Text>
-            <Text style={styles.emptyText}>This screen is available for company admin only.</Text>
+            <Text style={styles.emptyText}>You do not have permission to view pricing.</Text>
           </View>
         </SafeAreaView>
       </View>
@@ -240,7 +248,11 @@ const PricingScreen = () => {
             <Ionicons name="chevron-back" size={18} color="#8D8276" />
             <Text style={styles.headerTitle}>Markup & Pricing</Text>
           </View>
-          <TouchableOpacity style={styles.publishBtn} onPress={save} disabled={saving}>
+          <TouchableOpacity
+            style={[styles.publishBtn, ((mode === 'COMPANY' && !canUpdateCompanyPricing) || (mode === 'BRANCH' && !canUpdateBranchPricing)) ? styles.publishBtnDisabled : null]}
+            onPress={save}
+            disabled={saving || (mode === 'COMPANY' && !canUpdateCompanyPricing) || (mode === 'BRANCH' && !canUpdateBranchPricing)}
+          >
             <Text style={styles.publishBtnText}>{saving ? 'Saving...' : 'Save & Publish'}</Text>
           </TouchableOpacity>
         </View>
@@ -396,6 +408,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  publishBtnDisabled: { opacity: 0.45 },
   publishBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 14, paddingVertical: 14, paddingBottom: 28, gap: 10 },

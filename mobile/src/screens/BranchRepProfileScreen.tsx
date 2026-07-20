@@ -28,6 +28,7 @@ import { fetchOrders } from '../api/orders';
 import { fetchSpiffConfig, fetchSpiffLeaderboard } from '../api/spiff';
 import type { BranchEmployee, BranchOption, Order } from '../types';
 import type { TeamStackParamList } from '../navigation/RootNavigator';
+import { hasActionPermission } from '../utils/permissions';
 
 type RepProfileRoute = RouteProp<TeamStackParamList, 'BranchRepProfile'>;
 type RepProfileNav = NativeStackNavigationProp<TeamStackParamList>;
@@ -96,7 +97,7 @@ const splitName = (fullName: string) => {
 };
 
 const BranchRepProfileScreen = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigation = useNavigation<RepProfileNav>();
   const route = useRoute<RepProfileRoute>();
 
@@ -244,20 +245,25 @@ const BranchRepProfileScreen = () => {
   }, [branches, employee.branch?.name, form.branchId]);
 
   const isOnline = Boolean(employee.isActive && employee.isOnline);
-  const canManageProfile = employee.role === 'SALES_REP';
+  const canManageProfile = employee.role === 'SALES_REP' && hasActionPermission(user, 'team.employee.manage');
   const initial = (employee.firstName?.[0] || employee.email?.[0] || 'R').toUpperCase();
   const subtitle = `Sales Associate \u2022 ${selectedBranchName || 'Branch'}`;
 
   const handleEditMode = useCallback(() => {
+    if (!canManageProfile) return;
     setEditMode(true);
     setEditNotice('Edit mode on');
     setTimeout(() => {
       setEditNotice((prev) => (prev === 'Edit mode on' ? null : prev));
     }, 1800);
-  }, []);
+  }, [canManageProfile]);
 
   const handleSaveChanges = useCallback(async () => {
     if (!token || !editMode) return;
+    if (!canManageProfile) {
+      Alert.alert('Team', 'You do not have permission to update employees.');
+      return;
+    }
     const email = form.email.trim();
     const branchId = form.branchId.trim();
     if (!email) {
@@ -297,10 +303,14 @@ const BranchRepProfileScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [editMode, employee.id, form, hydrateForm, token]);
+  }, [canManageProfile, editMode, employee.id, form, hydrateForm, token]);
 
   const toggleSuspend = useCallback(async () => {
     if (!token) return;
+    if (!canManageProfile) {
+      Alert.alert('Team', 'You do not have permission to update employees.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -313,7 +323,7 @@ const BranchRepProfileScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [employee.id, employee.isActive, token]);
+  }, [canManageProfile, employee.id, employee.isActive, token]);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>

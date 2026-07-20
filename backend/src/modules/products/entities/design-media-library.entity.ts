@@ -40,6 +40,9 @@ export class DesignMediaLibrary {
   @Column({ name: 'uploaded_by', nullable: true })
   uploadedBy: string | null;
 
+  @Column({ name: 'status', type: 'int', default: 1 })
+  status: number;
+
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'uploaded_by' })
   uploadedByUser: User | null;

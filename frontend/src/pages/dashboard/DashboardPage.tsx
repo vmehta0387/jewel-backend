@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import api from '../../services/api';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission, hasAnyActionPermission } from '../../utils/auth';
 
 interface MetalMasterRow {
   id: string;
@@ -318,7 +318,27 @@ function MiniLineChart({ values }: { values: number[] }) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const user = useMemo(() => getStoredUser(), []);
-  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const canViewGoldPrice = user
+    ? hasAnyActionPermission(user, [
+        'dashboard.price_activity.view',
+        'dashboard.price_activity.gold_price.view',
+        'dashboard.price_activity.gold_price.update',
+      ])
+    : false;
+  const canUpdateGoldPrice = user
+    ? hasActionPermission(user, 'dashboard.price_activity.gold_price.update')
+    : false;
+  const canViewPacketPrice = user
+    ? hasAnyActionPermission(user, [
+        'dashboard.price_activity.view',
+        'dashboard.price_activity.packet_price.view',
+        'dashboard.price_activity.packet_price.update',
+      ])
+    : false;
+  const canUpdatePacketPrice = user
+    ? hasActionPermission(user, 'dashboard.price_activity.packet_price.update')
+    : false;
+  const canViewPriceActivity = canViewGoldPrice || canViewPacketPrice;
   const didLoadStatsRef = useRef(false);
 
   const [metals, setMetals] = useState<MetalMasterRow[]>([]);
@@ -405,6 +425,7 @@ export default function DashboardPage() {
 
 
   const fetchMetals = async () => {
+    if (!canViewGoldPrice) return;
     setMetalLoading(true);
     setMetalError(null);
     try {
@@ -568,6 +589,7 @@ export default function DashboardPage() {
   };
 
   const fetchPackets = async () => {
+    if (!canViewPacketPrice) return;
     setPacketError(null);
     try {
       const response = await api.get('/products/packets', {
@@ -609,6 +631,7 @@ export default function DashboardPage() {
   };
 
   const ensurePacketsLoaded = async () => {
+    if (!canViewPacketPrice) return;
     if (!packetsLoaded) {
       await fetchPackets();
       setPacketsLoaded(true);
@@ -621,8 +644,10 @@ export default function DashboardPage() {
     }
     didLoadStatsRef.current = true;
     void loadStats();
-    void fetchMetals();
-  }, []);
+    if (canViewGoldPrice) {
+      void fetchMetals();
+    }
+  }, [canViewGoldPrice]);
 
   useEffect(() => {
     if (!selectedPacket) {
@@ -665,6 +690,7 @@ export default function DashboardPage() {
   };
 
   const openMetalModal = (defaultId?: string) => {
+    if (!canUpdateGoldPrice) return;
     setMetalError(null);
     setMetalModalOpen(true);
     if (defaultId) {
@@ -678,6 +704,7 @@ export default function DashboardPage() {
 
   const handleMetalSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canUpdateGoldPrice) return;
     if (!selectedMetalId) {
       setMetalError('Please select a metal.');
       return;
@@ -726,6 +753,7 @@ export default function DashboardPage() {
 
   const handleDirectPacketPriceSave = async (event?: FormEvent) => {
     if (event) event.preventDefault();
+    if (!canUpdatePacketPrice) return;
 
     if (!selectedPacket) {
       setPacketError('Select a packet first.');
@@ -760,6 +788,7 @@ export default function DashboardPage() {
   };
 
   const handleBulkPacketPriceSave = async () => {
+    if (!canUpdatePacketPrice) return;
     if (!changedPacketPriceRows.length) return;
 
     const updates = changedPacketPriceRows.map((row) => {
@@ -1040,9 +1069,10 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {isSuperAdmin ? (
+      {canViewPriceActivity ? (
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 mt-2">
           {/* Gold Price Card */}
+          {canViewGoldPrice && (
           <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
             <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
               <div className="space-y-5">
@@ -1087,14 +1117,18 @@ export default function DashboardPage() {
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   {formatTimestamp(goldMaster?.updatedAt)}
                 </p>
-                <Button type="button" size="sm" onClick={() => openMetalModal(goldMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                  {metalLoading ? 'Loading...' : 'Update Gold Price'}
-                </Button>
+                {canUpdateGoldPrice && (
+                  <Button type="button" size="sm" onClick={() => openMetalModal(goldMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                    {metalLoading ? 'Loading...' : 'Update Gold Price'}
+                  </Button>
+                )}
               </div>
             </div>
           </Card>
+          )}
 
           {/* Platinum Price Card */}
+          {canViewGoldPrice && (
           <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
             <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between">
               <div className="space-y-5">
@@ -1139,14 +1173,18 @@ export default function DashboardPage() {
                   <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                   {formatTimestamp(platMaster?.updatedAt)}
                 </p>
-                <Button type="button" size="sm" onClick={() => openMetalModal(platMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                  {metalLoading ? 'Loading...' : 'Update Platinum Price'}
-                </Button>
+                {canUpdateGoldPrice && (
+                  <Button type="button" size="sm" onClick={() => openMetalModal(platMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
+                    {metalLoading ? 'Loading...' : 'Update Platinum Price'}
+                  </Button>
+                )}
               </div>
             </div>
           </Card>
+          )}
 
           {/* Packet Price Card */}
+          {canViewPacketPrice && (
           <Card className="glass-panel rounded-3xl p-1 hover-lift border-t border-l border-white/60 group overflow-hidden">
             <div className="h-full bg-slate-50/40 rounded-[1.35rem] px-6 py-6 flex flex-col justify-between space-y-4">
               <div className="space-y-4">
@@ -1312,7 +1350,7 @@ export default function DashboardPage() {
 
               {/* Inline pricing form & footer */}
               <div className="border-t border-slate-200/60 pt-4 flex flex-col space-y-3">
-                {selectedPacket ? (
+                {selectedPacket && canUpdatePacketPrice ? (
                   <form onSubmit={handleDirectPacketPriceSave} className="flex gap-2">
                     <div className="relative flex-1">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">$</span>
@@ -1342,6 +1380,7 @@ export default function DashboardPage() {
               </div>
             </div>
           </Card>
+          )}
         </div>
       ) : null}
 
@@ -1417,9 +1456,11 @@ export default function DashboardPage() {
 
 
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button type="submit" size="sm" disabled={metalSaving || metalLoading}>
-              {metalSaving ? 'Saving...' : 'Save'}
-            </Button>
+            {canUpdateGoldPrice && (
+              <Button type="submit" size="sm" disabled={metalSaving || metalLoading}>
+                {metalSaving ? 'Saving...' : 'Save'}
+              </Button>
+            )}
             <Button type="button" size="sm" variant="secondary" onClick={() => setMetalModalOpen(false)}>
               Close
             </Button>
@@ -1505,6 +1546,7 @@ export default function DashboardPage() {
                               onChange={(event) =>
                                 setPacketDraftPrices((prev) => ({ ...prev, [packet.id]: event.target.value }))
                               }
+                              disabled={!canUpdatePacketPrice}
                             />
                           </div>
                         </td>
@@ -1535,14 +1577,16 @@ export default function DashboardPage() {
                 : 'No pending price changes'}
             </div>
             <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={packetSaving || !changedPacketPriceRows.length}
-                onClick={handleBulkPacketPriceSave}
-              >
-                {packetSaving ? 'Saving...' : 'Save Price Changes'}
-              </Button>
+              {canUpdatePacketPrice && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={packetSaving || !changedPacketPriceRows.length}
+                  onClick={handleBulkPacketPriceSave}
+                >
+                  {packetSaving ? 'Saving...' : 'Save Price Changes'}
+                </Button>
+              )}
             <Button type="button" size="sm" variant="secondary" onClick={() => setPacketSearchModalOpen(false)}>
               Close
             </Button>

@@ -19,6 +19,7 @@ import {
 } from '../api/branchEmployees';
 import type { BranchEmployee, BranchOption } from '../types';
 import type { TeamStackParamList } from '../navigation/RootNavigator';
+import { hasActionPermission } from '../utils/permissions';
 
 const BranchEmployeeFormScreen = () => {
   const { token, user } = useAuth();
@@ -41,6 +42,7 @@ const BranchEmployeeFormScreen = () => {
   const [error, setError] = useState<string | null>(null);
 
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+  const canManageTeam = hasActionPermission(user, 'team.employee.manage');
 
   const loadBranches = useCallback(async () => {
     if (!token || !isCompanyAdmin) return;
@@ -146,6 +148,21 @@ const BranchEmployeeFormScreen = () => {
       setLoading(false);
     }
   };
+
+  if (!canManageTeam) {
+    return (
+      <Screen>
+        <ScreenHeader
+          title="Employee"
+          subtitle="Permission required"
+          rightSlot={<Button title="Close" variant="ghost" onPress={() => navigation.goBack()} style={styles.closeBtn} />}
+        />
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyText}>You do not have permission to manage employees.</Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -284,6 +301,17 @@ const styles = StyleSheet.create({
   error: {
     color: colors.danger,
     marginBottom: spacing.sm,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  emptyText: {
+    color: colors.textMuted,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   sectionTitle: {
     fontSize: 15,

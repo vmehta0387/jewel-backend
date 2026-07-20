@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { TaskPermission, UserRole } from '../../types/auth.types';
-import { getStoredUser, hasTaskPermission } from '../../utils/auth';
+import { getStoredUser, hasActionPermission, hasTaskPermission } from '../../utils/auth';
 import BlitzBrand from '../common/BlitzBrand';
 
 type MenuIconName =
@@ -20,6 +20,7 @@ interface NavigationItem {
   path: string;
   icon: MenuIconName;
   permission?: TaskPermission;
+  actionPermission?: string;
   allowedRoles?: UserRole[];
 }
 
@@ -31,12 +32,13 @@ interface SidebarProps {
 }
 
 const navigation: NavigationItem[] = [
-  { name: 'Dashboard', path: '/dashboard', icon: 'dashboard', allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP'] },
+  { name: 'Dashboard', path: '/dashboard', icon: 'dashboard' },
   {
     name: 'Companies',
     path: '/companies',
     icon: 'companies',
     permission: 'COMPANY_MANAGEMENT',
+    actionPermission: 'company.view',
     allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP'],
   },
   {
@@ -44,6 +46,7 @@ const navigation: NavigationItem[] = [
     path: '/branches',
     icon: 'branches',
     permission: 'BRANCH_MANAGEMENT',
+    actionPermission: 'branch.view',
     allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN'],
   },
   {
@@ -51,13 +54,14 @@ const navigation: NavigationItem[] = [
     path: '/users',
     icon: 'users',
     permission: 'USER_MANAGEMENT',
+    actionPermission: 'user.view',
     allowedRoles: ['SUPER_ADMIN', 'COMPANY_ADMIN'],
   },
   { name: 'Notifications', path: '/notifications', icon: 'notifications' },
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
-  { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES' },
-  { name: 'Orders', path: '/orders', icon: 'orders', permission: 'ORDER_ENTRIES' },
-  { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES' },
+  { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES', actionPermission: 'master.view' },
+  { name: 'Orders', path: '/orders', icon: 'orders' },
+  { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES', actionPermission: 'spiff.view' },
 ];
 
 function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean }) {
@@ -167,15 +171,23 @@ export default function Sidebar({
   const user = getStoredUser();
 
   const visibleNavigation = navigation.filter((item) => {
-    if (!item.permission || !user) {
-      return true;
+    if (!user) {
+      return false;
     }
 
     if (item.allowedRoles && !item.allowedRoles.includes(user.role)) {
       return false;
     }
 
-    return hasTaskPermission(user, item.permission);
+    if (item.permission && !hasTaskPermission(user, item.permission)) {
+      return false;
+    }
+
+    if (item.actionPermission && !hasActionPermission(user, item.actionPermission)) {
+      return false;
+    }
+
+    return true;
   });
 
   return (

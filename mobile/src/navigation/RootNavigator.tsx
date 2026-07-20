@@ -31,6 +31,7 @@ import UserProfileScreen from '../screens/UserProfileScreen';
 import type { BranchEmployee, UserRole } from '../types';
 import type { MobileConfiguratorResponse } from '../api/designs';
 import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
+import { hasActionPermission, hasAnyActionPermission } from '../utils/permissions';
 
 export type RootStackParamList = {
   Auth: undefined;
@@ -291,7 +292,13 @@ const TeamNavigator = () => {
 };
 
 const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
+  const { user } = useAuth();
   const isCompanyAdmin = role === 'COMPANY_ADMIN';
+  const canOpenPricing = isCompanyAdmin && hasActionPermission(user, 'mobile.pricing.view');
+  const canOpenSpiff = hasAnyActionPermission(user, ['mobile.spiff.view', 'spiff.view']);
+  const canOpenTeam =
+    (role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN') &&
+    hasAnyActionPermission(user, ['branch.view', 'team.employee.manage']);
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 14) : insets.bottom;
   const tabBarHeight = Platform.OS === 'android' ? 62 + tabBarBottomInset : 60 + tabBarBottomInset;
@@ -390,7 +397,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         />
       ) : null}
 
-      {isCompanyAdmin ? (
+      {isCompanyAdmin && canOpenSpiff ? (
         <Tabs.Screen name="SpiffTab" component={SpiffRewardsScreen} options={{ title: 'SPIFF' }} />
       ) : (
         <Tabs.Screen
@@ -406,9 +413,9 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         options={{ title: 'Orders' }}
         listeners={resetStackTab('OrdersTab', 'Orders')}
       />
-      {isCompanyAdmin ? <Tabs.Screen name="PricingTab" component={PricingScreen} options={{ title: 'Pricing' }} /> : null}
+      {canOpenPricing ? <Tabs.Screen name="PricingTab" component={PricingScreen} options={{ title: 'Pricing' }} /> : null}
       {!isCompanyAdmin ? <Tabs.Screen name="AiTab" component={AiChatScreen} options={{ title: 'AI Sales' }} /> : null}
-      {role === 'BRANCH_MANAGER' || role === 'COMPANY_ADMIN' ? (
+      {canOpenTeam ? (
         <Tabs.Screen
           name="TeamTab"
           component={TeamNavigator}

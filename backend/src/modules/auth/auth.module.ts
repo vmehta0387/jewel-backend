@@ -4,12 +4,14 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { User } from '../users/entities/user.entity';
+import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { TaskPermissionsGuard } from './guards/task-permissions.guard';
+import { ActionPermissionsGuard } from './guards/action-permissions.guard';
 
 @Module({
   imports: [
@@ -25,10 +27,10 @@ import { TaskPermissionsGuard } from './guards/task-permissions.guard';
         },
       }),
     }),
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, UserPermissionAction]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, TaskPermissionsGuard],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, TaskPermissionsGuard],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard],
+  exports: [TypeOrmModule, AuthService, JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard],
 })
 export class AuthModule {}

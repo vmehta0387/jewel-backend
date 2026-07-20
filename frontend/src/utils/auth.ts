@@ -29,6 +29,7 @@ export function getStoredUser(): AuthUser | null {
       branchId: parsed.branchId ?? null,
       photoUrl: parsed.photoUrl ?? null,
       taskPermissions: parsed.taskPermissions ?? [],
+      detailedPermissions: parsed.detailedPermissions ?? [],
     };
   } catch {
     return null;
@@ -63,4 +64,30 @@ export function hasAllTaskPermissions(user: AuthUser, permissions: TaskPermissio
   }
 
   return permissions.every((permission) => user.taskPermissions.includes(permission));
+}
+
+export function hasActionPermission(user: AuthUser, actionKey: string): boolean {
+  if (user.role === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  return Boolean(user.detailedPermissions?.some((permission) => permission.actionKey === actionKey));
+}
+
+export function hasAnyActionPermission(user: AuthUser, actionKeys: string[]): boolean {
+  if (user.role === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  const allowed = new Set((user.detailedPermissions || []).map((permission) => permission.actionKey));
+  return actionKeys.some((actionKey) => allowed.has(actionKey));
+}
+
+export function hasAllActionPermissions(user: AuthUser, actionKeys: string[]): boolean {
+  if (user.role === 'SUPER_ADMIN') {
+    return true;
+  }
+
+  const allowed = new Set((user.detailedPermissions || []).map((permission) => permission.actionKey));
+  return actionKeys.every((actionKey) => allowed.has(actionKey));
 }

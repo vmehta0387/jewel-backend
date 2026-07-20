@@ -1,4 +1,4 @@
-import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
 import SearchableSelect from '../../components/common/SearchableSelect';
@@ -7,6 +7,7 @@ import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
 import Avatar from '../../components/common/Avatar';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
 
@@ -761,6 +762,81 @@ const isVideoUrl = (url: string): boolean => {
 };
 const isGalleryUploadFile = (file: File): boolean =>
   Boolean(file.type) && (file.type.startsWith('image/') || file.type.startsWith('video/'));
+const MEDIA_GUIDANCE_TEXT =
+  'Images: 1200 x 1200 px recommended, max 5 MB. Videos: MP4 preferred, max 10 seconds, max 50 MB, 1080p or lower for fast loading.';
+const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+const VIDEO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const VIDEO_UPLOAD_MAX_SECONDS = 10;
+const formatFileSizeMb = (bytes: number): string => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+const getVideoDurationSeconds = (file: File): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = video.duration;
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(duration) ? duration : 0);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Unable to read video duration for ${file.name}.`));
+    };
+    video.src = url;
+  });
+const validateGalleryUploadFiles = async (
+  files: File[],
+  allowVideo = true,
+  notify: (message: string, options?: { title?: string; variant?: 'info' | 'success' | 'warning' | 'error' }) => void,
+): Promise<File[]> => {
+  const validTypeFiles = files.filter((file) =>
+    allowVideo ? isGalleryUploadFile(file) : Boolean(file.type) && file.type.startsWith('image/'),
+  );
+
+  if (validTypeFiles.length === 0) {
+    notify(allowVideo ? 'Please select image or video files only.' : 'Please select image files only.', {
+      variant: 'warning',
+    });
+    return [];
+  }
+
+  const errors: string[] = [];
+  for (const file of validTypeFiles) {
+    const isVideo = file.type.startsWith('video/');
+    const maxBytes = isVideo ? VIDEO_UPLOAD_MAX_BYTES : IMAGE_UPLOAD_MAX_BYTES;
+    if (file.size > maxBytes) {
+      errors.push(`${file.name}: max ${formatFileSizeMb(maxBytes)} allowed.`);
+      continue;
+    }
+
+    if (isVideo) {
+      try {
+        const duration = await getVideoDurationSeconds(file);
+        if (duration > VIDEO_UPLOAD_MAX_SECONDS + 0.25) {
+          errors.push(`${file.name}: max ${VIDEO_UPLOAD_MAX_SECONDS} seconds allowed.`);
+        }
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `${file.name}: unable to read video duration.`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    notify(`Media upload requirements:\n${errors.join('\n')}`, {
+      title: 'Media upload requirements',
+      variant: 'warning',
+    });
+    return [];
+  }
+
+  if (validTypeFiles.length !== files.length) {
+    notify(allowVideo ? 'Only image/video files were uploaded. Unsupported files were skipped.' : 'Only image files were uploaded. Unsupported files were skipped.', {
+      variant: 'warning',
+    });
+  }
+
+  return validTypeFiles;
+};
 const isStlUploadFile = (file: File): boolean => {
   const name = (file.name || '').trim().toLowerCase();
   const type = (file.type || '').trim().toLowerCase();
@@ -1630,6 +1706,12 @@ function Modal({
 }
 
 export default function ProductsPage() {
+  const {
+    showAlert: showAppAlert,
+    confirm: confirmAppDialog,
+    prompt: promptAppDialog,
+    dialogNode,
+  } = useAppDialog();
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const usesScopedDesignInfoView = currentUser?.role === 'COMPANY_ADMIN' || currentUser?.role === 'BRANCH_MANAGER';
@@ -1839,6 +1921,12 @@ export default function ProductsPage() {
   const [mediaLibraryRows, setMediaLibraryRows] = useState<MediaLibraryItem[]>([]);
   const [mediaLibraryLoading, setMediaLibraryLoading] = useState(false);
   const [mediaLibraryUploading, setMediaLibraryUploading] = useState(false);
+  const [mediaLibraryDeletingId, setMediaLibraryDeletingId] = useState<string | null>(null);
+  const [galleryPickerSearch, setGalleryPickerSearch] = useState('');
+  const [galleryPickerRows, setGalleryPickerRows] = useState<MediaLibraryItem[]>([]);
+  const [galleryPickerLoading, setGalleryPickerLoading] = useState(false);
+  const [galleryPickerPage, setGalleryPickerPage] = useState(1);
+  const [galleryPickerTotalPages, setGalleryPickerTotalPages] = useState(1);
   const designImportInputRef = useRef<HTMLInputElement | null>(null);
   const columnPickerRef = useRef<HTMLDivElement | null>(null);
   const [sourceDesignNo, setSourceDesignNo] = useState('');
@@ -2263,23 +2351,20 @@ export default function ProductsPage() {
     packetNameManuallyEdited,
     showPacketMasterModal,
   ]);
-  const galleryLibraryItems = useMemo(() => {
-    const seen = new Set<string>();
-    const items: GalleryItem[] = [];
-
-    rows.forEach((row) => {
-      const urls = row.imageUrls || [];
-      const keys = row.imageKeys && row.imageKeys.length ? row.imageKeys : urls;
-      urls.forEach((url, index) => {
-        const key = keys[index] || url;
-        if (!key || seen.has(key)) return;
-        seen.add(key);
-        items.push({ url, key });
-      });
-    });
-
-    return items;
-  }, [rows]);
+  const mapMediaLibraryEntry = (entry: Record<string, unknown>): MediaLibraryItem => ({
+    id: String(entry.id || ''),
+    mediaType: String(entry.mediaType || 'IMAGE').toUpperCase() as MediaLibraryTypeFilter,
+    fileName: String(entry.fileName || ''),
+    fileKey: String(entry.fileKey || ''),
+    mimeType: entry.mimeType ? String(entry.mimeType) : null,
+    fileSizeBytes:
+      entry.fileSizeBytes !== undefined && entry.fileSizeBytes !== null
+        ? Number(entry.fileSizeBytes)
+        : null,
+    url: resolvePublicAssetUrl(String(entry.url || entry.fileKey || '')),
+    uploadedBy: entry.uploadedBy ? String(entry.uploadedBy) : null,
+    createdAt: entry.createdAt ? String(entry.createdAt) : null,
+  });
 
   const getMetalRate = (metalCaratage: string): number | undefined => {
     const masterOption = getMetalMasterOption(metalCaratage);
@@ -2464,11 +2549,8 @@ export default function ProductsPage() {
     event.target.value = '';
     if (files.length === 0) return;
 
-    const mediaFiles = files.filter(isGalleryUploadFile);
-    if (mediaFiles.length === 0) {
-      window.alert('Please select image or video files only.');
-      return;
-    }
+    const mediaFiles = await validateGalleryUploadFiles(files, true, showAppAlert);
+    if (mediaFiles.length === 0) return;
 
     const formData = new FormData();
     mediaFiles.forEach((file) => formData.append('files', file));
@@ -2486,16 +2568,13 @@ export default function ProductsPage() {
         .filter((item: { url: string; key: string }) => Boolean(item.url));
 
       if (items.length === 0) {
-        window.alert('No media files were uploaded.');
+        showAppAlert('No media files were uploaded.');
       } else {
         addGalleryItems(items);
       }
 
-      if (mediaFiles.length !== files.length) {
-        window.alert('Only image/video files were uploaded. Unsupported files were skipped.');
-      }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to upload media.');
+      showAppAlert(error?.response?.data?.message || 'Unable to upload media.');
     } finally {
       setGalleryUploading(false);
     }
@@ -2508,7 +2587,7 @@ export default function ProductsPage() {
 
     const stlFiles = files.filter(isStlUploadFile);
     if (stlFiles.length === 0) {
-      window.alert('Please select STL files only.');
+      showAppAlert('Please select STL files only.');
       return;
     }
 
@@ -2529,17 +2608,17 @@ export default function ProductsPage() {
         .filter((item: StlItem) => Boolean(item.url));
 
       if (uploaded.length === 0) {
-        window.alert('No STL files were uploaded.');
+        showAppAlert('No STL files were uploaded.');
       } else {
         setStlItem(uploaded[0]);
         setStlRemoved(false);
       }
 
       if (stlFiles.length !== files.length) {
-        window.alert('Only STL files were uploaded. Unsupported files were skipped.');
+        showAppAlert('Only STL files were uploaded. Unsupported files were skipped.');
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to upload STL file.');
+      showAppAlert(error?.response?.data?.message || 'Unable to upload STL file.');
     } finally {
       setStlUploading(false);
     }
@@ -2665,26 +2744,79 @@ export default function ProductsPage() {
       });
 
       const rows = (response.data?.data || []) as Array<Record<string, unknown>>;
-      const mapped = rows.map((entry) => ({
-        id: String(entry.id || ''),
-        mediaType: String(entry.mediaType || 'IMAGE').toUpperCase() as MediaLibraryTypeFilter,
-        fileName: String(entry.fileName || ''),
-        fileKey: String(entry.fileKey || ''),
-        mimeType: entry.mimeType ? String(entry.mimeType) : null,
-        fileSizeBytes:
-          entry.fileSizeBytes !== undefined && entry.fileSizeBytes !== null
-            ? Number(entry.fileSizeBytes)
-            : null,
-        url: resolvePublicAssetUrl(String(entry.url || entry.fileKey || '')),
-        uploadedBy: entry.uploadedBy ? String(entry.uploadedBy) : null,
-        createdAt: entry.createdAt ? String(entry.createdAt) : null,
-      }));
+      const mapped = rows.map(mapMediaLibraryEntry);
       setMediaLibraryRows(mapped.filter((item) => item.id && item.fileKey));
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to load media library.');
+      showAppAlert(error?.response?.data?.message || 'Unable to load media library.');
       setMediaLibraryRows([]);
     } finally {
       setMediaLibraryLoading(false);
+    }
+  };
+
+  const fetchGalleryPickerLibrary = async (nextPage = 1, append = false) => {
+    setGalleryPickerLoading(true);
+    try {
+      const response = await api.get('/products/media-library', {
+        params: {
+          page: nextPage,
+          limit: 50,
+          type: 'GALLERY',
+          search: galleryPickerSearch.trim() || undefined,
+        },
+      });
+      const rows = ((response.data?.data || []) as Array<Record<string, unknown>>)
+        .map(mapMediaLibraryEntry)
+        .filter((item) => item.id && item.fileKey);
+      setGalleryPickerRows((prev) => (append ? [...prev, ...rows] : rows));
+      setGalleryPickerPage(Number(response.data?.page || nextPage));
+      setGalleryPickerTotalPages(Math.max(1, Number(response.data?.totalPages || 1)));
+    } catch (error: any) {
+      showAppAlert(error?.response?.data?.message || 'Unable to load gallery media.');
+      if (!append) {
+        setGalleryPickerRows([]);
+        setGalleryPickerPage(1);
+        setGalleryPickerTotalPages(1);
+      }
+    } finally {
+      setGalleryPickerLoading(false);
+    }
+  };
+
+  const removeMediaLibraryItem = async (item: MediaLibraryItem) => {
+    const confirmed = await confirmAppDialog(
+      `Remove ${item.fileName || 'this media'} from the media library? Files are not permanently deleted.`,
+      {
+        title: 'Remove media',
+        confirmLabel: 'Remove',
+      },
+    );
+    if (!confirmed) return;
+
+    setMediaLibraryDeletingId(item.id);
+    try {
+      await api.delete(`/products/media-library/${item.id}`);
+      await fetchMediaLibrary();
+      if (showGalleryPicker) {
+        await fetchGalleryPickerLibrary(1, false);
+      }
+    } catch (error: any) {
+      const payload = error?.response?.data?.message ?? error?.response?.data;
+      const message =
+        typeof payload === 'string'
+          ? payload
+          : payload?.message || 'Unable to remove media library item.';
+      const usedBy = Array.isArray(payload?.usedBy)
+        ? payload.usedBy
+            .map((design: { designNo?: string; version?: string }) =>
+              [design.designNo, design.version].filter(Boolean).join(' - '),
+            )
+            .filter(Boolean)
+            .join('\n')
+        : '';
+      showAppAlert(usedBy ? `${message}\n\nUsed by:\n${usedBy}` : message);
+    } finally {
+      setMediaLibraryDeletingId(null);
     }
   };
 
@@ -2693,11 +2825,8 @@ export default function ProductsPage() {
     event.target.value = '';
     if (files.length === 0) return;
 
-    const mediaFiles = files.filter(isGalleryUploadFile);
-    if (mediaFiles.length === 0) {
-      window.alert('Please select image or video files only.');
-      return;
-    }
+    const mediaFiles = await validateGalleryUploadFiles(files, true, showAppAlert);
+    if (mediaFiles.length === 0) return;
 
     const formData = new FormData();
     mediaFiles.forEach((file) => formData.append('files', file));
@@ -2708,9 +2837,9 @@ export default function ProductsPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       await fetchMediaLibrary();
-      window.alert('Media uploaded and added to library.');
+      showAppAlert('Media uploaded and added to library.');
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to upload media.');
+      showAppAlert(error?.response?.data?.message || 'Unable to upload media.');
     } finally {
       setMediaLibraryUploading(false);
     }
@@ -2723,7 +2852,7 @@ export default function ProductsPage() {
 
     const stlFiles = files.filter(isStlUploadFile);
     if (stlFiles.length === 0) {
-      window.alert('Please select STL files only.');
+      showAppAlert('Please select STL files only.');
       return;
     }
 
@@ -2736,9 +2865,9 @@ export default function ProductsPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       await fetchMediaLibrary();
-      window.alert('STL uploaded and added to library.');
+      showAppAlert('STL uploaded and added to library.');
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to upload STL files.');
+      showAppAlert(error?.response?.data?.message || 'Unable to upload STL files.');
     } finally {
       setMediaLibraryUploading(false);
     }
@@ -2750,7 +2879,7 @@ export default function ProductsPage() {
     try {
       await navigator.clipboard.writeText(value);
     } catch {
-      window.alert('Unable to copy key. Please copy manually.');
+      showAppAlert('Unable to copy key. Please copy manually.');
     }
   };
 
@@ -2787,7 +2916,7 @@ export default function ProductsPage() {
       if (packet) {
         const packetAlreadyUsed = prev.some((row) => row.id !== rowId && row.packetId === packet.id);
         if (packetAlreadyUsed) {
-          window.alert('This packet is already used in another line.');
+          showAppAlert('This packet is already used in another line.');
           return prev;
         }
       }
@@ -3020,7 +3149,7 @@ export default function ProductsPage() {
     }
 
     if (inlineMasterType !== 'METAL_CARATAGE' && (!value || !aliasName)) {
-      window.alert('Master name and alias name are required.');
+      showAppAlert('Master name and alias name are required.');
       return;
     }
 
@@ -3091,11 +3220,11 @@ export default function ProductsPage() {
 
     if (inlineMasterType === 'FINDING_HEAD') {
       if (!findingPayload?.findingNo || !findingPayload?.metalCaratage) {
-        window.alert('Finding No and Metal Caratage are required.');
+        showAppAlert('Finding No and Metal Caratage are required.');
         return;
       }
       if (inlinePricePerUnit.trim().length === 0 || inlineWeightPerUnit.trim().length === 0) {
-        window.alert('Price/Unit and Weight/Unit are required.');
+        showAppAlert('Price/Unit and Weight/Unit are required.');
         return;
       }
     }
@@ -3105,7 +3234,7 @@ export default function ProductsPage() {
         !metalCaratagePayload?.metalColor ||
         !metalCaratagePayload?.metalPurity
       ) {
-        window.alert('Metal Name, Metal Color, and Metal Purity are required.');
+        showAppAlert('Metal Name, Metal Color, and Metal Purity are required.');
         return;
       }
     }
@@ -3113,16 +3242,16 @@ export default function ProductsPage() {
       (inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' || inlineMasterType === 'OVERHEAD_RULE') &&
       !inlineJewelryGroupId.trim()
     ) {
-      window.alert('Category is required.');
+      showAppAlert('Category is required.');
       return;
     }
     if (inlineMasterType === 'OVERHEAD_RULE') {
       if (inlineOverheadApplyMode === 'FLAT' && inlineFlatAmount.trim().length === 0) {
-        window.alert('Flat Amount is required for flat overhead mode.');
+        showAppAlert('Flat Amount is required for flat overhead mode.');
         return;
       }
       if (inlineOverheadApplyMode !== 'FLAT' && inlineRatePercent.trim().length === 0) {
-        window.alert('Rate % is required for percentage overhead mode.');
+        showAppAlert('Rate % is required for percentage overhead mode.');
         return;
       }
     }
@@ -3153,7 +3282,7 @@ export default function ProductsPage() {
 
       closeInlineMasterModal();
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to create master value.');
+      showAppAlert(error?.response?.data?.message || 'Unable to create master value.');
     } finally {
       setCreatingMasterType(null);
     }
@@ -3207,15 +3336,15 @@ export default function ProductsPage() {
     };
 
     if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
-      window.alert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
+      showAppAlert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
       return;
     }
     if (payload.sellingPrice < 0) {
-      window.alert('Selling price cannot be negative.');
+      showAppAlert('Selling price cannot be negative.');
       return;
     }
     if (payload.weightPerPc <= 0) {
-      window.alert('Weight/Pc must be greater than 0.');
+      showAppAlert('Weight/Pc must be greater than 0.');
       return;
     }
 
@@ -3232,7 +3361,7 @@ export default function ProductsPage() {
         applyPacketToGemRow(gemRows[0].id, createdId);
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to save packet.');
+      showAppAlert(error?.response?.data?.message || 'Unable to save packet.');
     } finally {
       setPacketSaving(false);
     }
@@ -3253,6 +3382,13 @@ export default function ProductsPage() {
     }
     void fetchMediaLibrary();
   }, [showMediaLibraryModal, mediaLibraryType, mediaLibrarySearch]);
+
+  useEffect(() => {
+    if (!showAddModal || !showGalleryPicker) {
+      return;
+    }
+    void fetchGalleryPickerLibrary(1, false);
+  }, [showAddModal, showGalleryPicker, galleryPickerSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -3570,7 +3706,7 @@ export default function ProductsPage() {
           error: message,
         },
       }));
-      window.alert(message);
+      showAppAlert(message);
       return [];
     }
   };
@@ -3865,11 +4001,11 @@ export default function ProductsPage() {
 
   const createVersionBuilderVariants = async () => {
     if (!versionBuilderBaseDesign) {
-      window.alert('No base design selected.');
+      showAppAlert('No base design selected.');
       return;
     }
     if (!canCreateDesign) {
-      window.alert('You do not have permission to add designs.');
+      showAppAlert('You do not have permission to add designs.');
       return;
     }
     if (creatingVersions) {
@@ -3881,7 +4017,7 @@ export default function ProductsPage() {
       return;
     }
     if (!versionBuilderCreateValidation.isValid) {
-      window.alert(versionBuilderCreateValidation.message || 'Please complete required Version Builder fields.');
+      showAppAlert(versionBuilderCreateValidation.message || 'Please complete required Version Builder fields.');
       return;
     }
     const rowsToCreate = versionBuilderGeneratedRows.filter((row) => {
@@ -3889,12 +4025,16 @@ export default function ProductsPage() {
       return status !== 'created' && status !== 'skipped';
     });
     if (!rowsToCreate.length) {
-      window.alert('No generated variants available to create.');
+      showAppAlert('No generated variants available to create.');
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await confirmAppDialog(
       `Create ${rowsToCreate.length} versions from ${versionBuilderBaseDesign.designNo}- This will create actual design records.`,
+      {
+        title: 'Create design versions',
+        confirmLabel: 'Create versions',
+      },
     );
     if (!confirmed) {
       return;
@@ -4158,17 +4298,17 @@ export default function ProductsPage() {
       }
 
       if (failures.length > 0 || skipped.length > 0) {
-        window.alert(
+        showAppAlert(
           `Created ${createdRows.length} version(s). ${skipped.length} skipped. ${failures.length} failed.\n\n${[
             ...skipped.slice(0, 4),
             ...failures.slice(0, 4),
           ].join('\n')}${skipped.length + failures.length > 8 ? '\n...' : ''}`,
         );
       } else {
-        window.alert(`Created ${createdRows.length} version(s) successfully.`);
+        showAppAlert(`Created ${createdRows.length} version(s) successfully.`);
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to create versions.');
+      showAppAlert(error?.response?.data?.message || 'Unable to create versions.');
     } finally {
       setCreatingVersions(false);
       setVersionCreateProgress({ done: 0, total: 0 });
@@ -4277,12 +4417,15 @@ export default function ProductsPage() {
     }));
   };
 
-  const handleVersionBuilderImageUploadChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleVersionBuilderImageUploadChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (!files.length) return;
 
-    const uploadedItems = files.map((file) => ({
+    const imageFiles = await validateGalleryUploadFiles(files, false, showAppAlert);
+    if (imageFiles.length === 0) return;
+
+    const uploadedItems = imageFiles.map((file) => ({
       file,
       previewUrl: URL.createObjectURL(file),
     }));
@@ -5300,7 +5443,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
   const openAdd = () => {
     if (!canCreateDesign) {
-      window.alert('You do not have permission to add designs.');
+      showAppAlert('You do not have permission to add designs.');
       return;
     }
     setEditingId(null);
@@ -5680,7 +5823,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
   const openNewVersion = async (row: DesignRow) => {
     if (!canCreateDesign) {
-      window.alert('You do not have permission to add designs.');
+      showAppAlert('You do not have permission to add designs.');
       return;
     }
     setEditingId(null);
@@ -5712,17 +5855,17 @@ const createDefaultVendorRow = (): VendorRow => ({
       requestedDesignName !== originalDesignName;
     if (isUpdate) {
       if (!canModifyExistingDesigns) {
-        window.alert('You have read-only access for existing designs.');
+        showAppAlert('You have read-only access for existing designs.');
         return;
       }
     } else if (!canCreateDesign) {
-      window.alert('You do not have permission to add designs.');
+      showAppAlert('You do not have permission to add designs.');
       return;
     }
 
     if (savingDesign) return;
     if (!form.jewelryGroup.trim()) {
-      window.alert('Category is required.');
+      showAppAlert('Category is required.');
       return;
     }
 
@@ -5736,7 +5879,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     const resolvedDesignNo = baseDesignNo;
     const shouldSendDesignNo = isStructuredNewDesignMode || isUpdate || isDesignNoManual || forceCreate;
     if (shouldSendDesignNo && !resolvedDesignNo) {
-      window.alert('Design No is required.');
+      showAppAlert('Design No is required.');
       return;
     }
     const resolvedVersion = normalizeVersionInput(options?.overrideVersion ?? form.version);
@@ -5744,17 +5887,17 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const usedMetalKeys = new Set<string>();
     if (!metalRows.some((row) => row.goldColour.trim())) {
-      window.alert('Please add at least one Metal Caratage in Metal Information before saving the design.');
+      showAppAlert('Please add at least one Metal Caratage in Metal Information before saving the design.');
       return;
     }
 
     for (const row of metalRows) {
       if (!row.goldColour.trim()) {
-        window.alert('Metal Caratage is required for all Metal rows.');
+        showAppAlert('Metal Caratage is required for all Metal rows.');
         return;
       }
       if (!row.netWt.trim()) {
-        window.alert('Net Weight is required for all Metal rows.');
+        showAppAlert('Net Weight is required for all Metal rows.');
         return;
       }
 
@@ -5763,26 +5906,26 @@ const createDefaultVendorRow = (): VendorRow => ({
       const pricePerGm = parseNum(row.pricePerGm);
       const value = parseNum(row.value);
       if (netWt <= 0) {
-        window.alert('Net Weight must be greater than 0 for all Metal rows.');
+        showAppAlert('Net Weight must be greater than 0 for all Metal rows.');
         return;
       }
       if (wastagePercent < 0) {
-        window.alert('Wastage % cannot be negative for Metal rows.');
+        showAppAlert('Wastage % cannot be negative for Metal rows.');
         return;
       }
       if (pricePerGm < 0) {
-        window.alert('Per Gram Weight/Price cannot be negative for Metal rows.');
+        showAppAlert('Per Gram Weight/Price cannot be negative for Metal rows.');
         return;
       }
       if (value < 0) {
-        window.alert('Metal Value cannot be negative for Metal rows.');
+        showAppAlert('Metal Value cannot be negative for Metal rows.');
         return;
       }
 
       const key = normalizeLookupKey(row.goldColour);
       if (!key) continue;
       if (usedMetalKeys.has(key)) {
-        window.alert('Each Metal Caratage can be used only once.');
+        showAppAlert('Each Metal Caratage can be used only once.');
         return;
       }
       usedMetalKeys.add(key);
@@ -5798,30 +5941,30 @@ const createDefaultVendorRow = (): VendorRow => ({
       const amount = parseNum(row.amount);
 
       if (wtPerPcs < 0) {
-        window.alert(`Wt per Pcs cannot be negative in Stone row ${index + 1}.`);
+        showAppAlert(`Wt per Pcs cannot be negative in Stone row ${index + 1}.`);
         return;
       }
       if (pcs < 0) {
-        window.alert(`Number of Pcs cannot be negative in Stone row ${index + 1}.`);
+        showAppAlert(`Number of Pcs cannot be negative in Stone row ${index + 1}.`);
         return;
       }
       if (wtInCts < 0) {
-        window.alert(`Wt(In Cts) cannot be negative in Stone row ${index + 1}.`);
+        showAppAlert(`Wt(In Cts) cannot be negative in Stone row ${index + 1}.`);
         return;
       }
       if (pricePerCt < 0) {
-        window.alert(`Price per Ct cannot be negative in Stone row ${index + 1}.`);
+        showAppAlert(`Price per Ct cannot be negative in Stone row ${index + 1}.`);
         return;
       }
       if (amount < 0) {
-        window.alert(`Amount cannot be negative in Stone row ${index + 1}.`);
+        showAppAlert(`Amount cannot be negative in Stone row ${index + 1}.`);
         return;
       }
 
       const packetKey = normalizeLookupKey(row.packetId);
       if (!packetKey) continue;
       if (usedPacketIds.has(packetKey)) {
-        window.alert('Each Packet can be used only once.');
+        showAppAlert('Each Packet can be used only once.');
         return;
       }
       usedPacketIds.add(packetKey);
@@ -6019,7 +6162,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         showDesignSaveNotice('Design name synced across all versions');
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to save design.');
+      showAppAlert(error?.response?.data?.message || 'Unable to save design.');
     } finally {
       setSavingDesign(false);
     }
@@ -6027,24 +6170,32 @@ const createDefaultVendorRow = (): VendorRow => ({
 
   const setDesignActiveStatus = async (id: string, nextActive: boolean) => {
     if (!canModifyExistingDesigns) {
-      window.alert('You have read-only access for designs.');
+      showAppAlert('You have read-only access for designs.');
       return;
     }
 
     if (nextActive && currentUser?.role !== 'SUPER_ADMIN') {
-      window.alert('Only Super Admin can activate inactive designs.');
+      showAppAlert('Only Super Admin can activate inactive designs.');
       return;
     }
 
     if (deletingId) return;
 
     if (nextActive) {
-      const typed = window.prompt('Type ACTIVATE to confirm design activation.', '');
+      const typed = await promptAppDialog('Type ACTIVATE to confirm design activation.', {
+        title: 'Activate design',
+        inputLabel: 'Confirmation text',
+        inputPlaceholder: 'ACTIVATE',
+        confirmLabel: 'Activate',
+      });
       if ((typed || '').trim().toUpperCase() !== 'ACTIVATE') {
         return;
       }
     } else {
-      const confirmed = window.confirm('Disable this design- It will be marked inactive.');
+      const confirmed = await confirmAppDialog('Disable this design- It will be marked inactive.', {
+        title: 'Disable design',
+        confirmLabel: 'Disable',
+      });
       if (!confirmed) return;
     }
 
@@ -6057,11 +6208,11 @@ const createDefaultVendorRow = (): VendorRow => ({
       }
       const actor = [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || currentUser?.email || 'Current user';
       const changedAt = new Date().toLocaleString();
-      window.alert(
+      showAppAlert(
         `Design marked as ${nextActive ? 'active' : 'inactive'}.\nUpdated by: ${actor}\nTime: ${changedAt}`,
       );
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to update design status.');
+      showAppAlert(error?.response?.data?.message || 'Unable to update design status.');
     } finally {
       setDeletingId(null);
     }
@@ -6069,7 +6220,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
   const setPrimaryDesignVersion = async (row: DesignRow) => {
     if (!canModifyExistingDesigns) {
-      window.alert('You have read-only access for designs.');
+      showAppAlert('You have read-only access for designs.');
       return;
     }
 
@@ -6077,14 +6228,17 @@ const createDefaultVendorRow = (): VendorRow => ({
       return;
     }
 
-    const confirmed = window.confirm(`Set ${row.designNo} as the primary version-`);
+    const confirmed = await confirmAppDialog(`Set ${row.designNo} as the primary version-`, {
+      title: 'Set primary version',
+      confirmLabel: 'Set primary',
+    });
     if (!confirmed) return;
 
     try {
       await api.post(`/products/${row.id}/primary`);
       await fetchDesignRows(row.id);
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to set primary version.');
+      showAppAlert(error?.response?.data?.message || 'Unable to set primary version.');
     }
   };
 
@@ -6111,7 +6265,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             (row) => row.id !== id && normalizeLookupKey(row.goldColour) === normalizedValue,
           );
         if (isDuplicate) {
-          window.alert('This Metal Caratage is already used in another line.');
+          showAppAlert('This Metal Caratage is already used in another line.');
           return prev;
         }
       }
@@ -6267,7 +6421,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to export designs.');
+      showAppAlert('Failed to export designs.');
     }
   };
 
@@ -6284,7 +6438,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to download design import template.');
+      showAppAlert('Failed to download design import template.');
     }
   };
 
@@ -6310,21 +6464,21 @@ const createDefaultVendorRow = (): VendorRow => ({
       };
       const errorPreview =
         summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
-      window.alert(
+      showAppAlert(
         `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
       );
       await fetchDesignRows();
     } catch (error: any) {
       console.error(error);
       const message = error?.response?.data?.message;
-      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import designs.');
+      showAppAlert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import designs.');
     } finally {
     }
   };
 
   const exportPdf = () => {
     if (!selectedDesignIds.length) {
-      window.alert('Please select at least one design row to export.');
+      showAppAlert('Please select at least one design row to export.');
       return;
     }
 
@@ -6333,7 +6487,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       .filter((row): row is DesignRow => Boolean(row));
 
     if (!selectedRows.length) {
-      window.alert('No valid selected rows found for PDF export.');
+      showAppAlert('No valid selected rows found for PDF export.');
       return;
     }
 
@@ -6438,7 +6592,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     const frameWindow = printFrame.contentWindow;
     if (!frameWindow) {
       cleanup();
-      window.alert('Unable to initialize PDF export frame.');
+      showAppAlert('Unable to initialize PDF export frame.');
       return;
     }
 
@@ -7217,6 +7371,9 @@ const createDefaultVendorRow = (): VendorRow => ({
               className="hidden"
               onChange={handleMediaLibraryStlUploadChange}
             />
+            <p className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
+              {MEDIA_GUIDANCE_TEXT}
+            </p>
 
             <div className="rounded-2xl border border-slate-200 bg-white">
               <div className="app-table-scroll scrollbar-top">
@@ -7272,13 +7429,23 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <div>{formatDetailDateTime(item.createdAt || '')}</div>
                           </td>
                           <td className="app-table-cell">
-                            <button
-                              type="button"
-                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                              onClick={() => void copyMediaLibraryKey(item.fileKey)}
-                            >
-                              Copy Key
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                onClick={() => void copyMediaLibraryKey(item.fileKey)}
+                              >
+                                Copy Key
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                onClick={() => void removeMediaLibraryItem(item)}
+                                disabled={mediaLibraryDeletingId === item.id}
+                              >
+                                {mediaLibraryDeletingId === item.id ? 'Removing...' : 'Remove'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -7560,6 +7727,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       />
                     </div>
                   </div>
+                  <p className="mb-3 rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] font-medium leading-5 text-sky-800">
+                    Images: 1200 x 1200 px recommended, max 5 MB.
+                  </p>
                   {versionBuilderAllImageUrls.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-xs text-slate-500">
                       No parent images found on this design. Mapping is disabled until media is uploaded.
@@ -9426,6 +9596,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                     className="hidden"
                     onChange={handleStlUploadChange}
                   />
+                  <p className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-[11px] font-medium leading-5 text-sky-800">
+                    {MEDIA_GUIDANCE_TEXT}
+                  </p>
                   <div className="rounded-lg border border-[#dfd0ba] bg-[#f9f3ea] px-3 py-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -10147,20 +10320,42 @@ const createDefaultVendorRow = (): VendorRow => ({
       {showAddModal && showGalleryPicker && (
         <Modal title="CHOOSE FROM GALLERY" size="max-w-5xl" onClose={() => setShowGalleryPicker(false)}>
           <div className="space-y-4">
-            {galleryLibraryItems.length === 0 ? (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={galleryPickerSearch}
+                onChange={(event) => setGalleryPickerSearch(event.target.value)}
+                placeholder="Search by file name or media key"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              />
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void fetchGalleryPickerLibrary(1, false)}
+                disabled={galleryPickerLoading}
+              >
+                {galleryPickerLoading ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+
+            {galleryPickerLoading && galleryPickerRows.length === 0 ? (
               <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
-                No media found in existing designs yet.
+                Loading gallery media...
+              </div>
+            ) : galleryPickerRows.length === 0 ? (
+              <div className="rounded border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
+                No gallery media found.
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                {galleryLibraryItems.map((item, index) => {
-                  const selectedInCurrent = galleryKeys.includes(item.key);
+                {galleryPickerRows.map((item, index) => {
+                  const selectedInCurrent = galleryKeys.includes(item.fileKey);
                   return (
-                    <div key={`${item.key}-${index}`} className="rounded border border-gray-200 bg-white p-2 shadow-sm">
+                    <div key={`${item.id}-${index}`} className="rounded border border-gray-200 bg-white p-2 shadow-sm">
                       <div className="relative">
                         <MediaPreview
                           url={item.url}
-                          alt={`Gallery ${index + 1}`}
+                          alt={item.fileName || `Gallery ${index + 1}`}
                           className="h-28 w-full rounded object-cover"
                         />
                         {isVideoUrl(item.url) ? (
@@ -10178,17 +10373,30 @@ const createDefaultVendorRow = (): VendorRow => ({
                         }`}
                         onClick={() => {
                           if (selectedInCurrent) return;
-                          addGalleryItems([{ url: item.url, key: item.key }]);
+                          addGalleryItems([{ url: item.url, key: item.fileKey }]);
                         }}
                       >
                         {selectedInCurrent ? 'Selected' : 'Add'}
                       </button>
+                      <p className="mt-1 truncate text-[10px] font-medium text-slate-500" title={item.fileName}>
+                        {item.fileName || item.fileKey}
+                      </p>
                     </div>
                   );
                 })}
               </div>
             )}
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {galleryPickerPage < galleryPickerTotalPages ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void fetchGalleryPickerLibrary(galleryPickerPage + 1, true)}
+                  disabled={galleryPickerLoading}
+                >
+                  {galleryPickerLoading ? 'Loading...' : 'Load More'}
+                </Button>
+              ) : null}
               <Button type="button" variant="secondary" onClick={() => setShowGalleryPicker(false)}>
                 Done
               </Button>
@@ -11590,9 +11798,11 @@ const createDefaultVendorRow = (): VendorRow => ({
           </div>
         </Modal>
       )}
+      {dialogNode}
     </div>
   );
 }
+
 
 
 

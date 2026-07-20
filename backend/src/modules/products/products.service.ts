@@ -271,6 +271,9 @@ interface DesignFindingImportRow {
 
 @Injectable()
 export class ProductsService {
+  private readonly galleryImageMaxBytes = 5 * 1024 * 1024;
+  private readonly galleryVideoMaxBytes = 50 * 1024 * 1024;
+
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
@@ -1882,6 +1885,15 @@ export class ProductsService {
       this.mobileCatalogCategories.map(async (category) => {
         const qb = this.designRepo
           .createQueryBuilder('design')
+          .innerJoin(
+            Design,
+            'familyPrimary',
+            [
+              'familyPrimary.isPrimary = :isPrimary',
+              'familyPrimary.isActive = :isActive',
+              "COALESCE(NULLIF(REGEXP_REPLACE(familyPrimary.designNo, '-V[0-9]+$', ''), ''), familyPrimary.designNo) = COALESCE(NULLIF(REGEXP_REPLACE(design.designNo, '-V[0-9]+$', ''), ''), design.designNo)",
+            ].join(' AND '),
+          )
           .select('COUNT(1)', 'versions')
           .addSelect(
             `COUNT(DISTINCT CASE
@@ -2970,6 +2982,7 @@ export class ProductsService {
             `Unsupported file type: ${file.originalname}. Only image and video files are allowed.`,
           );
         }
+        this.assertGalleryFileSize(file);
 
         const extension = this.resolveGalleryExtension(file.originalname, file.mimetype);
         const fileName = `${Date.now()}-${randomUUID()}${extension}`;
@@ -3023,6 +3036,7 @@ export class ProductsService {
           `Unsupported file type: ${file.originalname}. Only image and video files are allowed.`,
         );
       }
+      this.assertGalleryFileSize(file);
 
       const extension = this.resolveGalleryExtension(file.originalname, file.mimetype);
       const fileName = `${Date.now()}-${randomUUID()}${extension}`;
@@ -3271,12 +3285,17 @@ export class ProductsService {
     const qb = this.designMediaLibraryRepo
       .createQueryBuilder('media')
       .leftJoinAndSelect('media.uploadedByUser', 'uploadedByUser')
+      .where('media.status != :removedStatus', { removedStatus: -1 })
       .orderBy('media.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
 
     const type = (query.type || 'ALL').trim().toUpperCase();
-    if (type !== 'ALL') {
+    if (type === 'GALLERY') {
+      qb.andWhere('media.mediaType IN (:...galleryTypes)', {
+        galleryTypes: [DesignMediaType.IMAGE, DesignMediaType.VIDEO],
+      });
+    } else if (type !== 'ALL') {
       qb.andWhere('media.mediaType = :type', { type });
     }
 
@@ -3314,6 +3333,44 @@ export class ProductsService {
       page,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async removeMediaLibraryItem(
+    id: string,
+    requester: AuthUser,
+  ): Promise<{ removed: boolean; usageCount?: number; usedBy?: Array<{ id: string; designNo: string; version: string }> }> {
+    this.assertDesignCreateAccess(requester);
+
+    const media = await this.designMediaLibraryRepo.findOne({ where: { id } });
+    if (!media || media.status === -1) {
+      throw new NotFoundException('Media library item not found');
+    }
+
+    const usageQuery = this.designRepo
+      .createQueryBuilder('design')
+      .select(['design.id', 'design.designNo', 'design.version'])
+      .where('design.stlFileUrl = :fileKey', { fileKey: media.fileKey })
+      .orWhere('JSON_SEARCH(design.imageUrls, :searchMode, :fileKey) IS NOT NULL', {
+        searchMode: 'one',
+        fileKey: media.fileKey,
+      });
+
+    const [usedBy, usageCount] = await usageQuery.take(5).getManyAndCount();
+    if (usageCount > 0) {
+      throw new BadRequestException({
+        message: `This media is currently used by ${usageCount} design${usageCount === 1 ? '' : 's'}. Remove it from those designs before deleting.`,
+        usageCount,
+        usedBy: usedBy.map((design) => ({
+          id: design.id,
+          designNo: design.designNo,
+          version: design.version,
+        })),
+      });
+    }
+
+    media.status = -1;
+    await this.designMediaLibraryRepo.save(media);
+    return { removed: true };
   }
 
   async createPacket(dto: CreateStonePacketDto, requester: AuthUser): Promise<StonePacket> {
@@ -7576,6 +7633,18 @@ export class ProductsService {
     if (typeof mimeType !== 'string') return false;
     const normalized = mimeType.trim().toLowerCase();
     return normalized.startsWith('image/') || normalized.startsWith('video/');
+  }
+
+  private assertGalleryFileSize(file: { originalname?: string; mimetype?: string; buffer?: Buffer }): void {
+    const size = file.buffer?.length || 0;
+    const mimeType = (file.mimetype || '').trim().toLowerCase();
+    const maxBytes = mimeType.startsWith('video/') ? this.galleryVideoMaxBytes : this.galleryImageMaxBytes;
+    if (size <= maxBytes) {
+      return;
+    }
+
+    const maxMb = Math.round((maxBytes / (1024 * 1024)) * 10) / 10;
+    throw new BadRequestException(`${file.originalname || 'Media file'} exceeds the ${maxMb} MB upload limit.`);
   }
 
   private isStlFile(originalName?: string | null, mimeType?: string | null): boolean {

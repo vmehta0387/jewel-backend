@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "BLITZ NYC",
-    "slug": "blitz-nyc",
+    "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.vmehta0387.mobile",
+      "bundleIdentifier": "com.app.blitznyc",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to securely sign in."
       }
@@ -26,7 +26,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.vmehta0387.mobile"
+      "package": "com.app.blitznyc"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -3,7 +3,9 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 type DesignMasterType =
   | 'JEWELRY_GROUP'
@@ -1569,6 +1571,12 @@ function PacketModal({
 }
 
 export default function DesignMastersPage() {
+  const { showAlert: showAppAlert, dialogNode } = useAppDialog();
+  const currentUser = getStoredUser();
+  const canCreateMaster = Boolean(currentUser && hasActionPermission(currentUser, 'master.create'));
+  const canEditMaster = Boolean(currentUser && hasActionPermission(currentUser, 'master.edit'));
+  const canUpdateMasterStatus = Boolean(currentUser && hasActionPermission(currentUser, 'master.status_update'));
+  const canImportMaster = Boolean(currentUser && hasActionPermission(currentUser, 'master.import'));
   const [selectedType, setSelectedType] = useState<MasterCategoryType>('JEWELRY_GROUP');
   const [viewInactive, setViewInactive] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -1914,11 +1922,13 @@ export default function DesignMastersPage() {
   };
 
   const openCreate = () => {
+    if (!canCreateMaster) return;
     resetModalState();
     setShowModal(true);
   };
 
   const openEditMaster = (row: MasterRow) => {
+    if (!canEditMaster) return;
     setEditingPacket(null);
     setEditingRow(row);
     setMetalCaratageCombinationChanged(false);
@@ -1990,6 +2000,7 @@ export default function DesignMastersPage() {
   };
 
   const openEditPacket = (row: PacketRow) => {
+    if (!canEditMaster) return;
     setEditingRow(null);
     setEditingPacket(row);
     setPacketForm({
@@ -2066,15 +2077,15 @@ export default function DesignMastersPage() {
       };
 
       if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
-        window.alert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
+        showAppAlert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
         return;
       }
       if (payload.sellingPrice < 0) {
-        window.alert('Selling price cannot be negative.');
+        showAppAlert('Selling price cannot be negative.');
         return;
       }
       if (payload.weightPerPc <= 0) {
-        window.alert('Weight/Pc must be greater than 0.');
+        showAppAlert('Weight/Pc must be greater than 0.');
         return;
       }
 
@@ -2089,7 +2100,7 @@ export default function DesignMastersPage() {
         resetModalState();
         fetchRows();
       } catch (error: any) {
-        window.alert(error?.response?.data?.message || 'Unable to save packet.');
+        showAppAlert(error?.response?.data?.message || 'Unable to save packet.');
       } finally {
         setSaving(false);
       }
@@ -2120,7 +2131,7 @@ export default function DesignMastersPage() {
       aliasName = autoValue;
     }
     if (!value || !aliasName) {
-      window.alert('Master name and alias name are required.');
+      showAppAlert('Master name and alias name are required.');
       return;
     }
 
@@ -2219,11 +2230,11 @@ export default function DesignMastersPage() {
 
     if (selectedType === 'FINDING_HEAD') {
       if (!findingPayload?.findingNo || !findingPayload?.metalCaratage) {
-        window.alert('Finding No and Metal Caratage are required.');
+        showAppAlert('Finding No and Metal Caratage are required.');
         return;
       }
       if (formPricePerUnit.trim().length === 0 || formWeightPerUnit.trim().length === 0) {
-        window.alert('Price/Unit and Weight/Unit are required.');
+        showAppAlert('Price/Unit and Weight/Unit are required.');
         return;
       }
     }
@@ -2234,7 +2245,7 @@ export default function DesignMastersPage() {
         selectedType === 'OVERHEAD_RULE') &&
       !formJewelryGroupId.trim()
     ) {
-      window.alert('Category is required.');
+      showAppAlert('Category is required.');
       return;
     }
 
@@ -2245,7 +2256,7 @@ export default function DesignMastersPage() {
         parseOptionalNum(formRatePerGram) !== null ||
         parseOptionalNum(formRatePerGroup) !== null;
       if (!hasAnyRate) {
-        window.alert('Enter at least one labor rate or flat cost.');
+        showAppAlert('Enter at least one labor rate or flat cost.');
         return;
       }
     }
@@ -2255,14 +2266,14 @@ export default function DesignMastersPage() {
         formOverheadApplyMode === 'FLAT' &&
         parseOptionalNum(formFlatAmount) === null
       ) {
-        window.alert('Flat Amount is required for flat overhead mode.');
+        showAppAlert('Flat Amount is required for flat overhead mode.');
         return;
       }
       if (
         formOverheadApplyMode !== 'FLAT' &&
         parseOptionalNum(formRatePercent) === null
       ) {
-        window.alert('Rate Percent is required for percentage overhead mode.');
+        showAppAlert('Rate Percent is required for percentage overhead mode.');
         return;
       }
     }
@@ -2272,34 +2283,34 @@ export default function DesignMastersPage() {
         parseOptionalNum(formMarketPricePerOunce) === null ||
         parseOptionalNum(formMarketPricePerGm) === null
       ) {
-        window.alert('Market Price/Ounce and Market Price/Gms are required.');
+        showAppAlert('Market Price/Ounce and Market Price/Gms are required.');
         return;
       }
     }
 
     if (selectedType === 'METAL_COLOR' && !formMetalName.trim()) {
-      window.alert('Metal Name is required.');
+      showAppAlert('Metal Name is required.');
       return;
     }
 
     if (selectedType === 'METAL_PURITY') {
       if (!formMetalName.trim()) {
-        window.alert('Metal Name is required.');
+        showAppAlert('Metal Name is required.');
         return;
       }
       if (parseOptionalNum(formPurityPercentage) === null) {
-        window.alert('Percentage is required.');
+        showAppAlert('Percentage is required.');
         return;
       }
     }
 
     if (selectedType === 'METAL_CARATAGE') {
       if (!formMetalName.trim() || !formMetalPurity.trim() || !formMetalColor.trim()) {
-        window.alert('Metal Name, Metal Purity and Metal Color are required.');
+        showAppAlert('Metal Name, Metal Purity and Metal Color are required.');
         return;
       }
       if (resolvedPurityPercentage === null) {
-        window.alert('Unable to resolve purity percentage for selected Metal Purity.');
+        showAppAlert('Unable to resolve purity percentage for selected Metal Purity.');
         return;
       }
     }
@@ -2338,13 +2349,14 @@ export default function DesignMastersPage() {
       resetModalState();
       void fetchRows();
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to save master value.');
+      showAppAlert(error?.response?.data?.message || 'Unable to save master value.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleToggleStatus = async (row: MasterRow | PacketRow) => {
+    if (!canUpdateMasterStatus) return;
     try {
       if (isPacketType) {
         await api.patch(`/products/packets/${row.id}/status`, { isActive: !row.isActive });
@@ -2353,7 +2365,7 @@ export default function DesignMastersPage() {
       }
       fetchRows();
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to update status.');
+      showAppAlert(error?.response?.data?.message || 'Unable to update status.');
     }
   };
 
@@ -2393,6 +2405,7 @@ export default function DesignMastersPage() {
   };
 
   const handleDownloadTemplate = async () => {
+    if (!canImportMaster) return;
     try {
       const response = await api.get(
         isPacketType ? '/products/packets/export/template' : '/products/masters/export/template',
@@ -2409,7 +2422,7 @@ export default function DesignMastersPage() {
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to download import template.');
+      showAppAlert('Failed to download import template.');
     }
   };
 
@@ -2430,7 +2443,7 @@ export default function DesignMastersPage() {
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to export records.');
+      showAppAlert('Failed to export records.');
     }
   };
 
@@ -2438,6 +2451,9 @@ export default function DesignMastersPage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) {
+      return;
+    }
+    if (!canImportMaster) {
       return;
     }
 
@@ -2462,7 +2478,7 @@ export default function DesignMastersPage() {
       };
       const errorPreview =
         summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
-      window.alert(
+      showAppAlert(
         `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
       );
       fetchRows();
@@ -2474,7 +2490,7 @@ export default function DesignMastersPage() {
     } catch (error: any) {
       console.error(error);
       const message = error?.response?.data?.message;
-      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import records.');
+      showAppAlert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import records.');
     } finally {
       setImporting(false);
     }
@@ -2615,13 +2631,15 @@ export default function DesignMastersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
-            >
-              Template
-            </button>
+            {canImportMaster ? (
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+              >
+                Template
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handleExport}
@@ -2648,13 +2666,15 @@ export default function DesignMastersPage() {
             >
               {viewInactive ? 'View Active' : 'View Inactive'}
             </button>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
-            >
-              + {selectedConfig.label}
-            </button>
+            {canCreateMaster ? (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_15px_-3px_rgba(79,70,229,0.3)] transition-all hover:bg-indigo-700 hover:shadow-indigo-500/40 active:scale-95"
+              >
+                + {selectedConfig.label}
+              </button>
+            ) : null}
           </div>
         </div>
         <input
@@ -3422,6 +3442,8 @@ export default function DesignMastersPage() {
           onChangeFlatAmount={setFormFlatAmount}
         />
       )}
+      {dialogNode}
     </div>
   );
 }
+

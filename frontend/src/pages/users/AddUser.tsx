@@ -11,7 +11,7 @@ import {
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 interface CompanyOption {
   id: string;
@@ -51,7 +51,6 @@ function roleNeedsBranch(role: UserRole): boolean {
 export default function AddUser() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
-  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const companyAdminCompanyId = currentUser?.companyId || '';
   const allowedRoleOptions = isCompanyAdmin
@@ -94,7 +93,9 @@ export default function AddUser() {
     detailedPermissions: [],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
-  const canCustomizePermissions = isSuperAdmin;
+  const canCustomizePermissions = Boolean(
+    currentUser && hasActionPermission(currentUser, 'user.permissions.manage') && formData.role !== 'SUPER_ADMIN',
+  );
 
   useEffect(() => {
     fetchCompanies();
@@ -165,7 +166,7 @@ export default function AddUser() {
       nextErrors.branchId = 'Branch is required for this role';
     }
 
-    if (formData.taskPermissions.length === 0) {
+    if (canCustomizePermissions && formData.taskPermissions.length === 0) {
       nextErrors.taskPermissions = 'Select at least one task permission';
     }
 
@@ -198,7 +199,7 @@ export default function AddUser() {
       const normalizedPermissions = formData.taskPermissions.filter((permission) =>
         allowedPermissionsForRole.includes(permission),
       );
-      await api.post('/users', {
+      const payload: Record<string, unknown> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         email: formData.email.trim().toLowerCase(),
@@ -209,9 +210,12 @@ export default function AddUser() {
         phone: formData.phone.trim() || null,
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
-        taskPermissions: normalizedPermissions,
-        detailedPermissions: formData.detailedPermissions,
-      });
+      };
+      if (canCustomizePermissions) {
+        payload.taskPermissions = normalizedPermissions;
+        payload.detailedPermissions = formData.detailedPermissions;
+      }
+      await api.post('/users', payload);
 
       navigate('/users');
     } catch (error) {

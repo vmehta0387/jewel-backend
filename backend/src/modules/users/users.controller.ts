@@ -18,14 +18,16 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
+import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
+import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { CreateUserDto, FindUsersQueryDto, UpdateUserDto, UpdateUserStatusDto } from './dto/user.dto';
 
-@UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard)
 @TaskPermissions(TaskPermission.USER_MANAGEMENT)
 @Controller('users')
 export class UsersController {
@@ -33,12 +35,14 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.view')
   findAll(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
     return this.usersService.findAll(query, req.user);
   }
 
   @Get('export/template')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('user.import')
   async downloadImportTemplate() {
     const file = await this.usersService.generateImportTemplate();
     return new StreamableFile(file.buffer, {
@@ -49,6 +53,7 @@ export class UsersController {
 
   @Get('export')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('user.import')
   async exportUsers(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
     const file = await this.usersService.exportUsers(query, req.user);
     return new StreamableFile(file.buffer, {
@@ -59,6 +64,7 @@ export class UsersController {
 
   @Post('import')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('user.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   importUsers(@UploadedFile() file: { buffer?: Buffer; originalname?: string }) {
     return this.usersService.importUsers(file);
@@ -66,6 +72,7 @@ export class UsersController {
 
   @Post('upload-photo')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.edit')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadPhoto(
     @UploadedFile() file: { buffer?: Buffer; originalname?: string; mimetype?: string },
@@ -76,24 +83,28 @@ export class UsersController {
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.view')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.usersService.findOne(id, req.user);
   }
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.create')
   create(@Body() dto: CreateUserDto, @Request() req: { user: AuthUser }) {
     return this.usersService.create(dto, req.user);
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.edit')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: { user: AuthUser }) {
     return this.usersService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('user.status_update')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto, @Request() req: { user: AuthUser }) {
     return this.usersService.updateStatus(id, dto.isActive, req.user);
   }

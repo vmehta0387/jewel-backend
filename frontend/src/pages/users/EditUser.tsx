@@ -12,7 +12,7 @@ import {
   USER_ROLE_OPTIONS,
   UserRecord,
 } from '../../types/user.types';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 interface CompanyOption {
   id: string;
@@ -52,7 +52,6 @@ function roleNeedsBranch(role: UserRole): boolean {
 export default function EditUser() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
-  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const companyAdminCompanyId = currentUser?.companyId || '';
   const allowedRoleOptions = isCompanyAdmin
@@ -81,7 +80,9 @@ export default function EditUser() {
     detailedPermissions: [],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
-  const canCustomizePermissions = isSuperAdmin;
+  const canCustomizePermissions = Boolean(
+    currentUser && hasActionPermission(currentUser, 'user.permissions.manage') && formData.role !== 'SUPER_ADMIN',
+  );
 
   useEffect(() => {
     fetchInitialData();
@@ -180,7 +181,7 @@ export default function EditUser() {
       nextErrors.branchId = 'Branch is required for this role';
     }
 
-    if (formData.taskPermissions.length === 0) {
+    if (canCustomizePermissions && formData.taskPermissions.length === 0) {
       nextErrors.taskPermissions = 'Select at least one task permission';
     }
 
@@ -223,9 +224,11 @@ export default function EditUser() {
         phone: formData.phone.trim() || null,
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
-        taskPermissions: normalizedPermissions,
-        detailedPermissions: formData.detailedPermissions,
       };
+      if (canCustomizePermissions) {
+        payload.taskPermissions = normalizedPermissions;
+        payload.detailedPermissions = formData.detailedPermissions;
+      }
 
       if (formData.password.trim()) {
         payload.password = formData.password.trim();

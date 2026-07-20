@@ -25,6 +25,7 @@ import { fetchBranchEmployees } from '../api/branchEmployees';
 import type { BranchEmployee, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
+import { hasActionPermission } from '../utils/permissions';
 
 type TrendingProduct = {
   id: string;
@@ -123,6 +124,7 @@ const BranchDashboardScreen = () => {
   const [repPerformance, setRepPerformance] = useState<RepPerformanceRow[]>([]);
   const [branchPerformance, setBranchPerformance] = useState<BranchPerformanceRow[]>([]);
   const [companyActiveReps, setCompanyActiveReps] = useState(0);
+  const canLoadTeamMetrics = hasActionPermission(user, 'team.employee.manage');
 
   const loadDashboard = useCallback(async () => {
     if (!token) {
@@ -141,7 +143,7 @@ const BranchDashboardScreen = () => {
         fetchOrders(token, 1, 100, 'ALL'),
         fetchMobileTrendingDesigns(token, 3),
         fetchSpiffSummary(token),
-        user?.role === 'COMPANY_ADMIN' ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
+        user?.role === 'COMPANY_ADMIN' && canLoadTeamMetrics ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
       ]);
 
       if (summaryRes.status === 'fulfilled') {
@@ -326,7 +328,7 @@ const BranchDashboardScreen = () => {
       setTrendingLoading(false);
     }
 
-  }, [token, user?.id, user?.role, user?.firstName, user?.lastName]);
+  }, [canLoadTeamMetrics, token, user?.id, user?.role, user?.firstName, user?.lastName]);
 
   useFocusEffect(
     useCallback(() => {

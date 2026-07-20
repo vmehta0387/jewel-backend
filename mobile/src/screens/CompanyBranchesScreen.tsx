@@ -10,6 +10,7 @@ import { fetchBranchEmployeeBranches, fetchBranchEmployees } from '../api/branch
 import { fetchOrders } from '../api/orders';
 import type { BranchOption, Order } from '../types';
 import type { TeamStackParamList } from '../navigation/RootNavigator';
+import { hasActionPermission } from '../utils/permissions';
 
 type BranchRow = {
   id: string;
@@ -55,6 +56,8 @@ const formatAddress = (branch: BranchOption) => {
 const CompanyBranchesScreen = () => {
   const { token, user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<TeamStackParamList>>();
+  const canViewBranches = hasActionPermission(user, 'branch.view');
+  const canManageTeam = hasActionPermission(user, 'team.employee.manage');
 
   const [rows, setRows] = useState<BranchRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -128,11 +131,24 @@ const CompanyBranchesScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      if (canViewBranches) {
+        load();
+      }
+    }, [canViewBranches, load]),
   );
 
   const branchCount = useMemo(() => rows.length, [rows]);
+
+  if (!canViewBranches) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.emptyWrap}>
+          <Ionicons name="lock-closed-outline" size={24} color="#B9AFA3" />
+          <Text style={styles.emptyText}>You do not have permission to view branches.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -200,7 +216,7 @@ const CompanyBranchesScreen = () => {
                 </View>
               </View>
 
-              <View style={styles.actionRow}>
+              {canManageTeam ? <View style={styles.actionRow}>
                 <TouchableOpacity
                   style={styles.manageBtn}
                   activeOpacity={0.9}
@@ -208,7 +224,7 @@ const CompanyBranchesScreen = () => {
                 >
                   <Text style={styles.manageBtnText}>Manage Team</Text>
                 </TouchableOpacity>
-              </View>
+              </View> : null}
             </View>
           );
         }}
@@ -242,6 +258,8 @@ const styles = StyleSheet.create({
   addBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   helperText: { fontSize: 11, color: '#8A8178', marginBottom: 8, paddingHorizontal: 2 },
   errorText: { marginHorizontal: 14, marginTop: 8, color: '#B14B42', fontSize: 12 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 8 },
+  emptyText: { textAlign: 'center', color: '#8A8178', fontSize: 13, fontWeight: '600' },
   listContent: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 16, gap: 10 },
   card: {
     borderRadius: 14,

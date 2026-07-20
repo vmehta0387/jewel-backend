@@ -6,7 +6,7 @@ import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
 import api from '../../services/api';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 import { formatAddressLocation } from '../../utils/address';
 
 export default function BranchesPage() {
@@ -14,7 +14,9 @@ export default function BranchesPage() {
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
-  const canManageBranches = isSuperAdmin || isCompanyAdmin;
+  const canCreateBranch = Boolean(currentUser && hasActionPermission(currentUser, 'branch.create'));
+  const canEditBranch = Boolean(currentUser && hasActionPermission(currentUser, 'branch.edit'));
+  const canManageBranches = (isSuperAdmin || isCompanyAdmin) && (canCreateBranch || canEditBranch);
   const [branches, setBranches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -129,7 +131,7 @@ export default function BranchesPage() {
     },
   ];
 
-  if (canManageBranches) {
+  if (canEditBranch) {
     columns.push({
       key: 'actions',
       label: 'Actions',
@@ -174,7 +176,7 @@ export default function BranchesPage() {
               : 'View branches for your assigned companies'}
           </p>
         </div>
-        {canManageBranches && <Button onClick={() => navigate('/branches/add')}>+ Add Branch</Button>}
+        {canCreateBranch && <Button onClick={() => navigate('/branches/add')}>+ Add Branch</Button>}
       </div>
 
       <Card className="mb-6">

@@ -25,6 +25,7 @@ import {
   type SpiffClaim,
 } from '../api/spiff';
 import type { DashboardStackParamList } from '../navigation/RootNavigator';
+import { hasActionPermission, hasAnyActionPermission } from '../utils/permissions';
 
 const formatPoints = (value: number | null | undefined) => {
   const amount = Number(value || 0);
@@ -109,6 +110,11 @@ const SpiffRewardsScreen = () => {
   const isSalesRep = user?.role === 'SALES_REP';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+  const canViewSpiff = hasAnyActionPermission(user, ['mobile.spiff.view', 'spiff.view']);
+  const canCreateClaim = hasAnyActionPermission(user, ['mobile.spiff.claim.create', 'spiff.claim.create']);
+  const canReviewClaim = hasAnyActionPermission(user, ['mobile.spiff.claim.review', 'spiff.claim.review']);
+  const canFulfillClaim = hasActionPermission(user, 'spiff.claim.fulfill');
+  const canViewLeaderboard = hasAnyActionPermission(user, ['mobile.spiff.leaderboard.view', 'spiff.view']);
 
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -137,29 +143,31 @@ const SpiffRewardsScreen = () => {
   );
 
   const load = useCallback(async (silent = false) => {
-    if (!token) return;
+    if (!token || !canViewSpiff) return;
     if (!silent) setLoading(true);
 
     try {
       const [configRes, summaryRes, leaderboardRes, claimsRes] = await Promise.all([
         fetchSpiffConfig(token),
         fetchSpiffSummary(token),
-        fetchSpiffLeaderboard(token, {
-          scope:
-            user?.role === 'SUPER_ADMIN'
-              ? 'GLOBAL'
-              : user?.role === 'COMPANY_ADMIN'
-                ? 'MY_COMPANY'
-                : user?.role === 'SALES_REP'
-                  ? 'MY_COMPANY'
-                : 'MY_BRANCH',
-          period: user?.role === 'SALES_REP' ? 'ALL_TIME' : 'MONTHLY',
-          limit: 10,
-        }),
+        canViewLeaderboard
+          ? fetchSpiffLeaderboard(token, {
+              scope:
+                user?.role === 'SUPER_ADMIN'
+                  ? 'GLOBAL'
+                  : user?.role === 'COMPANY_ADMIN'
+                    ? 'MY_COMPANY'
+                    : user?.role === 'SALES_REP'
+                      ? 'MY_COMPANY'
+                      : 'MY_BRANCH',
+              period: user?.role === 'SALES_REP' ? 'ALL_TIME' : 'MONTHLY',
+              limit: 10,
+            })
+          : Promise.resolve(null),
         fetchSpiffClaims(token, 1, 20),
       ]);
       let secondaryBoardRes: any = null;
-      if (user?.role === 'SALES_REP') {
+      if (canViewLeaderboard && user?.role === 'SALES_REP') {
         try {
           secondaryBoardRes = await fetchSpiffLeaderboard(token, {
             scope: 'GLOBAL',
@@ -169,7 +177,7 @@ const SpiffRewardsScreen = () => {
         } catch {
           secondaryBoardRes = null;
         }
-      } else if (user?.role === 'BRANCH_MANAGER') {
+      } else if (canViewLeaderboard && user?.role === 'BRANCH_MANAGER') {
         try {
           secondaryBoardRes = await fetchSpiffLeaderboard(token, {
             scope: 'MY_COMPANY',
@@ -192,7 +200,7 @@ const SpiffRewardsScreen = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token, user?.role]);
+  }, [token, canViewSpiff, canViewLeaderboard, user?.role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -215,8 +223,18 @@ const SpiffRewardsScreen = () => {
     }
   }, [deepLinkedClaimId, deepLinkedClaimNumber, isCompanyAdmin, isSalesRep]);
 
+  React.useEffect(() => {
+    if (!isSalesRep) return;
+    if (salesRepPanel === 'REDEEM' && !canCreateClaim) {
+      setSalesRepPanel('ACTIVITY');
+    }
+    if ((salesRepPanel === 'COMPANY_BOARD' || salesRepPanel === 'GLOBAL_BOARD') && !canViewLeaderboard) {
+      setSalesRepPanel(canCreateClaim ? 'REDEEM' : 'ACTIVITY');
+    }
+  }, [isSalesRep, salesRepPanel, canCreateClaim, canViewLeaderboard]);
+
   const submitClaim = useCallback(async () => {
-    if (!token) return;
+    if (!token || !canCreateClaim) return;
 
     const points = Math.round(Number(requestedPoints || 0) * 100) / 100;
     if (!Number.isFinite(points) || points <= 0) {
@@ -239,7 +257,7 @@ const SpiffRewardsScreen = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [token, requestedPoints, note, load]);
+  }, [token, canCreateClaim, requestedPoints, note, load]);
 
   const nextTierHint = useMemo(() => {
     const nextTierAt = Number(summary?.tier?.nextTierAt || 0);
@@ -318,7 +336,7 @@ const SpiffRewardsScreen = () => {
   }, [leaderboard?.entries]);
 
   const runClaimReviewAction = useCallback(async (claimId: string, action: 'APPROVE' | 'HOLD' | 'REJECT') => {
-    if (!token) return;
+    if (!token || !canReviewClaim) return;
     try {
       setClaimActionId(claimId);
       await reviewSpiffClaim(token, claimId, { action });
@@ -328,10 +346,10 @@ const SpiffRewardsScreen = () => {
     } finally {
       setClaimActionId(null);
     }
-  }, [token, load]);
+  }, [token, canReviewClaim, load]);
 
   const runClaimFulfillAction = useCallback(async (claim: SpiffClaim) => {
-    if (!token) return;
+    if (!token || !canFulfillClaim) return;
     try {
       setClaimActionId(claim.id);
       await fulfillSpiffClaim(token, claim.id, {
@@ -343,7 +361,20 @@ const SpiffRewardsScreen = () => {
     } finally {
       setClaimActionId(null);
     }
-  }, [token, load]);
+  }, [token, canFulfillClaim, load]);
+
+  if (!canViewSpiff) {
+    return (
+      <View style={styles.screen}>
+        <SafeAreaView style={styles.safe} edges={['top']}>
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyTitle}>SPIFF Rewards</Text>
+            <Text style={styles.emptyText}>You do not have permission to view SPIFF rewards.</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   if (isSalesRep) {
     return (
@@ -452,6 +483,7 @@ const SpiffRewardsScreen = () => {
             <View>
               <Text style={styles.srSectionTitle}>Quick actions</Text>
               <View style={styles.srQuickGrid}>
+                {canViewLeaderboard ? (
                 <TouchableOpacity
                   style={[styles.srQuickCard, salesRepPanel === 'COMPANY_BOARD' ? styles.srQuickCardActive : null]}
                   activeOpacity={0.9}
@@ -463,7 +495,9 @@ const SpiffRewardsScreen = () => {
                     {currentRank > 0 ? `You're ranked #${currentRank}` : 'View your leaderboard'}
                   </Text>
                 </TouchableOpacity>
+                ) : null}
 
+                {canViewLeaderboard ? (
                 <TouchableOpacity
                   style={[styles.srQuickCard, salesRepPanel === 'GLOBAL_BOARD' ? styles.srQuickCardActive : null]}
                   activeOpacity={0.9}
@@ -475,7 +509,9 @@ const SpiffRewardsScreen = () => {
                     {`Anonymous · ${tierLabel}`}
                   </Text>
                 </TouchableOpacity>
+                ) : null}
 
+                {canCreateClaim ? (
                 <TouchableOpacity
                   style={[
                     styles.srQuickCard,
@@ -502,6 +538,7 @@ const SpiffRewardsScreen = () => {
                     {`${formatMoney(redeemableAmount)} available`}
                   </Text>
                 </TouchableOpacity>
+                ) : null}
 
                 <TouchableOpacity
                   style={[styles.srQuickCard, salesRepPanel === 'ACTIVITY' ? styles.srQuickCardActive : null]}
@@ -527,7 +564,7 @@ const SpiffRewardsScreen = () => {
                       ? 'Global Board'
                       : 'My Activity'}
               </Text>
-              {salesRepPanel === 'REDEEM' ? (
+              {salesRepPanel === 'REDEEM' && canCreateClaim ? (
                 <>
                   <Text style={styles.sectionSub}>Minimum {formatPoints(config?.minRedeemPoints || 500)} points</Text>
                   <TextInput
@@ -557,7 +594,7 @@ const SpiffRewardsScreen = () => {
                 </>
               ) : null}
 
-              {salesRepPanel === 'COMPANY_BOARD' ? (
+              {salesRepPanel === 'COMPANY_BOARD' && canViewLeaderboard ? (
                 (leaderboard?.entries || []).length ? (
                   (leaderboard.entries || []).map((entry: any) => (
                     <View key={entry.entityId} style={styles.boardRow}>
@@ -573,7 +610,7 @@ const SpiffRewardsScreen = () => {
                 )
               ) : null}
 
-              {salesRepPanel === 'GLOBAL_BOARD' ? (
+              {salesRepPanel === 'GLOBAL_BOARD' && canViewLeaderboard ? (
                 hasGlobalBoardRows ? (
                   <>
                     {(globalLeaderboard.entries || []).map((entry: any) => (
@@ -784,8 +821,8 @@ const SpiffRewardsScreen = () => {
               filteredCompanyClaims.map((claim) => {
                 const status = String(claim.status || '').toUpperCase();
                 const claimBusy = claimActionId === claim.id;
-                const canReview = ['PENDING_REVIEW', 'HOLD'].includes(status);
-                const canFulfill = status === 'APPROVED';
+                const canReview = canReviewClaim && ['PENDING_REVIEW', 'HOLD'].includes(status);
+                const canFulfill = canFulfillClaim && status === 'APPROVED';
                 const repPoints = repPointsByUserId.get(String(claim.userId || '').trim()) || claim.requestedPoints || 0;
 
                 return (
@@ -944,6 +981,7 @@ const SpiffRewardsScreen = () => {
             </View>
           </View>
 
+          {canCreateClaim ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Redeem Points</Text>
             <Text style={styles.sectionSub}>Minimum {formatPoints(config?.minRedeemPoints || 500)} points</Text>
@@ -976,7 +1014,9 @@ const SpiffRewardsScreen = () => {
               <Text style={styles.primaryBtnText}>{submitting ? 'Submitting...' : 'Submit Claim'}</Text>
             </TouchableOpacity>
           </View>
+          ) : null}
 
+          {canViewLeaderboard ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Leaderboard</Text>
             {(leaderboard?.entries || []).length ? (
@@ -993,6 +1033,7 @@ const SpiffRewardsScreen = () => {
               <Text style={styles.emptyText}>No leaderboard data yet.</Text>
             )}
           </View>
+          ) : null}
 
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>My Claims</Text>
@@ -1747,6 +1788,17 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     paddingHorizontal: 12,
     paddingVertical: 12,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#211B15',
   },
   sectionTitle: {
     fontSize: 14,

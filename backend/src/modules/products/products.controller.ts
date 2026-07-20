@@ -45,11 +45,13 @@ import { ProductsService } from './products.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
+import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 
-@UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard)
 @TaskPermissions(TaskPermission.DESIGN_ENTRIES)
 @Controller('products')
 export class ProductsController {
@@ -150,6 +152,12 @@ export class ProductsController {
   }
 
   @Get('packets')
+  @TaskPermissions()
+  @AnyActionPermissions(
+    'master.view',
+    'dashboard.price_activity.view',
+    'dashboard.price_activity.packet_price.view',
+  )
   findPackets(@Query() query: FindPacketsQueryDto) {
     return this.productsService.findPackets(query);
   }
@@ -157,6 +165,11 @@ export class ProductsController {
   @Get('media-library')
   findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
     return this.productsService.findMediaLibrary(query);
+  }
+
+  @Delete('media-library/:id')
+  removeMediaLibraryItem(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.productsService.removeMediaLibraryItem(id, req.user);
   }
 
   @Get('packets/export/template')
@@ -213,6 +226,8 @@ export class ProductsController {
   }
 
   @Put('packets/:id')
+  @TaskPermissions()
+  @AnyActionPermissions('master.edit', 'dashboard.price_activity.packet_price.update')
   updatePacket(
     @Param('id') id: string,
     @Body() dto: UpdateStonePacketDto,
@@ -222,6 +237,8 @@ export class ProductsController {
   }
 
   @Patch('packets/:id/status')
+  @TaskPermissions()
+  @ActionPermissions('master.status_update')
   updatePacketStatus(
     @Param('id') id: string,
     @Body() dto: UpdateStonePacketStatusDto,
@@ -231,11 +248,18 @@ export class ProductsController {
   }
 
   @Get('masters')
+  @TaskPermissions()
+  @AnyActionPermissions(
+    'master.view',
+    'dashboard.price_activity.view',
+    'dashboard.price_activity.gold_price.view',
+  )
   findMasters(@Query() query: FindDesignMastersQueryDto) {
     return this.productsService.findMasters(query);
   }
 
   @Get('masters/export/template')
+  @ActionPermissions('master.import')
   async exportMasterTemplate(@Query() query: FindDesignMastersQueryDto) {
     const file = await this.productsService.exportMasterTemplate(query);
     return new StreamableFile(file.buffer, {
@@ -245,6 +269,7 @@ export class ProductsController {
   }
 
   @Get('masters/export')
+  @ActionPermissions('master.view')
   async exportMasters(@Query() query: FindDesignMastersQueryDto) {
     const file = await this.productsService.exportMasters(query);
     return new StreamableFile(file.buffer, {
@@ -254,6 +279,7 @@ export class ProductsController {
   }
 
   @Post('masters/import')
+  @ActionPermissions('master.import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   importMasters(
     @UploadedFile() file: { buffer?: Buffer; originalname?: string },
@@ -285,11 +311,14 @@ export class ProductsController {
   }
 
   @Post('masters')
+  @ActionPermissions('master.create')
   createMaster(@Body() dto: CreateDesignMasterDto, @Request() req: { user: AuthUser }) {
     return this.productsService.createMaster(dto, req.user);
   }
 
   @Put('masters/:id')
+  @TaskPermissions()
+  @AnyActionPermissions('master.edit', 'dashboard.price_activity.gold_price.update')
   updateMaster(
     @Param('id') id: string,
     @Body() dto: UpdateDesignMasterDto,
@@ -299,6 +328,7 @@ export class ProductsController {
   }
 
   @Patch('masters/:id/status')
+  @ActionPermissions('master.status_update')
   updateMasterStatus(
     @Param('id') id: string,
     @Body() dto: UpdateDesignMasterStatusDto,

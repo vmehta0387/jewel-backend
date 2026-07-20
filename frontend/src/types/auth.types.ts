@@ -25,4 +25,8 @@ export interface AuthUser {
   branchId: string | null;
   photoUrl?: string | null;
   taskPermissions: TaskPermission[];
+  detailedPermissions?: Array<{
+    actionKey: string;
+    dataScope: 'OWN' | 'BRANCH' | 'COMPANY';
+  }>;
 }

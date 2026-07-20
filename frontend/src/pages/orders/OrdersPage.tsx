@@ -4,11 +4,12 @@ import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import AlertDialog from '../../components/common/AlertDialog';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import Pagination from '../../components/common/Pagination';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
-import { getStoredUser, hasTaskPermission } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 interface OrderRow {
   id: string;
@@ -429,6 +430,7 @@ function Modal({
 
 export default function OrdersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { confirm: confirmAppDialog, dialogNode: appDialogNode } = useAppDialog();
   const deepLinkedOrderRef = useRef<string | null>(null);
   const orderRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
   const currentUser = useMemo(() => getStoredUser(), []);
@@ -436,10 +438,10 @@ export default function OrdersPage() {
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const canViewCostPrice = isSuperAdmin || isCompanyAdmin || currentUser?.role === 'BRANCH_MANAGER';
   const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
-  const canViewOrders = useMemo(() => {
-    if (!currentUser) return false;
-    return hasTaskPermission(currentUser, 'ORDER_ENTRIES');
-  }, [currentUser]);
+  const canUpdateOrderStatus = useMemo(
+    () => (currentUser ? hasActionPermission(currentUser, 'order.status_update') : false),
+    [currentUser],
+  );
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -563,7 +565,6 @@ export default function OrdersPage() {
   };
 
   const loadOrders = async () => {
-    if (!canViewOrders) return;
     try {
       setOrdersLoading(true);
       setOrdersError(null);
@@ -827,7 +828,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     loadOrders();
-  }, [page, pageSize, filters, canViewOrders, showInactive]);
+  }, [page, pageSize, filters, showInactive]);
 
   useEffect(() => {
     const today = toDateInputValue();
@@ -858,9 +859,8 @@ export default function OrdersPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!canViewOrders) return;
     loadCompanies();
-  }, [canViewOrders]);
+  }, []);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -968,7 +968,10 @@ export default function OrdersPage() {
             .filter(Boolean)
         : [];
       const suffix = sampleOrders.length ? `\n\nExisting item(s):\n${sampleOrders.join('\n')}` : '';
-      return window.confirm(`This PO has already been used for ${count} item(s). Continue?${suffix}`);
+      return confirmAppDialog(`This PO has already been used for ${count} item(s). Continue?${suffix}`, {
+        title: 'Purchase order already used',
+        confirmLabel: 'Continue',
+      });
     } catch (error: any) {
       showAlert(error?.response?.data?.message || 'Unable to verify PO usage.', {
         title: 'PO check failed',
@@ -1223,11 +1226,13 @@ export default function OrdersPage() {
   };
 
   const requestStatusChange = (nextStatus: string) => {
+    if (!canUpdateOrderStatus) return;
     if (!nextStatus || nextStatus === form.status) return;
     setPendingStatusChange({ from: form.status, to: nextStatus });
   };
 
   const openOrderStatusChange = (order: OrderRow) => {
+    if (!canUpdateOrderStatus) return;
     setStatusChangeOrder(order);
     setStatusChangeTarget(order.status || '');
   };
@@ -1238,6 +1243,7 @@ export default function OrdersPage() {
   };
 
   const requestOrderStatusChange = () => {
+    if (!canUpdateOrderStatus) return;
     if (!statusChangeOrder || !statusChangeTarget || statusChangeTarget === statusChangeOrder.status) return;
     setPendingOrderStatusChange({
       order: statusChangeOrder,
@@ -1248,6 +1254,7 @@ export default function OrdersPage() {
   };
 
   const confirmOrderStatusChange = async () => {
+    if (!canUpdateOrderStatus) return;
     if (!pendingOrderStatusChange) return;
     try {
       setStatusUpdatingOrderId(pendingOrderStatusChange.order.id);
@@ -1451,10 +1458,14 @@ export default function OrdersPage() {
   };
 
   const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmAppDialog(
       nextActive
         ? 'Resume this order? It will be visible in active orders again.'
         : 'Suspend this order? It will move to inactive orders.',
+      {
+        title: nextActive ? 'Resume order' : 'Suspend order',
+        confirmLabel: nextActive ? 'Resume' : 'Suspend',
+      },
     );
     if (!confirmed) return;
 
@@ -1605,16 +1616,6 @@ export default function OrdersPage() {
       setPrintingOrderId(null);
     }
   };
-
-  if (!canViewOrders) {
-    return (
-      <Card>
-        <div className="text-center py-12 text-gray-500">
-          You do not have permission to view orders.
-        </div>
-      </Card>
-    );
-  }
 
   return (
     <div>
@@ -1814,23 +1815,25 @@ export default function OrdersPage() {
                             </svg>
                           )}
                         </OrderActionIconButton>
-                        <OrderActionIconButton
-                          title="Change Status"
-                          onClick={() => openOrderStatusChange(order)}
-                          className="border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={statusUpdatingOrderId === order.id}
-                        >
-                          {statusUpdatingOrderId === order.id ? (
-                            <span className="text-[10px] font-semibold">...</span>
-                          ) : (
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 12a9 9 0 0 1 15.5-6.2" />
-                              <path d="M18.5 2.5v3.8h-3.8" />
-                              <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-                              <path d="M5.5 21.5v-3.8h3.8" />
-                            </svg>
-                          )}
-                        </OrderActionIconButton>
+                        {canUpdateOrderStatus && (
+                          <OrderActionIconButton
+                            title="Change Status"
+                            onClick={() => openOrderStatusChange(order)}
+                            className="border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={statusUpdatingOrderId === order.id}
+                          >
+                            {statusUpdatingOrderId === order.id ? (
+                              <span className="text-[10px] font-semibold">...</span>
+                            ) : (
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 12a9 9 0 0 1 15.5-6.2" />
+                                <path d="M18.5 2.5v3.8h-3.8" />
+                                <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+                                <path d="M5.5 21.5v-3.8h3.8" />
+                              </svg>
+                            )}
+                          </OrderActionIconButton>
+                        )}
                         {order.isActive ? (
                           <OrderActionIconButton
                             title="Suspend Order"
@@ -3027,6 +3030,7 @@ export default function OrdersPage() {
         variant={alertDialog?.variant}
         onClose={() => setAlertDialog(null)}
       />
+      {appDialogNode}
     </div>
   );
 }

@@ -6,10 +6,11 @@ import Input from '../../components/common/Input';
 import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Avatar from '../../components/common/Avatar';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 import { UserRole } from '../../types/auth.types';
 import { TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
 type RoleFilter = 'ALL' | UserRole;
@@ -24,8 +25,13 @@ const roleBadgeClass: Record<UserRole, string> = {
 
 export default function UsersPage() {
   const navigate = useNavigate();
+  const { showAlert: showAppAlert, dialogNode } = useAppDialog();
   const currentUser = getStoredUser();
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const canCreateUser = Boolean(currentUser && hasActionPermission(currentUser, 'user.create'));
+  const canEditUser = Boolean(currentUser && hasActionPermission(currentUser, 'user.edit'));
+  const canUpdateUserStatus = Boolean(currentUser && hasActionPermission(currentUser, 'user.status_update'));
+  const canImportUsers = Boolean(currentUser && hasActionPermission(currentUser, 'user.import'));
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -154,7 +160,7 @@ export default function UsersPage() {
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to export users.');
+      showAppAlert('Failed to export users.', { variant: 'error' });
     }
   };
 
@@ -171,7 +177,7 @@ export default function UsersPage() {
       );
     } catch (error) {
       console.error(error);
-      window.alert('Failed to download users import template.');
+      showAppAlert('Failed to download users import template.', { variant: 'error' });
     }
   };
 
@@ -198,14 +204,17 @@ export default function UsersPage() {
       };
       const errorPreview =
         summary.errors.length > 0 ? `\n\nErrors:\n${summary.errors.slice(0, 10).join('\n')}` : '';
-      window.alert(
+      showAppAlert(
         `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
+        { title: 'Import completed', variant: summary.failed > 0 ? 'warning' : 'success' },
       );
       fetchUsers();
     } catch (error: any) {
       console.error(error);
       const message = error?.response?.data?.message;
-      window.alert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import users.');
+      showAppAlert(Array.isArray(message) ? message.join(', ') : message || 'Failed to import users.', {
+        variant: 'error',
+      });
     } finally {
       setImporting(false);
     }
@@ -307,34 +316,38 @@ export default function UsersPage() {
           </span>
         ),
       },
-      {
+      ...(canEditUser || canUpdateUserStatus ? [{
         key: 'actions',
         label: 'Actions',
         render: (_: unknown, row: UserRecord) => (
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => navigate(`/users/edit/${row.id}`)}
-              className="app-table-action"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleStatus(row.id, row.isActive)}
-              className={`app-table-action ${
-                row.isActive
-                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
-              }`}
-            >
-              {row.isActive ? 'Disable' : 'Enable'}
-            </button>
+            {canEditUser ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/users/edit/${row.id}`)}
+                className="app-table-action"
+              >
+                Edit
+              </button>
+            ) : null}
+            {canUpdateUserStatus ? (
+              <button
+                type="button"
+                onClick={() => handleToggleStatus(row.id, row.isActive)}
+                className={`app-table-action ${
+                  row.isActive
+                    ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+                }`}
+              >
+                {row.isActive ? 'Disable' : 'Enable'}
+              </button>
+            ) : null}
           </div>
         ),
-      },
+      }] : []),
     ],
-    [navigate],
+    [canEditUser, canUpdateUserStatus, navigate],
   );
 
   return (
@@ -349,7 +362,7 @@ export default function UsersPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {!isCompanyAdmin && (
+          {!isCompanyAdmin && canImportUsers && (
             <>
               <Button type="button" variant="secondary" onClick={handleDownloadTemplate}>
                 Template
@@ -369,7 +382,7 @@ export default function UsersPage() {
               />
             </>
           )}
-          <Button onClick={() => navigate('/users/add')}>+ Add User</Button>
+          {canCreateUser ? <Button onClick={() => navigate('/users/add')}>+ Add User</Button> : null}
         </div>
       </div>
 
@@ -430,6 +443,7 @@ export default function UsersPage() {
           <div className="text-center py-12 text-gray-500">No users found for selected filters.</div>
         ) : null}
       </Card>
+      {dialogNode}
     </div>
   );
 }

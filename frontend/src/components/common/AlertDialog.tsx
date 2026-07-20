@@ -10,6 +10,10 @@ interface AlertDialogProps {
   variant?: AlertDialogVariant;
   confirmLabel?: string;
   cancelLabel?: string;
+  inputLabel?: string;
+  inputPlaceholder?: string;
+  inputValue?: string;
+  onInputChange?: (value: string) => void;
   onClose: () => void;
   onConfirm?: () => void;
 }
@@ -67,6 +71,10 @@ export default function AlertDialog({
   variant = 'info',
   confirmLabel = 'OK',
   cancelLabel = 'Cancel',
+  inputLabel,
+  inputPlaceholder,
+  inputValue,
+  onInputChange,
   onClose,
   onConfirm,
 }: AlertDialogProps) {
@@ -95,6 +103,18 @@ export default function AlertDialog({
             <p id="app-alert-message" className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-600">
               {message}
             </p>
+            {onInputChange && (
+              <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {inputLabel || 'Value'}
+                <input
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+                  value={inputValue || ''}
+                  placeholder={inputPlaceholder}
+                  onChange={(event) => onInputChange(event.target.value)}
+                  autoFocus
+                />
+              </label>
+            )}
           </div>
           <button
             type="button"

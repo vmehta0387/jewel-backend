@@ -50,51 +50,69 @@ export const router = createBrowserRouter([
         element: <DashboardLayout />,
         children: [
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
             children: [{ path: '/dashboard', element: <DashboardPage /> }],
           },
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} />,
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP']} requiredActionPermissions={['company.view']} />,
             children: [
               { path: '/companies', element: <CompaniesPage /> },
             ],
           },
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']} requiredTaskPermissions={['BRANCH_MANAGEMENT']} />,
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']} requiredTaskPermissions={['BRANCH_MANAGEMENT']} requiredActionPermissions={['branch.view']} />,
             children: [
               { path: '/branches', element: <BranchesPage /> },
-              { path: '/branches/add', element: <AddBranch /> },
-              { path: '/branches/edit/:id', element: <EditBranch /> },
             ],
           },
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} />,
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} requiredActionPermissions={['user.view']} />,
             children: [
               { path: '/users', element: <UsersPage /> },
-              { path: '/users/add', element: <AddUser /> },
-              { path: '/users/edit/:id', element: <EditUser /> },
             ],
           },
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN']} />,
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN']} requiredActionPermissions={['company.create']} />,
             children: [
               { path: '/companies/add', element: <AddCompany /> },
+            ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN']} requiredActionPermissions={['company.edit']} />,
+            children: [
               { path: '/companies/edit/:id', element: <EditCompany /> },
             ],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['BRANCH_MANAGEMENT']} requiredActionPermissions={['branch.create']} />,
+            children: [{ path: '/branches/add', element: <AddBranch /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['BRANCH_MANAGEMENT']} requiredActionPermissions={['branch.edit']} />,
+            children: [{ path: '/branches/edit/:id', element: <EditBranch /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} requiredActionPermissions={['user.create']} />,
+            children: [{ path: '/users/add', element: <AddUser /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} requiredActionPermissions={['user.edit']} />,
+            children: [{ path: '/users/edit/:id', element: <EditUser /> }],
           },
           {
             element: <ProtectedRoute requiredTaskPermissions={['DESIGN_ENTRIES']} />,
             children: [
               { path: '/products', element: <ProductsPage /> },
-              { path: '/masters/design', element: <DesignMastersPage /> },
             ],
           },
           {
-            element: <ProtectedRoute requiredTaskPermissions={['ORDER_ENTRIES']} />,
+            element: <ProtectedRoute requiredTaskPermissions={['DESIGN_ENTRIES']} requiredActionPermissions={['master.view']} />,
+            children: [{ path: '/masters/design', element: <DesignMastersPage /> }],
+          },
+          {
             children: [{ path: '/orders', element: <OrdersPage /> }],
           },
           {
-            element: <ProtectedRoute requiredTaskPermissions={['ORDER_ENTRIES']} />,
+            element: <ProtectedRoute requiredTaskPermissions={['ORDER_ENTRIES']} requiredActionPermissions={['spiff.view']} />,
             children: [{ path: '/spiff', element: <SpiffPage /> }],
           },
           {

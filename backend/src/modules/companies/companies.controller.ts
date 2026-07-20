@@ -3,23 +3,27 @@ import { CompaniesService } from './companies.service';
 import { CreateCompanyDto, UpdateCompanyDto, UpdateCompanyStatusDto, PricingSlabDto } from './dto/company.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
 @Controller('companies')
 export class CompaniesController {
   constructor(private readonly companiesService: CompaniesService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('company.create')
   create(@Body() dto: CreateCompanyDto) {
     return this.companiesService.create(dto);
   }
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('company.view')
   findAll(
     @Request() req: { user: AuthUser },
     @Query('page') page?: string,
@@ -46,24 +50,28 @@ export class CompaniesController {
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('company.view')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.companiesService.findOne(id, req.user);
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('company.edit')
   update(@Param('id') id: string, @Body() dto: UpdateCompanyDto) {
     return this.companiesService.update(id, dto);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('company.status_update')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateCompanyStatusDto) {
     return this.companiesService.updateStatus(id, dto.isActive);
   }
 
   @Post(':id/pricing-slabs')
   @Roles(UserRole.SUPER_ADMIN)
+  @ActionPermissions('pricing.company.update')
   updatePricingSlabs(@Param('id') id: string, @Body() slabs: PricingSlabDto[]) {
     return this.companiesService.updatePricingSlabs(id, slabs);
   }

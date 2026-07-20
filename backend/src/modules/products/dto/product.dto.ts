@@ -879,9 +879,9 @@ export class FindDesignMediaLibraryQueryDto {
   @IsOptional()
   search?: string;
 
-  @IsIn(['ALL', 'IMAGE', 'VIDEO', 'STL'])
+  @IsIn(['ALL', 'IMAGE', 'VIDEO', 'STL', 'GALLERY'])
   @IsOptional()
-  type?: 'ALL' | 'IMAGE' | 'VIDEO' | 'STL';
+  type?: 'ALL' | 'IMAGE' | 'VIDEO' | 'STL' | 'GALLERY';
 }
 
 export class FindPacketsQueryDto {

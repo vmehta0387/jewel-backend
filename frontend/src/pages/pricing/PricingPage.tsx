@@ -3,6 +3,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 
 type PriceCategory = 'METAL' | 'DIAMOND';
@@ -36,6 +37,7 @@ const defaultForm = {
 };
 
 export default function PricingPage() {
+  const { showAlert: showAppAlert, dialogNode } = useAppDialog();
   const [rows, setRows] = useState<BasePriceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,7 +72,7 @@ export default function PricingPage() {
       const data = Array.isArray(response.data?.data) ? response.data.data : [];
       setRows(data);
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to load global base prices.');
+      showAppAlert(error?.response?.data?.message || 'Unable to load global base prices.', { variant: 'error' });
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ export default function PricingPage() {
       });
     } catch (error: any) {
       setReferenceOptions([]);
-      window.alert(error?.response?.data?.message || 'Unable to load reference values.');
+      showAppAlert(error?.response?.data?.message || 'Unable to load reference values.', { variant: 'error' });
     } finally {
       setReferenceOptionsLoading(false);
     }
@@ -138,12 +140,12 @@ export default function PricingPage() {
     event.preventDefault();
 
     if (!form.referenceValue.trim()) {
-      window.alert('Reference Value is required.');
+      showAppAlert('Reference Value is required.', { variant: 'warning' });
       return;
     }
 
     if (!form.pricePerUnit.trim()) {
-      window.alert('Price/Unit is required.');
+      showAppAlert('Price/Unit is required.', { variant: 'warning' });
       return;
     }
 
@@ -176,17 +178,18 @@ export default function PricingPage() {
 
       const recalculation = response.data?.recalculation;
       if (recalculation) {
-        window.alert(
+        showAppAlert(
           `Base price saved. Updated ${recalculation.updatedDesigns} design(s) out of ${recalculation.totalDesigns}.`,
+          { title: 'Base price saved', variant: 'success' },
         );
       } else {
-        window.alert('Base price saved.');
+        showAppAlert('Base price saved.', { variant: 'success' });
       }
 
       resetForm();
       await loadReferenceOptions(defaultForm.category, null);
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to save base price.');
+      showAppAlert(error?.response?.data?.message || 'Unable to save base price.', { variant: 'error' });
     } finally {
       setSaving(false);
     }
@@ -216,7 +219,7 @@ export default function PricingPage() {
         await loadRows();
       }
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to update status.');
+      showAppAlert(error?.response?.data?.message || 'Unable to update status.', { variant: 'error' });
     }
   };
 
@@ -225,11 +228,12 @@ export default function PricingPage() {
     try {
       const response = await api.post('/pricing/base-prices/recalculate-designs');
       const result = response.data || {};
-      window.alert(
+      showAppAlert(
         `Recalculation completed. Updated ${result.updatedDesigns || 0} design(s) out of ${result.totalDesigns || 0}.`,
+        { title: 'Recalculation completed', variant: 'success' },
       );
     } catch (error: any) {
-      window.alert(error?.response?.data?.message || 'Unable to recalculate design prices.');
+      showAppAlert(error?.response?.data?.message || 'Unable to recalculate design prices.', { variant: 'error' });
     } finally {
       setRecalculating(false);
     }
@@ -433,6 +437,7 @@ export default function PricingPage() {
             <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
           </>
       </Card>
+      {dialogNode}
     </div>
   );
 }

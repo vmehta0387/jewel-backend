@@ -85,18 +85,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (storedToken) {
-        if (storedUser) {
-          const parsed = JSON.parse(storedUser) as AuthUser;
-          assertMobileAccessRole(parsed);
-          setToken(storedToken);
-          setUser(parsed);
-        } else {
-          const me = await meApi(storedToken);
-          assertMobileAccessRole(me);
-          setToken(storedToken);
-          setUser(me);
-          await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
-        }
+        const me = await meApi(storedToken);
+        assertMobileAccessRole(me);
+        setToken(storedToken);
+        setUser(me);
+        await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
       }
     } catch {
       setUser(null);

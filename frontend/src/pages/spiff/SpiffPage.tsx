@@ -2,8 +2,9 @@
 import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission, hasAnyActionPermission } from '../../utils/auth';
 
 type SpiffConfig = {
   minRedeemPoints: number;
@@ -173,6 +174,7 @@ const getScopeOptionsForRole = (
 
 export default function SpiffPage() {
   const [searchParams] = useSearchParams();
+  const { showAlert: showAppAlert, prompt: promptAppDialog, dialogNode } = useAppDialog();
   const claimCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -207,12 +209,12 @@ export default function SpiffPage() {
   const [claimNote, setClaimNote] = useState('');
   const [pointsPerDollarInput, setPointsPerDollarInput] = useState('');
 
-  const canManageClaims =
-    user?.role === 'SUPER_ADMIN' ||
-    user?.role === 'COMPANY_ADMIN' ||
-    user?.role === 'BRANCH_MANAGER';
-
-  const canCreateClaim = user?.role === 'SALES_REP';
+  const canCreateClaim = user ? hasActionPermission(user, 'spiff.claim.create') : false;
+  const canReviewClaim = user ? hasActionPermission(user, 'spiff.claim.review') : false;
+  const canFulfillClaim = user ? hasActionPermission(user, 'spiff.claim.fulfill') : false;
+  const canEditConfig = user ? hasActionPermission(user, 'spiff.config.edit') : false;
+  const canViewLeaderboard = user ? hasAnyActionPermission(user, ['spiff.view', 'mobile.spiff.leaderboard.view']) : false;
+  const canManageClaims = canReviewClaim || canFulfillClaim;
   const deepLinkedClaimId = searchParams.get('claimId');
   const deepLinkedClaimNumber = searchParams.get('claimNumber');
   const scopeOptions = useMemo(() => getScopeOptionsForRole(user?.role), [user?.role]);
@@ -331,9 +333,10 @@ export default function SpiffPage() {
   }, [claims, deepLinkedClaimId, deepLinkedClaimNumber]);
 
   const submitClaim = async () => {
+    if (!canCreateClaim) return;
     const requestedPoints = Math.floor(Number(claimPoints || 0));
     if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) {
-      window.alert('Enter valid points to redeem.');
+      showAppAlert('Enter valid points to redeem.', { variant: 'warning' });
       return;
     }
 
@@ -347,16 +350,17 @@ export default function SpiffPage() {
       setClaimNote('');
       await loadData();
     } catch (err: any) {
-      window.alert(err?.response?.data?.message || 'Failed to create redemption claim');
+      showAppAlert(err?.response?.data?.message || 'Failed to create redemption claim', { variant: 'error' });
     } finally {
       setSavingClaim(false);
     }
   };
 
   const savePointsPerDollar = async () => {
+    if (!canEditConfig) return;
     const nextValue = Math.floor(Number(pointsPerDollarInput || 0));
     if (!Number.isFinite(nextValue) || nextValue <= 0) {
-      window.alert('Enter a valid positive integer for points per $1.');
+      showAppAlert('Enter a valid positive integer for points per $1.', { variant: 'warning' });
       return;
     }
 
@@ -368,17 +372,23 @@ export default function SpiffPage() {
       const nextConfig = response.data as SpiffConfig;
       setConfig(nextConfig);
       setPointsPerDollarInput(String(nextConfig.pointsPerDollar || nextValue));
-      window.alert('SPIFF conversion rate updated successfully.');
+      showAppAlert('SPIFF conversion rate updated successfully.', { variant: 'success' });
       await loadData();
     } catch (err: any) {
-      window.alert(err?.response?.data?.message || 'Failed to update conversion rate');
+      showAppAlert(err?.response?.data?.message || 'Failed to update conversion rate', { variant: 'error' });
     } finally {
       setSavingConfig(false);
     }
   };
 
   const reviewClaim = async (claimId: string, action: 'APPROVE' | 'REJECT' | 'HOLD') => {
-    const reason = window.prompt(`Optional reason for ${action.toLowerCase()}:`) || undefined;
+    if (!canReviewClaim) return;
+    const reason =
+      (await promptAppDialog(`Optional reason for ${action.toLowerCase()}:`, {
+        title: 'Review claim',
+        inputLabel: 'Reason',
+        confirmLabel: action,
+      })) || undefined;
     try {
       await api.patch(`/spiff/claims/${claimId}/review`, {
         action,
@@ -386,17 +396,27 @@ export default function SpiffPage() {
       });
       await loadData();
     } catch (err: any) {
-      window.alert(getApiErrorMessage(err, `Failed to ${action.toLowerCase()} claim`));
+      showAppAlert(getApiErrorMessage(err, `Failed to ${action.toLowerCase()} claim`), { variant: 'error' });
     }
   };
 
   const fulfillClaim = async (claimId: string) => {
-    const rewardLink = window.prompt('Paste reward link/code shared with rep:');
+    if (!canFulfillClaim) return;
+    const rewardLink = await promptAppDialog('Paste reward link/code shared with rep:', {
+      title: 'Fulfill claim',
+      inputLabel: 'Reward link or code',
+      confirmLabel: 'Continue',
+    });
     if (!rewardLink?.trim()) {
       return;
     }
 
-    const note = window.prompt('Optional fulfillment note:') || undefined;
+    const note =
+      (await promptAppDialog('Optional fulfillment note:', {
+        title: 'Fulfillment note',
+        inputLabel: 'Note',
+        confirmLabel: 'Fulfill',
+      })) || undefined;
     try {
       await api.patch(`/spiff/claims/${claimId}/fulfill`, {
         rewardLink: rewardLink.trim(),
@@ -404,7 +424,7 @@ export default function SpiffPage() {
       });
       await loadData();
     } catch (err: any) {
-      window.alert(getApiErrorMessage(err, 'Failed to mark claim fulfilled'));
+      showAppAlert(getApiErrorMessage(err, 'Failed to mark claim fulfilled'), { variant: 'error' });
     }
   };
 
@@ -461,7 +481,7 @@ export default function SpiffPage() {
         </div>
       </div>
 
-      {isSuperAdmin ? (
+      {canEditConfig ? (
         <Card title="SPIFF Conversion Settings">
           <div className="rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 px-4 py-4">
             <label className="mb-1 block text-sm font-semibold text-slate-700">
@@ -592,6 +612,7 @@ export default function SpiffPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {canViewLeaderboard ? (
         <Card title="Leaderboard">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
@@ -689,6 +710,7 @@ export default function SpiffPage() {
             ) : null}
           </div>
         </Card>
+        ) : null}
 
         <Card title={canManageClaims ? 'Claim Queue' : 'My Claims'}>
           <div className="space-y-3">
@@ -753,7 +775,9 @@ export default function SpiffPage() {
             {claims.length ? (
               claims.map((claim) => {
                 const statusStyle = STATUS_STYLES[claim.status] || 'bg-slate-100 text-slate-700 border border-slate-200';
-                const actionable = canManageClaims && ['PENDING_REVIEW', 'HOLD', 'APPROVED'].includes(claim.status);
+                const actionable =
+                  (canReviewClaim && ['PENDING_REVIEW', 'HOLD', 'APPROVED'].includes(claim.status)) ||
+                  (canFulfillClaim && claim.status === 'APPROVED');
                 const canRetryGiftbit = claim.status === 'APPROVED' && !claim.giftbitLinkUrl;
                 const isDeepLinkedClaim =
                   (deepLinkedClaimId && claim.id === deepLinkedClaimId) ||
@@ -811,24 +835,30 @@ export default function SpiffPage() {
 
                     {actionable ? (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {claim.status !== 'APPROVED' ? (
+                        {canReviewClaim && claim.status !== 'APPROVED' ? (
                           <Button size="sm" onClick={() => void reviewClaim(claim.id, 'APPROVE')}>
                             Approve
                           </Button>
-                        ) : canRetryGiftbit ? (
+                        ) : canReviewClaim && canRetryGiftbit ? (
                           <Button size="sm" onClick={() => void reviewClaim(claim.id, 'APPROVE')}>
                             Retry Auto Fulfill
                           </Button>
                         ) : null}
-                        <Button size="sm" variant="secondary" onClick={() => void reviewClaim(claim.id, 'HOLD')}>
-                          Hold
-                        </Button>
-                        <Button size="sm" variant="danger" onClick={() => void reviewClaim(claim.id, 'REJECT')}>
-                          Reject
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => void fulfillClaim(claim.id)}>
-                          Mark Fulfilled
-                        </Button>
+                        {canReviewClaim && (
+                          <>
+                            <Button size="sm" variant="secondary" onClick={() => void reviewClaim(claim.id, 'HOLD')}>
+                              Hold
+                            </Button>
+                            <Button size="sm" variant="danger" onClick={() => void reviewClaim(claim.id, 'REJECT')}>
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                        {canFulfillClaim && claim.status === 'APPROVED' ? (
+                          <Button size="sm" variant="secondary" onClick={() => void fulfillClaim(claim.id)}>
+                            Mark Fulfilled
+                          </Button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -867,6 +897,7 @@ export default function SpiffPage() {
           </div>
         </Card>
       </div>
+      {dialogNode}
     </div>
   );
 }

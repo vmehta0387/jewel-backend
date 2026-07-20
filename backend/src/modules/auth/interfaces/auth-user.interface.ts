@@ -1,5 +1,11 @@
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { TaskPermission } from '../../../common/enums/task-permission.enum';
+import { PermissionDataScope } from '../../permissions/entities/user-permission-action.entity';
+
+export interface AuthActionPermission {
+  actionKey: string;
+  dataScope: PermissionDataScope;
+}
 
 export interface AuthUser {
   id: string;
@@ -12,6 +18,7 @@ export interface AuthUser {
   photoUrl: string | null;
   phone?: string | null;
   taskPermissions: TaskPermission[];
+  detailedPermissions?: AuthActionPermission[];
   companyName?: string | null;
   branchName?: string | null;
 }

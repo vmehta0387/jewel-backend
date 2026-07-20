@@ -11,6 +11,10 @@ export type AuthUser = {
   photoUrl?: string | null;
   phone?: string | null;
   taskPermissions?: string[];
+  detailedPermissions?: Array<{
+    actionKey: string;
+    dataScope: 'OWN' | 'BRANCH' | 'COMPANY';
+  }>;
   companyName?: string | null;
   branchName?: string | null;
 };

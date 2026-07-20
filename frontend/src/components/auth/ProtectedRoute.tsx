@@ -1,13 +1,14 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { TaskPermission, UserRole } from '../../types/auth.types';
-import { clearAuthSession, getStoredUser, getToken, hasAllTaskPermissions, hasAllowedRole } from '../../utils/auth';
+import { clearAuthSession, getStoredUser, getToken, hasAllActionPermissions, hasAllTaskPermissions, hasAllowedRole } from '../../utils/auth';
 
 interface ProtectedRouteProps {
   allowedRoles?: UserRole[];
   requiredTaskPermissions?: TaskPermission[];
+  requiredActionPermissions?: string[];
 }
 
-export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions }: ProtectedRouteProps) {
+export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions, requiredActionPermissions }: ProtectedRouteProps) {
   const location = useLocation();
   const token = getToken();
   const user = getStoredUser();
@@ -27,6 +28,10 @@ export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions }
   }
 
   if (requiredTaskPermissions && !hasAllTaskPermissions(user, requiredTaskPermissions)) {
+    return <Navigate to={fallbackPath} replace />;
+  }
+
+  if (requiredActionPermissions && !hasAllActionPermissions(user, requiredActionPermissions)) {
     return <Navigate to={fallbackPath} replace />;
   }
 

@@ -11,6 +11,7 @@ import { fetchBranchEmployees } from '../api/branchEmployees';
 import { fetchOrders } from '../api/orders';
 import type { BranchEmployee, Order } from '../types';
 import type { TeamStackParamList } from '../navigation/RootNavigator';
+import { hasActionPermission } from '../utils/permissions';
 
 type TeamFilter = 'ALL' | 'MANAGERS' | 'REPS';
 
@@ -68,6 +69,7 @@ const BranchTeamScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<TeamStackParamList>>();
   const route = useRoute<RouteProp<TeamStackParamList, 'TeamList'>>();
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
+  const canManageTeam = hasActionPermission(user, 'team.employee.manage');
 
   const [employees, setEmployees] = useState<BranchEmployee[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -272,6 +274,17 @@ const BranchTeamScreen = () => {
     </View>
   );
 
+  if (!canManageTeam) {
+    return (
+      <SafeAreaView style={styles.screen} edges={['top']}>
+        <View style={styles.emptyWrap}>
+          <Ionicons name="lock-closed-outline" size={24} color="#B9AFA3" />
+          <Text style={styles.emptyText}>You do not have permission to manage team.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!isCompanyAdmin) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
@@ -282,13 +295,13 @@ const BranchTeamScreen = () => {
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{headerTitle}</Text>
           </View>
-          <TouchableOpacity
+          {canManageTeam ? <TouchableOpacity
             style={styles.inviteBtn}
             activeOpacity={0.9}
             onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'create' })}
           >
             <Text style={styles.inviteBtnText}>+ Invite</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -345,13 +358,13 @@ const BranchTeamScreen = () => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{headerTitle}</Text>
         </View>
-        <TouchableOpacity
+        {canManageTeam ? <TouchableOpacity
           style={styles.inviteBtn}
           activeOpacity={0.9}
           onPress={() => navigation.navigate('BranchEmployeeForm', { mode: 'create' })}
         >
           <Text style={styles.inviteBtnText}>+ Invite</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}

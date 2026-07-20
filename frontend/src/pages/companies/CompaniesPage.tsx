@@ -6,13 +6,16 @@ import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
 import api from '../../services/api';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 import { formatAddressLocation } from '../../utils/address';
 
 export default function CompaniesPage() {
   const navigate = useNavigate();
   const currentUser = getStoredUser();
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const canCreateCompany = currentUser ? hasActionPermission(currentUser, 'company.create') : false;
+  const canEditCompany = currentUser ? hasActionPermission(currentUser, 'company.edit') : false;
+  const canUpdateCompanyStatus = currentUser ? hasActionPermission(currentUser, 'company.status_update') : false;
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -124,35 +127,39 @@ export default function CompaniesPage() {
     },
   ];
 
-  if (isSuperAdmin) {
+  if (canEditCompany || canUpdateCompanyStatus) {
     columns.push({
       key: 'actions',
       label: 'Actions',
       render: (_: any, row: any) => (
         <div className="flex gap-2">
-          <button
-            onClick={() => navigate(`/companies/edit/${row.id}`)}
-            className="app-table-action"
-          >
-            Edit
-          </button>
-          <button
-            onClick={async () => {
-              try {
-                await api.patch(`/companies/${row.id}/status`, { isActive: !row.isActive });
-                fetchCompanies();
-              } catch (error) {
-                console.error(error);
-              }
-            }}
-            className={`app-table-action ${
-              row.isActive
-                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
-            }`}
-          >
-            {row.isActive ? 'Disable' : 'Enable'}
-          </button>
+          {canEditCompany && (
+            <button
+              onClick={() => navigate(`/companies/edit/${row.id}`)}
+              className="app-table-action"
+            >
+              Edit
+            </button>
+          )}
+          {canUpdateCompanyStatus && (
+            <button
+              onClick={async () => {
+                try {
+                  await api.patch(`/companies/${row.id}/status`, { isActive: !row.isActive });
+                  fetchCompanies();
+                } catch (error) {
+                  console.error(error);
+                }
+              }}
+              className={`app-table-action ${
+                row.isActive
+                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800'
+              }`}
+            >
+              {row.isActive ? 'Disable' : 'Enable'}
+            </button>
+          )}
         </div>
       ),
     });
@@ -169,7 +176,7 @@ export default function CompaniesPage() {
               : 'View companies assigned to you'}
           </p>
         </div>
-        {isSuperAdmin && <Button onClick={() => navigate('/companies/add')}>+ Add Company</Button>}
+        {canCreateCompany && <Button onClick={() => navigate('/companies/add')}>+ Add Company</Button>}
       </div>
 
       <Card className="mb-6">

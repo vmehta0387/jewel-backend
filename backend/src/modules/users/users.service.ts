@@ -261,6 +261,8 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto, requester?: AuthUser): Promise<UserResponse> {
+    await this.assertCanChangeAssignedPermissions(dto, requester);
+
     if (requester?.role === UserRole.COMPANY_ADMIN) {
       if (!requester.companyId) {
         throw new ForbiddenException('Company admin must be assigned to a company');
@@ -279,7 +281,9 @@ export class UsersService {
 
     const normalizedDetailedPermissions =
       dto.detailedPermissions !== undefined
-        ? this.normalizeDetailedPermissions(dto.detailedPermissions)
+        ? dto.role === UserRole.SUPER_ADMIN
+          ? []
+          : this.normalizeDetailedPermissions(dto.detailedPermissions)
         : undefined;
     const user = this.userRepo.create({
       id: randomUUID(),
@@ -309,6 +313,8 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, requester?: AuthUser): Promise<UserResponse> {
+    await this.assertCanChangeAssignedPermissions(dto, requester);
+
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -371,7 +377,9 @@ export class UsersService {
 
     const normalizedDetailedPermissions =
       dto.detailedPermissions !== undefined
-        ? this.normalizeDetailedPermissions(dto.detailedPermissions)
+        ? nextRole === UserRole.SUPER_ADMIN
+          ? []
+          : this.normalizeDetailedPermissions(dto.detailedPermissions)
         : undefined;
     const permissionsInput =
       dto.taskPermissions !== undefined
@@ -385,7 +393,7 @@ export class UsersService {
         : this.normalizePermissions(permissionsInput, nextRole);
 
     await this.userRepo.save(user);
-    if (normalizedDetailedPermissions !== undefined || dto.role !== undefined) {
+    if (normalizedDetailedPermissions !== undefined || previousRole !== user.role) {
       await this.replaceUserDetailedPermissions(id, normalizedDetailedPermissions || []);
     }
     const response = await this.findOne(id, requester);
@@ -393,6 +401,32 @@ export class UsersService {
       await this.safeNotifyUserRoleChanged(user, response, previousRole, requester);
     }
     return response;
+  }
+
+  private async assertCanChangeAssignedPermissions(
+    dto: Pick<CreateUserDto | UpdateUserDto, 'taskPermissions' | 'detailedPermissions'>,
+    requester?: AuthUser,
+  ): Promise<void> {
+    if (requester?.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (dto.taskPermissions === undefined && dto.detailedPermissions === undefined) {
+      return;
+    }
+
+    if (!requester?.id) {
+      throw new ForbiddenException('You do not have permission to manage user permissions');
+    }
+
+    const permission = await this.userPermissionActionRepo.findOne({
+      where: { userId: requester.id, actionKey: 'user.permissions.manage' },
+      select: ['id'],
+    });
+
+    if (!permission) {
+      throw new ForbiddenException('You do not have permission to manage user permissions');
+    }
   }
 
   async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<UserResponse> {

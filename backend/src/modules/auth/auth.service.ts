@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { extname, join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 import { User } from '../users/entities/user.entity';
+import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -24,6 +25,8 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    @InjectRepository(UserPermissionAction)
+    private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -225,9 +228,30 @@ export class AuthService {
       photoUrl: await this.resolvePhotoUrl(user.photoUrl || null),
       phone: user.phone || null,
       taskPermissions: user.taskPermissions || [],
+      detailedPermissions: await this.getDetailedPermissions(user.id),
       companyName: user.company?.companyName || null,
       branchName: user.branch?.name || null,
     };
+  }
+
+  private async getDetailedPermissions(userId: string) {
+    try {
+      const rows = await this.userPermissionActionRepo.find({
+        where: { userId },
+        order: { actionKey: 'ASC' },
+      });
+      return rows.map((row) => ({
+        actionKey: row.actionKey,
+        dataScope: row.dataScope,
+      }));
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      const message = String((error as { message?: string })?.message || '').toLowerCase();
+      if (code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions')) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   private resolveCompanyId(user: User): string | null {

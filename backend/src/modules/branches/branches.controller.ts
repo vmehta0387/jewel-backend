@@ -3,23 +3,27 @@ import { BranchesService } from './branches.service';
 import { BranchPricingSlabDto, CreateBranchDto, UpdateBranchDto, UpdateBranchStatusDto } from './dto/branch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
 @Controller('branches')
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.create')
   create(@Body() dto: CreateBranchDto, @Request() req: { user: AuthUser }) {
     return this.branchesService.create(dto, req.user);
   }
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.view')
   findAll(
     @Request() req: { user: AuthUser },
     @Query('page') page?: string,
@@ -44,24 +48,28 @@ export class BranchesController {
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.view')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.branchesService.findOne(id, req.user);
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.edit')
   update(@Param('id') id: string, @Body() dto: UpdateBranchDto, @Request() req: { user: AuthUser }) {
     return this.branchesService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.edit')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateBranchStatusDto, @Request() req: { user: AuthUser }) {
     return this.branchesService.updateStatus(id, dto.isActive, req.user);
   }
 
   @Post(':id/pricing-slabs')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @ActionPermissions('branch.pricing.manage')
   updatePricingSlabs(@Param('id') id: string, @Body() slabs: BranchPricingSlabDto[], @Request() req: { user: AuthUser }) {
     return this.branchesService.updatePricingSlabs(id, slabs, req.user);
   }
