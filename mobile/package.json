@@ -5,6 +5,9 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "android:bundle": "set JAVA_HOME=C:\\Users\\Jagmeet\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2&& cd android && gradlew.bat bundleRelease",
+    "android:apk": "set JAVA_HOME=C:\\Users\\Jagmeet\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2&& cd android && gradlew.bat assembleRelease",
+    "android:clean": "set JAVA_HOME=C:\\Users\\Jagmeet\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2&& cd android && gradlew.bat clean",
     "ios": "expo run:ios",
     "web": "expo start --web --port 8082"
   },
