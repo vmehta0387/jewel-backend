@@ -1,5 +1,6 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import LoginPage from '../pages/auth/LoginPage';
+import PrivacyPolicyPage from '../pages/legal/PrivacyPolicyPage';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import DashboardPage from '../pages/dashboard/DashboardPage';
 import CompaniesPage from '../pages/companies/CompaniesPage';
@@ -42,6 +43,10 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+  },
+  {
+    path: '/privacy-policy',
+    element: <PrivacyPolicyPage />,
   },
   {
     element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN', 'BRANCH_MANAGER']} />,

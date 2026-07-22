@@ -53,6 +53,7 @@ function resolveSqlFiles(args) {
     path.resolve(repoRoot, 'DATABASE_SPIFF_DECIMAL_POINTS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
+    path.resolve(backendRoot, 'METAL_PRICE_HISTORY_UPGRADE.sql'),
     path.resolve(backendRoot, 'DESIGN_MEDIA_LIBRARY_SOFT_DELETE_UPGRADE.sql'),
   ].filter((filePath) => {
     if (fs.existsSync(filePath)) return true;

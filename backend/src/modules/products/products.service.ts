@@ -276,6 +276,7 @@ export class ProductsService {
 
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+  private metalNameSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
   private readonly masterImportHeaders = [
     'Value',
@@ -4554,21 +4555,8 @@ export class ProductsService {
     const savedMaster = await this.designMasterRepo.save(master);
 
     if (savedMaster.masterType === DesignMasterType.METAL_NAME) {
-      await this.metalPriceHistoryRepo.save(
-        this.metalPriceHistoryRepo.create({
-          masterId: savedMaster.id,
-          marketPricePerOunce: this.toNumber(savedMaster.marketPricePerOunce) || 0,
-          marketPricePerGm: this.toNumber(savedMaster.marketPricePerGm) || 0,
-          livePricePerGm: this.toNumber(savedMaster.livePricePerGm) || 0,
-          changedBy: requester.id,
-        }),
-      );
-
-      const affectedMetalCaratages = await this.syncMetalCaratageRatesForMetalName(
-        savedMaster.value,
-        requester.id,
-      );
-      await this.recalculateDesignsForDependencies({ metalCaratages: affectedMetalCaratages });
+      await this.safeSaveMetalPriceHistory(savedMaster, requester.id);
+      this.scheduleMetalNameDependentsSync(savedMaster, requester.id);
     } else if (savedMaster.masterType === DesignMasterType.METAL_CARATAGE) {
       const nextMetalCaratageRate = this.toNumber(savedMaster.livePricePerGm);
       if (previousMetalCaratageRate !== nextMetalCaratageRate) {
@@ -5090,6 +5078,48 @@ export class ProductsService {
     return Array.from(affectedValues);
   }
 
+  private async safeSaveMetalPriceHistory(master: DesignMaster, changedBy: string): Promise<void> {
+    try {
+      await this.metalPriceHistoryRepo.save(
+        this.metalPriceHistoryRepo.create({
+          masterId: master.id,
+          marketPricePerOunce: this.toNumber(master.marketPricePerOunce) || 0,
+          marketPricePerGm: this.toNumber(master.marketPricePerGm) || 0,
+          livePricePerGm: this.toNumber(master.livePricePerGm) || 0,
+          changedBy,
+        }),
+      );
+    } catch (error) {
+      console.error('Failed to save metal price history', error);
+    }
+  }
+
+  private scheduleMetalNameDependentsSync(master: DesignMaster, updatedBy: string): void {
+    const key = this.normalizeLookupKey(master.value) || master.id;
+    const existingTimer = this.metalNameSyncTimers.get(key);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      this.metalNameSyncTimers.delete(key);
+      void this.safeSyncMetalNameDependents(master, updatedBy);
+    }, 5000);
+    this.metalNameSyncTimers.set(key, timer);
+  }
+
+  private async safeSyncMetalNameDependents(master: DesignMaster, updatedBy: string): Promise<void> {
+    try {
+      const affectedMetalCaratages = await this.syncMetalCaratageRatesForMetalName(
+        master.value,
+        updatedBy,
+      );
+      await this.recalculateDesignsForDependencies({ metalCaratages: affectedMetalCaratages });
+    } catch (error) {
+      console.error('Failed to sync dependent metal prices', error);
+    }
+  }
+
   private async recalculateDesignsForDependencies(input: {
     metalCaratages?: string[];
     packetIds?: string[];
@@ -5153,151 +5183,160 @@ export class ProductsService {
       packetRows.map((row) => [row.id, this.toNumber(row.sellingPrice)]),
     );
 
-    const designs = await this.designRepo.find({
-      where: {
-        id: In(Array.from(matchingDesignIds)),
-      },
-      relations: ['metals', 'gemstones', 'labors', 'findings'],
-    });
-
+    const designIds = Array.from(matchingDesignIds);
+    const chunkSize = 25;
     let updatedDesigns = 0;
 
-    for (const design of designs) {
-      const metals = design.metals || [];
-      const gemstones = design.gemstones || [];
+    for (let offset = 0; offset < designIds.length; offset += chunkSize) {
+      const chunkIds = designIds.slice(offset, offset + chunkSize);
+      const designs = await this.designRepo.find({
+        where: {
+          id: In(chunkIds),
+        },
+        relations: ['metals', 'gemstones', 'labors', 'findings'],
+      });
 
-      const touchesMetalDependency =
-        metalCaratageKeys.size > 0 &&
-        metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.goldColour)));
-      const touchesPacketDependency =
-        packetIds.size > 0 &&
-        gemstones.some((row) => row.packetId && packetIds.has((row.packetId || '').trim()));
+      for (const design of designs) {
+        const metals = design.metals || [];
+        const gemstones = design.gemstones || [];
 
-      if (!touchesMetalDependency && !touchesPacketDependency) {
-        continue;
-      }
+        const touchesMetalDependency =
+          metalCaratageKeys.size > 0 &&
+          metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.goldColour)));
+        const touchesPacketDependency =
+          packetIds.size > 0 &&
+          gemstones.some((row) => row.packetId && packetIds.has((row.packetId || '').trim()));
 
-      let metalsChanged = false;
-      let gemstonesChanged = false;
-
-      for (const metal of metals) {
-        const lookup = this.normalizeLookupKey(metal.goldColour);
-        if (!lookup || (metalCaratageKeys.size > 0 && !metalCaratageKeys.has(lookup))) {
+        if (!touchesMetalDependency && !touchesPacketDependency) {
           continue;
         }
 
-        const rate = metalRateMap.get(lookup);
-        if (rate === undefined) {
+        let metalsChanged = false;
+        let gemstonesChanged = false;
+
+        for (const metal of metals) {
+          const lookup = this.normalizeLookupKey(metal.goldColour);
+          if (!lookup || (metalCaratageKeys.size > 0 && !metalCaratageKeys.has(lookup))) {
+            continue;
+          }
+
+          const rate = metalRateMap.get(lookup);
+          if (rate === undefined) {
+            continue;
+          }
+
+          const nextValue = this.roundTo2(this.toNumber(metal.totalWt) * rate);
+          if (this.toNumber(metal.pricePerGm) !== rate || this.toNumber(metal.value) !== nextValue) {
+            metal.pricePerGm = rate;
+            metal.value = nextValue;
+            metalsChanged = true;
+          }
+        }
+
+        for (const gemstone of gemstones) {
+          const packetId = (gemstone.packetId || '').trim();
+          if (!packetId || (packetIds.size > 0 && !packetIds.has(packetId))) {
+            continue;
+          }
+
+          const rate = packetRateMap.get(packetId);
+          if (rate === undefined) {
+            continue;
+          }
+
+          const computedWeight = this.roundTo3(
+            this.toNumber(gemstone.wtPerPcs) * Math.max(0, Math.trunc(this.toNumber(gemstone.pcs))),
+          );
+          const currentWtInCts = this.toNumber(gemstone.wtInCts);
+          const nextWtInCts = currentWtInCts > 0 ? currentWtInCts : computedWeight;
+          const nextAmount = this.roundTo2(nextWtInCts * rate);
+
+          if (
+            this.toNumber(gemstone.pricePerCt) !== rate ||
+            this.toNumber(gemstone.amount) !== nextAmount ||
+            this.toNumber(gemstone.wtInCts) !== nextWtInCts
+          ) {
+            gemstone.pricePerCt = rate;
+            gemstone.amount = nextAmount;
+            gemstone.wtInCts = nextWtInCts;
+            gemstonesChanged = true;
+          }
+        }
+
+        if (metalsChanged) {
+          await this.metalRepo.save(metals);
+        }
+
+        if (gemstonesChanged) {
+          await this.gemstoneRepo.save(gemstones);
+        }
+
+        if (!metalsChanged && !gemstonesChanged) {
           continue;
         }
 
-        const nextValue = this.roundTo2(this.toNumber(metal.totalWt) * rate);
-        if (this.toNumber(metal.pricePerGm) !== rate || this.toNumber(metal.value) !== nextValue) {
-          metal.pricePerGm = rate;
-          metal.value = nextValue;
-          metalsChanged = true;
-        }
-      }
-
-      for (const gemstone of gemstones) {
-        const packetId = (gemstone.packetId || '').trim();
-        if (!packetId || (packetIds.size > 0 && !packetIds.has(packetId))) {
-          continue;
-        }
-
-        const rate = packetRateMap.get(packetId);
-        if (rate === undefined) {
-          continue;
-        }
-
-        const computedWeight = this.roundTo3(
-          this.toNumber(gemstone.wtPerPcs) * Math.max(0, Math.trunc(this.toNumber(gemstone.pcs))),
+        const summary = this.calculateSummary(
+          metals.map((row) => ({
+            metalCaratage: row.goldColour || null,
+            goldColour: row.goldColour || null,
+            netWt: this.toNumber(row.netWt),
+            wastagePercent: this.toNumber(row.wastagePercent),
+            wastageWt: this.toNumber(row.wastageWt),
+            totalWt: this.toNumber(row.totalWt),
+            pricePerGm: this.toNumber(row.pricePerGm),
+            value: this.toNumber(row.value),
+            components: this.toNumber(row.components),
+          })),
+          gemstones.map((row) => ({
+            packetId: row.packetId || null,
+            stone: row.stone || null,
+            shape: row.shape || null,
+            size: row.size || null,
+            cut: row.cut || null,
+            color: row.color || null,
+            quality: row.quality || null,
+            stoneType: row.stoneType || null,
+            wtPerPcs: this.toNumber(row.wtPerPcs),
+            pcs: Math.max(0, Math.trunc(this.toNumber(row.pcs))),
+            wtInCts: this.toNumber(row.wtInCts),
+            pricePerCt: this.toNumber(row.pricePerCt),
+            amount: this.toNumber(row.amount),
+          })),
+          (design.labors || []).map((row) => ({
+            laborHead: row.laborHead || null,
+            laborPerUnit: this.toNumber(row.laborPerUnit),
+            unitQty: this.toNumber(row.unitQty),
+            laborValue: this.toNumber(row.laborValue),
+          })),
+          (design.findings || []).map((row) => ({
+            findingHead: row.findingHead || null,
+            pricePerUnit: this.toNumber(row.pricePerUnit),
+            units: this.toNumber(row.units),
+            totalWeight: this.toNumber(row.totalWeight),
+            findingValue: this.toNumber(row.findingValue),
+          })),
         );
-        const currentWtInCts = this.toNumber(gemstone.wtInCts);
-        const nextWtInCts = currentWtInCts > 0 ? currentWtInCts : computedWeight;
-        const nextAmount = this.roundTo2(nextWtInCts * rate);
 
-        if (
-          this.toNumber(gemstone.pricePerCt) !== rate ||
-          this.toNumber(gemstone.amount) !== nextAmount ||
-          this.toNumber(gemstone.wtInCts) !== nextWtInCts
-        ) {
-          gemstone.pricePerCt = rate;
-          gemstone.amount = nextAmount;
-          gemstone.wtInCts = nextWtInCts;
-          gemstonesChanged = true;
-        }
+        design.metalValue = summary.metalValue;
+        design.gemValue = summary.gemValue;
+        design.laborValue = summary.laborValue;
+        design.findingValue = summary.findingValue;
+        design.totalValue = summary.totalValue;
+        design.grossWeight = summary.grossWeight;
+        design.livePrice = summary.totalValue;
+        design.goldColour = this.summarizeMetalRows(metals);
+        design.stoneInfo = this.summarizeGemstoneRows(gemstones);
+
+        await this.designRepo.save(design);
+        updatedDesigns += 1;
       }
 
-      if (metalsChanged) {
-        await this.metalRepo.save(metals);
+      if (offset + chunkSize < designIds.length) {
+        await this.sleep(100);
       }
-
-      if (gemstonesChanged) {
-        await this.gemstoneRepo.save(gemstones);
-      }
-
-      if (!metalsChanged && !gemstonesChanged) {
-        continue;
-      }
-
-      const summary = this.calculateSummary(
-        metals.map((row) => ({
-          metalCaratage: row.goldColour || null,
-          goldColour: row.goldColour || null,
-          netWt: this.toNumber(row.netWt),
-          wastagePercent: this.toNumber(row.wastagePercent),
-          wastageWt: this.toNumber(row.wastageWt),
-          totalWt: this.toNumber(row.totalWt),
-          pricePerGm: this.toNumber(row.pricePerGm),
-          value: this.toNumber(row.value),
-          components: this.toNumber(row.components),
-        })),
-        gemstones.map((row) => ({
-          packetId: row.packetId || null,
-          stone: row.stone || null,
-          shape: row.shape || null,
-          size: row.size || null,
-          cut: row.cut || null,
-          color: row.color || null,
-          quality: row.quality || null,
-          stoneType: row.stoneType || null,
-          wtPerPcs: this.toNumber(row.wtPerPcs),
-          pcs: Math.max(0, Math.trunc(this.toNumber(row.pcs))),
-          wtInCts: this.toNumber(row.wtInCts),
-          pricePerCt: this.toNumber(row.pricePerCt),
-          amount: this.toNumber(row.amount),
-        })),
-        (design.labors || []).map((row) => ({
-          laborHead: row.laborHead || null,
-          laborPerUnit: this.toNumber(row.laborPerUnit),
-          unitQty: this.toNumber(row.unitQty),
-          laborValue: this.toNumber(row.laborValue),
-        })),
-        (design.findings || []).map((row) => ({
-          findingHead: row.findingHead || null,
-          pricePerUnit: this.toNumber(row.pricePerUnit),
-          units: this.toNumber(row.units),
-          totalWeight: this.toNumber(row.totalWeight),
-          findingValue: this.toNumber(row.findingValue),
-        })),
-      );
-
-      design.metalValue = summary.metalValue;
-      design.gemValue = summary.gemValue;
-      design.laborValue = summary.laborValue;
-      design.findingValue = summary.findingValue;
-      design.totalValue = summary.totalValue;
-      design.grossWeight = summary.grossWeight;
-      design.livePrice = summary.totalValue;
-      design.goldColour = this.summarizeMetalRows(metals);
-      design.stoneInfo = this.summarizeGemstoneRows(gemstones);
-
-      await this.designRepo.save(design);
-      updatedDesigns += 1;
     }
 
-    return { updatedDesigns, totalDesigns: designs.length };
+    return { updatedDesigns, totalDesigns: designIds.length };
   }
 
   private normalizeGemstones(
@@ -7816,6 +7855,10 @@ export class ProductsService {
 
   private roundTo3(value: number): number {
     return Number(value.toFixed(3));
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private toInt(value: number | string | undefined | null): number {
