@@ -3,16 +3,19 @@ import { Link } from 'react-router-dom';
 import loginLogo from '../../assets/login-logo.png';
 
 const contents = [
+  'Scope',
   'Information We Collect',
   'How We Use Information',
-  'Android Permissions',
-  'Third-Party Services',
-  'Data Sharing',
+  'Administrator Managed Accounts',
+  'Information Sharing',
   'Data Security',
   'Data Retention',
+  'Your Privacy Rights',
+  'Account Deletion',
   "Children's Privacy",
-  'Changes',
-  'Contact',
+  'Third-Party Services',
+  'Changes to this Privacy Policy',
+  'Contact Us',
 ];
 
 export default function PrivacyPolicyPage() {
@@ -45,129 +48,258 @@ export default function PrivacyPolicyPage() {
               <div className="mt-5 grid gap-3 text-sm font-semibold text-[#766b60] sm:grid-cols-3">
                 <p>
                   <span className="block text-xs uppercase text-[#a3978b]">Effective Date</span>
-                  July 21, 2026
+                  July 22, 2026
                 </p>
                 <p>
                   <span className="block text-xs uppercase text-[#a3978b]">Last Updated</span>
-                  July 21, 2026
+                  July 22, 2026
                 </p>
                 <p>
-                  <span className="block text-xs uppercase text-[#a3978b]">Developer</span>
-                  Clarion USA Inc.
+                  <span className="block text-xs uppercase text-[#a3978b]">Application</span>
+                  Blitz NYC
                 </p>
               </div>
             </div>
 
             <PolicySection title="Introduction">
               <p>
-                Clarion USA Inc. ("we", "our", "us") operates the BLITZ NYC mobile application
-                ("Application"), an enterprise jewelry sales and product management platform for
-                authorized business users. This Privacy Policy explains how information is collected,
-                used, disclosed, stored and protected.
+                Blitz NYC ("we", "our", "us") respects your privacy and is committed to
+                protecting your personal information. This Privacy Policy explains how information
+                is collected, used, stored, protected and deleted when you use our mobile
+                application and related services.
               </p>
             </PolicySection>
 
-            <PolicySection title="1. Information We Collect">
-              <h3>Employee Information</h3>
-              <PolicyList items={['Name', 'Business Email', 'Phone Number', 'Profile Photo', 'Company', 'Branch', 'Job Title', 'User Role', 'Username and encrypted credentials']} />
-              <h3>Customer Information</h3>
-              <PolicyList items={['Customer Name', 'Email Address', 'Phone Number']} />
-              <h3>Business Information</h3>
+            <PolicySection title="1. Scope">
               <p>
-                Companies, branches, users, quotations, orders, pricing, product catalog, reports,
-                reward data, product images, CAD/STL files and related business records.
-              </p>
-              <h3>Usage Information</h3>
-              <p>
-                Login history, audit logs, session information, application version and technical
-                diagnostics required to operate and secure the service.
+                This Privacy Policy applies to all users of the Blitz NYC mobile application,
+                website, and related services.
               </p>
             </PolicySection>
 
-            <PolicySection title="2. How We Use Information">
-              <PolicyList items={['Authenticate users', 'Provide platform functionality', 'Manage quotations, orders and pricing', 'Generate reports', 'Maintain security and audit trails', 'Provide support', 'Comply with legal obligations']} />
-            </PolicySection>
-
-            <PolicySection title="3. Android Permissions">
+            <PolicySection title="2. Information We Collect">
               <PolicyList
                 items={[
-                  'Camera: Capture product images.',
-                  'Photos/Media: Upload images and CAD/STL documents.',
-                  'Notifications: Business alerts and updates.',
-                  'Microphone: Only if audio features are used.',
-                  'Contacts: Only if business contact features are enabled.',
-                  'Phone: Initiate calls from within the app.',
-                  'Location: Not collected.',
+                  'Employee Name',
+                  'Business Email Address',
+                  'Business Phone Number',
+                  'Profile Photo',
+                  'Company Name',
+                  'Branch Information',
+                  'Job Title',
+                  'User Role',
+                  'Customer Name',
+                  'Customer Email Address',
+                  'Customer Phone Number',
+                  'Product Images',
+                  'CAD, STL and Other Business Documents uploaded by authorized users',
                 ]}
               />
             </PolicySection>
 
-            <PolicySection title="4. Third-Party Services">
-              <p>
-                Application infrastructure is hosted on Amazon Web Services (AWS). Analytics may be
-                used to improve application performance. We do not sell personal information.
-              </p>
+            <PolicySection title="3. How We Use Information">
+              <PolicyList
+                items={[
+                  'Create and manage user accounts.',
+                  'Authenticate users.',
+                  'Provide application services.',
+                  'Improve application functionality.',
+                  'Maintain security.',
+                  'Respond to customer support requests.',
+                  'Comply with applicable laws.',
+                ]}
+              />
             </PolicySection>
 
-            <PolicySection title="5. Data Sharing">
-              <p>
-                Information is shared only with authorized users in your organization, AWS as
-                infrastructure provider, or where required by law. We do not sell or rent personal
-                information.
-              </p>
+            <PolicySection title="4. Administrator Managed Accounts">
+              <div className="rounded-2xl border-l-4 border-[#b1843f] bg-[#fff7ea] p-5 text-[#4d4238]">
+                <p>Blitz NYC is designed for organizations.</p>
+                <p>
+                  Users <strong>cannot create accounts themselves.</strong> Every account is
+                  created and managed by an authorized Organization Administrator.
+                </p>
+                <p>
+                  If you require access to the application, please contact your Organization
+                  Administrator.
+                </p>
+              </div>
+            </PolicySection>
+
+            <PolicySection title="5. Information Sharing">
+              <p>We do not sell your personal information.</p>
+              <p>Information may only be shared:</p>
+              <PolicyList
+                items={[
+                  'With your Organization Administrator.',
+                  'With service providers who help operate our services.',
+                  'When required by law.',
+                  'To protect our legal rights and security.',
+                ]}
+              />
             </PolicySection>
 
             <PolicySection title="6. Data Security">
-              <p>
-                We use HTTPS/TLS, password encryption, JWT authentication, role-based access control,
-                audit logging and reasonable administrative and technical safeguards.
-              </p>
+              <PolicyList
+                items={[
+                  'Password encryption is implemented.',
+                  'JWT-based authentication is used.',
+                  'Role-based access control is enforced.',
+                  'Access is restricted to authorized personnel.',
+                ]}
+              />
             </PolicySection>
 
             <PolicySection title="7. Data Retention">
               <p>
-                Information is retained while accounts remain active, according to company policy and
-                legal requirements. Accounts are managed by Super Administrators.
+                Personal information is retained only for as long as necessary to:
               </p>
+              <PolicyList
+                items={[
+                  'Provide our services.',
+                  'Maintain organization records.',
+                  'Meet legal obligations.',
+                  'Resolve disputes.',
+                  'Prevent fraud.',
+                ]}
+              />
             </PolicySection>
 
-            <PolicySection title="8. Children's Privacy">
-              <p>The Application is intended for business users and is not directed to children under 13.</p>
+            <PolicySection title="8. Your Privacy Rights">
+              <p>You may request:</p>
+              <PolicyList
+                items={[
+                  'Access to your personal information.',
+                  'Correction of inaccurate information.',
+                  'Deletion of your account.',
+                  'Deletion of associated personal information.',
+                ]}
+              />
             </PolicySection>
 
-            <PolicySection title="9. Changes">
+            <PolicySection title="9. Account Deletion">
+              <h3>How to Request Account Deletion</h3>
+              <ol className="list-decimal space-y-2 pl-5 font-semibold">
+                <li>Contact your Organization Administrator.</li>
+                <li>
+                  Or contact us at{' '}
+                  <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:info@clariondiamonds.com">
+                    info@clariondiamonds.com
+                  </a>
+                  .
+                </li>
+                <li>After identity verification, your request will be processed.</li>
+              </ol>
+
+              <h3>Data Deleted</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <thead>
+                    <tr>
+                      <th className="border border-[#e4d7c7] bg-[#b1843f] px-4 py-3 font-black text-white">
+                        Information
+                      </th>
+                      <th className="border border-[#e4d7c7] bg-[#b1843f] px-4 py-3 font-black text-white">
+                        Deleted
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ['User Account', 'Yes'],
+                      ['Profile Information', 'Yes'],
+                      ['Email Address', 'Yes'],
+                      ['Phone Number', 'Yes'],
+                      ['User Generated Data', 'Yes (unless retention is legally required)'],
+                    ].map(([information, deleted]) => (
+                      <tr key={information}>
+                        <td className="border border-[#e4d7c7] px-4 py-3 font-semibold">{information}</td>
+                        <td className="border border-[#e4d7c7] px-4 py-3">{deleted}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <h3>Data That May Be Retained</h3>
               <p>
-                We may update this Privacy Policy periodically. The latest version will be published
-                on this page.
+                Some information may be retained for up to <strong>1-2 working days</strong> after
+                account deletion for:
+              </p>
+              <PolicyList
+                items={[
+                  'Fraud prevention',
+                  'Security investigations',
+                  'Backup recovery',
+                  'Legal compliance',
+                ]}
+              />
+              <p>
+                After the retention period expires, retained personal information is permanently
+                deleted unless a longer retention period is required by applicable law.
               </p>
             </PolicySection>
 
-            <PolicySection title="10. Contact">
+            <PolicySection title="10. Children's Privacy">
+              <p>
+                Blitz NYC is intended solely for authorized employees and representatives of
+                organizations aged 18 years or older. The application is not intended for children,
+                and we do not knowingly collect personal information from individuals under 18 years
+                of age.
+              </p>
+            </PolicySection>
+
+            <PolicySection title="11. Third-Party Services">
+              <p>
+                The application may use trusted third-party services (such as cloud hosting,
+                analytics, crash reporting, or push notifications) solely to operate and improve the
+                application.
+              </p>
+            </PolicySection>
+
+            <PolicySection title="12. Changes to this Privacy Policy">
+              <p>
+                We may update this Privacy Policy periodically. Changes become effective when
+                published on this page.
+              </p>
+            </PolicySection>
+
+            <PolicySection title="13. Contact Us">
               <address className="not-italic text-[#5b5148]">
+                Developer:
+                <br />
                 Clarion USA Inc.
                 <br />
-                50 W 47TH Street, Suite 1513
                 <br />
-                New York, NY 10036-8795, USA
+                Website:
                 <br />
-                Email:{' '}
+                <a
+                  className="font-bold text-[#9a6f33] hover:text-[#6f4a18]"
+                  href="https://www.clariondiamonds.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  https://www.clariondiamonds.com/
+                </a>
+                <br />
+                <br />
+                Support Email:
+                <br />
                 <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:info@clariondiamonds.com">
                   info@clariondiamonds.com
                 </a>
                 <br />
-                Phone: +1 (646) 821-4040
                 <br />
-                Website:{' '}
-                <a
-                  className="font-bold text-[#9a6f33] hover:text-[#6f4a18]"
-                  href="http://www.clariondiamonds.com"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  clariondiamonds.com
+                Business Contact:
+                <br />
+                <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:prateek@clariondiamonds.com">
+                  prateek@clariondiamonds.com
                 </a>
               </address>
             </PolicySection>
+
+            <footer className="mt-10 border-t border-[#eee5da] pt-6 text-center text-sm font-semibold text-[#766b60]">
+              &copy; 2026 Blitz NYC. All Rights Reserved.
+            </footer>
           </article>
 
           <aside className="rounded-[24px] border border-[#e8ded1] bg-white p-6 shadow-[0_18px_55px_-42px_rgba(20,15,10,0.45)] lg:sticky lg:top-6">
