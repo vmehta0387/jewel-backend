@@ -7,7 +7,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-logo-transparent.png",
       "resizeMode": "contain",
       "backgroundColor": "#F5EEE6"
     },
@@ -37,6 +37,15 @@
       }
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F5EEE6",
+          "image": "./assets/splash-logo-transparent.png",
+          "resizeMode": "contain",
+          "imageWidth": 280
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-font",
       "expo-notifications"
