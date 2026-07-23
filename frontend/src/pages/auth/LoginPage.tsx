@@ -48,7 +48,7 @@ export default function LoginPage() {
     <div className="min-h-screen relative overflow-hidden bg-[#f3efe8]">
       <div className="relative z-10 mx-auto w-full max-w-md px-4 pb-10 pt-10 sm:px-0">
         <div className="flex justify-center mb-7">
-          <img src={loginLogo} alt="BLITZ New York City" className="h-28 w-auto object-contain" />
+          <img src={loginLogo} alt="BLITZ New York City" className="h-48 w-48 object-contain sm:h-56 sm:w-56" />
         </div>
 
         <div className="w-full rounded-[32px] border border-[#ebe3d8] bg-white p-8 shadow-[0_20px_60px_-40px_rgba(20,15,10,0.45)]">

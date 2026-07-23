@@ -66,7 +66,7 @@ const LoginScreen = () => {
             <View style={styles.brandRow}>
               <Image
                 source={require('../../assets/login-logo.png')}
-                style={{ width: 220, height: 110, resizeMode: 'contain' }}
+                style={styles.loginLogo}
               />
             </View>
 
@@ -184,7 +184,12 @@ const styles = StyleSheet.create({
   brandRow: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 44,
+    marginBottom: 24,
+  },
+  loginLogo: {
+    width: 230,
+    height: 230,
+    resizeMode: 'contain',
   },
   brandIcon: {
     marginBottom: 4,
