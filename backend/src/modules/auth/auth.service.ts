@@ -79,6 +79,7 @@ export class AuthService {
       current_version: {
         android: process.env.MOBILE_ANDROID_VERSION || '1.0.0',
         ios: process.env.MOBILE_IOS_VERSION || '1.0.0',
+        by_pass: process.env.MOBILE_VERSION_BYPASS === 'true',
       },
       signup: process.env.MOBILE_SIGNUP_ENABLED === 'true',
     };

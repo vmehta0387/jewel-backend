@@ -106,7 +106,9 @@ const BranchDashboardScreen = () => {
             ? config.current_version.android
             : config.current_version.ios;
 
-          if (isVersionOutdated(APP_VERSION, latestVersion)) {
+          const shouldBypass = config.current_version.by_pass;
+
+          if (!shouldBypass && isVersionOutdated(APP_VERSION, latestVersion)) {
             Alert.alert(
               'Update Available',
               `A new version (${latestVersion}) of the app is available. You are using v${APP_VERSION}. Please update the app to get the latest features.`,

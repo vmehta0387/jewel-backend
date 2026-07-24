@@ -26,6 +26,7 @@ export type MobileConfig = {
   current_version: {
     android: string;
     ios: string;
+    by_pass: boolean;
   };
   signup: boolean;
 };
