@@ -12,6 +12,7 @@ import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { registerPushDevice } from '../api/notifications';
 import LoginScreen from '../screens/LoginScreen';
+import SignupScreen from '../screens/SignupScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
 import DesignsScreen from '../screens/DesignsScreen';
 import DesignDetailScreen from '../screens/DesignDetailScreen';
@@ -244,6 +245,7 @@ const registerForPushNotificationsAsync = async (authToken: string) => {
 const AuthNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
     <AuthStack.Screen name="Login" component={LoginScreen} />
+    <AuthStack.Screen name="Signup" component={SignupScreen} />
   </AuthStack.Navigator>
 );
 

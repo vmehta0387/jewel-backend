@@ -1,7 +1,8 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import {
   Alert,
   Image,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -20,8 +21,9 @@ import NotificationPopover from '../components/NotificationPopover';
 import { fetchOrderSummary, fetchOrderTrends, fetchOrders } from '../api/orders';
 import { fetchSpiffSummary } from '../api/spiff';
 import { fetchMobileTrendingDesigns } from '../api/designs';
-import { uploadMyPhoto } from '../api/auth';
+import { uploadMyPhoto, getMobileConfig } from '../api/auth';
 import { fetchBranchEmployees } from '../api/branchEmployees';
+import { APP_VERSION, PLAY_STORE_URL, APP_STORE_URL, isVersionOutdated } from '../config';
 import type { BranchEmployee, Order } from '../types';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
@@ -94,6 +96,45 @@ const BranchDashboardScreen = () => {
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 20 });
   const profileBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const config = await getMobileConfig();
+        if (config && config.status) {
+          const latestVersion = Platform.OS === 'android'
+            ? config.current_version.android
+            : config.current_version.ios;
+
+          if (isVersionOutdated(APP_VERSION, latestVersion)) {
+            Alert.alert(
+              'Update Available',
+              `A new version (${latestVersion}) of the app is available. You are using v${APP_VERSION}. Please update the app to get the latest features.`,
+              [
+                {
+                  text: 'May be later',
+                  style: 'cancel',
+                },
+                {
+                  text: 'Update now',
+                  onPress: () => {
+                    const storeUrl = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
+                    Linking.openURL(storeUrl).catch((err) =>
+                      console.error('Failed to open store URL:', err)
+                    );
+                  },
+                },
+              ],
+              { cancelable: true }
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load mobile config in dashboard:', err);
+      }
+    };
+    checkConfig();
+  }, []);
 
   const [summary, setSummary] = useState<{
     activeOrders: number;

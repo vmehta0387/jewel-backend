@@ -11,7 +11,9 @@ import { mkdir, writeFile } from 'fs/promises';
 import { User } from '../users/entities/user.entity';
 import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
+import { SignupDto } from './dto/signup.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 
@@ -29,6 +31,58 @@ export class AuthService {
     private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly jwtService: JwtService,
   ) {}
+
+  async signup(dto: SignupDto): Promise<{ accessToken: string; user: AuthUser }> {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+    const existingUser = await this.userRepo.findOne({ where: { email: normalizedEmail } });
+    if (existingUser) {
+      throw new BadRequestException('Email is already registered');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const user = this.userRepo.create({
+      id: randomUUID(),
+      email: normalizedEmail,
+      passwordHash,
+      firstName: dto.firstName.trim(),
+      lastName: dto.lastName.trim(),
+      role: UserRole.SALES_REP,
+      phone: dto.phone?.trim() || null,
+      isActive: true,
+      taskPermissions: [
+        TaskPermission.DESIGN_ENTRIES,
+        TaskPermission.ORDER_ENTRIES,
+        TaskPermission.VIEW_REPORTS,
+      ],
+    });
+
+    await this.userRepo.save(user);
+
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      companyId: null,
+      branchId: null,
+      taskPermissions: user.taskPermissions || [],
+    };
+
+    return {
+      accessToken: await this.jwtService.signAsync(payload),
+      user: await this.toAuthUser(user),
+    };
+  }
+
+  getMobileConfig() {
+    return {
+      status: true,
+      current_version: {
+        android: process.env.MOBILE_ANDROID_VERSION || '1.0.0',
+        ios: process.env.MOBILE_IOS_VERSION || '1.0.0',
+      },
+      signup: process.env.MOBILE_SIGNUP_ENABLED === 'true',
+    };
+  }
 
   async login(dto: LoginDto): Promise<{ accessToken: string; user: AuthUser }> {
     const user = await this.validateUser(dto.email, dto.password);

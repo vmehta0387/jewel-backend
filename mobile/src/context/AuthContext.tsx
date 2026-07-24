@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser } from '../types';
-import { login as loginApi, me as meApi } from '../api/auth';
+import { login as loginApi, me as meApi, signup as signupApi } from '../api/auth';
 import { setUnauthorizedHandler } from '../api/client';
 
 const TOKEN_KEY = 'auth_token';
@@ -23,6 +23,13 @@ type AuthContextValue = {
   biometricRequired: boolean;
   biometricPrompted: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    password: string;
+  }) => Promise<void>;
   biometricSignIn: () => Promise<void>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
   signOut: () => Promise<void>;
@@ -106,6 +113,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadStored();
   }, [loadStored]);
+
+  const signUp = useCallback(
+    async (data: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone?: string;
+      password: string;
+    }) => {
+      const response = await signupApi(data);
+      assertMobileAccessRole(response.user);
+      setToken(response.accessToken);
+      setUser(response.user);
+      await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    },
+    [assertMobileAccessRole],
+  );
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -246,6 +271,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       biometricRequired,
       biometricPrompted,
       signIn,
+      signUp,
       biometricSignIn,
       setBiometricPreference,
       signOut,
@@ -260,6 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       biometricRequired,
       biometricPrompted,
       signIn,
+      signUp,
       biometricSignIn,
       setBiometricPreference,
       signOut,

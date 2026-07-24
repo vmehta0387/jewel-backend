@@ -9,6 +9,32 @@ export const login = (email: string, password: string) =>
     body: JSON.stringify({ email, password, clientPlatform: 'MOBILE_APP' }),
   });
 
+export const signup = (data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  password: string;
+}) =>
+  apiRequest<LoginResponse>('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export type MobileConfig = {
+  status: boolean;
+  current_version: {
+    android: string;
+    ios: string;
+  };
+  signup: boolean;
+};
+
+export const getMobileConfig = () =>
+  apiRequest<MobileConfig>('/auth/config', {
+    method: 'GET',
+  });
+
 export const me = (token: string) =>
   apiRequest<AuthUser>('/auth/me', { method: 'GET' }, token);
 

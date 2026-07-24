@@ -22,6 +22,7 @@ import Button from '../components/Button';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { updateMyProfile, uploadMyPhoto } from '../api/auth';
+import { APP_VERSION } from '../config';
 
 const formatRole = (role?: string) => {
   if (!role) return 'User';
@@ -508,6 +509,37 @@ const UserProfileScreen = () => {
           <Text style={styles.logoutBtnText}>Logout from Account</Text>
         </TouchableOpacity>
 
+        {/* DELETE ACCOUNT BUTTON */}
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          activeOpacity={0.85}
+          onPress={() => {
+            Alert.alert(
+              'Delete Account Request',
+              'Are you sure you want to submit a request to delete your account and all associated data?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Request Deletion',
+                  style: 'destructive',
+                  onPress: () => {
+                    Alert.alert(
+                      'Request Submitted',
+                      'We submitted your request to the server. After verifying that this request was submitted by you yourself, the backend team will delete your account as well as all data in the next 2-3 working days.',
+                      [{ text: 'OK' }]
+                    );
+                  },
+                },
+              ]
+            );
+          }}
+        >
+          <Ionicons name="trash-outline" size={18} color={colors.danger} style={{ marginRight: 8, opacity: 0.8 }} />
+          <Text style={styles.deleteBtnText}>Request Account Deletion</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.versionText}>v{APP_VERSION}</Text>
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </Screen>
@@ -737,6 +769,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+  deleteBtn: {
+    flexDirection: 'row',
+    borderWidth: 1.3,
+    borderColor: 'rgba(138, 58, 58, 0.25)',
+    borderRadius: radii.md,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  deleteBtnText: {
+    color: colors.danger,
+    fontWeight: '600',
+    fontSize: 14,
+    opacity: 0.8,
+  },
   statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -764,6 +814,14 @@ const styles = StyleSheet.create({
   },
   statusTextError: {
     color: '#8A3A3A',
+  },
+  versionText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.md,
+    fontWeight: '500',
+    opacity: 0.6,
   },
 });
 

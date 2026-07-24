@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -14,15 +16,61 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
+import { APP_VERSION, PLAY_STORE_URL, APP_STORE_URL, isVersionOutdated } from '../config';
+import { getMobileConfig } from '../api/auth';
 
 const LoginScreen = () => {
   const { signIn, biometricAvailable, biometricEnabled, biometricSignIn } = useAuth();
+  const navigation = useNavigation<any>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupEnabled, setSignupEnabled] = useState(true);
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
+
+  useEffect(() => {
+    const checkConfig = async () => {
+      try {
+        const config = await getMobileConfig();
+        if (config && config.status) {
+          setSignupEnabled(config.signup);
+
+          const latestVersion = Platform.OS === 'android'
+            ? config.current_version.android
+            : config.current_version.ios;
+
+          if (isVersionOutdated(APP_VERSION, latestVersion)) {
+            Alert.alert(
+              'Update Available',
+              `A new version (${latestVersion}) of the app is available. You are using v${APP_VERSION}. Please update the app to get the latest features.`,
+              [
+                {
+                  text: 'May be later',
+                  style: 'cancel',
+                },
+                {
+                  text: 'Update now',
+                  onPress: () => {
+                    const storeUrl = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
+                    Linking.openURL(storeUrl).catch((err) =>
+                      console.error('Failed to open store URL:', err)
+                    );
+                  },
+                },
+              ],
+              { cancelable: true }
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load mobile config:', err);
+      }
+    };
+    checkConfig();
+  }, []);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -145,10 +193,21 @@ const LoginScreen = () => {
               </TouchableOpacity>
 
               <View style={styles.bottomLinkContainer}>
-                <Text style={styles.bottomLinkText}>
+                {signupEnabled ? (
+                  <TouchableOpacity onPress={() => navigation.navigate('Signup')} style={{ marginBottom: 12 }}>
+                    <Text style={styles.bottomLinkText}>
+                      <Text style={styles.bottomLinkMuted}>Don't have an account? </Text>
+                      Sign Up
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+
+                <Text style={[styles.bottomLinkText, { fontSize: 11, opacity: 0.7, marginBottom: 8 }]}>
                   <Text style={styles.bottomLinkMuted}>Need access? </Text>
                   Contact your admin
                 </Text>
+
+                <Text style={styles.versionText}>v{APP_VERSION}</Text>
               </View>
             </View>
           </View>
@@ -348,6 +407,14 @@ const styles = StyleSheet.create({
   },
   bottomLinkMuted: {
     color: '#111111',
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#8E877F',
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: '500',
+    opacity: 0.6,
   },
 });
 
