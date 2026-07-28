@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 const liveApiUrl = 'https://api.blitznyc.com/api';
+const localWebApiUrl = 'http://localhost:3000/api';
 const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
 const webEnvUrl = process.env.EXPO_PUBLIC_WEB_API_BASE_URL;
 const extraUrl = Constants.expoConfig?.extra?.apiBaseUrl;
@@ -13,6 +14,10 @@ const getWebApiBaseUrl = () => {
 
   if (webEnvUrl) {
     return webEnvUrl;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return localWebApiUrl;
   }
 
   return undefined;

@@ -73,8 +73,9 @@ async function bootstrap() {
       callback(null, false);
     },
     credentials: true,
-    allowedHeaders: '*',
+    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Origin', 'X-Requested-With'],
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    optionsSuccessStatus: 204,
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.listen(process.env.PORT || 3000, '0.0.0.0');

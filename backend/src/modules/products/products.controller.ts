@@ -63,6 +63,8 @@ export class ProductsController {
   }
 
   @Get()
+  @TaskPermissions()
+  @AnyActionPermissions('design.view', 'catalog.view', 'mobile.dashboard.quick_actions.catalog.view')
   findAll(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
     return this.productsService.findAll(query, req.user);
   }
@@ -76,6 +78,8 @@ export class ProductsController {
   }
 
   @Get('mobile/trending')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.trending.view', 'catalog.view', 'design.view')
   findMobileTrending(
     @Query() query: FindMobileTrendingProductsQueryDto,
     @Request() req: { user: AuthUser },
@@ -84,6 +88,8 @@ export class ProductsController {
   }
 
   @Get('mobile/catalog')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.quick_actions.catalog.view', 'catalog.view', 'design.view')
   findMobileCatalog(
     @Query() query: FindMobileCatalogProductsQueryDto,
     @Request() req: { user: AuthUser },
@@ -92,21 +98,29 @@ export class ProductsController {
   }
 
   @Get('mobile/category-counts')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.quick_actions.catalog.view', 'catalog.view', 'design.view')
   findMobileCategoryCounts(@Request() req: { user: AuthUser }) {
     return this.productsService.findMobileCategoryCounts(req.user);
   }
 
   @Get('mobile/categories')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.quick_actions.catalog.view', 'catalog.view', 'design.view')
   findMobileCategories(@Request() req: { user: AuthUser }) {
     return this.productsService.findMobileCategories(req.user);
   }
 
   @Get('mobile/configurator/:id')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.trending.open_design', 'mobile.dashboard.quick_actions.catalog.view', 'catalog.view', 'design.view')
   findMobileConfigurator(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findMobileConfigurator(id, req.user);
   }
 
   @Get('mobile/configurator/:id/resolve')
+  @TaskPermissions()
+  @AnyActionPermissions('mobile.dashboard.trending.open_design', 'mobile.dashboard.quick_actions.catalog.view', 'catalog.view', 'design.view')
   resolveMobileConfigurator(
     @Param('id') id: string,
     @Query() query: ResolveMobileDesignConfiguratorQueryDto,
@@ -348,6 +362,8 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @TaskPermissions()
+  @AnyActionPermissions('design.view', 'catalog.view', 'mobile.dashboard.trending.open_design', 'mobile.dashboard.quick_actions.catalog.view')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findOne(id, req.user);
   }

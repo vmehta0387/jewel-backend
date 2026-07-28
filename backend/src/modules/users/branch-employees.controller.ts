@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { UsersService } from './users.service';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
@@ -20,7 +20,7 @@ export class BranchEmployeesController {
 
   @Get('branches')
   @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN, UserRole.SALES_REP)
-  @ActionPermissions('branch.view')
+  @AnyActionPermissions('branch.view', 'mobile.dashboard.quick_actions.branches.view')
   findBranches(@Request() req: { user: AuthUser }) {
     return this.usersService.findBranchEmployeeBranches(req.user);
   }

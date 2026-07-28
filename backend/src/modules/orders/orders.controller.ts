@@ -5,7 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
-import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
@@ -24,6 +24,8 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get()
+  @TaskPermissions()
+  @AnyActionPermissions('order.view', 'mobile.order.view', 'mobile.dashboard.quick_actions.orders.view')
   findAll(@Query() query: FindOrdersQueryDto, @Request() req: { user: AuthUser }) {
     return this.ordersService.findAll(query, req.user);
   }
@@ -34,6 +36,8 @@ export class OrdersController {
   }
 
   @Get('po-usage')
+  @TaskPermissions()
+  @AnyActionPermissions('order.view', 'mobile.order.view')
   getPurchaseOrderUsage(
     @Query() query: FindPurchaseOrderUsageQueryDto,
     @Request() req: { user: AuthUser },
@@ -42,6 +46,8 @@ export class OrdersController {
   }
 
   @Get('price-preview')
+  @TaskPermissions()
+  @AnyActionPermissions('order.price_preview', 'mobile.order.price_preview')
   getPricePreview(
     @Request() req: { user: AuthUser },
     @Query('designId') designId?: string,
@@ -55,31 +61,42 @@ export class OrdersController {
   }
 
   @Get('summary')
+  @TaskPermissions()
+  @AnyActionPermissions('order.view', 'mobile.order.view', 'mobile.dashboard.totals.view', 'mobile.dashboard.pipeline.view')
   getSummary(@Request() req: { user: AuthUser }) {
     return this.ordersService.getSummary(req.user);
   }
 
   @Get('trends')
+  @TaskPermissions()
+  @AnyActionPermissions('order.view', 'mobile.order.view', 'mobile.dashboard.pipeline.view')
   getTrends(@Request() req: { user: AuthUser }) {
     return this.ordersService.getTrends(req.user);
   }
 
   @Get(':id')
+  @TaskPermissions()
+  @AnyActionPermissions('order.view', 'mobile.order.view')
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.ordersService.findOne(id, req.user);
   }
 
   @Post()
+  @TaskPermissions()
+  @AnyActionPermissions('order.create', 'mobile.order.create')
   create(@Body() dto: CreateOrderDto, @Request() req: { user: AuthUser }) {
     return this.ordersService.create(dto, req.user);
   }
 
   @Put(':id')
+  @TaskPermissions()
+  @AnyActionPermissions('order.edit', 'mobile.order.edit')
   update(@Param('id') id: string, @Body() dto: UpdateOrderDto, @Request() req: { user: AuthUser }) {
     return this.ordersService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
+  @TaskPermissions()
   @ActionPermissions('order.status_update')
   updateStatus(
     @Param('id') id: string,
@@ -90,6 +107,8 @@ export class OrdersController {
   }
 
   @Patch(':id/active')
+  @TaskPermissions()
+  @AnyActionPermissions('order.status_update', 'mobile.order.status_update')
   updateActiveStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderActiveStatusDto,

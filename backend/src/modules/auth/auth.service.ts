@@ -13,6 +13,7 @@ import { UserPermissionAction } from '../permissions/entities/user-permission-ac
 import { UserRole } from '../../common/enums/user-role.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { getDefaultMobileActionPermissions } from './default-mobile-permissions';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 
 
@@ -240,6 +241,10 @@ export class AuthService {
         where: { userId },
         order: { actionKey: 'ASC' },
       });
+      if (rows.length === 0) {
+        const user = await this.userRepo.findOne({ where: { id: userId }, select: ['role'] });
+        return user ? getDefaultMobileActionPermissions(user.role) : [];
+      }
       return rows.map((row) => ({
         actionKey: row.actionKey,
         dataScope: row.dataScope,
@@ -248,7 +253,8 @@ export class AuthService {
       const code = (error as { code?: string })?.code;
       const message = String((error as { message?: string })?.message || '').toLowerCase();
       if (code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions')) {
-        return [];
+        const user = await this.userRepo.findOne({ where: { id: userId }, select: ['role'] });
+        return user ? getDefaultMobileActionPermissions(user.role) : [];
       }
       throw error;
     }

@@ -35,7 +35,7 @@ export class SpiffController {
   constructor(private readonly spiffService: SpiffService) {}
 
   @Get('config')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.view', 'mobile.spiff.view')
   async getConfig() {
     return this.spiffService.getConfig();
@@ -53,14 +53,14 @@ export class SpiffController {
   }
 
   @Get('summary')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.view', 'mobile.spiff.view')
   getMySummary(@Request() req: { user: AuthUser }) {
     return this.spiffService.getMySummary(req.user);
   }
 
   @Get('leaderboard')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.view', 'mobile.spiff.leaderboard.view')
   getLeaderboard(
     @Query() query: SpiffLeaderboardQueryDto,
@@ -70,7 +70,7 @@ export class SpiffController {
   }
 
   @Get('claims')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.view', 'mobile.spiff.view')
   findClaims(
     @Query() query: FindSpiffClaimsQueryDto,
@@ -80,7 +80,7 @@ export class SpiffController {
   }
 
   @Post('claims')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.claim.create', 'mobile.spiff.claim.create')
   createClaim(
     @Body() dto: CreateSpiffClaimDto,
@@ -90,7 +90,7 @@ export class SpiffController {
   }
 
   @Patch('claims/:id/review')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @TaskPermissions()
   @AnyActionPermissions('spiff.claim.review', 'mobile.spiff.claim.review')
   reviewClaim(
     @Param('id') id: string,
