@@ -84,6 +84,9 @@ export class Branch {
   @OneToMany(() => BranchPricingSlab, slab => slab.branch)
   pricingSlabs: BranchPricingSlab[];
 
+  @OneToMany(() => User, user => user.branch)
+  users: User[];
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -92,6 +95,9 @@ export class Branch {
 
   // Mapped at query time via loadRelationCountAndMap
   pricingSlabCount?: number;
+
+  // Mapped at query time via loadRelationCountAndMap
+  userCount?: number;
 
   @BeforeInsert()
   generateId() {

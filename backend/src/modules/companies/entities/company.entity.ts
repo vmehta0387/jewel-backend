@@ -93,6 +93,9 @@ export class Company {
   @OneToMany(() => Branch, branch => branch.company)
   branches: Branch[];
 
+  @OneToMany(() => User, user => user.company)
+  users: User[];
+
   @OneToMany(() => CompanyPricingSlab, slab => slab.company)
   pricingSlabs: CompanyPricingSlab[];
 
@@ -107,6 +110,9 @@ export class Company {
 
   // Mapped at query time via loadRelationCountAndMap
   branchCount?: number;
+
+  // Mapped at query time via loadRelationCountAndMap
+  userCount?: number;
 
   @BeforeInsert()
   generateId() {

@@ -94,6 +94,7 @@ export class BranchesService {
       .leftJoinAndSelect('branch.company', 'company')
       .leftJoinAndSelect('branch.branchManager', 'branchManager')
       .loadRelationCountAndMap('branch.pricingSlabCount', 'branch.pricingSlabs')
+      .loadRelationCountAndMap('branch.userCount', 'branch.users')
       .orderBy('branch.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -420,7 +421,7 @@ export class BranchesService {
       }
 
       if (slab.multiplier < 1 || slab.multiplier > 10) {
-        throw new BadRequestException('Branch pricing slab mark-up must be between 1 and 10');
+        throw new BadRequestException('Branch pricing slab markup must be between 1 and 10');
       }
 
       if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
@@ -435,4 +436,3 @@ export class BranchesService {
     }
   }
 }
-

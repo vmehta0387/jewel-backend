@@ -10,10 +10,12 @@ import {
 } from '@nestjs/websockets';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Server, Socket } from 'socket.io';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { JwtPayload } from '../auth/interfaces/auth-user.interface';
 import { Notification } from './entities/notification.entity';
+
+const DESIGN_UPDATED_NOTIFICATION_TYPE = 'DESIGN_UPDATED';
 
 @WebSocketGateway({
   namespace: 'notifications',
@@ -104,7 +106,11 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
 
   private async emitCurrentUnreadCount(socket: Socket, userId: string) {
     const unreadCount = await this.notificationRepo.count({
-      where: { recipientUserId: userId, isRead: false },
+      where: {
+        recipientUserId: userId,
+        isRead: false,
+        type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
+      },
     });
     socket.emit('notification.unread_count_updated', { unreadCount });
   }

@@ -107,6 +107,7 @@ export class CompaniesService {
       .leftJoinAndSelect('company.pricingSlabs', 'pricingSlabs')
       .leftJoinAndSelect('company.collectionPricingOverrides', 'collectionPricingOverrides')
       .loadRelationCountAndMap('company.branchCount', 'company.branches')
+      .loadRelationCountAndMap('company.userCount', 'company.users')
       .orderBy('company.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -268,7 +269,7 @@ export class CompaniesService {
       }
 
       if (slab.multiplier < 1 || slab.multiplier > 10) {
-        throw new BadRequestException('Company pricing slab mark-up must be between 1 and 10');
+        throw new BadRequestException('Company pricing slab markup must be between 1 and 10');
       }
 
       if (index > 0 && slab.minCost <= sorted[index - 1].maxCost) {
@@ -356,4 +357,3 @@ export class CompaniesService {
     }
   }
 }
-

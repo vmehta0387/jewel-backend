@@ -39,11 +39,11 @@ export class User {
   @Column({ name: 'photo_url', nullable: true })
   photoUrl: string | null;
 
-  @ManyToOne(() => Company, { nullable: true })
+  @ManyToOne(() => Company, company => company.users, { nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company;
 
-  @ManyToOne(() => Branch, { nullable: true })
+  @ManyToOne(() => Branch, branch => branch.users, { nullable: true })
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 

@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, In, Not, Repository } from 'typeorm';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { User } from '../users/entities/user.entity';
 import {
@@ -13,6 +13,8 @@ import {
 import { NotificationPushDevice } from './entities/notification-push-device.entity';
 import { Notification, NotificationPriority } from './entities/notification.entity';
 import { NotificationsGateway } from './notifications.gateway';
+
+const DESIGN_UPDATED_NOTIFICATION_TYPE = 'DESIGN_UPDATED';
 
 export interface CreateNotificationInput {
   userId: string;
@@ -57,6 +59,9 @@ export class NotificationsService {
     const qb = this.notificationRepo
       .createQueryBuilder('notification')
       .where('notification.recipient_user_id = :userId', { userId: requester.id })
+      .andWhere('notification.type != :hiddenType', {
+        hiddenType: DESIGN_UPDATED_NOTIFICATION_TYPE,
+      })
       .orderBy('notification.created_at', 'DESC')
       .skip(skip)
       .take(limit);
@@ -100,7 +105,11 @@ export class NotificationsService {
       data,
       total,
       unreadCount: await this.notificationRepo.count({
-        where: { recipientUserId: requester.id, isRead: false },
+        where: {
+          recipientUserId: requester.id,
+          isRead: false,
+          type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
+        },
       }),
       page,
       totalPages: Math.ceil(total / limit),
@@ -110,7 +119,11 @@ export class NotificationsService {
   async getUnreadCount(requester: AuthUser) {
     return {
       unreadCount: await this.notificationRepo.count({
-        where: { recipientUserId: requester.id, isRead: false },
+        where: {
+          recipientUserId: requester.id,
+          isRead: false,
+          type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
+        },
       }),
     };
   }
@@ -393,7 +406,11 @@ export class NotificationsService {
   private async emitUnreadCountUpdate(userId: string) {
     try {
       const unreadCount = await this.notificationRepo.count({
-        where: { recipientUserId: userId, isRead: false },
+        where: {
+          recipientUserId: userId,
+          isRead: false,
+          type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
+        },
       });
       this.notificationsGateway.emitUnreadCount(userId, unreadCount);
     } catch {

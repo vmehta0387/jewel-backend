@@ -525,7 +525,7 @@ export class ProductsService {
       'Design No',
       'Version',
       'Sort Order',
-      'Metal Caratage',
+      'Metal',
       'Gold Colour',
       'Net Wt',
       'Wastage %',
@@ -603,7 +603,7 @@ export class ProductsService {
         'Design No': 'RING-0001',
         Version: 'V1',
         'Sort Order': 1,
-        'Metal Caratage': '18-Rose-Gold',
+        Metal: '18-Rose-Gold',
         'Gold Colour': 'Rose',
         'Net Wt': 5,
         'Wastage %': 10,
@@ -616,7 +616,7 @@ export class ProductsService {
         'Design No': 'RING-0001',
         Version: 'V2',
         'Sort Order': 1,
-        'Metal Caratage': '14-Rose-Gold',
+        Metal: '14-Rose-Gold',
         'Gold Colour': 'Rose',
         'Net Wt': 4.7,
         'Wastage %': 9,
@@ -828,7 +828,7 @@ export class ProductsService {
             'Design No': design.designNo,
             Version: design.version,
             'Sort Order': index + 1,
-            'Metal Caratage': row.goldColour || '',
+            Metal: row.goldColour || '',
             'Gold Colour': row.goldColour || '',
             'Net Wt': this.toNumber(row.netWt),
             'Wastage %': this.toNumber(row.wastagePercent),
@@ -1031,7 +1031,7 @@ export class ProductsService {
 
         if (existing) {
           const updatePayload: UpdateProductDto = { ...payload };
-          await this.update(existing.id, updatePayload, requester, true);
+          await this.update(existing.id, updatePayload, requester);
           updated += 1;
         } else {
           await this.create(payload, requester);
@@ -2016,18 +2016,20 @@ export class ProductsService {
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
-    // Design gemstones are intentionally not loaded for the mobile detail/configurator response right now.
-    // const gemstones = designIds.length
-    //   ? await this.gemstoneRepo.find({
-    //       where: { designId: In(designIds) },
-    //       order: { sortOrder: 'ASC', createdAt: 'ASC' },
-    //     })
-    //   : [];
+    // Stone names are needed for configurator matching, but gemstone details remain hidden
+    // from the mobile response.
+    const gemstones = designIds.length
+      ? await this.gemstoneRepo.find({
+          select: ['id', 'designId', 'stone', 'stoneType'],
+          where: { designId: In(designIds) },
+          order: { sortOrder: 'ASC', createdAt: 'ASC' },
+        })
+      : [];
     const metalsByDesign = this.groupByDesignId(metals);
+    const gemstonesByDesign = this.groupByDesignId(gemstones);
     for (const design of family) {
       design.metals = metalsByDesign.get(design.id) || [];
-      // design.gemstones = gemstonesByDesign.get(design.id) || [];
-      design.gemstones = [];
+      design.gemstones = gemstonesByDesign.get(design.id) || [];
     }
     return family;
   }
@@ -2248,7 +2250,10 @@ export class ProductsService {
     };
 
     add('diamondType', design.diamondType);
-    add('shape', design.stoneInfo);
+    for (const gemstone of design.gemstones || []) {
+      const stoneValue = this.optionalText(gemstone.stone) || this.optionalText(gemstone.stoneType);
+      stoneValue?.split(',').forEach((stone) => add('shape', stone));
+    }
     add('style', design.diamondSpread);
     add('metalCaratage', design.goldColour);
     add('weight', design.diamondWeight);
@@ -2279,7 +2284,10 @@ export class ProductsService {
     return Object.fromEntries(
       Object.entries(requestedOptions).map(([key, value]) => [
         key,
-        this.mobileConfiguratorDisplayValue(key as MobileConfiguratorKey, value),
+        this.mobileConfiguratorDisplayValue(
+          key as MobileConfiguratorKey,
+          key === 'shape' ? String(value || '').split(',')[0] : value,
+        ),
       ]),
     ) as Partial<Record<MobileConfiguratorKey, string>>;
   }
@@ -2329,7 +2337,8 @@ export class ProductsService {
   private normalizeMobileConfiguratorQuery(query: ResolveMobileDesignConfiguratorQueryDto) {
     const wanted: Partial<Record<MobileConfiguratorKey, string>> = {};
     (['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
-      const text = key === 'weight' ? this.toMobileCaratLabel(query[key]) : this.mobileConfiguratorText(query[key]);
+      const rawValue = key === 'shape' ? String(query[key] || '').split(',')[0] : query[key];
+      const text = key === 'weight' ? this.toMobileCaratLabel(rawValue) : this.mobileConfiguratorText(rawValue);
       if (text) wanted[key] = this.mobileConfiguratorDisplayValue(key, text);
     });
     return wanted;
@@ -2643,7 +2652,7 @@ export class ProductsService {
     };
   }
 
-  async update(id: string, dto: UpdateProductDto, requester: AuthUser, suppressNotifications = false): Promise<any> {
+  async update(id: string, dto: UpdateProductDto, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
 
@@ -2796,9 +2805,6 @@ export class ProductsService {
     }
 
     await this.addHistory(id, 'UPDATED', 'Design updated successfully.', requester.id);
-    if (!suppressNotifications) {
-      await this.safeNotifyDesignUpdated(design, requester);
-    }
     return this.findOne(id, requester);
   }
 
@@ -4916,7 +4922,7 @@ export class ProductsService {
       const metalCaratage = this.optionalText(row.metalCaratage) || this.optionalText(row.goldColour);
       if (!metalCaratage) {
         throw new BadRequestException(
-          `Metal Caratage is required for Metal row ${rowNo}`,
+          `Metal is required for Metal row ${rowNo}`,
         );
       }
       const wastagePercent = this.toNumber(row.wastagePercent);
@@ -4948,7 +4954,7 @@ export class ProductsService {
       }
       if (pricePerGm <= 0) {
         throw new BadRequestException(
-          `Price Per Gram must be greater than 0 for Metal row ${rowNo}. Select Metal Caratage with a valid master Price/Gms or enter manually.`,
+          `Price Per Gram must be greater than 0 for Metal row ${rowNo}. Select Metal with a valid master Price/Gms or enter manually.`,
         );
       }
       const computedValue = totalWt * pricePerGm;
@@ -5677,54 +5683,6 @@ export class ProductsService {
     );
   }
 
-  private async safeNotifyDesignUpdated(design: Design, requester: AuthUser) {
-    try {
-      const recipients = await this.userRepo.find({
-        where: [
-          ...(design.companyId ? [{ companyId: design.companyId, role: UserRole.COMPANY_ADMIN, isActive: true } as any] : []),
-          ...(design.branchId
-            ? [
-                { branchId: design.branchId, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
-                { branchId: design.branchId, role: UserRole.SALES_REP, isActive: true } as any,
-              ]
-            : design.companyId
-              ? [
-                  { companyId: design.companyId, role: UserRole.BRANCH_MANAGER, isActive: true } as any,
-                  { companyId: design.companyId, role: UserRole.SALES_REP, isActive: true } as any,
-                ]
-              : []),
-        ],
-        select: ['id'],
-      });
-
-      const userIds = Array.from(new Set(recipients.map((user) => user.id).filter((id) => id && id !== requester.id)));
-      if (!userIds.length) return;
-
-      await this.notificationsService.createForUsers(userIds, {
-        companyId: design.companyId ?? null,
-        branchId: design.branchId ?? null,
-        type: 'DESIGN_UPDATED',
-        priority: NotificationPriority.P2,
-        title: `${design.designNo} updated`,
-        message: `Design ${design.designName || design.designNo} was updated.`,
-        entityType: 'DESIGN',
-        entityId: design.id,
-        actionUrl: `/products/${design.id}`,
-        channelPush: true,
-        metadata: {
-          designId: design.id,
-          designNo: design.designNo,
-          designName: design.designName ?? null,
-          updatedByUserId: requester.id,
-          companyId: design.companyId ?? null,
-          branchId: design.branchId ?? null,
-        },
-      });
-    } catch {
-      // Best-effort only.
-    }
-  }
-
   private async safeNotifyDesignImportFailed(
     requester: AuthUser,
     result: { totalRows: number; created: number; updated: number; failed: number; errors: string[] },
@@ -6069,7 +6027,7 @@ export class ProductsService {
     return {
       designNo: this.getImportCell(row, 'Design No', 'designNo'),
       version: this.getImportCell(row, 'Version', 'version'),
-      metalCaratage: this.getImportCell(row, 'Metal Caratage', 'metalCaratage'),
+      metalCaratage: this.getImportCell(row, 'Metal', 'metalCaratage', 'Metal Caratage'),
       goldColour: this.getImportCell(row, 'Gold Colour', 'goldColour'),
       netWt: this.getImportCell(row, 'Net Wt', 'netWt'),
       wastagePercent: this.getImportCell(row, 'Wastage %', 'wastagePercent'),

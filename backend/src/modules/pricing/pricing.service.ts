@@ -876,7 +876,7 @@ export class PricingService {
       }
 
       if (multiplier < 1 || multiplier > 10) {
-        throw new BadRequestException('Pricing slab mark-up must be between 1 and 10');
+        throw new BadRequestException('Pricing slab markup must be between 1 and 10');
       }
 
       if (index > 0) {
@@ -966,7 +966,7 @@ export class PricingService {
   private roundMultiplier(value: number): number {
     const normalized = this.toNumber(value);
     if (normalized < 1 || normalized > 10) {
-      throw new BadRequestException('Mark-up must be between 1 and 10');
+      throw new BadRequestException('Markup must be between 1 and 10');
     }
     return Number(normalized.toFixed(2));
   }
@@ -980,4 +980,3 @@ export class PricingService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 }
-
