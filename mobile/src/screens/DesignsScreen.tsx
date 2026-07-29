@@ -77,11 +77,8 @@ type SortOption = 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDes
 type PriceBand = 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
 
 const SORT_OPTIONS: Array<{ key: SortOption; label: string }> = [
-  { key: 'recent', label: 'Newest first' },
   { key: 'priceAsc', label: 'Price: Low to High' },
   { key: 'priceDesc', label: 'Price: High to Low' },
-  { key: 'designAsc', label: 'Design No: A to Z' },
-  { key: 'designDesc', label: 'Design No: Z to A' },
 ];
 
 const PRICE_BAND_OPTIONS: Array<{ key: PriceBand; label: string }> = [
@@ -785,25 +782,7 @@ const DesignsScreen = () => {
                         style={styles.sortActionButton}
                         onPress={() => {
                           setDraftSearch('');
-                        }}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.sortActionText}>Reset Search</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.sortActionButton}
-                        onPress={() => {
                           setDraftSortOption('recent');
-                        }}
-                        activeOpacity={0.85}
-                      >
-                        <Text style={styles.sortActionText}>Reset Sort</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.sortActionsRow}>
-                      <TouchableOpacity
-                        style={styles.sortActionButton}
-                        onPress={() => {
                           setDraftCategory('All');
                           setDraftCollection('All');
                           setDraftShape('All');
@@ -812,7 +791,7 @@ const DesignsScreen = () => {
                         }}
                         activeOpacity={0.85}
                       >
-                        <Text style={styles.sortActionText}>Reset Filters</Text>
+                        <Text style={styles.sortActionText}>Reset all filter</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.sortActionButton, styles.sortApplyButton]}
