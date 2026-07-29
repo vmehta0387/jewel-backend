@@ -104,12 +104,17 @@ export default function CompaniesPage() {
     },
     {
       key: 'defaultMultiplier',
-      label: 'Default Multiplier',
+      label: 'Default Markup',
       render: (val: number) => `${val}x`,
     },
     {
       key: 'branchCount',
       label: 'Total Branches',
+      render: (val: number) => <span>{val ?? 0}</span>,
+    },
+    {
+      key: 'userCount',
+      label: 'Total Users',
       render: (val: number) => <span>{val ?? 0}</span>,
     },
     {
@@ -218,4 +223,3 @@ export default function CompaniesPage() {
     </div>
   );
 }
-

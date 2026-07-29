@@ -64,7 +64,7 @@ export const TASK_PERMISSION_OPTIONS: TaskPermissionOption[] = [
   {
     value: 'BRANCH_MANAGEMENT',
     label: 'Branch Management',
-    description: 'Create and update branch profiles and pricing mark-ups.',
+    description: 'Create and update branch profiles and pricing markups.',
   },
   {
     value: 'USER_MANAGEMENT',
@@ -89,7 +89,7 @@ export const TASK_PERMISSION_OPTIONS: TaskPermissionOption[] = [
   {
     value: 'PRICING_CONFIGURATION',
     label: 'Pricing Configuration',
-    description: 'Manage price mark-ups and pricing rules.',
+    description: 'Manage price markups and pricing rules.',
   },
   {
     value: 'VIEW_REPORTS',
@@ -140,4 +140,3 @@ export const ALLOWED_TASK_PERMISSIONS_BY_ROLE: Record<UserRole, TaskPermission[]
   SALES_REP: ['DESIGN_ENTRIES', 'ORDER_ENTRIES', 'VIEW_REPORTS'],
   INTERNAL_REP: ['COMPANY_MANAGEMENT', 'DESIGN_ENTRIES', 'ORDER_ENTRIES', 'ORDER_APPROVALS', 'VIEW_REPORTS'],
 };
-

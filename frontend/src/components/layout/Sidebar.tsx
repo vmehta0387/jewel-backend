@@ -192,11 +192,11 @@ export default function Sidebar({
 
   return (
     <div
-      className={`fixed left-0 top-0 z-50 h-screen border-r border-slate-800/50 bg-slate-950 text-slate-300 transition-all duration-300 ease-in-out lg:w-auto ${
+      className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-slate-800/50 bg-slate-950 text-slate-300 shadow-2xl transition-[width,transform] duration-300 ease-in-out ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } ${
         collapsed ? 'lg:w-20' : 'lg:w-64'
-      } lg:translate-x-0 shadow-2xl flex flex-col`}
+      } lg:translate-x-0`}
       style={{
         background: 'linear-gradient(180deg, #171311 0%, #221b17 100%)',
         borderRightColor: '#352b24',
@@ -204,12 +204,16 @@ export default function Sidebar({
     >
       <div
         className={`relative flex items-center shrink-0 border-b border-white/5 ${
-          collapsed ? 'justify-center py-5 h-16' : 'justify-between px-6 py-5 h-16'
+          collapsed ? 'justify-between px-6 py-5 h-16 lg:justify-center lg:px-0' : 'justify-between px-6 py-5 h-16'
         }`}
       >
-        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
           <div className={`${collapsed ? '' : 'max-w-[170px]'} overflow-hidden`}>
-            <BlitzBrand compact subtitle="NEW YORK CITY" className={`sidebar-blitz ${collapsed ? 'scale-90' : ''}`} />
+            <BlitzBrand
+              compact
+              subtitle="NEW YORK CITY"
+              className={`sidebar-blitz ${collapsed ? 'sidebar-blitz-collapsed' : ''}`}
+            />
           </div>
         </div>
         <button
@@ -225,7 +229,7 @@ export default function Sidebar({
       </div>
       
       <div className="flex-1 overflow-y-auto py-5">
-        <nav className={`space-y-1.5 ${collapsed ? 'px-3' : 'px-4'}`}>
+        <nav className={`space-y-1.5 px-4 ${collapsed ? 'lg:px-3' : ''}`}>
           {visibleNavigation.map((item) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
@@ -233,8 +237,8 @@ export default function Sidebar({
                 key={item.path}
                 to={item.path}
                 onClick={() => onCloseMobile?.()}
-                className={`group flex items-center gap-3.5 rounded-xl transition-all duration-200 ${
-                  collapsed ? 'justify-center p-2.5' : 'px-3.5 py-2.5'
+                className={`group relative flex items-center gap-3.5 rounded-xl px-3.5 py-2.5 transition-all duration-200 ${
+                  collapsed ? 'lg:justify-center lg:p-2.5' : ''
                 } ${
                   isActive
                     ? 'bg-[#2f261f] text-white font-semibold border border-[#4a3a2d]'
@@ -243,19 +247,29 @@ export default function Sidebar({
                 title={collapsed ? item.name : undefined}
               >
                 <MenuIcon name={item.icon} isActive={isActive} />
-                <span className={`tracking-wide whitespace-nowrap ${collapsed ? 'hidden lg:hidden' : 'text-[0.9rem]'}`}>{item.name}</span>
+                <span className={`whitespace-nowrap text-[0.9rem] tracking-wide ${collapsed ? 'lg:hidden' : ''}`}>
+                  {item.name}
+                </span>
+                {collapsed ? (
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute left-full z-50 ml-3 hidden whitespace-nowrap rounded-lg border border-[#4a3a2d] bg-[#211a16] px-3 py-2 text-xs font-semibold tracking-wide text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 lg:block"
+                  >
+                    {item.name}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
         </nav>
       </div>
 
-      <div className={`shrink-0 border-t border-[#352b24] p-4 ${collapsed ? 'flex justify-center' : ''}`}>
+      <div className={`shrink-0 border-t border-[#352b24] p-4 ${collapsed ? 'lg:flex lg:justify-center lg:px-3' : ''}`}>
         <button
           type="button"
           onClick={onToggle}
           className={`flex items-center gap-3 rounded-xl border border-[#4b3a2d] bg-[#2a211b] p-2.5 text-xs font-semibold uppercase tracking-wider text-[#b9ac9a] transition-all hover:bg-[#3a2f26] hover:text-white ${
-            collapsed ? 'w-full justify-center' : 'w-full'
+            collapsed ? 'w-full lg:justify-center' : 'w-full'
           }`}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -271,7 +285,7 @@ export default function Sidebar({
           >
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          <span className={`whitespace-nowrap ${collapsed ? 'hidden lg:hidden' : ''}`}>
+          <span className={`whitespace-nowrap ${collapsed ? 'lg:hidden' : ''}`}>
             Collapse
           </span>
         </button>

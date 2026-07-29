@@ -682,6 +682,32 @@ const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[
   });
   return result;
 };
+const sortJewelrySizeValues = (values: string[]): string[] =>
+  [...values].sort((left, right) => {
+    const leftSize = parseSizeNumber(left);
+    const rightSize = parseSizeNumber(right);
+
+    if (leftSize != null && rightSize != null) {
+      return leftSize - rightSize || left.localeCompare(right, undefined, { numeric: true });
+    }
+    if (leftSize != null) return -1;
+    if (rightSize != null) return 1;
+    return left.localeCompare(right, undefined, { numeric: true });
+  });
+type JewelrySizeStep = 'FULL' | 'HALF' | 'QUARTER';
+const getJewelrySizesByStep = (values: string[], step: JewelrySizeStep): string[] =>
+  values.filter((value) => {
+    const size = parseSizeNumber(value);
+    if (size == null) return false;
+
+    const quarterSteps = Math.round(size * 4);
+    if (Math.abs(size * 4 - quarterSteps) > 0.0001) return false;
+
+    const remainder = ((quarterSteps % 4) + 4) % 4;
+    if (step === 'FULL') return remainder === 0;
+    if (step === 'HALF') return remainder === 2;
+    return remainder === 1 || remainder === 3;
+  });
 const toPacketAbbreviation = (value: string): string => {
   const normalized = (value || '').trim();
   if (!normalized) return '';
@@ -1268,8 +1294,8 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   TAG: 'Tag',
   DESIGN_STATUS: 'Design Status',
   STAGE: 'Stage',
-  METAL_CARATAGE: 'Metal Caratage',
-  GOLD_COLOUR: 'Metal Caratage',
+  METAL_CARATAGE: 'Metal',
+  GOLD_COLOUR: 'Metal',
   DIAMOND_TYPE: 'Diamond Type',
   DIAMOND_SPREAD: 'Diamond Spread',
   DIAMOND_WEIGHT: 'Diamond Wt',
@@ -1681,8 +1707,8 @@ function Modal({
   zIndexClass?: string;
 }) {
   return createPortal(
-    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-slate-900/60 p-4 sm:p-6 backdrop-blur-sm transition-all duration-300`}>
-      <div className={`relative flex w-full ${size} max-h-full flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl`}>
+    <div className={`fixed inset-0 ${zIndexClass} flex items-start justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm transition-all duration-300 sm:p-6`}>
+      <div className={`relative my-auto flex max-h-[calc(100dvh-2rem)] w-full ${size} flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]`}>
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
           <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
@@ -3220,7 +3246,7 @@ export default function ProductsPage() {
 
     if (inlineMasterType === 'FINDING_HEAD') {
       if (!findingPayload?.findingNo || !findingPayload?.metalCaratage) {
-        showAppAlert('Finding No and Metal Caratage are required.');
+        showAppAlert('Finding No and Metal are required.');
         return;
       }
       if (inlinePricePerUnit.trim().length === 0 || inlineWeightPerUnit.trim().length === 0) {
@@ -3332,7 +3358,7 @@ export default function ProductsPage() {
       weightPerPc: parseNum(packetForm.weightPerPc),
       pieces: 1,
       weight: parseNum(packetForm.weightPerPc),
-      weightUnit: packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS',
+      weightUnit: 'CTS',
     };
 
     if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
@@ -3789,7 +3815,9 @@ export default function ProductsPage() {
     const coverages = uniqueNonEmptyValues(masterOptions.diamondSpreads.map((option) => option.value));
     const diamondQualities = uniqueNonEmptyValues(masterOptions.diamondQualities.map((option) => option.value));
     const caratWeights = uniqueNonEmptyValues(masterOptions.diamondWeights.map((option) => option.value));
-    const sizes = uniqueNonEmptyValues([...filteredSizeOptions, versionBuilderBaseDesign.jewelrySize]);
+    const sizes = sortJewelrySizeValues(
+      uniqueNonEmptyValues([...filteredSizeOptions, versionBuilderBaseDesign.jewelrySize]),
+    );
 
     return VERSION_BUILDER_DIMENSION_CONFIG.map((dimension) => {
       if (dimension.id === 'metals') {
@@ -5887,13 +5915,13 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const usedMetalKeys = new Set<string>();
     if (!metalRows.some((row) => row.goldColour.trim())) {
-      showAppAlert('Please add at least one Metal Caratage in Metal Information before saving the design.');
+      showAppAlert('Please add at least one Metal in Metal Information before saving the design.');
       return;
     }
 
     for (const row of metalRows) {
       if (!row.goldColour.trim()) {
-        showAppAlert('Metal Caratage is required for all Metal rows.');
+        showAppAlert('Metal is required for all Metal rows.');
         return;
       }
       if (!row.netWt.trim()) {
@@ -5925,7 +5953,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       const key = normalizeLookupKey(row.goldColour);
       if (!key) continue;
       if (usedMetalKeys.has(key)) {
-        showAppAlert('Each Metal Caratage can be used only once.');
+        showAppAlert('Each Metal can be used only once.');
         return;
       }
       usedMetalKeys.add(key);
@@ -6265,7 +6293,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             (row) => row.id !== id && normalizeLookupKey(row.goldColour) === normalizedValue,
           );
         if (isDuplicate) {
-          showAppAlert('This Metal Caratage is already used in another line.');
+          showAppAlert('This Metal is already used in another line.');
           return prev;
         }
       }
@@ -6558,7 +6586,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <th>Jewelry Size</th>
               <th>Diamond Type</th>
               <th>Diamond Spread</th>
-              <th>Metal Caratage</th>
+              <th>Metal</th>
               <th>Sub Category</th>
               <th>Stone Info</th>
               <th>Price</th>
@@ -7593,6 +7621,49 @@ const createDefaultVendorRow = (): VendorRow => ({
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">
+                            {group.id === 'sizes' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
+                                  onClick={() =>
+                                    setAllVersionBuilderValues(
+                                      group.id,
+                                      getJewelrySizesByStep(group.values, 'FULL'),
+                                    )
+                                  }
+                                  disabled={!hasValues}
+                                >
+                                  Full sizes
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
+                                  onClick={() =>
+                                    setAllVersionBuilderValues(
+                                      group.id,
+                                      getJewelrySizesByStep(group.values, 'HALF'),
+                                    )
+                                  }
+                                  disabled={!hasValues}
+                                >
+                                  Half sizes
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
+                                  onClick={() =>
+                                    setAllVersionBuilderValues(
+                                      group.id,
+                                      getJewelrySizesByStep(group.values, 'QUARTER'),
+                                    )
+                                  }
+                                  disabled={!hasValues}
+                                >
+                                  Quarter sizes
+                                </button>
+                              </>
+                            ) : null}
                             <button
                               type="button"
                               className="rounded-lg border border-[#ddd2c3] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#6f6358] transition hover:border-[#cdb58d] hover:bg-[#fbf8f3]"
@@ -9787,7 +9858,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <table className="w-full min-w-[1020px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
-                          <th className="px-2 py-2">Metal Caratage</th>
+                          <th className="px-2 py-2">Metal</th>
                           <th className="px-2 py-2">Net Wt. *</th>
                           <th className="px-2 py-2">Wastage %</th>
                           <th className="px-2 py-2">Wastage Wt.</th>
@@ -9807,7 +9878,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   value={item.goldColour}
                                   onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
                                 >
-                                  <option value="">Select Metal Caratage</option>
+                                  <option value="">Select Metal</option>
                                   {!(
                                     (masterOptions.metalCaratages.length > 0
                                       ? masterOptions.metalCaratages
@@ -9854,7 +9925,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                       updateMetalRow(item.id, 'goldColour', masterValue),
                                     )
                                   }
-                                  title="Add Metal Caratage"
+                                  title="Add Metal"
                                 >
                                   +
                                 </button>
@@ -10619,12 +10690,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
                   <input
                     className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     value={inlineMasterAliasName}
                     onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Metal Caratage Name"
+                    placeholder="Metal Name"
                     required
                   />
                 </div>
@@ -10668,12 +10739,12 @@ const createDefaultVendorRow = (): VendorRow => ({
             {inlineMasterType === 'FINDING_HEAD' ? (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage*</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal*</label>
                   <input
                     className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                     value={inlineMetalCaratage}
                     onChange={(event) => setInlineMetalCaratage(event.target.value)}
-                    placeholder="Metal Caratage"
+                    placeholder="Metal"
                     required
                   />
                 </div>
@@ -11085,28 +11156,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight In</label>
-                  <div className="flex items-center gap-3 rounded border border-gray-300 bg-white px-3 py-2 text-sm">
-                    <label className="inline-flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name="packet-weight-in"
-                        value="CTS"
-                        checked={packetForm.weightIn === 'CTS'}
-                        onChange={(event) => updatePacketFormField('weightIn', event.target.value)}
-                      />
-                      <span>Cts</span>
-                    </label>
-                    <label className="inline-flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name="packet-weight-in"
-                        value="GRAM"
-                        checked={packetForm.weightIn === 'GRAM'}
-                        onChange={(event) => updatePacketFormField('weightIn', event.target.value)}
-                      />
-                      <span>Gram</span>
-                    </label>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight Unit</label>
+                  <div className="flex min-h-[38px] items-center justify-between rounded border border-gray-300 bg-white px-3 py-2 text-sm">
+                    <span className="text-slate-700">Carats</span>
+                    <span className="rounded-md bg-[#f4ede3] px-2 py-0.5 text-xs font-bold tracking-wide text-[#80632f]">
+                      CTS
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -11136,9 +11191,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       onChange={(event) => updatePacketFormField('weightPerPc', event.target.value)}
                       placeholder="Weight/Pc."
                     />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">
-                      {packetForm.weightIn === 'GRAM' ? 'GMS' : 'CTS'}
-                    </span>
+                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">CTS</span>
                   </div>
                 </div>
               </div>
@@ -11412,7 +11465,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <table className="min-w-full text-sm">
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
                     <tr>
-                      <th className="px-3 py-2">Metal Caratage</th>
+                      <th className="px-3 py-2">Metal</th>
                       <th className="px-3 py-2">Net Wt.</th>
                       <th className="px-3 py-2">Wastage %</th>
                       <th className="px-3 py-2">Wastage Wt.</th>
@@ -11802,7 +11855,3 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
-
-
-
-

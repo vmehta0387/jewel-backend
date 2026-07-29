@@ -209,6 +209,19 @@
   .sidebar-blitz .blitz-subtitle {
     color: #cfaa66;
   }
+
+  @media (min-width: 1024px) {
+    .sidebar-blitz-collapsed .blitz-wordmark {
+      display: none;
+    }
+    .sidebar-blitz-collapsed .blitz-brand-row {
+      gap: 0;
+    }
+    .sidebar-blitz-collapsed .blitz-bolt {
+      width: 44px;
+      height: 44px;
+    }
+  }
 }
 
 @layer utilities {

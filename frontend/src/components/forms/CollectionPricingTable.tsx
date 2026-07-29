@@ -29,11 +29,11 @@ export function validateCollectionOverrides(overrides: CollectionOverride[]): st
     }
 
     if (override.multiplier === '' || Number.isNaN(override.multiplier)) {
-      return `${rowLabel}: Mark-up is required and must be a valid number between 1 and 10`;
+      return `${rowLabel}: Markup is required and must be a valid number between 1 and 10`;
     }
 
     if (override.multiplier < 1 || override.multiplier > 10) {
-      return `${rowLabel}: Mark-up must be between 1 and 10`;
+      return `${rowLabel}: Markup must be between 1 and 10`;
     }
 
     const key = override.collectionType.trim();
@@ -74,7 +74,7 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
             <thead>
               <tr>
                 <th className="app-table-head-cell">Collection Type</th>
-                <th className="app-table-head-cell">Mark-up</th>
+                <th className="app-table-head-cell">Markup</th>
                 <th className="app-table-head-cell text-right">Action</th>
               </tr>
             </thead>
@@ -130,6 +130,5 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
     </div>
   );
 }
-
 
 

@@ -406,8 +406,8 @@ function Modal({
   size?: string;
 }) {
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/60 p-4 sm:items-center sm:p-6 backdrop-blur-sm transition-all duration-300">
-      <div className={`relative flex w-full ${size} max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]`}>
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm transition-all duration-300 sm:p-6">
+      <div className={`relative my-auto flex max-h-[calc(100dvh-2rem)] w-full ${size} flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]`}>
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
           <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
           <button
@@ -1554,7 +1554,7 @@ export default function OrdersPage() {
             <h2>Metal Information</h2>
             <table>
               <thead>
-                <tr><th>Metal Caratage</th><th>Net Wt.</th><th>Total Wt.</th><th>Value</th></tr>
+                <tr><th>Metal</th><th>Net Wt.</th><th>Total Wt.</th><th>Value</th></tr>
               </thead>
               <tbody>${metalRows}</tbody>
             </table>

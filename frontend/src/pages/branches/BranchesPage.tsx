@@ -109,6 +109,11 @@ export default function BranchesPage() {
       ),
     },
     {
+      key: 'userCount',
+      label: 'Total Users',
+      render: (val: number) => <span>{val ?? 0}</span>,
+    },
+    {
       key: 'pricing',
       label: 'Pricing',
       render: (_: any, row: any) =>

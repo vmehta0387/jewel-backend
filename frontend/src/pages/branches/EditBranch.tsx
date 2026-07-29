@@ -209,7 +209,7 @@ export default function EditBranch() {
     if (!formData.name.trim()) newErrors.name = 'Branch name is required';
     if (!formData.code.trim()) newErrors.code = 'Branch code is required';
     if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
-      newErrors.branchMultiplier = 'Multiplier must be between 1 and 10';
+      newErrors.branchMultiplier = 'Markup must be between 1 and 10';
     }
     if (formData.email && !EMAIL_REGEX.test(formData.email)) {
       newErrors.email = 'Invalid email format';
@@ -670,7 +670,7 @@ export default function EditBranch() {
           <div className="space-y-4">
             <Input
               id="branchMultiplier"
-              label="Default Branch Multiplier *"
+              label="Default Branch Markup *"
               type="number"
               min="1"
               max="10"
@@ -818,5 +818,4 @@ export default function EditBranch() {
     </div>
   );
 }
-
 

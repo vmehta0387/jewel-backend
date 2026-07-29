@@ -28,7 +28,7 @@ export const validatePricingSlabs = (slabs: Slab[]): string | null => {
       return `${rowLabel}: Max Cost is required and must be a valid number, 0 or greater`;
     }
     if (slab.multiplier === '' || Number.isNaN(slab.multiplier) || !Number.isFinite(slab.multiplier)) {
-      return `${rowLabel}: Mark-up is required and must be a valid number between 1 and 10`;
+      return `${rowLabel}: Markup is required and must be a valid number between 1 and 10`;
     }
 
     const minCost = Number(slab.minCost);
@@ -45,7 +45,7 @@ export const validatePricingSlabs = (slabs: Slab[]): string | null => {
       return `${rowLabel}: Max Cost must be greater than or equal to Min Cost`;
     }
     if (multiplier < 1 || multiplier > 10) {
-      return `${rowLabel}: Mark-up must be between 1 and 10`;
+      return `${rowLabel}: Markup must be between 1 and 10`;
     }
     if (index > 0 && minCost <= Number(sorted[index - 1].maxCost)) {
       return `${rowLabel}: Min Cost overlaps with the previous range`;
@@ -79,7 +79,7 @@ export default function PricingSlabTable({ slabs, setSlabs }: Props) {
               <tr>
                 <th className="app-table-head-cell">Min Cost</th>
                 <th className="app-table-head-cell">Max Cost</th>
-                <th className="app-table-head-cell">Mark-up</th>
+                <th className="app-table-head-cell">Markup</th>
                 <th className="app-table-head-cell text-right">Action</th>
               </tr>
             </thead>
@@ -145,5 +145,4 @@ export default function PricingSlabTable({ slabs, setSlabs }: Props) {
     </div>
   );
 }
-
 
