@@ -8,6 +8,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { registerPushDevice } from '../api/notifications';
@@ -91,6 +92,7 @@ export type QuoteSummaryPayload = {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  salesRepName?: string;
   purchaseOrderNumber?: string;
   branchName?: string;
   notes?: string;
@@ -132,6 +134,7 @@ const OrdersStack = createNativeStackNavigator<OrdersStackParamList>();
 const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+const NAVIGATION_STATE_KEY_PREFIX = 'navigation_state';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -438,6 +441,55 @@ const LoadingScreen = () => (
 const RootNavigator = () => {
   const { token, isLoading, user } = useAuth();
   const registeredPushTokenRef = useRef<string | null>(null);
+  const persistedNavigationKeyRef = useRef<string | null>(null);
+  const [initialNavigationState, setInitialNavigationState] = useState<any>(undefined);
+  const [isNavigationStateLoading, setIsNavigationStateLoading] = useState(true);
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    let active = true;
+    const restoreNavigationState = async () => {
+      if (!token || !user?.id) {
+        const previousKey = persistedNavigationKeyRef.current;
+        persistedNavigationKeyRef.current = null;
+        setInitialNavigationState(undefined);
+        setIsNavigationStateLoading(false);
+        if (previousKey) {
+          await AsyncStorage.removeItem(previousKey);
+        }
+        return;
+      }
+
+      const storageKey = `${NAVIGATION_STATE_KEY_PREFIX}:${user.id}`;
+      persistedNavigationKeyRef.current = storageKey;
+      setIsNavigationStateLoading(true);
+      try {
+        const savedState = await AsyncStorage.getItem(storageKey);
+        if (!active) return;
+        setInitialNavigationState(savedState ? JSON.parse(savedState) : undefined);
+      } catch {
+        if (!active) return;
+        setInitialNavigationState(undefined);
+        await AsyncStorage.removeItem(storageKey);
+      } finally {
+        if (active) {
+          setIsNavigationStateLoading(false);
+        }
+      }
+    };
+
+    void restoreNavigationState();
+    return () => {
+      active = false;
+    };
+  }, [isLoading, token, user?.id]);
+
+  const handleNavigationStateChange = useCallback((state: any) => {
+    const storageKey = persistedNavigationKeyRef.current;
+    if (!storageKey || !state) return;
+    void AsyncStorage.setItem(storageKey, JSON.stringify(state));
+  }, []);
 
   useEffect(() => {
     if (!token || !user || !canReceivePushForRole(user.role)) {
@@ -479,12 +531,18 @@ const RootNavigator = () => {
     };
   }, [token, user]);
 
-  if (isLoading) {
+  if (isLoading || isNavigationStateLoading) {
     return <LoadingScreen />;
   }
 
   return (
-    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+    <NavigationContainer
+      key={token && user?.id ? `app-navigation-${user.id}` : 'auth-navigation'}
+      ref={navigationRef}
+      theme={navigationTheme}
+      initialState={token ? initialNavigationState : undefined}
+      onStateChange={handleNavigationStateChange}
+    >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (
           <RootStack.Screen name="App">

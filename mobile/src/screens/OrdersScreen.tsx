@@ -170,11 +170,32 @@ const formatRelativeTime = (date?: string | null) => {
 };
 
 const stripSelectionLabel = (value?: string | null) =>
-  String(value || '').replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|shape)\s*[:\-]\s*/i, '').trim();
+  String(value || '').replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|stone|shape)\s*[:\-]\s*/i, '').trim();
 
 const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPayload['selection'] => {
   const text = String(value || '').trim();
   if (!text) return {};
+
+  const labeledSelection: QuoteSummaryPayload['selection'] = {};
+  text.split(/\s*[|•]\s*/).forEach((part) => {
+    const separatorIndex = part.indexOf(':');
+    if (separatorIndex < 0) return;
+    const label = part.slice(0, separatorIndex).trim().toLowerCase();
+    const selectedValue = part.slice(separatorIndex + 1).trim();
+    if (!selectedValue) return;
+
+    if (label === 'stone' || label === 'shape') {
+      labeledSelection.shape = selectedValue.split(',')[0]?.trim() || selectedValue;
+    }
+    else if (label === 'metal') labeledSelection.metalColor = selectedValue;
+    else if (label === 'coverage') labeledSelection.style = selectedValue;
+    else if (label === 'dia. weight' || label === 'diamond weight') labeledSelection.weight = selectedValue;
+    else if (label === 'dia. quality' || label === 'diamond quality') labeledSelection.quality = selectedValue;
+    else if (label === 'jewelry size' || label === 'ring size') labeledSelection.ringSize = selectedValue;
+  });
+  if (Object.values(labeledSelection).some(Boolean)) {
+    return labeledSelection;
+  }
 
   const tokens = text
     .replace(/[|•]/g, ' - ')
@@ -338,6 +359,7 @@ const OrdersScreen = () => {
         customerName: order.customerName || undefined,
         customerPhone: order.customerPhone || undefined,
         customerEmail: order.customerEmail || undefined,
+        salesRepName: order.salesRepName || undefined,
         purchaseOrderNumber: order.purchaseOrderNumber || undefined,
         branchName: order.branchName || undefined,
         notes: order.notes || undefined,

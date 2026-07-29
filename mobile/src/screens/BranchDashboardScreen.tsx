@@ -581,17 +581,15 @@ const BranchDashboardScreen = () => {
               ) : (
                 <>
                   <Text style={styles.statLabelSpiff}>
-                    {isCompanyAdmin ? 'AVG ORDER' : isBranchManager ? 'PENDING' : 'SPIFF'}
+                    {isCompanyAdmin ? 'AVG ORDER' : 'SPIFF'}
                   </Text>
                   <Text style={styles.statNumberSpiff}>
                     {isCompanyAdmin
                       ? formatMoneyCompact(companyAvgOrder)
-                      : isBranchManager
-                        ? formatWhole(summary?.pendingApprovalOrders)
-                        : formatMoney(spiffEarned)}
+                      : formatMoney(spiffEarned)}
                   </Text>
                   <Text style={styles.statSubTextSpiff}>
-                    {isCompanyAdmin ? 'monthly avg' : isBranchManager ? 'needs review' : 'earned'}
+                    {isCompanyAdmin ? 'monthly avg' : 'earned'}
                   </Text>
                 </>
               )}
@@ -660,7 +658,7 @@ const BranchDashboardScreen = () => {
               <View style={styles.quickRow}>
                 <TouchableOpacity style={[styles.quickCard, styles.quickCardDark]} onPress={() => navigation.navigate('OrdersTab')}>
                   <Ionicons
-                    name={isManagerLike ? 'time-outline' : 'checkbox-outline'}
+                    name={isManagerLike ? 'document-text-outline' : 'checkbox-outline'}
                     size={20}
                     color="#FFFFFF"
                     style={styles.quickCardIcon}

@@ -5,6 +5,7 @@ import {
   Keyboard,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -85,6 +86,34 @@ const THEME_ACTION_COLOR = '#BE9851';
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
 
+const splitStoneOptions = (values: Array<string | number | null | undefined>) =>
+  uniqueValues(
+    values.flatMap((value) =>
+      compact(value)
+        .split(',')
+        .map((stone) => stone.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const firstStone = (value?: string | number | null) => splitStoneOptions([value])[0] || '';
+
+const sortJewelrySizes = (values: Array<string | number | null | undefined>) =>
+  uniqueValues(values).sort((left, right) => {
+    const leftNumber = Number.parseFloat(left.match(/-?\d+(?:\.\d+)?/)?.[0] || '');
+    const rightNumber = Number.parseFloat(right.match(/-?\d+(?:\.\d+)?/)?.[0] || '');
+    const leftIsNumeric = Number.isFinite(leftNumber);
+    const rightIsNumeric = Number.isFinite(rightNumber);
+
+    if (leftIsNumeric && rightIsNumeric && leftNumber !== rightNumber) {
+      return leftNumber - rightNumber;
+    }
+    if (leftIsNumeric !== rightIsNumeric) {
+      return leftIsNumeric ? -1 : 1;
+    }
+    return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
 const toCtwLabel = (value?: string | number | null) => {
   const clean = compact(value);
   if (!clean) return '';
@@ -120,12 +149,20 @@ const toMetalShortCode = (value?: string | null) => {
 };
 
 const buildSelectionSummaryPlain = (selection: VersionFilters) =>
-  [toMetalShortCode(selection.metalColor), selection.style, selection.quality, toCtwLabel(selection.weight), selection.ringSize]
-    .filter(Boolean)
-    .join(' - ');
+  [
+    ['Stone', selection.shape],
+    ['Metal', selection.metalColor],
+    ['Coverage', selection.style],
+    ['Dia. Weight', selection.weight],
+    ['Dia. Quality', selection.quality],
+    ['Jewelry Size', selection.ringSize],
+  ]
+    .filter(([, value]) => Boolean(compact(value)))
+    .map(([label, value]) => `${label}: ${compact(value)}`)
+    .join(' | ');
 
 const getVersionAttributes = (design: Design) => ({
-  shapes: uniqueValues(design.gemstones?.map((gem) => gem.shape) || []),
+  shapes: splitStoneOptions(design.gemstones?.map((gem) => gem.stone || gem.stoneType) || []),
   styles: uniqueValues([design.diamondSpread]),
   metalColors: uniqueValues([...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []), design.goldColour]),
   weights: uniqueValues([design.diamondWeight]),
@@ -155,7 +192,7 @@ const emptyOptionGroups = (): VersionOptionGroups => ({
 });
 
 const filtersFromConfigurator = (response: MobileConfiguratorResponse): VersionFilters => ({
-  shape: response.selectedOptions?.shape || response.optionGroups.shape?.[0] || '',
+  shape: firstStone(response.selectedOptions?.shape || response.optionGroups.shape?.[0]),
   style: response.selectedOptions?.style || response.optionGroups.style?.[0] || '',
   metalColor: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage?.[0] || '',
   weight: response.selectedOptions?.weight || response.optionGroups.weight?.[0] || '',
@@ -167,7 +204,7 @@ const optionGroupsFromConfigurator = (
   response: MobileConfiguratorResponse,
   selected: VersionFilters,
 ): VersionOptionGroups => ({
-  shape: uniqueValues([...(response.optionGroups.shape || []), selected.shape]),
+  shape: splitStoneOptions([...(response.optionGroups.shape || []), selected.shape]),
   style: uniqueValues([...(response.optionGroups.style || []), selected.style]),
   metalColor: uniqueValues([...(response.optionGroups.metalCaratage || []), selected.metalColor]),
   weight: uniqueValues([...(response.optionGroups.weight || []), selected.weight]),
@@ -230,7 +267,7 @@ const QuoteBuilderScreen = () => {
   const [optionGroups, setOptionGroups] = useState<VersionOptionGroups>(() => emptyOptionGroups());
   const [priceByDesignId, setPriceByDesignId] = useState<Record<string, number>>({});
 
-  const [shape, setShape] = useState(draft.selection?.shape || '');
+  const [shape, setShape] = useState(firstStone(draft.selection?.shape));
   const [metalColor, setMetalColor] = useState(draft.selection?.metalColor || '');
   const [style, setStyle] = useState(draft.selection?.style || '');
   const [weight, setWeight] = useState(draft.selection?.weight || '');
@@ -242,6 +279,7 @@ const QuoteBuilderScreen = () => {
   const [customerPhone, setCustomerPhone] = useState(draft.customerPhone || '');
   const [customerEmail, setCustomerEmail] = useState(draft.customerEmail || '');
   const [customerErrors, setCustomerErrors] = useState<CustomerFieldErrors>({});
+  const [purchaseOrderError, setPurchaseOrderError] = useState(false);
   const [notes, setNotes] = useState(draft.notes || '');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -263,6 +301,7 @@ const QuoteBuilderScreen = () => {
     setCustomerPhone(draft.customerPhone || '');
     setCustomerEmail(draft.customerEmail || '');
     setCustomerErrors({});
+    setPurchaseOrderError(false);
     setNotes(draft.notes || '');
     setEditingOrderId(draft.orderId || null);
   }, [
@@ -336,8 +375,19 @@ const QuoteBuilderScreen = () => {
     setRingSize(next.ringSize || '');
   }, []);
 
-  const applyConfiguratorResponse = useCallback((response: MobileConfiguratorResponse) => {
-    const selected = filtersFromConfigurator(response);
+  const applyConfiguratorResponse = useCallback((
+    response: MobileConfiguratorResponse,
+    preferredSelection?: Partial<VersionFilters>,
+  ) => {
+    const responseSelection = filtersFromConfigurator(response);
+    const selected: VersionFilters = {
+      shape: firstStone(preferredSelection?.shape) || responseSelection.shape,
+      style: compact(preferredSelection?.style) || responseSelection.style,
+      metalColor: compact(preferredSelection?.metalColor) || responseSelection.metalColor,
+      weight: compact(preferredSelection?.weight) || responseSelection.weight,
+      quality: compact(preferredSelection?.quality) || responseSelection.quality,
+      ringSize: compact(preferredSelection?.ringSize) || responseSelection.ringSize,
+    };
     const design = response.selectedDesign;
     setFamilyDesigns([design]);
     setOptionGroups(optionGroupsFromConfigurator(response, selected));
@@ -356,7 +406,16 @@ const QuoteBuilderScreen = () => {
       try {
         if (!active) return;
         const response = draft.configurator || await fetchMobileDesignConfigurator(token, draft.designId);
-        if (active) applyConfiguratorResponse(response);
+        if (active) {
+          applyConfiguratorResponse(response, {
+            shape: draft.selection?.shape,
+            style: draft.selection?.style,
+            metalColor: draft.selection?.metalColor,
+            weight: draft.selection?.weight,
+            quality: draft.selection?.quality,
+            ringSize: draft.selection?.ringSize,
+          });
+        }
       } catch {
         if (active) {
           setFamilyDesigns([]);
@@ -372,7 +431,18 @@ const QuoteBuilderScreen = () => {
     return () => {
       active = false;
     };
-  }, [token, draft.designId, draft.configurator, applyConfiguratorResponse]);
+  }, [
+    token,
+    draft.designId,
+    draft.configurator,
+    draft.selection?.shape,
+    draft.selection?.style,
+    draft.selection?.metalColor,
+    draft.selection?.weight,
+    draft.selection?.quality,
+    draft.selection?.ringSize,
+    applyConfiguratorResponse,
+  ]);
 
   const activeDesign = useMemo(() => {
     if (!familyDesigns.length) return null;
@@ -391,7 +461,7 @@ const QuoteBuilderScreen = () => {
 
   const shapeOptions = useMemo(() => {
     const values = optionGroups.shape;
-    return values.length ? values : uniqueValues([shape]);
+    return splitStoneOptions(values.length ? values : [shape]);
   }, [optionGroups.shape, shape]);
   const styleOptions = useMemo(() => {
     const values = optionGroups.style;
@@ -411,7 +481,7 @@ const QuoteBuilderScreen = () => {
   }, [optionGroups.quality, quality]);
   const ringSizeOptions = useMemo(() => {
     const values = optionGroups.ringSize;
-    return values.length ? values : uniqueValues([ringSize]);
+    return sortJewelrySizes(values.length ? values : [ringSize]);
   }, [optionGroups.ringSize, ringSize]);
 
   const selection = useMemo<VersionFilters>(
@@ -587,7 +657,13 @@ const QuoteBuilderScreen = () => {
     if (!dropdownVisible || !dropdownKey || !dropdownLayout) return null;
 
     return (
-      <View style={styles.dropdownOverlay} pointerEvents="box-none">
+      <View style={styles.dropdownOverlay} pointerEvents="auto">
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={closeDropdown}
+          accessibilityRole="button"
+          accessibilityLabel="Close options"
+        />
         <View
           style={[
             styles.inlineDropdownMenu,
@@ -660,13 +736,22 @@ const QuoteBuilderScreen = () => {
     dropdownSearch,
     dropdownSelected,
     dropdownVisible,
+    closeDropdown,
     filteredDropdownOptions,
     handleDropdownSelect,
   ]);
 
   const currentOrderStatus = String(order?.status || draft.status || '').toUpperCase();
   const isApprovedOrderLocked = currentOrderStatus === 'APPROVED' && user?.role !== 'BRANCH_MANAGER';
-  const canPersist = Boolean(token && companyId && branchId && !saving && !sending && !isApprovedOrderLocked);
+  const canPersist = Boolean(
+    token
+    && companyId
+    && branchId
+    && !saving
+    && !sending
+    && !loadingFamily
+    && !isApprovedOrderLocked,
+  );
 
   const clearCustomerError = useCallback((field: keyof CustomerFieldErrors) => {
     setCustomerErrors((prev) => {
@@ -680,6 +765,7 @@ const QuoteBuilderScreen = () => {
 
   const validateCustomerDetails = useCallback(() => {
     const nextErrors: CustomerFieldErrors = {};
+    const purchaseOrderMissing = !purchaseOrderNumber.trim();
     const phone = customerPhone.trim();
     const email = customerEmail.trim();
     const phoneDigits = phone.replace(/\D/g, '');
@@ -687,15 +773,21 @@ const QuoteBuilderScreen = () => {
     if (phone && (phoneDigits.length < 7 || phoneDigits.length > 15)) nextErrors.phone = 'Enter a valid phone number.';
     if (email && !emailPattern.test(email)) nextErrors.email = 'Enter a valid email address.';
 
+    setPurchaseOrderError(purchaseOrderMissing);
     setCustomerErrors(nextErrors);
-    const firstError = nextErrors.name || nextErrors.phone || nextErrors.email;
+    const firstError = purchaseOrderMissing
+      ? 'Purchase order number is required.'
+      : nextErrors.name || nextErrors.phone || nextErrors.email;
     if (firstError) {
       setError(firstError);
+      if (purchaseOrderMissing) {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }
       return false;
     }
 
     return true;
-  }, [customerEmail, customerName, customerPhone]);
+  }, [customerEmail, customerName, customerPhone, purchaseOrderNumber]);
 
   const persistOrder = useCallback(
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
@@ -898,6 +990,7 @@ const QuoteBuilderScreen = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!dropdownVisible}
         onTouchStart={closeDropdown}
         onScroll={(event) => {
           scrollYRef.current = event.nativeEvent.contentOffset.y;
@@ -915,11 +1008,22 @@ const QuoteBuilderScreen = () => {
             </View>
             <TextInput
               value={purchaseOrderNumber}
-              onChangeText={setPurchaseOrderNumber}
+              onChangeText={(value) => {
+                setPurchaseOrderNumber(value);
+                if (value.trim()) {
+                  setPurchaseOrderError(false);
+                  if (error === 'Purchase order number is required.') {
+                    setError(null);
+                  }
+                }
+              }}
               placeholder="PO-2024-LJ-0092"
               placeholderTextColor="#A69582"
-              style={styles.poInput}
+              style={[styles.poInput, purchaseOrderError ? styles.poInputError : null]}
             />
+            {purchaseOrderError ? (
+              <Text style={styles.poErrorText}>Purchase order number is required.</Text>
+            ) : null}
           </View>
 
           <View style={styles.itemCard}>
@@ -951,7 +1055,7 @@ const QuoteBuilderScreen = () => {
             </View>
 
             <View style={styles.dropdownGrid}>
-              {renderDropdownField('SHAPE', 'shape', shape, shapeOptions)}
+              {renderDropdownField('STONE', 'shape', shape, shapeOptions)}
               {renderDropdownField('METAL', 'metalColor', metalColor, metalColorOptions)}
               {renderDropdownField('COVERAGE', 'style', style, styleOptions)}
               {renderDropdownField('DIA. WEIGHT', 'weight', weight, weightOptions)}
@@ -965,7 +1069,7 @@ const QuoteBuilderScreen = () => {
                 value={notes}
                 onChangeText={setNotes}
                 style={styles.notesInput}
-                placeholder="Rush delivery by Nov 15 - Possible engraving TBD"
+                placeholder="notes"
                 placeholderTextColor="#94897C"
               />
             </View>
@@ -976,7 +1080,7 @@ const QuoteBuilderScreen = () => {
           ref={customerCardRef}
           style={styles.customerCard}
         >
-          <Text style={styles.blockLabel}>CUSTOMER INFO</Text>
+          <Text style={styles.blockLabel}>CUSTOMER INFO (Optional)</Text>
           <View
             ref={(node) => {
               customerFieldRefs.current.name = node;
@@ -1324,6 +1428,16 @@ const styles = StyleSheet.create({
     color: '#6E573B',
     fontSize: 14,
     fontWeight: '700',
+  },
+  poInputError: {
+    borderColor: '#B54040',
+    backgroundColor: '#FFF7F5',
+  },
+  poErrorText: {
+    marginTop: 5,
+    color: '#B54040',
+    fontSize: 11,
+    fontWeight: '600',
   },
   itemCard: {
     borderWidth: 1,

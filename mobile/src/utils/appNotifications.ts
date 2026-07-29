@@ -57,19 +57,21 @@ const getTone = (item: NotificationItem): NotificationTone => {
 };
 
 export const mapNotificationsToEntries = (items: NotificationItem[]): NotificationFeedEntry[] =>
-  items.map((item) => ({
-    id: item.id,
-    notificationId: item.id,
-    title: String(item.title || '').trim() || 'Notification',
-    subtitle: String(item.message || '').trim() || 'Open to view details',
-    time: formatNotificationTime(item.createdAt),
-    tone: getTone(item),
-    entityType: item.entityType ?? null,
-    entityId: item.entityId ?? null,
-    metadata: item.metadata ?? null,
-    isRead: Boolean(item.isRead),
-    createdAt: item.createdAt,
-  }));
+  items
+    .filter((item) => String(item.type || '').toUpperCase() !== 'DESIGN_UPDATED')
+    .map((item) => ({
+      id: item.id,
+      notificationId: item.id,
+      title: String(item.title || '').trim() || 'Notification',
+      subtitle: String(item.message || '').trim() || 'Open to view details',
+      time: formatNotificationTime(item.createdAt),
+      tone: getTone(item),
+      entityType: item.entityType ?? null,
+      entityId: item.entityId ?? null,
+      metadata: item.metadata ?? null,
+      isRead: Boolean(item.isRead),
+      createdAt: item.createdAt,
+    }));
 
 export const mapNotificationsToActivityItems = (items: NotificationItem[]): NotificationActivityItem[] =>
   mapNotificationsToEntries(items).map((item) => ({

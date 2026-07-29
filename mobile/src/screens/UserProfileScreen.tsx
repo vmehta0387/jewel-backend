@@ -42,23 +42,6 @@ const formatRole = (role?: string) => {
   }
 };
 
-const formatPermission = (permission: string) => {
-  const customMap: Record<string, string> = {
-    USER_MANAGEMENT: 'User Management',
-    ORDER_MANAGEMENT: 'Order Management',
-    PRICING_MANAGEMENT: 'Pricing Access',
-    CATALOG_MANAGEMENT: 'Catalog Access',
-    SPIFF_MANAGEMENT: 'Rewards Access',
-  };
-  return (
-    customMap[permission] ||
-    permission
-      .split('_')
-      .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
-      .join(' ')
-  );
-};
-
 const getErrorMessage = (e: any): string => {
   if (!e) return 'An unknown error occurred.';
   if (typeof e === 'string') return e;
@@ -329,9 +312,12 @@ const UserProfileScreen = () => {
             {isPersonalDirty ? (
               <TouchableOpacity onPress={handleSavePersonal} disabled={savingPersonal} style={styles.cardSaveBtn}>
                 {savingPersonal ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.cardSaveText}>Save</Text>
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                    <Text style={styles.cardSaveText}>Save</Text>
+                  </>
                 )}
               </TouchableOpacity>
             ) : null}
@@ -397,9 +383,12 @@ const UserProfileScreen = () => {
             {isSecurityDirty ? (
               <TouchableOpacity onPress={handleSaveSecurity} disabled={savingSecurity} style={styles.cardSaveBtn}>
                 {savingSecurity ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text style={styles.cardSaveText}>Save</Text>
+                  <>
+                    <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                    <Text style={styles.cardSaveText}>Save</Text>
+                  </>
                 )}
               </TouchableOpacity>
             ) : null}
@@ -474,19 +463,6 @@ const UserProfileScreen = () => {
             <Text style={styles.infoLabel}>Branch & Company</Text>
             <Text style={styles.infoValueText}>{companyBranch}</Text>
           </View>
-
-          {user?.taskPermissions && user.taskPermissions.length > 0 ? (
-            <View style={styles.infoBlock}>
-              <Text style={styles.infoLabel}>Given Permissions</Text>
-              <View style={styles.chipsContainer}>
-                {user.taskPermissions.map((permission, index) => (
-                  <View key={permission || index} style={styles.chip}>
-                    <Text style={styles.chipText}>{formatPermission(permission)}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
         </Card>
         {/* LOGOUT BUTTON */}
         <TouchableOpacity
@@ -651,20 +627,26 @@ const styles = StyleSheet.create({
     letterSpacing: 1.1,
   },
   cardSaveBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: radii.sm,
-    backgroundColor: 'rgba(197, 160, 89, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(197, 160, 89, 0.3)',
+    minWidth: 86,
+    minHeight: 38,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: radii.md,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    gap: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 50,
+    shadowColor: '#6E533D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.24,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cardSaveText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primaryDark,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   fieldBlock: {
     marginBottom: spacing.md,
@@ -732,25 +714,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.primaryDark,
-  },
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: '#E3DBD1',
-    borderRadius: radii.sm,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    backgroundColor: '#FAF8F5',
-  },
-  chipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textMuted,
   },
   logoutBtn: {
     flexDirection: 'row',

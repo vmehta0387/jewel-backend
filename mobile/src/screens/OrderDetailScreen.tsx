@@ -229,15 +229,6 @@ const OrderDetailScreen = () => {
     );
   }
   
-  // Resolve Status string
-  const activeDesignStatus = (() => {
-    if (designDetails?.stage) return designDetails.stage;
-    const row = designDetails as any;
-    if (typeof row?.isActive === 'boolean') return row?.isActive ? 'Active' : 'Inactive';
-    if (typeof row?.status === 'string') return row?.status;
-    return undefined;
-  })();
-
   return (
     <View style={styles.screenView}>
       <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
@@ -271,7 +262,6 @@ const OrderDetailScreen = () => {
           <Text style={styles.sectionTitle}>Design Specifications</Text>
           <View style={styles.detailsList}>
             <DetailRow label="Design No" value={order.designNo} boldValue />
-            <DetailRow label="Status" value={activeDesignStatus} />
             <DetailRow label="Category" value={designDetails?.jewelryGroup} />
             <DetailRow label="Sub Category" value={designDetails?.collection} />
             <DetailRow label="Jewelry Size" value={designDetails?.jewelrySize} />
@@ -822,4 +812,3 @@ const styles = StyleSheet.create({
 });
 
 export default OrderDetailScreen;
-

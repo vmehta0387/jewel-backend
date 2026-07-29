@@ -10,6 +10,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -94,7 +95,33 @@ const hasDisplayValue = (value?: string | number | null) => compact(value) !== '
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
 
+const splitStoneOptions = (values: Array<string | number | null | undefined>) =>
+  uniqueValues(
+    values.flatMap((value) =>
+      compact(value)
+        .split(',')
+        .map((stone) => stone.trim())
+        .filter(Boolean),
+    ),
+  );
+
 const cleanOptions = (values?: Array<string | number | null | undefined> | null) => uniqueValues(values || []);
+
+const sortJewelrySizes = (values?: Array<string | number | null | undefined> | null) =>
+  cleanOptions(values).sort((left, right) => {
+    const leftNumber = Number.parseFloat(left.match(/-?\d+(?:\.\d+)?/)?.[0] || '');
+    const rightNumber = Number.parseFloat(right.match(/-?\d+(?:\.\d+)?/)?.[0] || '');
+    const leftIsNumeric = Number.isFinite(leftNumber);
+    const rightIsNumeric = Number.isFinite(rightNumber);
+
+    if (leftIsNumeric && rightIsNumeric && leftNumber !== rightNumber) {
+      return leftNumber - rightNumber;
+    }
+    if (leftIsNumeric !== rightIsNumeric) {
+      return leftIsNumeric ? -1 : 1;
+    }
+    return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+  });
 
 const toCaratLabel = (value?: string | number | null) => {
   const clean = compact(value);
@@ -175,7 +202,7 @@ const getMetalOptionsFromDesign = (design: Design) => {
 
 const getVersionAttributes = (design: Design) => ({
   diamondTypes: uniqueValues([design.diamondType]),
-  shapes: uniqueValues(design.gemstones?.map((gem) => gem.shape) || []),
+  shapes: splitStoneOptions(design.gemstones?.map((gem) => gem.stone || gem.stoneType) || []),
   // Spread must come only from design-level field (not gemstone type).
   styles: uniqueValues([design.diamondSpread]),
   metalCaratages: getMetalOptionsFromDesign(design),
@@ -436,7 +463,7 @@ const DesignDetailScreen = () => {
     (response: MobileConfiguratorResponse, preservedOptions: Partial<VersionFilters> = {}) => {
       const responseSelectedOptions = {
         diamondType: response.selectedOptions?.diamondType || response.optionGroups.diamondType[0] || '',
-        shape: response.selectedOptions?.shape || response.optionGroups.shape[0] || '',
+        shape: splitStoneOptions([response.selectedOptions?.shape || response.optionGroups.shape[0]])[0] || '',
         style: response.selectedOptions?.style || response.optionGroups.style[0] || '',
         metalCaratage: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage[0] || '',
         weight: response.selectedOptions?.weight || response.optionGroups.weight[0] || '',
@@ -710,7 +737,7 @@ const DesignDetailScreen = () => {
     [optionGroups.weight],
   );
   const ringSizeOptions = useMemo(
-    () => cleanOptions(optionGroups.ringSize),
+    () => sortJewelrySizes(optionGroups.ringSize),
     [optionGroups.ringSize],
   );
 
@@ -1039,7 +1066,13 @@ const DesignDetailScreen = () => {
     if (!dropdownVisible || !dropdownKey || !dropdownLayout) return null;
 
     return (
-      <View style={styles.dropdownOverlay} pointerEvents="box-none">
+      <View style={styles.dropdownOverlay} pointerEvents="auto">
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={closeDropdown}
+          accessibilityRole="button"
+          accessibilityLabel="Close options"
+        />
         <View
           style={[
             styles.inlineDropdownMenu,
@@ -1357,6 +1390,7 @@ const DesignDetailScreen = () => {
           style={styles.detailScroll}
           contentContainerStyle={styles.detailScrollContent}
           showsVerticalScrollIndicator={false}
+          scrollEnabled={!dropdownVisible}
           onTouchStart={handleDetailTouchStart}
           onScroll={(event) => {
             detailScrollYRef.current = event.nativeEvent.contentOffset.y;
@@ -1367,7 +1401,7 @@ const DesignDetailScreen = () => {
           {hasConfiguratorOptions ? (
           <View style={[styles.configPanel, dropdownVisible ? styles.configPanelDropdownOpen : null]}>
             <OptionSection
-              title="METAL CARATAGE"
+              title="METAL"
               options={metalCaratageOptions}
               selected={selectedMetalCaratage}
               onSelect={(value) => {
@@ -2355,6 +2389,3 @@ const styles = StyleSheet.create({
 });
 
 export default DesignDetailScreen;
-
-
-

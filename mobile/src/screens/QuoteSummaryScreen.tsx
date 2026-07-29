@@ -74,23 +74,21 @@ const statusLabel = (status?: string) => {
 
 const normalizeStatus = (status?: string | null) => String(status || 'QUOTE').trim().toUpperCase();
 const compact = (value?: string | number | null) => String(value ?? '').trim();
-const KNOWN_SHAPES = ['oval', 'round', 'emerald', 'radiant', 'pear', 'marquise', 'princess', 'cushion', 'heart', 'asscher'];
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(compact(version));
   return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 };
 const stripSelectionLabel = (value?: string | null) =>
-  compact(value).replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|shape)\s*[:\-]\s*/i, '').trim();
+  compact(value).replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|stone|shape)\s*[:\-]\s*/i, '').trim();
 
 const isLikelyMetal = (value?: string | null) => /(wg|yg|rg|pt|white|yellow|rose|gold|platinum|\b\d{1,2}\s*k\b)/i.test(compact(value));
 const isLikelyCoverage = (value?: string | null) => /(eternity|full|half|3\/4|quarter|stone|pav|halo|solitaire)/i.test(compact(value));
 const isLikelyQuality = (value?: string | null) => /(vvs|vs|si|if|fl|lab|ef|gh|ij)/i.test(compact(value));
 const isLikelyWeight = (value?: string | null) => /(ctw|carat|carats|\bct\b)/i.test(compact(value));
 const isLikelyRingSize = (value?: string | null) => /^(?:\d+(?:\.\d+)?|size\s*\d+(?:\.\d+)?|ring size\s*\d+(?:\.\d+)?)$/i.test(compact(value));
-const isLikelyShape = (value?: string | null) => KNOWN_SHAPES.includes(compact(value).toLowerCase());
 
 const sanitizeSelection = (selection?: QuoteSummaryPayload['selection'] | null): QuoteSummaryPayload['selection'] => ({
-  shape: isLikelyShape(selection?.shape) ? compact(selection?.shape) : undefined,
+  shape: compact(selection?.shape).split(',')[0]?.trim() || undefined,
   metalColor: isLikelyMetal(selection?.metalColor) ? compact(selection?.metalColor) : undefined,
   style: isLikelyCoverage(selection?.style) ? compact(selection?.style) : undefined,
   weight: isLikelyWeight(selection?.weight) ? compact(selection?.weight) : undefined,
@@ -101,6 +99,27 @@ const sanitizeSelection = (selection?: QuoteSummaryPayload['selection'] | null):
 const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPayload['selection'] => {
   const text = compact(value);
   if (!text) return {};
+
+  const labeledSelection: QuoteSummaryPayload['selection'] = {};
+  text.split(/\s*[|\u2022]\s*/).forEach((part) => {
+    const separatorIndex = part.indexOf(':');
+    if (separatorIndex < 0) return;
+    const label = part.slice(0, separatorIndex).trim().toLowerCase();
+    const selectedValue = part.slice(separatorIndex + 1).trim();
+    if (!selectedValue) return;
+
+    if (label === 'stone' || label === 'shape') {
+      labeledSelection.shape = selectedValue.split(',')[0]?.trim() || selectedValue;
+    }
+    else if (label === 'metal') labeledSelection.metalColor = selectedValue;
+    else if (label === 'coverage') labeledSelection.style = selectedValue;
+    else if (label === 'dia. weight' || label === 'diamond weight') labeledSelection.weight = selectedValue;
+    else if (label === 'dia. quality' || label === 'diamond quality') labeledSelection.quality = selectedValue;
+    else if (label === 'jewelry size' || label === 'ring size') labeledSelection.ringSize = selectedValue;
+  });
+  if (Object.values(labeledSelection).some(Boolean)) {
+    return labeledSelection;
+  }
 
   const parts = text
     .replace(/[|\u2022]/g, ' - ')
@@ -139,7 +158,7 @@ const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPaylo
 const selectionFromDesign = (design?: Design | null): QuoteSummaryPayload['selection'] => {
   if (!design) return {};
   return sanitizeSelection({
-    shape: compact(design.gemstones?.[0]?.shape) || undefined,
+    shape: compact(design.gemstones?.[0]?.stone || design.gemstones?.[0]?.stoneType) || undefined,
     metalColor: compact(design.metals?.[0]?.metalCaratage || design.metals?.[0]?.goldColour || design.goldColour) || undefined,
     style: compact(design.diamondSpread) || undefined,
     weight: compact(design.diamondWeight) || undefined,
@@ -187,6 +206,7 @@ const mergeOrderIntoSummary = (base: QuoteSummaryPayload, order: Order): QuoteSu
   customerName: compact(order.customerName) || base.customerName,
   customerPhone: compact(order.customerPhone) || base.customerPhone,
   customerEmail: compact(order.customerEmail) || base.customerEmail,
+  salesRepName: compact(order.salesRepName) || base.salesRepName,
   purchaseOrderNumber: compact(order.purchaseOrderNumber) || base.purchaseOrderNumber,
   branchName: compact(order.branchName) || base.branchName,
   notes: compact(order.notes) || base.notes,
@@ -286,7 +306,7 @@ const QuoteSummaryScreen = () => {
     [resolvedSelection.quality, resolvedSelection.weight],
   );
   const itemLine3 = useMemo(
-    () => `Ring Size: ${resolvedSelection.ringSize || '-'} - Shape: ${resolvedSelection.shape || '-'}`,
+    () => `Ring Size: ${resolvedSelection.ringSize || '-'} - Stone: ${resolvedSelection.shape || '-'}`,
     [resolvedSelection.ringSize, resolvedSelection.shape],
   );
 
@@ -318,9 +338,17 @@ const QuoteSummaryScreen = () => {
     try {
       const payload = {
         designId: displaySummary.designId,
-        shortDescription: [resolvedSelection.metalColor, resolvedSelection.style, resolvedSelection.quality, toCtwLabel(resolvedSelection.weight), resolvedSelection.ringSize]
-          .filter(Boolean)
-          .join(' - '),
+        shortDescription: [
+          ['Stone', resolvedSelection.shape],
+          ['Metal', resolvedSelection.metalColor],
+          ['Coverage', resolvedSelection.style],
+          ['Dia. Weight', resolvedSelection.weight],
+          ['Dia. Quality', resolvedSelection.quality],
+          ['Jewelry Size', resolvedSelection.ringSize],
+        ]
+          .filter(([, value]) => Boolean(compact(value)))
+          .map(([label, value]) => `${label}: ${compact(value)}`)
+          .join(' | '),
         purchaseOrderNumber: displaySummary.purchaseOrderNumber || undefined,
         customerName: displaySummary.customerName || undefined,
         customerPhone: displaySummary.customerPhone || undefined,
@@ -530,6 +558,17 @@ const QuoteSummaryScreen = () => {
             Created {formatSummaryDate(displaySummary.createdAt)} - {displaySummary.customerName || 'Customer'}
           </Text>
           <View style={styles.topDivider} />
+          {displaySummary.salesRepName ? (
+            <View style={styles.salesRepRow}>
+              <View style={styles.salesRepIcon}>
+                <Ionicons name="person-outline" size={13} color="#9A7843" />
+              </View>
+              <Text style={styles.salesRepLabel}>SALES REP</Text>
+              <Text style={styles.salesRepName} numberOfLines={1}>
+                {displaySummary.salesRepName}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.infoGrid}>
             <View style={styles.infoCell}>
               <Text style={styles.infoLabel}>CUSTOMER</Text>
@@ -775,6 +814,39 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderTopWidth: 1,
     borderTopColor: '#E7DED1',
+  },
+  salesRepRow: {
+    minHeight: 32,
+    marginBottom: 8,
+    borderRadius: 9,
+    backgroundColor: '#FBF7F0',
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  salesRepIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F1E4CF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
+  },
+  salesRepLabel: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: '#928679',
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  salesRepName: {
+    flex: 1,
+    minWidth: 0,
+    color: '#3B332C',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right',
   },
   infoGrid: {
     flexDirection: 'row',
@@ -1047,6 +1119,3 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteSummaryScreen;
-
-
-

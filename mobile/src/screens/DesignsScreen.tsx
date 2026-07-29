@@ -178,7 +178,7 @@ const getDesignMetals = (design: Design) =>
   ]);
 
 const PRESET_CATEGORY_TITLES: Record<string, string> = {
-  rings: 'Eternity Rings',
+  rings: 'Ring',
   bracelets: 'Bracelets',
   studs: 'Studs',
   necklaces: 'Necklaces',
@@ -1318,4 +1318,3 @@ const styles = StyleSheet.create({
 });
 
 export default DesignsScreen;
-

@@ -47,7 +47,7 @@ const getFirstName = (value?: string | null) => {
 const buildWelcomeMessage = (firstName: string): ChatMessage => ({
   id: 'welcome-assistant',
   role: 'assistant',
-  text: `Hi ${firstName}! Ready to help you move some metal.`,
+  text: `Hi ${firstName}! Let's get your order moving.`,
   accentLine: 'What are we selling today?',
 });
 
@@ -99,7 +99,7 @@ const AiChatScreen = () => {
       if (!prev.length) return [buildWelcomeMessage(firstName)];
       if (prev[0].id !== 'welcome-assistant') return prev;
 
-      const nextText = `Hi ${firstName}! Ready to help you move some metal.`;
+      const nextText = `Hi ${firstName}! Let's get your order moving.`;
       if (prev[0].text === nextText) return prev;
 
       return [{ ...prev[0], text: nextText }, ...prev.slice(1)];
@@ -204,6 +204,15 @@ const AiChatScreen = () => {
     });
   }, [navigation, latestUserQuery]);
 
+  const handleInputFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      chatRef.current?.scrollToEnd({ animated: true });
+    });
+    setTimeout(() => {
+      chatRef.current?.scrollToEnd({ animated: true });
+    }, 250);
+  }, []);
+
   return (
     <View style={styles.screen}>
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -240,12 +249,17 @@ const AiChatScreen = () => {
 
         <View style={styles.headerDivider} />
 
-        <KeyboardAvoidingView style={styles.keyboardWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={styles.keyboardWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
           <ScrollView
             ref={chatRef}
             style={styles.chatScroll}
             contentContainerStyle={styles.chatContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => chatRef.current?.scrollToEnd({ animated: true })}
           >
             {thread.map((item) => {
@@ -329,6 +343,7 @@ const AiChatScreen = () => {
                 placeholderTextColor="#A59D96"
                 value={input}
                 onChangeText={setInput}
+                onFocus={handleInputFocus}
                 multiline
               />
             </View>
