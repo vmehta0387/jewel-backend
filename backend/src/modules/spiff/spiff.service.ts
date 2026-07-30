@@ -1246,7 +1246,7 @@ export class SpiffService {
     if (points >= 500) {
       return {
         code: 'SHARP',
-        label: 'Sharp',
+        label: 'Pro',
         badge: '🥈',
         minPoints: 500,
         maxPoints: 1499,
@@ -1257,7 +1257,7 @@ export class SpiffService {
 
     return {
       code: 'CLOSER',
-      label: 'Closer',
+      label: 'Starter',
       badge: '🥉',
       minPoints: 0,
       maxPoints: 499,

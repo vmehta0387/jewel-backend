@@ -5,6 +5,7 @@ import {
   Image,
   Modal,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,8 +25,9 @@ import {
   markNotificationRead,
 } from '../api/notifications';
 import NotificationPopover from '../components/NotificationPopover';
+import { fetchBranchEmployees } from '../api/branchEmployees';
 import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders';
-import type { Order } from '../types';
+import type { BranchEmployee, Order } from '../types';
 import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import {
   getSpiffClaimTargetFromNotification,
@@ -243,6 +245,8 @@ const OrdersScreen = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('PENDING_APPROVAL');
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState('ALL');
+  const [branchSalesReps, setBranchSalesReps] = useState<BranchEmployee[]>([]);
   const [actingOrderId, setActingOrderId] = useState<string | null>(null);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<{
@@ -253,6 +257,7 @@ const OrdersScreen = () => {
     top: 0,
     left: CONFIRM_POPOVER_MARGIN,
   });
+  const isBranchManager = user?.role === 'BRANCH_MANAGER';
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -261,7 +266,10 @@ const OrdersScreen = () => {
     try {
       const fullAccess =
         user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
-      const response = await fetchOrders(token, 1, 100, fullAccess ? 'ALL' : 'ACTIVE');
+      const [response, employeeRows] = await Promise.all([
+        fetchOrders(token, 1, 100, fullAccess ? 'ALL' : 'ACTIVE'),
+        isBranchManager ? fetchBranchEmployees(token).catch(() => []) : Promise.resolve([]),
+      ]);
       const rows = (response.data || []).filter(
         (order) => order.isActive !== false && normalizeStatus(order.status) !== 'CANCELLED',
       );
@@ -271,12 +279,41 @@ const OrdersScreen = () => {
         return bTime - aTime;
       });
       setOrders(rows);
+      setBranchSalesReps(employeeRows.filter((employee) => employee.role === 'SALES_REP'));
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
       setLoading(false);
     }
-  }, [token, user?.role]);
+  }, [isBranchManager, token, user?.role]);
+
+  const salesRepOptions = useMemo(() => {
+    const reps = new Map<string, string>();
+    branchSalesReps.forEach((employee) => {
+      const name = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.email;
+      reps.set(employee.id, name);
+    });
+    orders.forEach((order) => {
+      if (!order.salesRepId) return;
+      reps.set(order.salesRepId, order.salesRepName?.trim() || order.salesRepEmail?.trim() || 'Sales Representative');
+    });
+    return Array.from(reps, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [branchSalesReps, orders]);
+
+  useEffect(() => {
+    if (selectedSalesRepId === 'ALL') return;
+    if (!salesRepOptions.some((rep) => rep.id === selectedSalesRepId)) {
+      setSelectedSalesRepId('ALL');
+    }
+  }, [salesRepOptions, selectedSalesRepId]);
+
+  const salesRepFilteredOrders = useMemo(
+    () =>
+      selectedSalesRepId === 'ALL'
+        ? orders
+        : orders.filter((order) => order.salesRepId === selectedSalesRepId),
+    [orders, selectedSalesRepId],
+  );
 
   const countsByFilter = useMemo(() => {
     const initial: Record<FilterKey, number> = {
@@ -287,7 +324,7 @@ const OrdersScreen = () => {
       SHIPPED: 0,
     };
 
-    orders.forEach((order) => {
+    salesRepFilteredOrders.forEach((order) => {
       const key = normalizeStatus(order.status);
       if (key === 'QUOTE') initial.QUOTE += 1;
       else if (key === 'PENDING_APPROVAL') initial.PENDING_APPROVAL += 1;
@@ -297,11 +334,11 @@ const OrdersScreen = () => {
     });
 
     return initial;
-  }, [orders]);
+  }, [salesRepFilteredOrders]);
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return orders.filter((order) => {
+    return salesRepFilteredOrders.filter((order) => {
       const searchable = [
         order.orderNumber,
         order.designNo,
@@ -317,24 +354,23 @@ const OrdersScreen = () => {
       const matchesSearch = !term || searchable.includes(term);
       return matchesSearch && matchesFilter(order, selectedFilter);
     });
-  }, [orders, search, selectedFilter]);
+  }, [salesRepFilteredOrders, search, selectedFilter]);
 
   const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
-  const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
   const headerTitle = isSalesRepOrBranchManager ? 'Branch Orders' : 'My Orders';
   const visibleFilters = useMemo(() => {
-    if (isBranchManager || isCompanyAdmin) {
+    if (isCompanyAdmin) {
       return FILTERS.filter((filter) => filter.key !== 'QUOTE');
     }
     return FILTERS;
-  }, [isBranchManager, isCompanyAdmin]);
+  }, [isCompanyAdmin]);
 
   useEffect(() => {
-    if ((isBranchManager || isCompanyAdmin) && selectedFilter === 'QUOTE') {
+    if (isCompanyAdmin && selectedFilter === 'QUOTE') {
       setSelectedFilter('PENDING_APPROVAL');
     }
-  }, [isBranchManager, isCompanyAdmin, selectedFilter]);
+  }, [isCompanyAdmin, selectedFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -545,6 +581,18 @@ const OrdersScreen = () => {
   const renderActions = (order: Order) => {
     const status = normalizeStatus(order.status);
     if (status === 'QUOTE') {
+      if (isBranchManager) {
+        return (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnGhost, styles.quoteManagerViewButton]}
+            onPress={() => openOrderSummary(order)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.actionBtnGhostText}>View Details -&gt;</Text>
+          </TouchableOpacity>
+        );
+      }
+
       return (
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -658,7 +706,7 @@ const OrdersScreen = () => {
     const title = safeText(order.designNo, order.orderNumber);
     const subtitle =
       order.shortDescription?.replace(/\s*\|\s*/g, ' - ') ||
-      [order.customerName, order.purchaseOrderNumber ? `PO: ${order.purchaseOrderNumber}` : null].filter(Boolean).join(' - ');
+      order.customerName;
 
     const thumbRingColor =
       normalizeStatus(order.status) === 'SHIPPED' || normalizeStatus(order.status) === 'COMPLETED'
@@ -703,6 +751,15 @@ const OrdersScreen = () => {
             </Text>
             <Text style={styles.cardPrice}>{price}</Text>
           </View>
+
+          {order.purchaseOrderNumber?.trim() ? (
+            <View style={styles.customerPoRow}>
+              <Text style={styles.customerPoLabel}>Customer PO</Text>
+              <Text style={styles.customerPoValue} numberOfLines={1}>
+                {order.purchaseOrderNumber.trim()}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -847,6 +904,36 @@ const OrdersScreen = () => {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {isBranchManager && salesRepOptions.length > 0 ? (
+          <View style={styles.salesRepFilter}>
+            <Text style={styles.salesRepFilterLabel}>Sales Rep</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.salesRepFilterList}
+            >
+              {[{ id: 'ALL', name: 'All' }, ...salesRepOptions].map((rep) => {
+                const selected = selectedSalesRepId === rep.id;
+                return (
+                  <TouchableOpacity
+                    key={rep.id}
+                    style={[styles.salesRepChip, selected ? styles.salesRepChipActive : null]}
+                    onPress={() => setSelectedSalesRepId(rep.id)}
+                    activeOpacity={0.88}
+                  >
+                    <Text
+                      style={[styles.salesRepChipText, selected ? styles.salesRepChipTextActive : null]}
+                      numberOfLines={1}
+                    >
+                      {rep.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
 
         <View style={styles.filterRow}>{visibleFilters.map((item) => renderFilterChip(item))}</View>
       </View>
@@ -1072,6 +1159,44 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     fontWeight: '500',
   },
+  salesRepFilter: {
+    marginTop: 9,
+  },
+  salesRepFilterLabel: {
+    marginBottom: 5,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#6F665D',
+    fontWeight: '700',
+  },
+  salesRepFilterList: {
+    paddingRight: 4,
+  },
+  salesRepChip: {
+    maxWidth: 150,
+    minHeight: 30,
+    marginRight: 7,
+    paddingHorizontal: 11,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#DCCFC0',
+    backgroundColor: '#FAF8F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  salesRepChipActive: {
+    borderColor: '#B88B43',
+    backgroundColor: '#F6EBD8',
+  },
+  salesRepChipText: {
+    fontSize: 11,
+    color: '#746A61',
+    fontWeight: '500',
+  },
+  salesRepChipTextActive: {
+    color: '#7D5B24',
+    fontWeight: '700',
+  },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1229,6 +1354,25 @@ const styles = StyleSheet.create({
     color: '#B2874A',
     fontWeight: '800',
   },
+  customerPoRow: {
+    marginTop: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  customerPoLabel: {
+    marginRight: 5,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#7C746A',
+    fontWeight: '800',
+  },
+  customerPoValue: {
+    flexShrink: 1,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#2C241D',
+    fontWeight: '400',
+  },
   actionRow: {
     flexDirection: 'row',
     marginTop: 10,
@@ -1267,6 +1411,9 @@ const styles = StyleSheet.create({
     color: '#7B7268',
     fontSize: 13,
     fontWeight: '700',
+  },
+  quoteManagerViewButton: {
+    marginTop: 10,
   },
   actionBtnGhostRed: {
     flex: 1,

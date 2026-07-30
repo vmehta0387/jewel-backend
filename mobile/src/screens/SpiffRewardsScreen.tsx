@@ -62,11 +62,14 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 const TIER_RATES = [
-  { code: 'CLOSER', label: 'Closer', min: 0, max: 499, rate: 1.0 },
-  { code: 'SHARP', label: 'Sharp', min: 500, max: 1499, rate: 1.25 },
+  { code: 'CLOSER', label: 'Starter', min: 0, max: 499, rate: 1.0 },
+  { code: 'SHARP', label: 'Pro', min: 500, max: 1499, rate: 1.25 },
   { code: 'ELITE', label: 'Elite', min: 1500, max: 3999, rate: 1.5 },
   { code: 'LEGEND', label: 'Legend', min: 4000, max: null as number | null, rate: 2.0 },
 ] as const;
+
+const getTierLabel = (code?: string | null, fallback?: string | null) =>
+  TIER_RATES.find((tier) => tier.code === String(code || '').toUpperCase())?.label || fallback || 'Starter';
 
 type SalesRepPanel = 'COMPANY_BOARD' | 'GLOBAL_BOARD' | 'REDEEM' | 'ACTIVITY';
 type BranchManagerPanel = 'BRANCH_BOARD' | 'COMPANY_BOARD';
@@ -293,7 +296,7 @@ const SpiffRewardsScreen = () => {
   const progressRatio = Math.max(0, Math.min(totalPoints / progressGoal, 1));
   const pointsToNext = Math.max(0, nextTierAt - totalPoints);
   const tierCode = String(summary?.tier?.code || '').toUpperCase();
-  const tierLabel = summary?.tier?.label || 'Closer';
+  const tierLabel = getTierLabel(tierCode, summary?.tier?.label);
   const tierBadge = summary?.tier?.badge || '🥉';
   const hasGlobalBoardRows = (globalLeaderboard?.entries || []).length > 0;
   const globalBoardScope = String(globalLeaderboard?.scope || '').toUpperCase();
@@ -975,7 +978,7 @@ const SpiffRewardsScreen = () => {
             <View style={styles.statCardWide}>
               <Text style={styles.statLabel}>Tier</Text>
               <Text style={styles.tierText}>
-                {summary?.tier?.badge || '🥉'} {summary?.tier?.label || 'Closer'}
+                {summary?.tier?.badge || '🥉'} {getTierLabel(summary?.tier?.code, summary?.tier?.label)}
               </Text>
               <Text style={styles.tierHint}>{nextTierHint}</Text>
             </View>

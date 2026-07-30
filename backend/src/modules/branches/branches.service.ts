@@ -95,6 +95,15 @@ export class BranchesService {
       .leftJoinAndSelect('branch.branchManager', 'branchManager')
       .loadRelationCountAndMap('branch.pricingSlabCount', 'branch.pricingSlabs')
       .loadRelationCountAndMap('branch.userCount', 'branch.users')
+      .loadRelationCountAndMap(
+        'branch.salesRepCount',
+        'branch.users',
+        'salesRep',
+        (salesRepQuery) =>
+          salesRepQuery.andWhere('salesRep.role = :salesRepRole', {
+            salesRepRole: UserRole.SALES_REP,
+          }),
+      )
       .orderBy('branch.createdAt', 'DESC')
       .skip(skip)
       .take(limit);

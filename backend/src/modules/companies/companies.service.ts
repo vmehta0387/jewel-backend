@@ -174,6 +174,28 @@ export class CompaniesService {
     }
 
     const [data, total] = await query.getManyAndCount();
+    const companyIds = data.map((company) => company.id);
+    if (companyIds.length) {
+      const userCounts = await this.companyRepo
+        .createQueryBuilder('countCompany')
+        .leftJoin('countCompany.branches', 'countBranch')
+        .leftJoin(
+          User,
+          'countUser',
+          'countUser.companyId = countCompany.id OR countUser.branchId = countBranch.id',
+        )
+        .select('countCompany.id', 'companyId')
+        .addSelect('COUNT(DISTINCT countUser.id)', 'userCount')
+        .where('countCompany.id IN (:...companyIds)', { companyIds })
+        .groupBy('countCompany.id')
+        .getRawMany<{ companyId: string; userCount: string }>();
+      const userCountByCompany = new Map(
+        userCounts.map((row) => [row.companyId, Number(row.userCount || 0)]),
+      );
+      data.forEach((company) => {
+        company.userCount = userCountByCompany.get(company.id) || 0;
+      });
+    }
 
     return {
       data,

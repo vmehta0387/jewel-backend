@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
+import ExpandableText from '../../components/common/ExpandableText';
 import api from '../../services/api';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
 import { formatAddressLocation } from '../../utils/address';
@@ -99,7 +100,9 @@ export default function BranchesPage() {
     {
       key: 'city',
       label: 'Location',
-      render: (_: string, row: any) => <span>{formatAddressLocation(row)}</span>,
+      headerClassName: 'min-w-[180px]',
+      cellClassName: 'min-w-[180px] max-w-[230px] align-top',
+      render: (_: string, row: any) => <ExpandableText text={formatAddressLocation(row)} />,
     },
     {
       key: 'branchManager',
@@ -107,6 +110,11 @@ export default function BranchesPage() {
       render: (_: any, row: any) => (
         <span>{row.branchManager ? `${row.branchManager.firstName} ${row.branchManager.lastName}` : '-'}</span>
       ),
+    },
+    {
+      key: 'salesRepCount',
+      label: 'Sales Reps',
+      render: (val: number) => <span>{val ?? 0}</span>,
     },
     {
       key: 'userCount',

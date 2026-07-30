@@ -2016,11 +2016,11 @@ export class ProductsService {
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
-    // Stone names are needed for configurator matching, but gemstone details remain hidden
-    // from the mobile response.
+    // Stone names and quantities are needed for configurator matching and the total
+    // stone count, but gemstone row details remain hidden from the mobile response.
     const gemstones = designIds.length
       ? await this.gemstoneRepo.find({
-          select: ['id', 'designId', 'stone', 'stoneType'],
+          select: ['id', 'designId', 'stone', 'stoneType', 'pcs'],
           where: { designId: In(designIds) },
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
@@ -2136,6 +2136,10 @@ export class ProductsService {
       imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
       ijewelModelId: design.ijewelModelId,
       ijewelBaseName: design.ijewelBaseName,
+      stoneCount: (design.gemstones || []).reduce(
+        (total, gemstone) => total + Math.max(0, Math.trunc(Number(gemstone.pcs) || 0)),
+        0,
+      ),
       metals: (design.metals || []).map((metal) => ({
         metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour),
         goldColour: metal.goldColour,

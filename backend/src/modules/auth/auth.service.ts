@@ -16,6 +16,7 @@ import { LoginClientPlatform, LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
+import { getLegacySpiffPermissions } from './legacy-spiff-permissions';
 
 
 @Injectable()
@@ -283,16 +284,16 @@ export class AuthService {
       photoUrl: await this.resolvePhotoUrl(user.photoUrl || null),
       phone: user.phone || null,
       taskPermissions: user.taskPermissions || [],
-      detailedPermissions: await this.getDetailedPermissions(user.id),
+      detailedPermissions: await this.getDetailedPermissions(user),
       companyName: user.company?.companyName || null,
       branchName: user.branch?.name || null,
     };
   }
 
-  private async getDetailedPermissions(userId: string) {
+  private async getDetailedPermissions(user: User) {
     try {
       const rows = await this.userPermissionActionRepo.find({
-        where: { userId },
+        where: { userId: user.id },
         order: { actionKey: 'ASC' },
       });
       return rows.map((row) => ({
@@ -303,7 +304,7 @@ export class AuthService {
       const code = (error as { code?: string })?.code;
       const message = String((error as { message?: string })?.message || '').toLowerCase();
       if (code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions')) {
-        return [];
+        return getLegacySpiffPermissions(user);
       }
       throw error;
     }

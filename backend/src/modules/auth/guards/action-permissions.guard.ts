@@ -5,6 +5,7 @@ import { UserRole } from '../../../common/enums/user-role.enum';
 import { UserPermissionAction } from '../../permissions/entities/user-permission-action.entity';
 import { ACTION_PERMISSIONS_KEY, ANY_ACTION_PERMISSIONS_KEY } from '../decorators/action-permissions.decorator';
 import { AuthUser } from '../interfaces/auth-user.interface';
+import { getLegacySpiffPermissions } from '../legacy-spiff-permissions';
 
 @Injectable()
 export class ActionPermissionsGuard implements CanActivate {
@@ -37,7 +38,7 @@ export class ActionPermissionsGuard implements CanActivate {
       return true;
     }
 
-    const allowedActions = new Set(await this.getAllowedActionKeys(user.id));
+    const allowedActions = new Set(await this.getAllowedActionKeys(user));
     const hasAllRequired = (requiredPermissions || []).every((permission) => allowedActions.has(permission));
     const hasAnyRequired =
       !anyRequiredPermissions ||
@@ -46,10 +47,10 @@ export class ActionPermissionsGuard implements CanActivate {
     return hasAllRequired && hasAnyRequired;
   }
 
-  private async getAllowedActionKeys(userId: string): Promise<string[]> {
+  private async getAllowedActionKeys(user: AuthUser): Promise<string[]> {
     try {
       const rows = await this.dataSource.getRepository(UserPermissionAction).find({
-        where: { userId },
+        where: { userId: user.id },
         select: ['actionKey'],
       });
       return rows.map((row) => row.actionKey);
@@ -57,7 +58,7 @@ export class ActionPermissionsGuard implements CanActivate {
       const code = (error as { code?: string })?.code;
       const message = String((error as { message?: string })?.message || '').toLowerCase();
       if (code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions')) {
-        return [];
+        return getLegacySpiffPermissions(user).map((permission) => permission.actionKey);
       }
       throw error;
     }

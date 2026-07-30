@@ -99,6 +99,9 @@ export class Branch {
   // Mapped at query time via loadRelationCountAndMap
   userCount?: number;
 
+  // Mapped at query time via loadRelationCountAndMap
+  salesRepCount?: number;
+
   @BeforeInsert()
   generateId() {
     if (!this.id) {

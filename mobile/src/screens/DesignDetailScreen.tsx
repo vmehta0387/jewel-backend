@@ -39,6 +39,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
 import {
+  fetchDesign,
   fetchMobileDesignConfigurator,
   resolveMobileDesignConfigurator,
   type MobileConfiguratorResponse,
@@ -506,6 +507,24 @@ const DesignDetailScreen = () => {
     [token, user?.role, user?.companyId, user?.branchId],
   );
 
+  const loadStoneCountForDesign = useCallback(
+    async (design: Design): Promise<Design> => {
+      if (!token || design.stoneCount !== undefined) return design;
+
+      try {
+        const designDetails = await fetchDesign(token, design.id);
+        const stoneCount = (designDetails.gemstones || []).reduce(
+          (total, gemstone) => total + Math.max(0, Math.trunc(Number(gemstone.pcs) || 0)),
+          0,
+        );
+        return { ...design, stoneCount };
+      } catch {
+        return { ...design, stoneCount: 0 };
+      }
+    },
+    [token],
+  );
+
   const setSelectedFeatureValue = useCallback((key: FilterKey, value: string) => {
     if (key === 'diamondType') setSelectedDiamondType(value);
     else if (key === 'shape') setSelectedShape(value);
@@ -522,12 +541,13 @@ const DesignDetailScreen = () => {
 
     try {
       const response = await fetchMobileDesignConfigurator(token, route.params.designId);
-      applyConfiguratorResponse(response);
-      await loadPriceForDesign(response.selectedDesign);
+      const selectedDesign = await loadStoneCountForDesign(response.selectedDesign);
+      applyConfiguratorResponse({ ...response, selectedDesign });
+      await loadPriceForDesign(selectedDesign);
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
-  }, [token, route.params.designId, applyConfiguratorResponse, loadPriceForDesign]);
+  }, [token, route.params.designId, applyConfiguratorResponse, loadPriceForDesign, loadStoneCountForDesign]);
 
   useFocusEffect(
     useCallback(() => {
@@ -767,8 +787,10 @@ const DesignDetailScreen = () => {
           selectedKey,
         });
         if (resolveRequestSeqRef.current !== requestId) return;
-        applyConfiguratorResponse(response, nextFilters);
-        await loadPriceForDesign(response.selectedDesign);
+        const selectedDesign = await loadStoneCountForDesign(response.selectedDesign);
+        if (resolveRequestSeqRef.current !== requestId) return;
+        applyConfiguratorResponse({ ...response, selectedDesign }, nextFilters);
+        await loadPriceForDesign(selectedDesign);
       } catch (err: any) {
         if (resolveRequestSeqRef.current === requestId) {
           setError(err?.message || 'Unable to update design selection');
@@ -789,6 +811,7 @@ const DesignDetailScreen = () => {
       selectedWeight,
       selectedQuality,
       selectedRingSize,
+      loadStoneCountForDesign,
       setSelectedFeatureValue,
       applyConfiguratorResponse,
       loadPriceForDesign,
@@ -1165,6 +1188,7 @@ const DesignDetailScreen = () => {
         { label: 'Metal', value: toMetalCaratageLabel(selectedMetalCaratage) },
         { label: 'Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
         { label: 'Diamond Type', value: compact(activeDesign?.diamondType || selectedDiamondType) },
+        { label: 'Stones', value: String(activeDesign?.stoneCount ?? 0) },
         {
           label: 'Approx. Total Carat Wt.',
           value: toCtwLabel(selectedWeight),
@@ -1182,6 +1206,7 @@ const DesignDetailScreen = () => {
       activeDesign?.diamondType,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
+      activeDesign?.stoneCount,
       selectedDiamondType,
       selectedMetalCaratage,
       selectedRingSize,

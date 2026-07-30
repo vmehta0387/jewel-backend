@@ -677,26 +677,28 @@ const QuoteSummaryScreen = () => {
             </TouchableOpacity>
           </View>
         ) : (
-          <>
-            <View style={styles.smallActionsRow}>
-              <TouchableOpacity
-                style={styles.smallBtn}
-                onPress={statusKey === 'QUOTE' ? handleModifyOrder : () => navigation.goBack()}
-                activeOpacity={0.9}
-              >
-                <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
-                <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]}>{actionConfig.leftLabel}</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.smallActionsRow}>
+            <TouchableOpacity
+              style={styles.smallBtn}
+              onPress={statusKey === 'QUOTE' ? handleModifyOrder : () => navigation.goBack()}
+              activeOpacity={0.9}
+            >
+              <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
+              <Text style={[styles.smallBtnText, styles.smallBtnTextEdit]} numberOfLines={1}>
+                {actionConfig.leftLabel}
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sendBtn, actionConfig.primaryDisabled ? styles.sendBtnDisabled : null]}
               onPress={handlePrimaryAction}
               activeOpacity={0.9}
               disabled={actionConfig.primaryDisabled}
             >
-              <Text style={styles.sendBtnText}>{actionConfig.primaryLabel}</Text>
+              <Text style={styles.sendBtnText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>
+                {actionConfig.primaryLabel}
+              </Text>
             </TouchableOpacity>
-          </>
+          </View>
         )}
       </View>
     </SafeAreaView>
@@ -1042,12 +1044,11 @@ const styles = StyleSheet.create({
   },
   smallActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    gap: 8,
   },
   smallBtn: {
-    width: '48.5%',
-    height: 38,
+    flex: 0.9,
+    height: 46,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#D7CEC2',
@@ -1066,6 +1067,7 @@ const styles = StyleSheet.create({
     color: '#8B6D50',
   },
   sendBtn: {
+    flex: 1.55,
     height: 46,
     borderRadius: 12,
     backgroundColor: '#1A1715',
