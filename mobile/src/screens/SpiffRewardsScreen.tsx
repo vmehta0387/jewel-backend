@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -138,6 +138,7 @@ const SpiffRewardsScreen = () => {
   const [claimActionId, setClaimActionId] = useState<string | null>(null);
   const deepLinkedClaimId = route.params?.claimId;
   const deepLinkedClaimNumber = route.params?.claimNumber;
+  const initialPanel = route.params?.initialPanel;
   const minRedeemPoints = Number(config?.minRedeemPoints || 500);
 
   const handleRequestedPointsChange = useCallback((value: string) => {
@@ -224,14 +225,19 @@ const SpiffRewardsScreen = () => {
   }, [load]);
 
   React.useEffect(() => {
-    if (!deepLinkedClaimId && !deepLinkedClaimNumber) return;
-    if (isSalesRep) {
-      setSalesRepPanel('ACTIVITY');
+    if (initialPanel) {
+      if (isSalesRep && ['COMPANY_BOARD', 'GLOBAL_BOARD', 'REDEEM', 'ACTIVITY'].includes(initialPanel)) {
+        setSalesRepPanel(initialPanel as SalesRepPanel);
+      }
+    } else if (deepLinkedClaimId || deepLinkedClaimNumber) {
+      if (isSalesRep) {
+        setSalesRepPanel('ACTIVITY');
+      }
+      if (isCompanyAdmin) {
+        setCompanyFilter('ALL');
+      }
     }
-    if (isCompanyAdmin) {
-      setCompanyFilter('ALL');
-    }
-  }, [deepLinkedClaimId, deepLinkedClaimNumber, isCompanyAdmin, isSalesRep]);
+  }, [initialPanel, deepLinkedClaimId, deepLinkedClaimNumber, isCompanyAdmin, isSalesRep]);
 
   React.useEffect(() => {
     if (!isSalesRep) return;

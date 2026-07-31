@@ -2140,6 +2140,7 @@ export class ProductsService {
         (total, gemstone) => total + Math.max(0, Math.trunc(Number(gemstone.pcs) || 0)),
         0,
       ),
+      totalStoneWeight: this.resolveTotalStoneWeight(design),
       metals: (design.metals || []).map((metal) => ({
         metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour),
         goldColour: metal.goldColour,
@@ -2259,7 +2260,7 @@ export class ProductsService {
       stoneValue?.split(',').forEach((stone) => add('shape', stone));
     }
     add('style', design.diamondSpread);
-    add('metalCaratage', design.goldColour);
+    this.getUsedMetalCaratageCandidates(design).forEach((metal) => add('metalCaratage', metal));
     add('weight', design.diamondWeight);
     add('quality', design.diamondQuality);
     add('ringSize', design.jewelrySize);
@@ -2290,7 +2291,7 @@ export class ProductsService {
         key,
         this.mobileConfiguratorDisplayValue(
           key as MobileConfiguratorKey,
-          key === 'shape' ? String(value || '').split(',')[0] : value,
+          key === 'shape' || key === 'metalCaratage' ? String(value || '').split(',')[0] : value,
         ),
       ]),
     ) as Partial<Record<MobileConfiguratorKey, string>>;
@@ -2341,7 +2342,7 @@ export class ProductsService {
   private normalizeMobileConfiguratorQuery(query: ResolveMobileDesignConfiguratorQueryDto) {
     const wanted: Partial<Record<MobileConfiguratorKey, string>> = {};
     (['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
-      const rawValue = key === 'shape' ? String(query[key] || '').split(',')[0] : query[key];
+      const rawValue = key === 'shape' || key === 'metalCaratage' ? String(query[key] || '').split(',')[0] : query[key];
       const text = key === 'weight' ? this.toMobileCaratLabel(rawValue) : this.mobileConfiguratorText(rawValue);
       if (text) wanted[key] = this.mobileConfiguratorDisplayValue(key, text);
     });
@@ -2368,14 +2369,36 @@ export class ProductsService {
   private getUsedMetalCaratageCandidates(design: Design): string[] {
     const candidates = new Set<string>();
     for (const metal of design.metals || []) {
-      const value = this.mobileConfiguratorText(metal.goldColour);
-      if (value) candidates.add(value);
+      const value = this.mobileConfiguratorText(metal.goldColour || (metal as any).metalCaratage);
+      if (value) {
+        value.split(',').forEach((item) => {
+          const trimmed = item.trim();
+          if (trimmed) candidates.add(trimmed);
+        });
+      }
     }
     if (!candidates.size) {
       const fallback = this.mobileConfiguratorText(design.goldColour);
-      if (fallback) candidates.add(fallback);
+      if (fallback) {
+        fallback.split(',').forEach((item) => {
+          const trimmed = item.trim();
+          if (trimmed) candidates.add(trimmed);
+        });
+      }
     }
     return Array.from(candidates);
+  }
+
+  private resolveTotalStoneWeight(design: Design): number {
+    const gemTotal = (design.gemstones || []).reduce((sum, gem) => {
+      const wt = Number(gem.wtInCts) || (Number(gem.wtPerPcs || 0) * Number(gem.pcs || 0));
+      return sum + (Number.isFinite(wt) && wt > 0 ? wt : 0);
+    }, 0);
+    if (gemTotal > 0) {
+      return Number(gemTotal.toFixed(3));
+    }
+    const parsed = Number.parseFloat(String(design.diamondWeight || '').replace(/[^\d.]/g, ''));
+    return Number.isFinite(parsed) && parsed > 0 ? Number(parsed.toFixed(3)) : 0;
   }
 
   private mobileConfiguratorText(value?: string | number | null): string {

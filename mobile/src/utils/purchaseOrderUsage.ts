@@ -39,7 +39,7 @@ export const confirmPurchaseOrderReuse = async (params: {
       );
     });
   } catch (err: any) {
-    params.onError?.(err?.message || 'Unable to verify PO usage.');
-    return false;
+    console.warn('Unable to verify PO usage:', err?.message || err);
+    return true;
   }
 };

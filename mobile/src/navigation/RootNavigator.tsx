@@ -107,7 +107,7 @@ export type DesignsStackParamList = {
 };
 
 export type OrdersStackParamList = {
-  Orders: undefined;
+  Orders: { initialFilter?: 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'CANCELLED' } | undefined;
   OrderDetail: { orderId: string };
   QuoteBuilder: { draft: QuoteBuilderDraft };
   QuoteSummary: { summary: QuoteSummaryPayload };
@@ -115,7 +115,7 @@ export type OrdersStackParamList = {
 
 export type DashboardStackParamList = {
   DashboardHome: undefined;
-  SpiffRewards: { claimId?: string; claimNumber?: string } | undefined;
+  SpiffRewards: { claimId?: string; claimNumber?: string; initialPanel?: 'ACTIVITY' | 'REDEEM' | 'COMPANY_BOARD' | 'GLOBAL_BOARD' } | undefined;
   UserProfile: undefined;
 };
 

@@ -2813,24 +2813,24 @@ export default function OrdersPage() {
                 {viewDesign?.jewelryGroup || '-'}
               </div>
               </div>
-              <div>
+              {/* <div>
               <label className="text-sm font-medium text-slate-700">Sub Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.collection || '-'}
               </div>
-              </div>
+              </div> */}
               <div>
               <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.jewelrySize || '-'}
               </div>
               </div>
-              <div>
+              {/* <div>
               <label className="text-sm font-medium text-slate-700">Design Status</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.designStatus || '-'}
               </div>
-              </div>
+              </div> */}
               <div>
               <label className="text-sm font-medium text-slate-700">Diamond Type</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -2896,19 +2896,19 @@ export default function OrdersPage() {
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Customer Name</label>
+              <label className="text-sm font-medium text-slate-700">Client Name</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.customerName || '-'}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Customer Phone</label>
+              <label className="text-sm font-medium text-slate-700">Client Phone</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.customerPhone || '-'}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Customer Email</label>
+              <label className="text-sm font-medium text-slate-700">Client Email</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.customerEmail || '-'}
               </div>
@@ -2939,7 +2939,7 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          <div className="mt-6 rounded-xl border border-slate-200">
+          {/* <div className="mt-6 rounded-xl border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Stone Information</div>
             <div className="app-table-shell">
               <div className="app-table-scroll scrollbar-top">
@@ -2981,7 +2981,7 @@ export default function OrdersPage() {
                 </table>
               </div>
             </div>
-          </div>
+          </div> */}
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
             <div>

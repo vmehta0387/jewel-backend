@@ -488,8 +488,13 @@ const UserProfileScreen = () => {
           </View>
 
           <View style={styles.infoBlock}>
-            <Text style={styles.infoLabel}>Branch & Company</Text>
-            <Text style={styles.infoValueText}>{companyBranch}</Text>
+            <Text style={styles.infoLabel}>Company</Text>
+            <Text style={styles.infoValueText}>{user?.companyName || '-'}</Text>
+          </View>
+
+          <View style={styles.infoBlock}>
+            <Text style={styles.infoLabel}>Branch</Text>
+            <Text style={styles.infoValueText}>{user?.branchName || '-'}</Text>
           </View>
         </Card>
         {/* LOGOUT BUTTON */}

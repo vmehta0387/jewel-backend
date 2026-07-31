@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -18,11 +18,32 @@ import { SpiffService } from '../spiff/spiff.service';
 import { PricingService } from '../pricing/pricing.service';
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit {
   private readonly logger = new Logger(OrdersService.name);
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
+
+  async onModuleInit() {
+    await this.ensureOrderTableColumns();
+  }
+
+  private async ensureOrderTableColumns() {
+    const columns = [
+      { name: 'customer_name', type: 'VARCHAR(255) NULL' },
+      { name: 'customer_phone', type: 'VARCHAR(50) NULL' },
+      { name: 'customer_email', type: 'VARCHAR(255) NULL' },
+      { name: 'purchase_order_number', type: 'VARCHAR(120) NULL' },
+      { name: 'completed_at', type: 'DATETIME NULL' },
+    ];
+    for (const col of columns) {
+      try {
+        await this.orderRepo.query(`ALTER TABLE orders ADD COLUMN ${col.name} ${col.type}`);
+      } catch {
+        // Ignored if column already exists
+      }
+    }
+  }
 
   constructor(
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
@@ -53,38 +74,43 @@ export class OrdersService {
       return { count: 0, orders: [] };
     }
 
-    const scope = this.resolveScope(requester, query.companyId, query.branchId);
-    if (!scope.companyId || !scope.branchId) {
-      throw new BadRequestException('Company and branch are required');
+    try {
+      const scope = this.resolveScope(requester, query.companyId, query.branchId);
+      if (!scope.companyId || !scope.branchId) {
+        throw new BadRequestException('Company and branch are required');
+      }
+
+      const qb = this.orderRepo
+        .createQueryBuilder('order')
+        .leftJoinAndSelect('order.design', 'design')
+        .where('order.companyId = :companyId', { companyId: scope.companyId })
+        .andWhere('order.branchId = :branchId', { branchId: scope.branchId })
+        .andWhere('LOWER(TRIM(order.purchaseOrderNumber)) = :purchaseOrderNumber', {
+          purchaseOrderNumber: purchaseOrderNumber.toLowerCase(),
+        })
+        .orderBy('order.createdAt', 'DESC')
+        .take(10);
+
+      if (query.excludeOrderId?.trim()) {
+        qb.andWhere('order.id != :excludeOrderId', { excludeOrderId: query.excludeOrderId.trim() });
+      }
+
+      const [orders, count] = await qb.getManyAndCount();
+      return {
+        count,
+        orders: orders.map((order) => ({
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          designNo: order.design?.designNo ?? null,
+          customerName: order.customerName,
+          createdAt: order.createdAt,
+        })),
+      };
+    } catch (error: any) {
+      this.logger.warn(`getPurchaseOrderUsage error: ${error?.message || error}`);
+      return { count: 0, orders: [] };
     }
-
-    const qb = this.orderRepo
-      .createQueryBuilder('order')
-      .leftJoinAndSelect('order.design', 'design')
-      .where('order.companyId = :companyId', { companyId: scope.companyId })
-      .andWhere('order.branchId = :branchId', { branchId: scope.branchId })
-      .andWhere('LOWER(TRIM(order.purchaseOrderNumber)) = :purchaseOrderNumber', {
-        purchaseOrderNumber: purchaseOrderNumber.toLowerCase(),
-      })
-      .orderBy('order.createdAt', 'DESC')
-      .take(10);
-
-    if (query.excludeOrderId?.trim()) {
-      qb.andWhere('order.id != :excludeOrderId', { excludeOrderId: query.excludeOrderId.trim() });
-    }
-
-    const [orders, count] = await qb.getManyAndCount();
-    return {
-      count,
-      orders: orders.map((order) => ({
-        id: order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        designNo: order.design?.designNo ?? null,
-        customerName: order.customerName,
-        createdAt: order.createdAt,
-      })),
-    };
   }
 
   async findAll(query: FindOrdersQueryDto, requester: AuthUser) {
@@ -290,7 +316,19 @@ export class OrdersService {
         if (isDuplicate && attempt < 2) {
           continue;
         }
-        throw error;
+
+        const isBadField =
+          error?.code === 'ER_BAD_FIELD_ERROR' ||
+          String(error?.message || '').includes('Unknown column');
+
+        if (isBadField && attempt < 2) {
+          this.logger.warn('Detected missing order column in DB, attempting auto column patch...');
+          await this.ensureOrderTableColumns();
+          continue;
+        }
+
+        this.logger.error(`Failed to create order (attempt ${attempt + 1}): ${error?.message || error}`, error?.stack);
+        throw new BadRequestException(error?.message || 'Unable to create order. Please try again.');
       }
     }
 
@@ -397,10 +435,26 @@ export class OrdersService {
       }
     }
 
-    const saved = await this.orderRepo.save(order);
-    await this.safeTrackOrderTransition(saved, previousStatus);
-    await this.safeNotifyOrderTransition(saved, previousStatus, requester);
-    return saved;
+    try {
+      const saved = await this.orderRepo.save(order);
+      await this.safeTrackOrderTransition(saved, previousStatus);
+      await this.safeNotifyOrderTransition(saved, previousStatus, requester);
+      return saved;
+    } catch (error: any) {
+      const isBadField =
+        error?.code === 'ER_BAD_FIELD_ERROR' ||
+        String(error?.message || '').includes('Unknown column');
+      if (isBadField) {
+        this.logger.warn('Detected missing order column on update, running column patch...');
+        await this.ensureOrderTableColumns();
+        const saved = await this.orderRepo.save(order);
+        await this.safeTrackOrderTransition(saved, previousStatus);
+        await this.safeNotifyOrderTransition(saved, previousStatus, requester);
+        return saved;
+      }
+      this.logger.error(`Failed to update order: ${error?.message || error}`, error?.stack);
+      throw new BadRequestException(error?.message || 'Unable to update order.');
+    }
   }
 
   async getPricePreview(params: { designId: string; companyId: string; branchId: string }, requester: AuthUser) {

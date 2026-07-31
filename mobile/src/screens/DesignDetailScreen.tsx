@@ -106,6 +106,18 @@ const splitStoneOptions = (values: Array<string | number | null | undefined>) =>
     ),
   );
 
+const splitMetalOptions = (values: Array<string | number | null | undefined>) =>
+  uniqueValues(
+    (values || []).flatMap((value) =>
+      compact(value)
+        .split(',')
+        .map((metal) => metal.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const firstMetal = (value?: string | number | null) => splitMetalOptions([value])[0] || '';
+
 const cleanOptions = (values?: Array<string | number | null | undefined> | null) => uniqueValues(values || []);
 
 const sortJewelrySizes = (values?: Array<string | number | null | undefined> | null) =>
@@ -196,9 +208,9 @@ const getMediaFileLabel = (uri?: string | null) => {
 const getMetalOptionsFromDesign = (design: Design) => {
   const metals = design.metals || [];
   if (metals.length) {
-    return uniqueValues(metals.map((metal) => metal.metalCaratage));
+    return splitMetalOptions(metals.map((metal) => metal.metalCaratage || metal.goldColour));
   }
-  return [];
+  return splitMetalOptions([design.goldColour]);
 };
 
 const getVersionAttributes = (design: Design) => ({
@@ -244,9 +256,11 @@ const mergeOptionGroupsWithSelection = (
   FILTER_KEYS.forEach((key) => {
     const selectedValue = compact(selected[key]);
     if (!selectedValue) return;
-    const values = next[key] || [];
-    if (!values.some((value) => compact(value) === selectedValue)) {
+    const values = key === 'metalCaratage' ? splitMetalOptions(next[key]) : (next[key] || []);
+    if (!values.some((value: string) => compact(value) === selectedValue)) {
       next[key] = [selectedValue, ...values];
+    } else {
+      next[key] = values;
     }
   });
   return next;
@@ -466,7 +480,7 @@ const DesignDetailScreen = () => {
         diamondType: response.selectedOptions?.diamondType || response.optionGroups.diamondType[0] || '',
         shape: splitStoneOptions([response.selectedOptions?.shape || response.optionGroups.shape[0]])[0] || '',
         style: response.selectedOptions?.style || response.optionGroups.style[0] || '',
-        metalCaratage: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage[0] || '',
+        metalCaratage: firstMetal(response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage[0]),
         weight: response.selectedOptions?.weight || response.optionGroups.weight[0] || '',
         quality: response.selectedOptions?.quality || response.optionGroups.quality[0] || '',
         ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize[0] || '',
@@ -509,7 +523,8 @@ const DesignDetailScreen = () => {
 
   const loadStoneCountForDesign = useCallback(
     async (design: Design): Promise<Design> => {
-      if (!token || design.stoneCount !== undefined) return design;
+      if (!token) return design;
+      if (design.stoneCount !== undefined && design.totalStoneWeight !== undefined) return design;
 
       try {
         const designDetails = await fetchDesign(token, design.id);
@@ -517,9 +532,21 @@ const DesignDetailScreen = () => {
           (total, gemstone) => total + Math.max(0, Math.trunc(Number(gemstone.pcs) || 0)),
           0,
         );
-        return { ...design, stoneCount };
+        const gemTotal = (designDetails.gemstones || []).reduce((sum, gem) => {
+          const wt = Number(gem.wtInCts) || (Number(gem.wtPerPcs || 0) * Number(gem.pcs || 0));
+          return sum + (Number.isFinite(wt) && wt > 0 ? wt : 0);
+        }, 0);
+        const parsedWeight = Number.parseFloat(String(designDetails.diamondWeight || '').replace(/[^\d.]/g, ''));
+        const totalStoneWeight = gemTotal > 0 ? Number(gemTotal.toFixed(3)) : (Number.isFinite(parsedWeight) ? parsedWeight : 0);
+
+        return {
+          ...design,
+          stoneCount: design.stoneCount ?? stoneCount,
+          totalStoneWeight: design.totalStoneWeight ?? totalStoneWeight,
+          gemstones: designDetails.gemstones || design.gemstones,
+        };
       } catch {
-        return { ...design, stoneCount: 0 };
+        return design;
       }
     },
     [token],
@@ -745,7 +772,7 @@ const DesignDetailScreen = () => {
     [optionGroups.style],
   );
   const metalCaratageOptions = useMemo(
-    () => cleanOptions(optionGroups.metalCaratage),
+    () => splitMetalOptions(optionGroups.metalCaratage),
     [optionGroups.metalCaratage],
   );
   const qualityOptions = useMemo(
@@ -1191,7 +1218,12 @@ const DesignDetailScreen = () => {
         { label: 'Stones', value: String(activeDesign?.stoneCount ?? 0) },
         {
           label: 'Approx. Total Carat Wt.',
-          value: toCtwLabel(selectedWeight),
+          value: toCtwLabel(
+            selectedWeight ||
+              (activeDesign?.totalStoneWeight && activeDesign.totalStoneWeight > 0
+                ? activeDesign.totalStoneWeight.toFixed(2)
+                : activeDesign?.diamondWeight),
+          ),
           highlight: true,
         },
         {
@@ -1204,9 +1236,11 @@ const DesignDetailScreen = () => {
       activeDesign?.barcode,
       activeDesign?.designNo,
       activeDesign?.diamondType,
+      activeDesign?.diamondWeight,
       activeDesign?.jewelrySize,
       activeDesign?.remarks,
       activeDesign?.stoneCount,
+      activeDesign?.totalStoneWeight,
       selectedDiamondType,
       selectedMetalCaratage,
       selectedRingSize,

@@ -235,7 +235,7 @@ const CartScreen = () => {
         {items.length > 0 && (
           <>
             <View style={styles.customerCard}>
-              <Text style={styles.sectionHeading}>CUSTOMER INFO</Text>
+              <Text style={styles.sectionHeading}>CLIENT INFO</Text>
 
               <View style={styles.customerRow}>
                 <Text style={styles.customerLabel}>Name</Text>

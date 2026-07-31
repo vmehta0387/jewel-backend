@@ -98,6 +98,18 @@ const splitStoneOptions = (values: Array<string | number | null | undefined>) =>
 
 const firstStone = (value?: string | number | null) => splitStoneOptions([value])[0] || '';
 
+const splitMetalOptions = (values: Array<string | number | null | undefined>) =>
+  uniqueValues(
+    values.flatMap((value) =>
+      compact(value)
+        .split(',')
+        .map((metal) => metal.trim())
+        .filter(Boolean),
+    ),
+  );
+
+const firstMetal = (value?: string | number | null) => splitMetalOptions([value])[0] || '';
+
 const sortJewelrySizes = (values: Array<string | number | null | undefined>) =>
   uniqueValues(values).sort((left, right) => {
     const leftNumber = Number.parseFloat(left.match(/-?\d+(?:\.\d+)?/)?.[0] || '');
@@ -164,7 +176,7 @@ const buildSelectionSummaryPlain = (selection: VersionFilters) =>
 const getVersionAttributes = (design: Design) => ({
   shapes: splitStoneOptions(design.gemstones?.map((gem) => gem.stone || gem.stoneType) || []),
   styles: uniqueValues([design.diamondSpread]),
-  metalColors: uniqueValues([...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []), design.goldColour]),
+  metalColors: splitMetalOptions([...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []), design.goldColour]),
   weights: uniqueValues([design.diamondWeight]),
   qualities: uniqueValues([design.diamondQuality]),
   ringSizes: uniqueValues([design.jewelrySize]),
@@ -194,7 +206,7 @@ const emptyOptionGroups = (): VersionOptionGroups => ({
 const filtersFromConfigurator = (response: MobileConfiguratorResponse): VersionFilters => ({
   shape: firstStone(response.selectedOptions?.shape || response.optionGroups.shape?.[0]),
   style: response.selectedOptions?.style || response.optionGroups.style?.[0] || '',
-  metalColor: response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage?.[0] || '',
+  metalColor: firstMetal(response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage?.[0]),
   weight: response.selectedOptions?.weight || response.optionGroups.weight?.[0] || '',
   quality: response.selectedOptions?.quality || response.optionGroups.quality?.[0] || '',
   ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize?.[0] || '',
@@ -206,7 +218,7 @@ const optionGroupsFromConfigurator = (
 ): VersionOptionGroups => ({
   shape: splitStoneOptions([...(response.optionGroups.shape || []), selected.shape]),
   style: uniqueValues([...(response.optionGroups.style || []), selected.style]),
-  metalColor: uniqueValues([...(response.optionGroups.metalCaratage || []), selected.metalColor]),
+  metalColor: splitMetalOptions([...(response.optionGroups.metalCaratage || []), selected.metalColor]),
   weight: uniqueValues([...(response.optionGroups.weight || []), selected.weight]),
   quality: uniqueValues([...(response.optionGroups.quality || []), selected.quality]),
   ringSize: uniqueValues([...(response.optionGroups.ringSize || []), selected.ringSize]),
@@ -469,7 +481,7 @@ const QuoteBuilderScreen = () => {
   }, [optionGroups.style, style]);
   const metalColorOptions = useMemo(() => {
     const values = optionGroups.metalColor;
-    return values.length ? values : uniqueValues([metalColor]);
+    return splitMetalOptions(values.length ? values : [metalColor]);
   }, [optionGroups.metalColor, metalColor]);
   const weightOptions = useMemo(() => {
     const values = optionGroups.weight;
@@ -917,7 +929,17 @@ const QuoteBuilderScreen = () => {
   const preparedFor = customerName.trim() || '-';
   const quoteNo = order?.orderNumber || draft.orderNumber || '...';
   const itemMetaLine = [toMetalShortCode(metalColor), style, quality].filter(Boolean).join(' - ');
-  const itemMetaLine2 = [`Size ${ringSize || '-'}`, toCtwLabel(weight)].filter(Boolean).join(' - ');
+  const itemMetaLine2 = [
+    `Size ${ringSize || '-'}`,
+    toCtwLabel(
+      weight ||
+        (activeDesign?.totalStoneWeight && activeDesign.totalStoneWeight > 0
+          ? activeDesign.totalStoneWeight.toFixed(2)
+          : activeDesign?.diamondWeight),
+    ),
+  ]
+    .filter(Boolean)
+    .join(' - ');
 
   const renderDropdownField = (
     label: string,
@@ -1080,7 +1102,7 @@ const QuoteBuilderScreen = () => {
           ref={customerCardRef}
           style={styles.customerCard}
         >
-          <Text style={styles.blockLabel}>CUSTOMER INFO (Optional)</Text>
+          <Text style={styles.blockLabel}>CLIENT INFO (Optional)</Text>
           <View
             ref={(node) => {
               customerFieldRefs.current.name = node;
@@ -1093,7 +1115,7 @@ const QuoteBuilderScreen = () => {
                 setCustomerName(value);
                 clearCustomerError('name');
               }}
-              placeholder="Customer name"
+              placeholder="Client name"
               placeholderTextColor="#A29587"
               style={[
                 styles.customerInput,
@@ -1144,7 +1166,7 @@ const QuoteBuilderScreen = () => {
                 setCustomerEmail(value);
                 clearCustomerError('email');
               }}
-              placeholder="customer@email.com"
+              placeholder="client@email.com"
               placeholderTextColor="#A29587"
               autoCapitalize="none"
               keyboardType="email-address"

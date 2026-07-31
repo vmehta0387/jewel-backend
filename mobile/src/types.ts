@@ -42,6 +42,7 @@ export type Design = {
   displayPrice?: number;
   grossWeight?: number;
   stoneCount?: number;
+  totalStoneWeight?: number;
   imageUrls?: string[];
   ijewelModelId?: string | null;
   ijewelBaseName?: string | null;

@@ -90,24 +90,36 @@ const emptyMobileConfiguratorOptions = (): MobileConfiguratorOptions => ({
   ringSize: '',
 });
 
+const splitMetalValues = (values?: string[]) =>
+  Array.from(
+    new Set(
+      (values || [])
+        .flatMap((val) => String(val || '').split(','))
+        .map((val) => val.trim())
+        .filter(Boolean),
+    ),
+  );
+
 const normalizeMobileConfiguratorResponse = (
   response: LegacyMobileConfiguratorResponse,
 ): MobileConfiguratorResponse => {
   const selectedOptions = response.selectedOptions || {};
   const optionGroups = response.optionGroups || {};
+  const rawMetalCaratage = selectedOptions.metalCaratage || selectedOptions.metalColor || '';
+  const firstMetalCaratage = rawMetalCaratage.split(',')[0]?.trim() || '';
 
   return {
     selectedDesign: response.selectedDesign,
     selectedOptions: {
       ...emptyMobileConfiguratorOptions(),
       ...selectedOptions,
-      metalCaratage: selectedOptions.metalCaratage || selectedOptions.metalColor || '',
+      metalCaratage: firstMetalCaratage,
     },
     optionGroups: {
       diamondType: optionGroups.diamondType || [],
       shape: optionGroups.shape || [],
       style: optionGroups.style || [],
-      metalCaratage: optionGroups.metalCaratage || optionGroups.metalColor || [],
+      metalCaratage: splitMetalValues(optionGroups.metalCaratage || optionGroups.metalColor || []),
       weight: optionGroups.weight || [],
       quality: optionGroups.quality || [],
       ringSize: optionGroups.ringSize || [],

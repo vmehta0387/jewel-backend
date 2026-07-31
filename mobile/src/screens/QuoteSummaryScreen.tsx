@@ -549,13 +549,13 @@ const QuoteSummaryScreen = () => {
         <View style={styles.topCard}>
           <View style={styles.topLineRow}>
             <Text style={styles.quoteText}>QUOTE #{orderNumber || 'DRAFT'}</Text>
-            <View style={styles.statusPill}>
+            {/* <View style={styles.statusPill}>
               <Text style={styles.statusPillText}>{summaryStatus}</Text>
-            </View>
+            </View> */}
           </View>
           <Text style={styles.mainTitle}>Order Summary</Text>
           <Text style={styles.metaText}>
-            Created {formatSummaryDate(displaySummary.createdAt)} - {displaySummary.customerName || 'Customer'}
+            Created {formatSummaryDate(displaySummary.createdAt)} - {displaySummary.customerName || 'Client'}
           </Text>
           <View style={styles.topDivider} />
           {displaySummary.salesRepName ? (
@@ -571,7 +571,7 @@ const QuoteSummaryScreen = () => {
           ) : null}
           <View style={styles.infoGrid}>
             <View style={styles.infoCell}>
-              <Text style={styles.infoLabel}>CUSTOMER</Text>
+              <Text style={styles.infoLabel}>CLIENT</Text>
               <Text style={styles.infoValue}>{displaySummary.customerName || '-'}</Text>
               <Text style={styles.infoSub}>{displaySummary.customerPhone || '-'}</Text>
               <Text style={styles.infoSub}>{displaySummary.customerEmail || '-'}</Text>
@@ -605,7 +605,12 @@ const QuoteSummaryScreen = () => {
             </View>
             <Text style={styles.itemPrice}>{formatCurrency(retailPrice).replace('.00', '')}</Text>
           </View>
-          {canModifyCurrentOrder ? (
+          {statusKey === 'CANCELLED' ? (
+            <View style={styles.cancelledNoticeBox}>
+              <Ionicons name="close-circle-outline" size={14} color="#C34F4F" />
+              <Text style={styles.cancelledNoticeText}>This order has been cancelled.</Text>
+            </View>
+          ) : canModifyCurrentOrder ? (
             <TouchableOpacity style={styles.modifyBtn} onPress={handleModifyOrder} activeOpacity={0.9}>
               <Ionicons name="create-outline" size={14} color="#93826F" />
               <Text style={styles.modifyBtnText}>Modify this order</Text>
@@ -620,35 +625,53 @@ const QuoteSummaryScreen = () => {
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Order Status</Text>
-          <View style={styles.statusTrackRow}>
-            <View style={styles.statusStep}>
-              <View style={[styles.statusDot, statusFlow.created ? styles.statusDotDoneGreen : null]}>
-                {statusFlow.created ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+          {statusKey === 'CANCELLED' ? (
+            <View style={styles.statusTrackRow}>
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, styles.statusDotDoneGreen]}>
+                  <Ionicons name="checkmark" size={10} color="#fff" />
+                </View>
+                <Text style={[styles.statusText, styles.statusTextDoneGreen]}>Created</Text>
               </View>
-              <Text style={[styles.statusText, statusFlow.created ? styles.statusTextDoneGreen : null]}>Created</Text>
-            </View>
-            <View style={styles.statusLine} />
-            <View style={styles.statusStep}>
-              <View style={[styles.statusDot, statusFlow.pending ? styles.statusDotDoneGold : null]}>
-                {statusFlow.pending ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+              <View style={[styles.statusLine, { backgroundColor: '#F8B4B4' }]} />
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, { backgroundColor: '#C34F4F', borderColor: '#C34F4F' }]}>
+                  <Ionicons name="close" size={10} color="#fff" />
+                </View>
+                <Text style={[styles.statusText, { color: '#C34F4F', fontWeight: '700' }]}>Cancelled</Text>
               </View>
-              <Text style={[styles.statusText, statusFlow.pending ? styles.statusTextDoneGold : null]}>Pending</Text>
             </View>
-            <View style={styles.statusLine} />
-            <View style={styles.statusStep}>
-              <View style={[styles.statusDot, statusFlow.approved ? styles.statusDotDoneNeutral : null]}>
-                {statusFlow.approved ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+          ) : (
+            <View style={styles.statusTrackRow}>
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, statusFlow.created ? styles.statusDotDoneGreen : null]}>
+                  {statusFlow.created ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+                </View>
+                <Text style={[styles.statusText, statusFlow.created ? styles.statusTextDoneGreen : null]}>Created</Text>
               </View>
-              <Text style={[styles.statusText, statusFlow.approved ? styles.statusTextDoneNeutral : null]}>Approved</Text>
-            </View>
-            <View style={styles.statusLine} />
-            <View style={styles.statusStep}>
-              <View style={[styles.statusDot, statusFlow.shipped ? styles.statusDotDoneNeutral : null]}>
-                {statusFlow.shipped ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+              <View style={styles.statusLine} />
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, statusFlow.pending ? styles.statusDotDoneGold : null]}>
+                  {statusFlow.pending ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+                </View>
+                <Text style={[styles.statusText, statusFlow.pending ? styles.statusTextDoneGold : null]}>Pending</Text>
               </View>
-              <Text style={[styles.statusText, statusFlow.shipped ? styles.statusTextDoneNeutral : null]}>Shipped</Text>
+              <View style={styles.statusLine} />
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, statusFlow.approved ? styles.statusDotDoneNeutral : null]}>
+                  {statusFlow.approved ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+                </View>
+                <Text style={[styles.statusText, statusFlow.approved ? styles.statusTextDoneNeutral : null]}>Approved</Text>
+              </View>
+              <View style={styles.statusLine} />
+              <View style={styles.statusStep}>
+                <View style={[styles.statusDot, statusFlow.shipped ? styles.statusDotDoneNeutral : null]}>
+                  {statusFlow.shipped ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+                </View>
+                <Text style={[styles.statusText, statusFlow.shipped ? styles.statusTextDoneNeutral : null]}>Shipped</Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         <View style={{ height: 138 }} />
@@ -955,6 +978,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cancelledNoticeBox: {
+    marginTop: 10,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F8B4B4',
+    backgroundColor: '#FDF2F2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  cancelledNoticeText: {
+    marginLeft: 6,
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#9B1C1C',
   },
   modifyBtnText: {
     marginLeft: 6,

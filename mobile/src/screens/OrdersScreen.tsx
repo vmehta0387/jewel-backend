@@ -14,7 +14,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,7 +36,7 @@ import {
   type NotificationFeedEntry,
 } from '../utils/appNotifications';
 
-type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED';
+type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'CANCELLED';
 type ConfirmationAction = 'deleteDraft' | 'cancelOrder';
 type PopoverPosition = { top: number; left: number };
 
@@ -50,9 +51,19 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'APPROVED', label: 'Approved' },
   { key: 'IN_PRODUCTION', label: 'In Prod.' },
   { key: 'SHIPPED', label: 'Shipped' },
+  { key: 'CANCELLED', label: 'Cancelled' },
 ];
 
-const normalizeStatus = (value?: string | null) => String(value || '').trim().toUpperCase();
+const normalizeStatus = (value?: string | null): FilterKey => {
+  const status = String(value || '').trim().toUpperCase();
+  if (status === 'QUOTE') return 'QUOTE';
+  if (status === 'PENDING' || status === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+  if (status === 'APPROVED') return 'APPROVED';
+  if (status === 'PRODUCTION' || status === 'IN_PRODUCTION') return 'IN_PRODUCTION';
+  if (status === 'SHIPPED' || status === 'COMPLETED') return 'SHIPPED';
+  if (status === 'CANCELLED' || status === 'REJECTED') return 'CANCELLED';
+  return 'PENDING_APPROVAL';
+};
 
 const statusLabel = (status?: string | null) => {
   const key = normalizeStatus(status);
@@ -238,6 +249,7 @@ const OrdersScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
+  const route = useRoute<RouteProp<OrdersStackParamList, 'Orders'>>();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const confirmationButtonRefs = useRef<Record<string, React.ElementRef<typeof TouchableOpacity> | null>>({});
   const [orders, setOrders] = useState<Order[]>([]);
@@ -267,11 +279,11 @@ const OrdersScreen = () => {
       const fullAccess =
         user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
       const [response, employeeRows] = await Promise.all([
-        fetchOrders(token, 1, 100, fullAccess ? 'ALL' : 'ACTIVE'),
+        fetchOrders(token, 1, 100, 'ALL'),
         isBranchManager ? fetchBranchEmployees(token).catch(() => []) : Promise.resolve([]),
       ]);
       const rows = (response.data || []).filter(
-        (order) => order.isActive !== false && normalizeStatus(order.status) !== 'CANCELLED',
+        (order) => order.isActive !== false,
       );
       rows.sort((a, b) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -285,7 +297,7 @@ const OrdersScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [isBranchManager, token, user?.role]);
+  }, [isBranchManager, token]);
 
   const salesRepOptions = useMemo(() => {
     const reps = new Map<string, string>();
@@ -322,6 +334,7 @@ const OrdersScreen = () => {
       APPROVED: 0,
       IN_PRODUCTION: 0,
       SHIPPED: 0,
+      CANCELLED: 0,
     };
 
     salesRepFilteredOrders.forEach((order) => {
@@ -330,7 +343,8 @@ const OrdersScreen = () => {
       else if (key === 'PENDING_APPROVAL') initial.PENDING_APPROVAL += 1;
       else if (key === 'APPROVED') initial.APPROVED += 1;
       else if (key === 'IN_PRODUCTION') initial.IN_PRODUCTION += 1;
-      else if (key === 'SHIPPED' || key === 'COMPLETED') initial.SHIPPED += 1;
+      else if (key === 'SHIPPED') initial.SHIPPED += 1;
+      else if (key === 'CANCELLED') initial.CANCELLED += 1;
     });
 
     return initial;
@@ -375,7 +389,10 @@ const OrdersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadOrders();
-    }, [loadOrders]),
+      if (route.params?.initialFilter) {
+        setSelectedFilter(route.params.initialFilter);
+      }
+    }, [loadOrders, route.params?.initialFilter]),
   );
 
   const openOrderSummary = useCallback(
@@ -754,7 +771,7 @@ const OrdersScreen = () => {
 
           {order.purchaseOrderNumber?.trim() ? (
             <View style={styles.customerPoRow}>
-              <Text style={styles.customerPoLabel}>Customer PO</Text>
+              <Text style={styles.customerPoLabel}>Client PO</Text>
               <Text style={styles.customerPoValue} numberOfLines={1}>
                 {order.purchaseOrderNumber.trim()}
               </Text>
@@ -893,7 +910,7 @@ const OrdersScreen = () => {
           <Ionicons name="search-outline" size={16} color="#B0A79E" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search PO# or customer name..."
+            placeholder="Search PO# or client name..."
             placeholderTextColor="#A59D96"
             value={search}
             onChangeText={setSearch}

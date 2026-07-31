@@ -463,6 +463,10 @@ const BranchDashboardScreen = () => {
       <View style={[styles.statSkeletonLine, styles.statSkeletonSub, accent ? styles.statSkeletonLineSpiff : null]} />
     </>
   );
+  const handleOpenSpiffActivity = useCallback(() => {
+    navigation.navigate('SpiffRewards', { initialPanel: 'ACTIVITY' });
+  }, [navigation]);
+
   const handleOpenNotificationEntry = useCallback(
     (_entry: NotificationFeedEntry) => {
       navigation.navigate('OrdersTab');
@@ -575,7 +579,11 @@ const BranchDashboardScreen = () => {
               )}
             </View>
 
-            <View style={[styles.statTile, styles.statTileSpiff]}>
+            <TouchableOpacity
+              style={[styles.statTile, styles.statTileSpiff]}
+              onPress={handleOpenSpiffActivity}
+              activeOpacity={0.85}
+            >
               {statsLoading ? (
                 renderStatSkeleton(true)
               ) : (
@@ -593,7 +601,7 @@ const BranchDashboardScreen = () => {
                   </Text>
                 </>
               )}
-            </View>
+            </TouchableOpacity>
           </View>
 
           {isCompanyAdmin ? (
@@ -670,7 +678,8 @@ const BranchDashboardScreen = () => {
 
                 <TouchableOpacity
                   style={[styles.quickCard, styles.quickCardSpiff]}
-                  onPress={() => navigation.navigate('SpiffRewards')}
+                  onPress={handleOpenSpiffActivity}
+                  activeOpacity={0.85}
                 >
                   <Ionicons name="star-outline" size={20} color="#9C7A43" style={styles.quickCardIcon} />
                   <Text style={styles.quickCardTextDark}>Spiffs & Rewards</Text>
@@ -746,7 +755,16 @@ const BranchDashboardScreen = () => {
               </View>
 
               <View style={styles.pipelinePlate}>
-                <View style={styles.pipelineItem}>
+                <TouchableOpacity
+                  style={styles.pipelineItem}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    (navigation as any).navigate('OrdersTab', {
+                      screen: 'Orders',
+                      params: { initialFilter: 'PENDING_APPROVAL' },
+                    })
+                  }
+                >
                   <View style={styles.pipelineFlexText}>
                     <Text style={styles.pipeStateText}>Pending approval</Text>
                     <Text style={styles.pipeValueGold}>{pipeline.pending}</Text>
@@ -754,9 +772,18 @@ const BranchDashboardScreen = () => {
                   <View style={styles.pipeTrack}>
                     <View style={[styles.pipeFillGlowGold, { width: pipeline.pending ? '35%' : '2%' }]} />
                   </View>
-                </View>
+                </TouchableOpacity>
 
-                <View style={styles.pipelineItem}>
+                <TouchableOpacity
+                  style={styles.pipelineItem}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    (navigation as any).navigate('OrdersTab', {
+                      screen: 'Orders',
+                      params: { initialFilter: 'APPROVED' },
+                    })
+                  }
+                >
                   <View style={styles.pipelineFlexText}>
                     <Text style={styles.pipeStateText}>Approved</Text>
                     <Text style={styles.pipeValueGreen}>{pipeline.approved}</Text>
@@ -764,9 +791,18 @@ const BranchDashboardScreen = () => {
                   <View style={styles.pipeTrack}>
                     <View style={[styles.pipeFillGlowGreen, { width: pipeline.approved ? '65%' : '2%' }]} />
                   </View>
-                </View>
+                </TouchableOpacity>
 
-                <View style={styles.pipelineItem}>
+                <TouchableOpacity
+                  style={styles.pipelineItem}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    (navigation as any).navigate('OrdersTab', {
+                      screen: 'Orders',
+                      params: { initialFilter: 'IN_PRODUCTION' },
+                    })
+                  }
+                >
                   <View style={styles.pipelineFlexText}>
                     <Text style={styles.pipeStateText}>In production</Text>
                     <Text style={styles.pipeValueBlue}>{pipeline.production}</Text>
@@ -774,7 +810,7 @@ const BranchDashboardScreen = () => {
                   <View style={styles.pipeTrack}>
                     <View style={[styles.pipeFillGlowBlue, { width: pipeline.production ? '45%' : '2%' }]} />
                   </View>
-                </View>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.trendingHeaderRow}>

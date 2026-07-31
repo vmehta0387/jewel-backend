@@ -263,13 +263,13 @@ const OrderDetailScreen = () => {
           <View style={styles.detailsList}>
             <DetailRow label="Design No" value={order.designNo} boldValue />
             <DetailRow label="Category" value={designDetails?.jewelryGroup} />
-            <DetailRow label="Sub Category" value={designDetails?.collection} />
+            {/* <DetailRow label="Sub Category" value={designDetails?.collection} /> */}
             <DetailRow label="Jewelry Size" value={designDetails?.jewelrySize} />
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Diamond Metrics</Text>
+          <Text style={styles.sectionTitle}>Diamond Information</Text>
           <View style={styles.detailsList}>
             <DetailRow label="Diamond Type" value={designDetails?.diamondType} />
             <DetailRow label="Diamond Spread" value={designDetails?.diamondSpread} />
@@ -299,18 +299,18 @@ const OrderDetailScreen = () => {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Client Context</Text>
+          <Text style={styles.sectionTitle}>Client Details</Text>
           <View style={styles.detailsList}>
-            <DetailRow label="Customer Name" value={order.customerName} />
-            <DetailRow label="Customer Phone" value={order.customerPhone} />
-            <DetailRow label="Customer Email" value={order.customerEmail} />
+            <DetailRow label="Client Name" value={order.customerName} />
+            <DetailRow label="Client Phone" value={order.customerPhone} />
+            <DetailRow label="Client Email" value={order.customerEmail} />
             <DetailRow label="Company" value={order.companyName} />
             <DetailRow label="Branch" value={order.branchName} />
             <DetailRow label="Sales Rep" value={order.salesRepName || order.salesRepEmail} />
           </View>
         </View>
 
-        <View style={[styles.card, { paddingHorizontal: 0 }]}>
+        {/* <View style={[styles.card, { paddingHorizontal: 0 }]}>
           <View style={{ paddingHorizontal: 16 }}>
             <Text style={styles.sectionTitle}>Stone Information</Text>
           </View>
@@ -320,7 +320,6 @@ const OrderDetailScreen = () => {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScrollArea}>
               <View style={styles.tableContainer}>
-                {/* Table Header */}
                 <View style={styles.tableHeaderRow}>
                   <Text style={[styles.tableCellHeader, { width: 120 }]}>Packet</Text>
                   <Text style={[styles.tableCellHeader, { width: 90 }]}>Stone</Text>
@@ -333,7 +332,6 @@ const OrderDetailScreen = () => {
                   <Text style={[styles.tableCellHeader, { width: 80, paddingRight: 16 }]}>Wt (Cts)</Text>
                 </View>
 
-                {/* Table Body */}
                 {gemstoneRows.map((row, index) => (
                   <View key={`gem-${index}`} style={styles.tableRow}>
                     <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.packetName || row.packetId || '-'}</Text>
@@ -348,7 +346,6 @@ const OrderDetailScreen = () => {
                   </View>
                 ))}
 
-                {/* Table Footer */}
                 <View style={styles.tableFooterRow}>
                   <Text style={styles.tableCellFooterBold}>Total Wt:</Text>
                   <Text style={styles.tableCellFooterValue}>{gemstoneTotalWeight.toFixed(3)}</Text>
@@ -356,15 +353,15 @@ const OrderDetailScreen = () => {
               </View>
             </ScrollView>
           )}
-        </View>
+        </View> */}
 
         {canApproveReject ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Manager Approval</Text>
-            <View style={styles.statusDisplayWrap}>
+            {/* <View style={styles.statusDisplayWrap}>
               <Text style={styles.statusDisplayTitle}>Current Status</Text>
               <Text style={styles.statusDisplayValue}>{formatStatusLabel(order.status)}</Text>
-            </View>
+            </View> */}
 
             <Text style={styles.fieldLabel}>Expected Delivery Date</Text>
             <TouchableOpacity

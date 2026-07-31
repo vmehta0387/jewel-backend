@@ -1,4 +1,4 @@
-﻿import { API_BASE_URL } from '../config';
+import { API_BASE_URL } from '../config';
 
 export type ApiError = {
   message: string;
@@ -53,10 +53,18 @@ export const apiRequest = async <T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw {
+      message: `Unable to connect to backend server (${API_BASE_URL}). Please make sure the backend server is running.`,
+      status: 0,
+    };
+  }
 
   if (!response.ok) {
     const error = await buildError(response);
