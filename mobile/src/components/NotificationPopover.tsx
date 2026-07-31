@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -48,6 +49,60 @@ const getNotificationDotStyle = (tone: NotificationTone) => {
   return [styles.notificationDot, styles.notificationDotNeutral];
 };
 
+type NotificationCardProps = {
+  entry: NotificationFeedEntry;
+  onOpen: (entry: NotificationFeedEntry) => void;
+  onMarkRead: (entry: NotificationFeedEntry) => void;
+};
+
+const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRead }) => {
+  const card = (
+    <TouchableOpacity
+      style={[getNotificationCardStyle(entry.tone), entry.isRead && styles.notificationCardRead]}
+      onPress={() => onOpen(entry)}
+      activeOpacity={0.88}
+    >
+      <View style={styles.notificationCardTopRow}>
+        <View style={[getNotificationDotStyle(entry.tone), entry.isRead && styles.notificationDotRead]} />
+        <Text style={[styles.notificationCardTitle, entry.isRead && styles.notificationCardTitleRead]} numberOfLines={1}>
+          {entry.title}
+        </Text>
+      </View>
+      <Text style={[styles.notificationCardSubtitle, entry.isRead && styles.notificationCardSubtitleRead]}>
+        {entry.subtitle}
+      </Text>
+      <Text style={[styles.notificationCardTime, entry.isRead && styles.notificationCardTimeRead]}>
+        {entry.time}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (entry.isRead) {
+    return card;
+  }
+
+  return (
+    <Swipeable
+      overshootLeft={false}
+      friction={1.7}
+      leftThreshold={64}
+      onSwipeableOpen={(direction) => {
+        if (direction === 'left') {
+          onMarkRead(entry);
+        }
+      }}
+      renderLeftActions={() => (
+        <View style={styles.swipeReadAction}>
+          <Ionicons name="checkmark-circle-outline" size={19} color="#FFFFFF" />
+          <Text style={styles.swipeReadActionText}>Mark read</Text>
+        </View>
+      )}
+    >
+      {card}
+    </Swipeable>
+  );
+});
+
 const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotification }) => {
   const { token } = useAuth();
   const navigation = useNavigation<any>();
@@ -60,6 +115,7 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const markingReadIds = useRef(new Set<string>());
 
   const loadNotifications = useCallback(async (nextPage = 1) => {
     if (!token) {
@@ -180,6 +236,30 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     [navigateFromEntry, onClose, onOpenNotification, token],
   );
 
+  const handleSwipeMarkRead = useCallback(async (entry: NotificationFeedEntry) => {
+    if (!token || entry.isRead || markingReadIds.current.has(entry.notificationId)) {
+      return;
+    }
+
+    markingReadIds.current.add(entry.notificationId);
+    setEntries((current) =>
+      activeFilter === 'unread'
+        ? current.filter((item) => item.notificationId !== entry.notificationId)
+        : current.map((item) =>
+            item.notificationId === entry.notificationId ? { ...item, isRead: true } : item,
+          ),
+    );
+    setUnreadCount((current) => Math.max(0, current - 1));
+
+    try {
+      await markNotificationRead(token, entry.notificationId, true);
+    } catch {
+      await loadNotifications();
+    } finally {
+      markingReadIds.current.delete(entry.notificationId);
+    }
+  }, [activeFilter, loadNotifications, token]);
+
   const handleRetry = useCallback(() => {
     void loadNotifications();
   }, [loadNotifications]);
@@ -197,25 +277,12 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
       <View style={styles.notificationSection}>
         <Text style={styles.notificationSectionLabel}>{title}</Text>
         {items.map((entry) => (
-          <TouchableOpacity
+          <NotificationCard
             key={entry.id}
-            style={[getNotificationCardStyle(entry.tone), entry.isRead && styles.notificationCardRead]}
-            onPress={() => handleOpenEntry(entry)}
-            activeOpacity={0.88}
-          >
-            <View style={styles.notificationCardTopRow}>
-              <View style={[getNotificationDotStyle(entry.tone), entry.isRead && styles.notificationDotRead]} />
-              <Text style={[styles.notificationCardTitle, entry.isRead && styles.notificationCardTitleRead]} numberOfLines={1}>
-                {entry.title}
-              </Text>
-            </View>
-            <Text style={[styles.notificationCardSubtitle, entry.isRead && styles.notificationCardSubtitleRead]}>
-              {entry.subtitle}
-            </Text>
-            <Text style={[styles.notificationCardTime, entry.isRead && styles.notificationCardTimeRead]}>
-              {entry.time}
-            </Text>
-          </TouchableOpacity>
+            entry={entry}
+            onOpen={handleOpenEntry}
+            onMarkRead={handleSwipeMarkRead}
+          />
         ))}
       </View>
     );
@@ -402,6 +469,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
     marginBottom: 8,
+  },
+  swipeReadAction: {
+    width: 96,
+    minHeight: 72,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    borderRadius: 12,
+    backgroundColor: '#3E8B5B',
+  },
+  swipeReadActionText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   notificationCardGold: {
     backgroundColor: '#FCF7EC',

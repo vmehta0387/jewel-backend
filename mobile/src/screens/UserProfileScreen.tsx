@@ -191,7 +191,7 @@ const UserProfileScreen = () => {
 
   // Save Personal Details
   const handleSavePersonal = async () => {
-    if (!token) return;
+    if (!token) return false;
     setPersonalStatus(null);
     const firstName = personalForm.firstName.trim();
     const lastName = personalForm.lastName.trim();
@@ -200,11 +200,11 @@ const UserProfileScreen = () => {
 
     if (!firstName || !lastName) {
       setPersonalStatus({ type: 'error', message: 'First name and last name are required.' });
-      return;
+      return false;
     }
     if (!email) {
       setPersonalStatus({ type: 'error', message: 'Email address is required.' });
-      return;
+      return false;
     }
 
     setSavingPersonal(true);
@@ -218,9 +218,11 @@ const UserProfileScreen = () => {
       await refresh(updatedUser);
       setPersonalStatus({ type: 'success', message: 'Personal details updated successfully.' });
       setTimeout(() => setPersonalStatus(null), 4000);
+      return true;
     } catch (e: any) {
       setPersonalStatus({ type: 'error', message: getErrorMessage(e) });
       initForm(); // revert changes
+      return false;
     } finally {
       setSavingPersonal(false);
     }
@@ -228,17 +230,17 @@ const UserProfileScreen = () => {
 
   // Save Security Details
   const handleSaveSecurity = async () => {
-    if (!token) return;
+    if (!token) return false;
     setSecurityStatus(null);
     const { currentPassword, password } = securityForm;
 
     if (!currentPassword) {
       setSecurityStatus({ type: 'error', message: 'Please enter your current password to proceed.' });
-      return;
+      return false;
     }
     if (!password || password.length < 6) {
       setSecurityStatus({ type: 'error', message: 'New password must be at least 6 characters long.' });
-      return;
+      return false;
     }
 
     setSavingSecurity(true);
@@ -250,10 +252,25 @@ const UserProfileScreen = () => {
       setSecurityForm({ currentPassword: '', password: '' });
       setSecurityStatus({ type: 'success', message: 'Password changed successfully.' });
       setTimeout(() => setSecurityStatus(null), 4000);
+      return true;
     } catch (e: any) {
       setSecurityStatus({ type: 'error', message: getErrorMessage(e) });
+      return false;
     } finally {
       setSavingSecurity(false);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    if (savingPersonal || savingSecurity) return;
+
+    if (isPersonalDirty) {
+      const personalSaved = await handleSavePersonal();
+      if (!personalSaved) return;
+    }
+
+    if (isSecurityDirty) {
+      await handleSaveSecurity();
     }
   };
 
@@ -266,7 +283,18 @@ const UserProfileScreen = () => {
       <ScreenHeader
         title="My Profile"
         subtitle="Manage your credentials and details"
-        rightSlot={<Button title="Close" variant="ghost" onPress={() => navigation.goBack()} style={styles.closeBtn} />}
+        rightSlot={
+          <View style={styles.headerActions}>
+            <Button
+              title="Save"
+              onPress={handleSaveAll}
+              loading={savingPersonal || savingSecurity}
+              disabled={!isPersonalDirty && !isSecurityDirty}
+              style={styles.headerSaveBtn}
+            />
+            <Button title="Close" variant="ghost" onPress={() => navigation.goBack()} style={styles.closeBtn} />
+          </View>
+        }
       />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -523,9 +551,21 @@ const UserProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  closeBtn: {
-    minWidth: 78,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+  headerSaveBtn: {
+    minWidth: 64,
     paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  closeBtn: {
+    minWidth: 58,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
   },
   container: {
     paddingHorizontal: spacing.lg,

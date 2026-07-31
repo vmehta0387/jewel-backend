@@ -274,6 +274,7 @@ export class OrdersService {
         purchaseOrderNumber: dto.purchaseOrderNumber?.trim() || null,
         notes: dto.notes?.trim() || null,
         status: computedStatus,
+        completedAt: computedStatus === OrderStatus.COMPLETED ? new Date() : null,
         isActive: true,
       });
 
@@ -389,6 +390,11 @@ export class OrdersService {
     }
     if (dto.status !== undefined) {
       order.status = dto.status;
+      if (dto.status === OrderStatus.COMPLETED && previousStatus !== OrderStatus.COMPLETED) {
+        order.completedAt = new Date();
+      } else if (dto.status !== OrderStatus.COMPLETED) {
+        order.completedAt = null;
+      }
     }
 
     const saved = await this.orderRepo.save(order);
@@ -426,73 +432,76 @@ export class OrdersService {
     this.applyScopeFilter(baseQuery, requester);
     baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
 
-    // Active Orders
-    const activeOrders = await baseQuery.clone().getCount();
-
     // NOTE:
-    // Use DB date boundaries (CURDATE/CURRENT_DATE) instead of JS Date ranges to avoid
-    // server-timezone drift causing wrong "today/monthly" values.
+    // Revenue is recognized only when an order reaches COMPLETED. Using completedAt
+    // records the sale in the period it was completed, rather than when its quote
+    // was originally created. DB date boundaries avoid server-timezone drift.
     const summaryRow = await baseQuery.clone()
-      .select(
-        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
+      .select('COUNT(*)', 'activeOrders')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= CURRENT_DATE AND order.completedAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
         'salesToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.completedAt < CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
         'salesYesterday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(CURRENT_DATE) AND MONTH(order.createdAt) = MONTH(CURRENT_DATE) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.completedAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN order.price ELSE 0 END), 0)`,
         'salesThisMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)) AND MONTH(order.createdAt) = MONTH(DATE_SUB(CURRENT_DATE, INTERVAL 1 MONTH)) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) AND order.completedAt < DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN order.price ELSE 0 END), 0)`,
         'salesLastMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN DATE(order.createdAt) = CURRENT_DATE THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= CURRENT_DATE AND order.completedAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN 1 ELSE 0 END), 0)`,
         'ordersToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN YEAR(order.createdAt) = YEAR(CURRENT_DATE) AND MONTH(order.createdAt) = MONTH(CURRENT_DATE) THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.completedAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN 1 ELSE 0 END), 0)`,
         'ordersThisMonth',
       )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus THEN order.price ELSE 0 END), 0)`,
+        'branchRevenueTotal',
+      )
+      .addSelect(`SUM(CASE WHEN order.status = :quoteStatus THEN 1 ELSE 0 END)`, 'quoteCount')
+      .addSelect(`SUM(CASE WHEN order.status = :pendingStatus THEN 1 ELSE 0 END)`, 'pendingCount')
+      .addSelect(`SUM(CASE WHEN order.status = :approvedStatus THEN 1 ELSE 0 END)`, 'approvedCount')
+      .addSelect(`SUM(CASE WHEN order.status = :productionStatus THEN 1 ELSE 0 END)`, 'productionCount')
+      .addSelect(`SUM(CASE WHEN order.status = :shippedStatus THEN 1 ELSE 0 END)`, 'shippedCount')
+      .addSelect(`SUM(CASE WHEN order.status = :completedStatus THEN 1 ELSE 0 END)`, 'completedCount')
+      .addSelect(`SUM(CASE WHEN order.status = :cancelledStatus THEN 1 ELSE 0 END)`, 'cancelledCount')
+      .setParameters({
+        quoteStatus: OrderStatus.QUOTE,
+        pendingStatus: OrderStatus.PENDING_APPROVAL,
+        approvedStatus: OrderStatus.APPROVED,
+        productionStatus: OrderStatus.IN_PRODUCTION,
+        shippedStatus: OrderStatus.SHIPPED,
+        completedStatus: OrderStatus.COMPLETED,
+        cancelledStatus: OrderStatus.CANCELLED,
+      })
       .getRawOne();
 
+    const activeOrders = this.toNumber(summaryRow?.activeOrders ?? 0);
     const salesToday = this.toNumber(summaryRow?.salesToday ?? 0);
     const salesYesterday = this.toNumber(summaryRow?.salesYesterday ?? 0);
     const salesThisMonth = this.toNumber(summaryRow?.salesThisMonth ?? 0);
     const salesLastMonth = this.toNumber(summaryRow?.salesLastMonth ?? 0);
     const ordersToday = this.toNumber(summaryRow?.ordersToday ?? 0);
     const ordersThisMonth = this.toNumber(summaryRow?.ordersThisMonth ?? 0);
-    const branchRevenueTotal = await baseQuery
-      .clone()
-      .select('COALESCE(SUM(order.price), 0)', 'branchRevenueTotal')
-      .getRawOne()
-      .then((row) => this.toNumber(row?.branchRevenueTotal ?? 0));
-    const statusRows = await baseQuery
-      .clone()
-      .select('order.status', 'status')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('order.status')
-      .getRawMany();
-
-    const statusCounts = new Map<string, number>();
-    for (const row of statusRows ?? []) {
-      const key = String(row?.status ?? '').toUpperCase();
-      if (!key) continue;
-      statusCounts.set(key, this.toNumber(row?.count ?? 0));
-    }
+    const branchRevenueTotal = this.toNumber(summaryRow?.branchRevenueTotal ?? 0);
 
     const pipeline = {
-      pending: (statusCounts.get('PENDING_APPROVAL') || 0) + (statusCounts.get('QUOTE') || 0),
-      approved: statusCounts.get('APPROVED') || 0,
-      inProduction: statusCounts.get('IN_PRODUCTION') || 0,
-      shipped: statusCounts.get('SHIPPED') || 0,
-      completed: statusCounts.get('COMPLETED') || 0,
-      cancelled: statusCounts.get('CANCELLED') || 0,
+      pending: this.toNumber(summaryRow?.pendingCount ?? 0) + this.toNumber(summaryRow?.quoteCount ?? 0),
+      approved: this.toNumber(summaryRow?.approvedCount ?? 0),
+      inProduction: this.toNumber(summaryRow?.productionCount ?? 0),
+      shipped: this.toNumber(summaryRow?.shippedCount ?? 0),
+      completed: this.toNumber(summaryRow?.completedCount ?? 0),
+      cancelled: this.toNumber(summaryRow?.cancelledCount ?? 0),
     };
-    const pendingApprovalOrders = statusCounts.get('PENDING_APPROVAL') || 0;
+    const pendingApprovalOrders = this.toNumber(summaryRow?.pendingCount ?? 0);
 
     let branchSalesRepCount = 0;
     if (requester.role === UserRole.BRANCH_MANAGER && requester.companyId && requester.branchId) {
@@ -535,14 +544,15 @@ export class OrdersService {
 
     const qb = this.orderRepo
       .createQueryBuilder('order')
-      .select('DATE(order.createdAt)', 'date')
+      .select('DATE(order.completedAt)', 'date')
       .addSelect('COUNT(*)', 'orders')
       .addSelect('SUM(order.price)', 'sales')
-      .where('order.createdAt >= :startDate AND order.createdAt <= :endDate', {
+      .where('order.completedAt >= :startDate AND order.completedAt <= :endDate', {
         startDate,
         endDate,
       })
       .andWhere('order.isActive = :isActive', { isActive: true })
+      .andWhere('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED })
       .groupBy('date')
       .orderBy('date', 'ASC');
 

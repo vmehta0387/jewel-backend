@@ -68,6 +68,9 @@ export class Order {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  @Column({ name: 'completed_at', type: 'datetime', nullable: true })
+  completedAt: Date | null;
+
   @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company;

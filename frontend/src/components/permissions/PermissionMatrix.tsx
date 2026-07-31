@@ -48,6 +48,11 @@ const DATA_SCOPE_OPTIONS: Array<{ value: DataScope; label: string }> = [
   { value: 'COMPANY', label: 'Company' },
 ];
 
+// Data-scope controls are intentionally hidden from the permission builder.
+// Keep the underlying scope implementation available so it can be restored
+// without changing the saved detailed-permission payload format.
+const SHOW_DATA_SCOPE_CONTROLS = false;
+
 const NO_SCOPE_ACTIONS = new Set([
   'dashboard.view',
   'mobile.dashboard.view',
@@ -1498,7 +1503,7 @@ export default function PermissionMatrix({
         }
         .permission-matrix-container .selected-action {
           display: grid;
-          grid-template-columns: minmax(0, 1fr) 125px auto;
+          grid-template-columns: minmax(0, 1fr) auto auto;
           align-items: center;
           gap: 8px;
           margin: 6px 8px;
@@ -1591,6 +1596,7 @@ export default function PermissionMatrix({
           border-radius: 6px;
           cursor: pointer;
           transition: all 0.15s ease;
+          justify-self: end;
         }
         .permission-matrix-container .remove-action:hover {
           color: #b42318;
@@ -1676,7 +1682,7 @@ export default function PermissionMatrix({
         <div className="builder-head">
           <div>
             <h1 className="builder-title text-slate-900">Simple Permission Builder</h1>
-            <div className="builder-copy">Direct module actions with simple Own, Branch or Company data scope.</div>
+            <div className="builder-copy">Choose the actions each user is allowed to access.</div>
           </div>
           <div className="builder-actions">
             <span className="selection-count">
@@ -1859,15 +1865,15 @@ export default function PermissionMatrix({
             </div>
           </section>
 
-          {/* Column 3: Allowed Actions & Scope */}
+          {/* Column 3: Allowed Actions */}
           <section className="builder-column" aria-label="Allowed actions">
             <div className="column-head">
               <div>
                 <div className="step-label">
                   <span className="step-number">3</span>
-                  Allowed & Data Scope
+                  Allowed Permissions
                 </div>
-                <p className="column-copy">Define data visibility levels.</p>
+                <p className="column-copy">Review the actions assigned to this user.</p>
               </div>
               <div className="column-head-actions">
                 <PlatformToggle />
@@ -1926,7 +1932,7 @@ export default function PermissionMatrix({
                           </div>
                           
                           <div className="selected-group-controls">
-                            {modScopedActions.length > 0 && (
+                            {SHOW_DATA_SCOPE_CONTROLS && modScopedActions.length > 0 && (
                               <div className="module-scope">
                                 <label>Set all</label>
                                 <select
@@ -1998,7 +2004,7 @@ export default function PermissionMatrix({
                                 </div>
                               </div>
 
-                              {isScoped && isSelected ? (
+                              {SHOW_DATA_SCOPE_CONTROLS && isScoped && isSelected ? (
                                 <div className="action-scope">
                                   <label>Data Scope</label>
                                   <select
@@ -2017,12 +2023,12 @@ export default function PermissionMatrix({
                                     ))}
                                   </select>
                                 </div>
-                              ) : (
+                              ) : !isSelected ? (
                                 <span className="no-scope">
-                                  <i className={`bi ${isSelected ? 'bi-dash-circle' : 'bi-pause-circle'}`} />
-                                  {isSelected ? 'No data scope' : 'Not allowed'}
+                                  <i className="bi bi-pause-circle" />
+                                  Not allowed
                                 </span>
-                              )}
+                              ) : null}
 
                               <button
                                 type="button"

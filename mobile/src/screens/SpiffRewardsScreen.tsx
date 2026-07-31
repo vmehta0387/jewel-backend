@@ -131,12 +131,19 @@ const SpiffRewardsScreen = () => {
 
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [salesRepPanel, setSalesRepPanel] = useState<SalesRepPanel>('REDEEM');
   const [branchManagerPanel, setBranchManagerPanel] = useState<BranchManagerPanel>('BRANCH_BOARD');
   const [companyFilter, setCompanyFilter] = useState<CompanyAdminClaimFilter>('ALL');
   const [claimActionId, setClaimActionId] = useState<string | null>(null);
   const deepLinkedClaimId = route.params?.claimId;
   const deepLinkedClaimNumber = route.params?.claimNumber;
+  const minRedeemPoints = Number(config?.minRedeemPoints || 500);
+
+  const handleRequestedPointsChange = useCallback((value: string) => {
+    setRequestedPoints(value);
+    setClaimError(null);
+  }, []);
 
   const isDeepLinkedClaim = useCallback(
     (claim: Pick<SpiffClaim, 'id' | 'claimNumber'>) =>
@@ -241,10 +248,19 @@ const SpiffRewardsScreen = () => {
 
     const points = Math.round(Number(requestedPoints || 0) * 100) / 100;
     if (!Number.isFinite(points) || points <= 0) {
-      Alert.alert('SPIFF', 'Enter valid points to redeem.');
+      const message = 'Enter valid points to redeem.';
+      setClaimError(message);
+      Alert.alert('Unable to submit claim', message);
+      return;
+    }
+    if (points < minRedeemPoints) {
+      const message = `You must redeem a minimum of ${formatPoints(minRedeemPoints)} points.`;
+      setClaimError(message);
+      Alert.alert('Minimum redemption required', message);
       return;
     }
 
+    setClaimError(null);
     setSubmitting(true);
     try {
       await createSpiffClaim(token, {
@@ -253,14 +269,17 @@ const SpiffRewardsScreen = () => {
       });
       setRequestedPoints('');
       setNote('');
+      setClaimError(null);
       await load(true);
       Alert.alert('Claim submitted', 'Your redemption claim is now in review queue.');
     } catch (error: any) {
-      Alert.alert('SPIFF', error?.message || 'Unable to submit claim right now.');
+      const message = error?.message || 'Unable to submit claim right now.';
+      setClaimError(message);
+      Alert.alert('SPIFF', message);
     } finally {
       setSubmitting(false);
     }
-  }, [token, canCreateClaim, requestedPoints, note, load]);
+  }, [token, canCreateClaim, requestedPoints, minRedeemPoints, note, load]);
 
   const nextTierHint = useMemo(() => {
     const nextTierAt = Number(summary?.tier?.nextTierAt || 0);
@@ -569,15 +588,16 @@ const SpiffRewardsScreen = () => {
               </Text>
               {salesRepPanel === 'REDEEM' && canCreateClaim ? (
                 <>
-                  <Text style={styles.sectionSub}>Minimum {formatPoints(config?.minRedeemPoints || 500)} points</Text>
+                  <Text style={styles.sectionSub}>Minimum {formatPoints(minRedeemPoints)} points</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, claimError && styles.inputError]}
                     keyboardType="decimal-pad"
                     placeholder="Points to redeem"
                     placeholderTextColor="#9F978F"
                     value={requestedPoints}
-                    onChangeText={setRequestedPoints}
+                    onChangeText={handleRequestedPointsChange}
                   />
+                  {claimError ? <Text style={styles.claimErrorText}>{claimError}</Text> : null}
                   <TextInput
                     style={styles.input}
                     placeholder="Notes (optional)"
@@ -987,16 +1007,17 @@ const SpiffRewardsScreen = () => {
           {canCreateClaim ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Redeem Points</Text>
-            <Text style={styles.sectionSub}>Minimum {formatPoints(config?.minRedeemPoints || 500)} points</Text>
+            <Text style={styles.sectionSub}>Minimum {formatPoints(minRedeemPoints)} points</Text>
 
             <TextInput
-              style={styles.input}
+              style={[styles.input, claimError && styles.inputError]}
               keyboardType="decimal-pad"
               placeholder="Points to redeem"
               placeholderTextColor="#9F978F"
               value={requestedPoints}
-              onChangeText={setRequestedPoints}
+              onChangeText={handleRequestedPointsChange}
             />
+            {claimError ? <Text style={styles.claimErrorText}>{claimError}</Text> : null}
 
             <TextInput
               style={styles.input}
@@ -1824,6 +1845,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1F1A16',
     backgroundColor: '#FFFFFF',
+  },
+  inputError: {
+    borderColor: '#C84A4A',
+    backgroundColor: '#FFF8F8',
+  },
+  claimErrorText: {
+    marginTop: 5,
+    color: '#B23A3A',
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
   },
   conversionText: {
     marginTop: 7,

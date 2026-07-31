@@ -1439,7 +1439,7 @@ export default function OrdersPage() {
       { key: 'weight' as ConfiguratorKey, label: 'Dia. Weight' },
       { key: 'ringSize' as ConfiguratorKey, label: 'Jewelry Size' },
       { key: 'diamondType' as ConfiguratorKey, label: 'Diamond Type' },
-      { key: 'shape' as ConfiguratorKey, label: 'Shape' },
+      { key: 'shape' as ConfiguratorKey, label: 'Stones' },
     ],
     [],
   );

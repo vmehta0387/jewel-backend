@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { apiRequest } from './client';
 import type { AuthUser } from '../types';
 
@@ -44,15 +45,30 @@ export const uploadMyPhoto = (
   file: { uri: string; name: string; type: string },
 ) => {
   const formData = new FormData();
-  formData.append('file', file as any);
-  return apiRequest<AuthUser>(
-    '/auth/me/photo',
-    {
-      method: 'POST',
-      body: formData,
-    },
-    token,
-  );
+
+  const upload = async () => {
+    if (Platform.OS === 'web') {
+      const imageResponse = await fetch(file.uri);
+      if (!imageResponse.ok) {
+        throw new Error('Unable to read the selected image.');
+      }
+      const imageBlob = await imageResponse.blob();
+      formData.append('file', imageBlob, file.name);
+    } else {
+      formData.append('file', file as any);
+    }
+
+    return apiRequest<AuthUser>(
+      '/auth/me/photo',
+      {
+        method: 'POST',
+        body: formData,
+      },
+      token,
+    );
+  };
+
+  return upload();
 };
 
 export const updateMyProfile = (
@@ -67,4 +83,3 @@ export const updateMyProfile = (
     },
     token,
   );
-
