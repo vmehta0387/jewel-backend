@@ -78,8 +78,6 @@ const statusLabel = (status?: string | null) => {
       return 'In Prod.';
     case 'SHIPPED':
       return 'Shipped';
-    case 'COMPLETED':
-      return 'Shipped';
     case 'CANCELLED':
       return 'Cancelled';
     default:
@@ -117,7 +115,7 @@ const statusPillStyle = (status?: string | null) => {
       textColor: '#3D6CAF',
     };
   }
-  if (key === 'SHIPPED' || key === 'COMPLETED') {
+  if (key === 'SHIPPED') {
     return {
       backgroundColor: '#E8EFFC',
       borderColor: '#C4D4F4',
@@ -153,13 +151,13 @@ const statusTimelineIndex = (status?: string | null) => {
   if (key === 'PENDING_APPROVAL') return 1;
   if (key === 'APPROVED') return 2;
   if (key === 'IN_PRODUCTION') return 3;
-  if (key === 'SHIPPED' || key === 'COMPLETED') return 4;
+  if (key === 'SHIPPED') return 4;
   return 0;
 };
 
 const matchesFilter = (order: Order, filter: FilterKey) => {
   const key = normalizeStatus(order.status);
-  if (filter === 'SHIPPED') return key === 'SHIPPED' || key === 'COMPLETED';
+  if (filter === 'SHIPPED') return key === 'SHIPPED';
   return key === filter;
 };
 
@@ -270,17 +268,17 @@ const OrdersScreen = () => {
     left: CONFIRM_POPOVER_MARGIN,
   });
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const canSeeSalesRepFilter =
+    user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const fullAccess =
-        user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SALES_REP';
       const [response, employeeRows] = await Promise.all([
         fetchOrders(token, 1, 100, 'ALL'),
-        isBranchManager ? fetchBranchEmployees(token).catch(() => []) : Promise.resolve([]),
+        canSeeSalesRepFilter ? fetchBranchEmployees(token).catch(() => []) : Promise.resolve([]),
       ]);
       const rows = (response.data || []).filter(
         (order) => order.isActive !== false,
@@ -297,18 +295,27 @@ const OrdersScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [isBranchManager, token]);
+  }, [canSeeSalesRepFilter, token]);
 
   const salesRepOptions = useMemo(() => {
     const reps = new Map<string, string>();
     branchSalesReps.forEach((employee) => {
       const name = `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.email;
-      reps.set(employee.id, name);
+      if (name && employee.id) {
+        reps.set(employee.id, name);
+      }
     });
+
     orders.forEach((order) => {
       if (!order.salesRepId) return;
-      reps.set(order.salesRepId, order.salesRepName?.trim() || order.salesRepEmail?.trim() || 'Sales Representative');
+      const name = order.salesRepName?.trim() || order.salesRepEmail?.trim();
+      if (name && !reps.has(order.salesRepId)) {
+        if (!/admin/i.test(name)) {
+          reps.set(order.salesRepId, name);
+        }
+      }
     });
+
     return Array.from(reps, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [branchSalesReps, orders]);
 
@@ -336,8 +343,24 @@ const OrdersScreen = () => {
       SHIPPED: 0,
       CANCELLED: 0,
     };
+    const term = search.trim().toLowerCase();
 
     salesRepFilteredOrders.forEach((order) => {
+      if (term) {
+        const searchable = [
+          order.orderNumber,
+          order.designNo,
+          order.purchaseOrderNumber,
+          order.customerName,
+          order.customerEmail,
+          order.shortDescription,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!searchable.includes(term)) return;
+      }
+
       const key = normalizeStatus(order.status);
       if (key === 'QUOTE') initial.QUOTE += 1;
       else if (key === 'PENDING_APPROVAL') initial.PENDING_APPROVAL += 1;
@@ -348,7 +371,7 @@ const OrdersScreen = () => {
     });
 
     return initial;
-  }, [salesRepFilteredOrders]);
+  }, [salesRepFilteredOrders, search]);
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -379,6 +402,18 @@ const OrdersScreen = () => {
     }
     return FILTERS;
   }, [isCompanyAdmin]);
+
+  useEffect(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return;
+
+    if (countsByFilter[selectedFilter] > 0) return;
+
+    const bestMatchTab = visibleFilters.find((f) => countsByFilter[f.key] > 0);
+    if (bestMatchTab) {
+      setSelectedFilter(bestMatchTab.key);
+    }
+  }, [search, countsByFilter, selectedFilter, visibleFilters]);
 
   useEffect(() => {
     if (isCompanyAdmin && selectedFilter === 'QUOTE') {
@@ -726,7 +761,7 @@ const OrdersScreen = () => {
       order.customerName;
 
     const thumbRingColor =
-      normalizeStatus(order.status) === 'SHIPPED' || normalizeStatus(order.status) === 'COMPLETED'
+      normalizeStatus(order.status) === 'SHIPPED'
         ? '#4A8ADA'
         : normalizeStatus(order.status) === 'APPROVED'
           ? '#B2874A'
@@ -922,7 +957,7 @@ const OrdersScreen = () => {
           ) : null}
         </View>
 
-        {isBranchManager && salesRepOptions.length > 0 ? (
+        {canSeeSalesRepFilter && salesRepOptions.length > 0 ? (
           <View style={styles.salesRepFilter}>
             <Text style={styles.salesRepFilterLabel}>Sales Rep</Text>
             <ScrollView

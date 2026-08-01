@@ -1452,10 +1452,10 @@ export default function OrdersPage() {
     });
   };
 
-  const resolvePacketName = (packetId?: string | null): string => {
-    if (!packetId) return '-';
-    return packetLookup[packetId] || '-';
-  };
+  // const resolvePacketName = (packetId?: string | null): string => {
+  //   if (!packetId) return '-';
+  //   return packetLookup[packetId] || '-';
+  // };
 
   const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
     const confirmed = await confirmAppDialog(

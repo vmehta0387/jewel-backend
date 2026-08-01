@@ -73,6 +73,39 @@ const formatDateLocal = (value?: string | null) => {
   });
 };
 
+const parseSelectionFromSummaryText = (value?: string | null) => {
+  const text = String(value || '').trim();
+  if (!text) return {};
+
+  const selection: {
+    shape?: string;
+    metalColor?: string;
+    style?: string;
+    weight?: string;
+    quality?: string;
+    ringSize?: string;
+  } = {};
+
+  text.split(/\s*[|\u2022]\s*/).forEach((part) => {
+    const separatorIndex = part.indexOf(':');
+    if (separatorIndex < 0) return;
+    const label = part.slice(0, separatorIndex).trim().toLowerCase();
+    const selectedValue = part.slice(separatorIndex + 1).trim();
+    if (!selectedValue) return;
+
+    if (label === 'stone' || label === 'shape') {
+      selection.shape = selectedValue.split(',')[0]?.trim() || selectedValue;
+    }
+    else if (label === 'metal') selection.metalColor = selectedValue;
+    else if (label === 'coverage' || label === 'style' || label === 'diamond spread') selection.style = selectedValue;
+    else if (label === 'dia. weight' || label === 'diamond weight' || label === 'weight') selection.weight = selectedValue;
+    else if (label === 'dia. quality' || label === 'diamond quality' || label === 'quality') selection.quality = selectedValue;
+    else if (label === 'jewelry size' || label === 'ring size' || label === 'size') selection.ringSize = selectedValue;
+  });
+
+  return selection;
+};
+
 type DetailRowProps = { label: string; value?: string | number | null; boldValue?: boolean };
 const DetailRow = ({ label, value, boldValue = false }: DetailRowProps) => (
   <View style={styles.detailRow}>
@@ -137,6 +170,11 @@ const OrderDetailScreen = () => {
       setLoading(false);
     }
   }, [route.params.orderId, token]);
+
+  const parsedSelection = useMemo(
+    () => parseSelectionFromSummaryText(order?.shortDescription),
+    [order?.shortDescription],
+  );
 
   const gemstoneRows = useMemo(() => designDetails?.gemstones || [], [designDetails?.gemstones]);
   const gemstoneTotalWeight = useMemo(
@@ -264,17 +302,17 @@ const OrderDetailScreen = () => {
             <DetailRow label="Design No" value={order.designNo} boldValue />
             <DetailRow label="Category" value={designDetails?.jewelryGroup} />
             {/* <DetailRow label="Sub Category" value={designDetails?.collection} /> */}
-            <DetailRow label="Jewelry Size" value={designDetails?.jewelrySize} />
+            <DetailRow label="Jewelry Size" value={parsedSelection.ringSize || designDetails?.jewelrySize} />
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Diamond Information</Text>
           <View style={styles.detailsList}>
-            <DetailRow label="Diamond Type" value={designDetails?.diamondType} />
-            <DetailRow label="Diamond Spread" value={designDetails?.diamondSpread} />
-            <DetailRow label="Diamond Wt" value={designDetails?.diamondWeight || gemstoneTotalWeight.toFixed(3)} />
-            <DetailRow label="Diamond Quality" value={designDetails?.diamondQuality} />
+            <DetailRow label="Diamond Type" value={parsedSelection.shape || designDetails?.diamondType} />
+            <DetailRow label="Diamond Spread" value={parsedSelection.style || designDetails?.diamondSpread} />
+            <DetailRow label="Diamond Wt" value={parsedSelection.weight || designDetails?.diamondWeight || (gemstoneTotalWeight > 0 ? gemstoneTotalWeight.toFixed(3) : undefined)} />
+            <DetailRow label="Diamond Quality" value={parsedSelection.quality || designDetails?.diamondQuality} />
           </View>
         </View>
 

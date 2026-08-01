@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Swipeable } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -84,15 +84,21 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
   return (
     <Swipeable
       overshootLeft={false}
-      friction={1.7}
-      leftThreshold={64}
-      onSwipeableOpen={(direction) => {
-        if (direction === 'left') {
-          onMarkRead(entry);
-        }
+      overshootRight={false}
+      friction={1.5}
+      leftThreshold={40}
+      rightThreshold={40}
+      onSwipeableOpen={() => {
+        onMarkRead(entry);
       }}
       renderLeftActions={() => (
-        <View style={styles.swipeReadAction}>
+        <View style={styles.swipeReadActionLeft}>
+          <Ionicons name="checkmark-circle-outline" size={19} color="#FFFFFF" />
+          <Text style={styles.swipeReadActionText}>Mark read</Text>
+        </View>
+      )}
+      renderRightActions={() => (
+        <View style={styles.swipeReadActionRight}>
           <Ionicons name="checkmark-circle-outline" size={19} color="#FFFFFF" />
           <Text style={styles.swipeReadActionText}>Mark read</Text>
         </View>
@@ -290,87 +296,89 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.modalOverlayLock}>
-          <TouchableWithoutFeedback>
-            <View style={[styles.notificationsWindow, { width: Math.min(338, width - 20) }]}>
-              <View style={styles.notificationsHeaderRow}>
-                <Text style={styles.notificationsTitle}>Notifications</Text>
-                <View style={styles.filterTabs}>
-                  <TouchableOpacity
-                    style={[styles.filterTab, activeFilter === 'unread' && styles.filterTabActive]}
-                    onPress={() => handleSelectFilter('unread')}
-                    activeOpacity={0.86}
-                    disabled={loading && activeFilter === 'unread'}
-                  >
-                    <Text style={[styles.filterTabText, activeFilter === 'unread' && styles.filterTabTextActive]}>
-                      Unread
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
-                    onPress={() => handleSelectFilter('all')}
-                    activeOpacity={0.86}
-                    disabled={loading && activeFilter === 'all'}
-                  >
-                    <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
-                      All
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity onPress={handleMarkAllRead} activeOpacity={0.85} disabled={!canMarkAllRead}>
-                  <Text style={[styles.markReadText, !canMarkAllRead && styles.markReadTextDisabled]}>
-                    Mark all read
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {loading ? (
-                <View style={styles.emptyNotifBox}>
-                  <ActivityIndicator color="#B2874A" />
-                </View>
-              ) : loadError ? (
-                <View style={styles.emptyNotifBox}>
-                  <Ionicons name="cloud-offline-outline" size={20} color="#B2874A" />
-                  <Text style={styles.emptyNotifString}>{loadError}</Text>
-                  {token ? (
-                    <TouchableOpacity style={styles.retryButton} onPress={handleRetry} activeOpacity={0.85}>
-                      <Ionicons name="refresh" size={13} color="#FFFFFF" />
-                      <Text style={styles.retryButtonText}>Retry</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : hasAnyNotifications ? (
-                <ScrollView style={styles.notificationsScroll} showsVerticalScrollIndicator={false}>
-                  {renderSection('ALERTS', alerts)}
-                  {renderSection('RECENT ACTIVITY', recentActivity)}
-                  {renderSection('UPDATES', updates)}
-                  {canLoadMore || loadingMore ? (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.modalOverlayLock}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.notificationsWindow, { width: Math.min(338, width - 20) }]}>
+                <View style={styles.notificationsHeaderRow}>
+                  <Text style={styles.notificationsTitle}>Notifications</Text>
+                  <View style={styles.filterTabs}>
                     <TouchableOpacity
-                      style={styles.loadMoreButton}
-                      onPress={handleLoadMore}
+                      style={[styles.filterTab, activeFilter === 'unread' && styles.filterTabActive]}
+                      onPress={() => handleSelectFilter('unread')}
                       activeOpacity={0.86}
-                      disabled={loadingMore}
+                      disabled={loading && activeFilter === 'unread'}
                     >
-                      {loadingMore ? (
-                        <ActivityIndicator color="#B2874A" size="small" />
-                      ) : (
-                        <Text style={styles.loadMoreText}>Load more</Text>
-                      )}
+                      <Text style={[styles.filterTabText, activeFilter === 'unread' && styles.filterTabTextActive]}>
+                        Unread
+                      </Text>
                     </TouchableOpacity>
-                  ) : null}
-                </ScrollView>
-              ) : (
-                <View style={styles.emptyNotifBox}>
-                  <Text style={styles.emptyNotifString}>
-                    {activeFilter === 'unread' ? 'No unread notifications' : 'No recent activity'}
-                  </Text>
+                    <TouchableOpacity
+                      style={[styles.filterTab, activeFilter === 'all' && styles.filterTabActive]}
+                      onPress={() => handleSelectFilter('all')}
+                      activeOpacity={0.86}
+                      disabled={loading && activeFilter === 'all'}
+                    >
+                      <Text style={[styles.filterTabText, activeFilter === 'all' && styles.filterTabTextActive]}>
+                        All
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={handleMarkAllRead} activeOpacity={0.85} disabled={!canMarkAllRead}>
+                    <Text style={[styles.markReadText, !canMarkAllRead && styles.markReadTextDisabled]}>
+                      Mark all read
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              )}
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
+
+                {loading ? (
+                  <View style={styles.emptyNotifBox}>
+                    <ActivityIndicator color="#B2874A" />
+                  </View>
+                ) : loadError ? (
+                  <View style={styles.emptyNotifBox}>
+                    <Ionicons name="cloud-offline-outline" size={20} color="#B2874A" />
+                    <Text style={styles.emptyNotifString}>{loadError}</Text>
+                    {token ? (
+                      <TouchableOpacity style={styles.retryButton} onPress={handleRetry} activeOpacity={0.85}>
+                        <Ionicons name="refresh" size={13} color="#FFFFFF" />
+                        <Text style={styles.retryButtonText}>Retry</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : hasAnyNotifications ? (
+                  <ScrollView style={styles.notificationsScroll} showsVerticalScrollIndicator={false}>
+                    {renderSection('ALERTS', alerts)}
+                    {renderSection('RECENT ACTIVITY', recentActivity)}
+                    {renderSection('UPDATES', updates)}
+                    {canLoadMore || loadingMore ? (
+                      <TouchableOpacity
+                        style={styles.loadMoreButton}
+                        onPress={handleLoadMore}
+                        activeOpacity={0.86}
+                        disabled={loadingMore}
+                      >
+                        {loadingMore ? (
+                          <ActivityIndicator color="#B2874A" size="small" />
+                        ) : (
+                          <Text style={styles.loadMoreText}>Load more</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                  </ScrollView>
+                ) : (
+                  <View style={styles.emptyNotifBox}>
+                    <Text style={styles.emptyNotifString}>
+                      {activeFilter === 'unread' ? 'No unread notifications' : 'No recent activity'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </GestureHandlerRootView>
     </Modal>
   );
 };
@@ -470,10 +478,24 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     marginBottom: 8,
   },
-  swipeReadAction: {
+  swipeReadActionLeft: {
     width: 96,
     minHeight: 72,
     marginBottom: 8,
+    marginRight: 6,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    borderRadius: 12,
+    backgroundColor: '#3E8B5B',
+  },
+  swipeReadActionRight: {
+    width: 96,
+    minHeight: 72,
+    marginBottom: 8,
+    marginLeft: 6,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',

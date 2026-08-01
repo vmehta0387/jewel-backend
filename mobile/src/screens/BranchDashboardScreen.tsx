@@ -186,7 +186,7 @@ const BranchDashboardScreen = () => {
         fetchOrders(token, 1, 100, 'ALL'),
         fetchMobileTrendingDesigns(token, 3),
         fetchSpiffSummary(token),
-        user?.role === 'COMPANY_ADMIN' && canLoadTeamMetrics ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
+        (user?.role === 'COMPANY_ADMIN' || user?.role === 'BRANCH_MANAGER') && canLoadTeamMetrics ? fetchBranchEmployees(token) : Promise.resolve([] as BranchEmployee[]),
       ]);
 
       if (summaryRes.status === 'fulfilled') {
@@ -217,6 +217,13 @@ const BranchDashboardScreen = () => {
         }
 
         if (user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN') {
+          const repsList = repsRes.status === 'fulfilled' ? (repsRes.value || []) : [];
+          const validSalesRepIds = new Set(
+            repsList
+              .filter((emp) => emp.role === 'SALES_REP')
+              .map((emp) => emp.id)
+          );
+
           const repAgg = new Map<string, { name: string; sales: number }>();
           orderRows
             .filter((order) => order.isActive !== false)
@@ -226,6 +233,14 @@ const BranchDashboardScreen = () => {
                 String(order.salesRepName || '').trim() ||
                 String(order.salesRepEmail || '').trim() ||
                 'Unknown Rep';
+
+              if (/super\s*admin/i.test(repName) || /admin/i.test(repName)) {
+                return;
+              }
+              if (validSalesRepIds.size > 0 && repId && !validSalesRepIds.has(repId)) {
+                return;
+              }
+
               const key = repId || repName.toLowerCase();
               const current = repAgg.get(key) || { name: repName, sales: 0 };
               current.sales += Number(order.price || 0);

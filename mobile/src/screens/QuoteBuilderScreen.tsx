@@ -34,6 +34,7 @@ import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
+import { salesRepRequiresApproval } from '../utils/permissions';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -818,22 +819,26 @@ const QuoteBuilderScreen = () => {
       }))) {
         return null;
       }
+      const requiresApproval = salesRepRequiresApproval(user);
+      const effectiveStatus = nextStatus === 'PENDING_APPROVAL' ? (requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION') : nextStatus;
+
       const payload = {
         designId: activeDesign?.id || draft.designId,
+        price: Number(displayPrice || draft.unitPrice || 0),
         shortDescription: selectionSummary || undefined,
         purchaseOrderNumber: purchaseOrderNumber.trim() || undefined,
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerEmail: customerEmail.trim() || undefined,
         notes: notes.trim() || undefined,
-        status: nextStatus,
+        status: effectiveStatus,
       };
 
       const targetOrderId = order?.id || editingOrderId;
       if (targetOrderId) {
         let updated = await updateOrder(token, targetOrderId, payload);
-        if (String(updated.status || '').toUpperCase() !== nextStatus) {
-          updated = await updateOrder(token, targetOrderId, { status: nextStatus });
+        if (String(updated.status || '').toUpperCase() !== effectiveStatus) {
+          updated = await updateOrder(token, targetOrderId, { status: effectiveStatus });
         }
         setOrder(updated);
         setEditingOrderId(updated.id);
@@ -854,8 +859,8 @@ const QuoteBuilderScreen = () => {
         notes: payload.notes,
         status: payload.status,
       });
-      if (String(created.status || '').toUpperCase() !== nextStatus) {
-        created = await updateOrder(token, created.id, { status: nextStatus });
+      if (String(created.status || '').toUpperCase() !== effectiveStatus) {
+        created = await updateOrder(token, created.id, { status: effectiveStatus });
       }
       setOrder(created);
       setEditingOrderId(created.id);
@@ -878,6 +883,7 @@ const QuoteBuilderScreen = () => {
       customerEmail,
       notes,
       isApprovedOrderLocked,
+      user,
     ],
   );
 
@@ -919,7 +925,7 @@ const QuoteBuilderScreen = () => {
         params: { orderId: updated.id },
       });
     } catch (err: any) {
-      setError(err?.message || 'Unable to send quote for approval.');
+      setError(err?.message || 'Unable to process order.');
     } finally {
       setSending(false);
     }

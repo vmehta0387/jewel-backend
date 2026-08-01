@@ -22,6 +22,7 @@ import type { Design, Order } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
+import { salesRepRequiresApproval } from '../utils/permissions';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
@@ -336,6 +337,9 @@ const QuoteSummaryScreen = () => {
     setSending(true);
     setError(null);
     try {
+      const requiresApproval = salesRepRequiresApproval(user);
+      const targetStatus = requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION';
+
       const payload = {
         designId: displaySummary.designId,
         shortDescription: [
@@ -354,7 +358,7 @@ const QuoteSummaryScreen = () => {
         customerPhone: displaySummary.customerPhone || undefined,
         customerEmail: displaySummary.customerEmail || undefined,
         notes: displaySummary.notes || undefined,
-        status: 'PENDING_APPROVAL',
+        status: targetStatus,
       };
 
       if (!(await confirmPurchaseOrderReuse({
@@ -388,7 +392,7 @@ const QuoteSummaryScreen = () => {
           customerPhone: payload.customerPhone,
           customerEmail: payload.customerEmail,
           notes: payload.notes,
-          status: 'PENDING_APPROVAL',
+          status: targetStatus,
         });
         nextOrderId = created.id;
         nextOrderNumber = created.orderNumber || nextOrderNumber;
@@ -397,14 +401,18 @@ const QuoteSummaryScreen = () => {
 
       setOrderId(nextOrderId);
       setOrderNumber(nextOrderNumber);
-      setCurrentStatus('PENDING_APPROVAL');
-      Alert.alert('Sent', 'Order sent for approval.');
+      setCurrentStatus(targetStatus);
+      if (requiresApproval) {
+        Alert.alert('Sent', 'Order sent for approval.');
+      } else {
+        Alert.alert('Success', 'Order placed successfully and sent directly to Production.');
+      }
     } catch (err: any) {
-      setError(err?.message || 'Unable to send for approval.');
+      setError(err?.message || 'Unable to process order.');
     } finally {
       setSending(false);
     }
-  }, [token, user?.companyId, user?.branchId, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection]);
+  }, [token, user, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection]);
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
@@ -418,8 +426,13 @@ const QuoteSummaryScreen = () => {
 
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
+      const requiresApproval = salesRepRequiresApproval(user);
       return {
-        primaryLabel: sending ? 'Sending...' : 'Send for Approval ->',
+        primaryLabel: sending
+          ? 'Processing...'
+          : requiresApproval
+          ? 'Send for Approval ->'
+          : 'Place Order (In Prod.) ->',
         primaryDisabled: sending,
         leftLabel: 'Edit Order',
         leftIcon: 'create-outline' as const,

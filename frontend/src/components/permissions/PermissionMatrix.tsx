@@ -279,6 +279,7 @@ const MODULES: PermissionModule[] = [
       { key: 'order.status_update', label: 'Update status', description: 'Change order status.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS' },
       { key: 'order.approve', label: 'Approve order', description: 'Approve pending orders.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'order.reject', label: 'Reject order', description: 'Reject or cancel pending orders.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
+      { key: 'order.require_approval', label: 'Require Branch Manager approval', description: 'If enabled, orders created by this sales rep require Branch Manager approval (Pending). If disabled, orders go directly to In Production.', group: 'Approvals', platform: 'both', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'order.price_preview', label: 'Preview price', description: 'Calculate retail price previews.', group: 'Pricing', platform: 'web', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'order.price_override', label: 'Override price', description: 'Manually override order price.', group: 'Pricing', platform: 'web', legacyPermission: 'ORDER_ENTRIES', sensitive: true },
       { key: 'order.cost_price.view', label: 'View cost price', description: 'See design/order cost price.', group: 'Pricing', platform: 'web', sensitive: true },

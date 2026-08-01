@@ -23,6 +23,7 @@ import { useCart } from '../context/CartContext';
 import { createOrder } from '../api/orders';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
+import { salesRepRequiresApproval } from '../utils/permissions';
 import { colors, radii, spacing } from '../theme';
 
 const formatMoney = (value: number) =>
@@ -93,6 +94,9 @@ const CartScreen = () => {
         return;
       }
 
+      const requiresApproval = salesRepRequiresApproval(user);
+      const targetStatus = user.role === 'BRANCH_MANAGER' ? 'APPROVED' : (requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION');
+
       for (const item of items) {
         await createOrder(token, {
           companyId: user.companyId,
@@ -106,16 +110,18 @@ const CartScreen = () => {
           customerPhone: customerPhone.trim() || undefined,
           customerEmail: customerEmail.trim() || undefined,
           notes: normalizedNotes || undefined,
-          status: user.role === 'BRANCH_MANAGER' ? 'APPROVED' : 'PENDING_APPROVAL',
+          status: targetStatus,
         });
       }
 
       clear();
       Alert.alert(
-        'Quote sent successfully',
+        targetStatus === 'IN_PRODUCTION' ? 'Order Placed' : 'Quote sent successfully',
         user.role === 'BRANCH_MANAGER'
           ? 'Quote has been sent to Super Admin.'
-          : 'Quote has been sent to Branch Manager for approval.',
+          : requiresApproval
+          ? 'Quote has been sent to Branch Manager for approval.'
+          : 'Order placed successfully and sent directly to Production.',
       );
       navigation.goBack();
     } catch (err: any) {

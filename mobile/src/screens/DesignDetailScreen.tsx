@@ -622,10 +622,17 @@ const DesignDetailScreen = () => {
       if (!gallery.length) return;
       const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
       setSelectedImageIndex(boundedIndex);
-      mediaListRef.current?.scrollToOffset({
-        offset: mediaFrameWidth * boundedIndex,
-        animated: true,
-      });
+      try {
+        mediaListRef.current?.scrollToIndex({
+          index: boundedIndex,
+          animated: true,
+        });
+      } catch {
+        mediaListRef.current?.scrollToOffset({
+          offset: mediaFrameWidth * boundedIndex,
+          animated: true,
+        });
+      }
     },
     [gallery.length, mediaFrameWidth],
   );
@@ -1400,18 +1407,20 @@ const DesignDetailScreen = () => {
                 <TouchableOpacity
                   style={[styles.mediaNavButton, styles.mediaNavButtonLeft]}
                   onPress={() => goToMediaIndex(selectedImageIndex - 1)}
-                  activeOpacity={0.72}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Ionicons name="chevron-back" size={24} color="rgba(42, 36, 31, 0.28)" />
+                  <Ionicons name="chevron-back" size={20} color="#2A241F" />
                 </TouchableOpacity>
               ) : null}
               {!resolvingSelection && gallery.length > 1 && hasNextMedia ? (
                 <TouchableOpacity
                   style={[styles.mediaNavButton, styles.mediaNavButtonRight]}
                   onPress={() => goToMediaIndex(selectedImageIndex + 1)}
-                  activeOpacity={0.72}
+                  activeOpacity={0.75}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Ionicons name="chevron-forward" size={24} color="rgba(42, 36, 31, 0.28)" />
+                  <Ionicons name="chevron-forward" size={20} color="#2A241F" />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1840,18 +1849,27 @@ const styles = StyleSheet.create({
   mediaNavButton: {
     position: 'absolute',
     top: '50%',
-    width: 44,
-    height: 54,
-    marginTop: -27,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginTop: -19,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderWidth: 1,
+    borderColor: '#E8DFD3',
+    shadowColor: '#2C1E16',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
+    zIndex: 10,
   },
   mediaNavButtonLeft: {
-    left: 0,
+    left: 8,
   },
   mediaNavButtonRight: {
-    right: 0,
+    right: 8,
   },
   mediaCaption: {
     marginTop: 6,

@@ -283,7 +283,7 @@ export class OrdersService implements OnModuleInit {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const { orderNumber } = await this.getNextOrderNumber();
-      const computedStatus = this.resolveCreateStatus(dto.status, requester.role);
+      const computedStatus = this.resolveCreateStatus(dto.status, requester);
       const order = this.orderRepo.create({
         orderNumber,
         companyId: scope.companyId ?? null,
@@ -335,12 +335,29 @@ export class OrdersService implements OnModuleInit {
     throw new BadRequestException('Unable to generate unique order number. Please retry.');
   }
 
-  private resolveCreateStatus(requestedStatus: OrderStatus | undefined, role: UserRole): OrderStatus {
-    if (role === UserRole.SALES_REP) {
-      return requestedStatus ?? OrderStatus.PENDING_APPROVAL;
+  private doesSalesRepRequireApproval(requester: AuthUser): boolean {
+    if (!requester.detailedPermissions || requester.detailedPermissions.length === 0) {
+      return true;
+    }
+    return requester.detailedPermissions.some(
+      (permission) => permission.actionKey === 'order.require_approval',
+    );
+  }
+
+  private resolveCreateStatus(requestedStatus: OrderStatus | undefined, requester: AuthUser): OrderStatus {
+    if (requestedStatus === OrderStatus.QUOTE) {
+      return OrderStatus.QUOTE;
     }
 
-    if (role === UserRole.BRANCH_MANAGER) {
+    if (requester.role === UserRole.SALES_REP) {
+      const requiresApproval = this.doesSalesRepRequireApproval(requester);
+      if (requiresApproval) {
+        return requestedStatus ?? OrderStatus.PENDING_APPROVAL;
+      }
+      return OrderStatus.IN_PRODUCTION;
+    }
+
+    if (requester.role === UserRole.BRANCH_MANAGER) {
       return requestedStatus ?? OrderStatus.APPROVED;
     }
 
