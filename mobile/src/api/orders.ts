@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import { API_BASE_URL } from '../config';
 import type { OrdersResponse, Order } from '../types';
 
 export type OrderPeriod = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
@@ -62,6 +63,8 @@ export const fetchOrderTrends = (token: string) =>
 
 export const fetchOrder = (token: string, id: string) =>
   apiRequest<Order>(`/orders/${id}`, { method: 'GET' }, token);
+
+export const getOrderPdfUrl = (id: string) => `${API_BASE_URL}/orders/${encodeURIComponent(id)}/pdf`;
 
 export const fetchPurchaseOrderUsage = (
   token: string,

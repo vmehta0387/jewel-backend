@@ -88,6 +88,21 @@ export class FindSpiffClaimsQueryDto {
   q?: string;
 }
 
+export class FindSpiffActivityQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
 export class CreateSpiffClaimDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

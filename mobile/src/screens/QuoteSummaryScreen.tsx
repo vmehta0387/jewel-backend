@@ -10,12 +10,14 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createOrder, fetchOrder, updateOrder } from '../api/orders';
+import { createOrder, fetchOrder, getOrderPdfUrl, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import type { Design, Order } from '../types';
@@ -240,6 +242,7 @@ const QuoteSummaryScreen = () => {
     };
   });
   const [sending, setSending] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -429,6 +432,62 @@ const QuoteSummaryScreen = () => {
     });
   }, [navigation]);
 
+  const handleDownloadPdf = useCallback(async () => {
+    if (!token || !orderId) {
+      Alert.alert('PDF unavailable', 'Please create the order before downloading PDF.');
+      return;
+    }
+
+    const safeOrderNo = compact(orderNumber || displaySummary.orderNumber || orderId)
+      .replace(/[^a-z0-9_-]+/gi, '-')
+      .replace(/^-+|-+$/g, '') || 'order';
+    const fileName = `${safeOrderNo}-summary.pdf`;
+    const localUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+    setDownloadingPdf(true);
+    try {
+      const result = await FileSystem.downloadAsync(getOrderPdfUrl(orderId), localUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (result.status !== 200) {
+        throw new Error('Unable to download PDF.');
+      }
+
+      if (Platform.OS === 'android') {
+        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+        if (permissions.granted) {
+          const base64 = await FileSystem.readAsStringAsync(result.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
+            permissions.directoryUri,
+            fileName,
+            'application/pdf',
+          );
+          await FileSystem.writeAsStringAsync(targetUri, base64, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          Alert.alert('Downloaded', 'Order PDF saved successfully.');
+          return;
+        }
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(result.uri, {
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+          dialogTitle: 'Save or share order PDF',
+        });
+      } else {
+        Alert.alert('Downloaded', `PDF saved at ${result.uri}`);
+      }
+    } catch (err: any) {
+      Alert.alert('Download failed', err?.message || 'Unable to download order PDF.');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }, [displaySummary.orderNumber, orderId, orderNumber, token]);
+
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
       const requiresApproval = salesRepRequiresApproval(user);
@@ -555,9 +614,14 @@ const QuoteSummaryScreen = () => {
           <Ionicons name="chevron-back" size={17} color="#7A6E61" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Order Summary</Text>
-        <TouchableOpacity style={styles.printBtn} activeOpacity={0.9} onPress={() => Alert.alert('Print', 'Print view coming soon.')}>
+        <TouchableOpacity
+          style={[styles.printBtn, downloadingPdf ? styles.printBtnDisabled : null]}
+          activeOpacity={0.9}
+          onPress={handleDownloadPdf}
+          disabled={downloadingPdf}
+        >
           <Ionicons name="print-outline" size={14} color="#8A7C6B" />
-          <Text style={styles.printText}>Print</Text>
+          <Text style={styles.printText}>{downloadingPdf ? 'PDF...' : 'Print'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -783,6 +847,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF8F5',
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  printBtnDisabled: {
+    opacity: 0.65,
   },
   printText: {
     marginLeft: 4,

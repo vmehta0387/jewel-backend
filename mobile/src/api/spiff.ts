@@ -54,6 +54,27 @@ export type SpiffClaim = {
   updatedAt: string;
 };
 
+export type SpiffActivityItem = {
+  id: string;
+  type: 'EARNED' | 'REDEEMED';
+  title: string;
+  subtitle?: string | null;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  orderStatus?: string | null;
+  orderAmount?: number | null;
+  points: number;
+  requestedPoints?: number;
+  requestedAmount?: number;
+  giftCardType?: string;
+  claimNumber?: string;
+  claimStatus?: string;
+  reviewReason?: string | null;
+  giftbitLinkUrl?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+};
+
 export const fetchSpiffConfig = (token: string) =>
   apiRequest<SpiffConfig>('/spiff/config', { method: 'GET' }, token);
 
@@ -85,6 +106,14 @@ export const fetchSpiffClaims = (token: string, page = 1, limit = 20) =>
     page: number;
     totalPages: number;
   }>(`/spiff/claims?page=${page}&limit=${limit}`, { method: 'GET' }, token);
+
+export const fetchSpiffActivity = (token: string, page = 1, limit = 30) =>
+  apiRequest<{
+    data: SpiffActivityItem[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }>(`/spiff/activity?page=${page}&limit=${limit}`, { method: 'GET' }, token);
 
 export const createSpiffClaim = (
   token: string,

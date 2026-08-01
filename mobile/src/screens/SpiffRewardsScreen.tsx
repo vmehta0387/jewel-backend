@@ -16,12 +16,14 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { useAuth } from '../context/AuthContext';
 import {
   createSpiffClaim,
+  fetchSpiffActivity,
   fulfillSpiffClaim,
   fetchSpiffClaims,
   fetchSpiffConfig,
   fetchSpiffLeaderboard,
   fetchSpiffSummary,
   reviewSpiffClaim,
+  type SpiffActivityItem,
   type SpiffClaim,
 } from '../api/spiff';
 import type { DashboardStackParamList } from '../navigation/RootNavigator';
@@ -128,6 +130,7 @@ const SpiffRewardsScreen = () => {
   const [leaderboard, setLeaderboard] = useState<any>(null);
   const [globalLeaderboard, setGlobalLeaderboard] = useState<any>(null);
   const [claims, setClaims] = useState<SpiffClaim[]>([]);
+  const [activity, setActivity] = useState<SpiffActivityItem[]>([]);
 
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
@@ -158,7 +161,7 @@ const SpiffRewardsScreen = () => {
     if (!silent) setLoading(true);
 
     try {
-      const [configRes, summaryRes, leaderboardRes, claimsRes] = await Promise.all([
+      const [configRes, summaryRes, leaderboardRes, claimsRes, activityRes] = await Promise.all([
         fetchSpiffConfig(token),
         fetchSpiffSummary(token),
         canViewLeaderboard
@@ -176,6 +179,7 @@ const SpiffRewardsScreen = () => {
             })
           : Promise.resolve(null),
         fetchSpiffClaims(token, 1, 20),
+        fetchSpiffActivity(token, 1, 30),
       ]);
       let secondaryBoardRes: any = null;
       if (canViewLeaderboard && user?.role === 'SALES_REP') {
@@ -205,6 +209,7 @@ const SpiffRewardsScreen = () => {
       setLeaderboard(leaderboardRes);
       setGlobalLeaderboard(secondaryBoardRes);
       setClaims(claimsRes.data || []);
+      setActivity(activityRes.data || []);
     } catch (error: any) {
       Alert.alert('SPIFF', error?.message || 'Unable to load SPIFF data right now.');
     } finally {
@@ -390,6 +395,42 @@ const SpiffRewardsScreen = () => {
       setClaimActionId(null);
     }
   }, [token, canFulfillClaim, load]);
+
+  const renderActivityCard = useCallback((item: SpiffActivityItem) => {
+    const earned = item.type === 'EARNED';
+    const status = String(item.claimStatus || '').toUpperCase();
+    const badgeBg = earned ? '#E8F5EB' : STATUS_BG[status] || '#F4F4F4';
+    const badgeText = earned ? '#2D7A43' : STATUS_TEXT[status] || '#666';
+    const pointsLabel = `${earned ? '+' : '-'}${formatPoints(Math.abs(Number(item.points || 0)))} pts`;
+    const amount = earned ? Number(item.orderAmount || 0) : Number(item.requestedAmount || 0);
+
+    return (
+      <View key={item.id} style={styles.claimCard}>
+        <View style={styles.claimTopRow}>
+          <Text style={styles.claimNumber}>{item.title}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+            <Text style={[styles.statusBadgeText, { color: badgeText }]}>{earned ? 'EARNED' : String(item.claimStatus || 'CLAIM').replace(/_/g, ' ')}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.claimMeta}>
+          {pointsLabel} - {formatMoney(amount)} - {formatClaimAge(item.createdAt)}
+        </Text>
+        {item.subtitle ? <Text style={styles.claimNote}>{item.subtitle}</Text> : null}
+        {earned && item.orderNumber ? (
+          <Text style={styles.claimNote}>
+            Order No. {item.orderNumber}{item.orderStatus ? ` - ${String(item.orderStatus).replace(/_/g, ' ')}` : ''}
+          </Text>
+        ) : null}
+        {!earned && item.reviewReason ? <Text style={styles.claimNote}>Note: {item.reviewReason}</Text> : null}
+        {!earned && item.giftbitLinkUrl ? (
+          <TouchableOpacity onPress={() => Linking.openURL(item.giftbitLinkUrl as string)} style={styles.linkBtn}>
+            <Text style={styles.linkBtnText}>Open reward link</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  }, []);
 
   if (!canViewSpiff) {
     return (
@@ -663,44 +704,8 @@ const SpiffRewardsScreen = () => {
               ) : null}
 
               {salesRepPanel === 'ACTIVITY' ? (
-                claims.length ? (
-                  claims.map((claim) => (
-                    <View key={claim.id} style={[styles.claimCard, isDeepLinkedClaim(claim) ? styles.claimCardHighlighted : null]}>
-                      <View style={styles.claimTopRow}>
-                        <Text style={styles.claimNumber}>{claim.claimNumber}</Text>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            { backgroundColor: STATUS_BG[claim.status] || '#F4F4F4' },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusBadgeText,
-                              { color: STATUS_TEXT[claim.status] || '#666' },
-                            ]}
-                          >
-                            {String(claim.status || '').replace(/_/g, ' ')}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text style={styles.claimMeta}>
-                        {formatPoints(claim.requestedPoints)} pts - {formatMoney(claim.requestedAmount)} - {claim.giftCardType}
-                      </Text>
-
-                      {claim.reviewReason ? <Text style={styles.claimNote}>Note: {claim.reviewReason}</Text> : null}
-
-                      {claim.giftbitLinkUrl ? (
-                        <TouchableOpacity
-                          onPress={() => Linking.openURL(claim.giftbitLinkUrl as string)}
-                          style={styles.linkBtn}
-                        >
-                          <Text style={styles.linkBtnText}>Open reward link</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  ))
+                activity.length ? (
+                  activity.map(renderActivityCard)
                 ) : (
                   <Text style={styles.emptyText}>No activity yet.</Text>
                 )

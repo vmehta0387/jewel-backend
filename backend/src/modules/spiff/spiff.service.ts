@@ -25,6 +25,7 @@ import { SpiffLedgerEvent } from './enums/spiff-ledger-event.enum';
 import {
   ClaimReviewAction,
   CreateSpiffClaimDto,
+  FindSpiffActivityQueryDto,
   FindSpiffClaimsQueryDto,
   FulfillSpiffClaimDto,
   ReviewSpiffClaimDto,
@@ -454,6 +455,88 @@ export class SpiffService {
       total,
       page,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async findActivity(query: FindSpiffActivityQueryDto, requester: AuthUser) {
+    const page = Math.max(1, Number(query.page || 1));
+    const limit = Math.max(1, Math.min(Number(query.limit || 30), 100));
+    const take = page * limit;
+
+    const earnedQb = this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
+      .leftJoin(User, 'user', 'user.id = ledger.userId')
+      .leftJoin(Company, 'company', 'company.id = ledger.companyId')
+      .leftJoin(Branch, 'branch', 'branch.id = ledger.branchId')
+      .select('COALESCE(ledger.orderId, ledger.id)', 'groupId')
+      .addSelect('ledger.orderId', 'orderId')
+      .addSelect('MAX(ledger.createdAt)', 'createdAt')
+      .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+      .addSelect('GROUP_CONCAT(DISTINCT ledger.eventType)', 'eventTypes')
+      .addSelect('MAX(ledger.note)', 'note')
+      .addSelect('ord.orderNumber', 'orderNumber')
+      .addSelect('ord.price', 'orderAmount')
+      .addSelect('ord.status', 'orderStatus')
+      .addSelect('company.companyName', 'companyName')
+      .addSelect('branch.name', 'branchName')
+      .where('ledger.points > 0')
+      .groupBy('COALESCE(ledger.orderId, ledger.id)')
+      .addGroupBy('ledger.orderId')
+      .addGroupBy('ord.orderNumber')
+      .addGroupBy('ord.price')
+      .addGroupBy('ord.status')
+      .addGroupBy('company.companyName')
+      .addGroupBy('branch.name')
+      .orderBy('createdAt', 'DESC')
+      .limit(take);
+
+    this.applySpiffActivityScope(earnedQb, requester, 'ledger');
+
+    const claimsQb = this.claimRepo
+      .createQueryBuilder('claim')
+      .leftJoinAndSelect('claim.user', 'user')
+      .leftJoinAndSelect('claim.company', 'company')
+      .leftJoinAndSelect('claim.branch', 'branch')
+      .leftJoinAndSelect('claim.approvedBy', 'approvedBy')
+      .orderBy('claim.createdAt', 'DESC')
+      .take(take);
+
+    this.applySpiffActivityScope(claimsQb, requester, 'claim');
+
+    const earnedCountQb = this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .select('COUNT(DISTINCT COALESCE(ledger.orderId, ledger.id))', 'total')
+      .where('ledger.points > 0');
+    this.applySpiffActivityScope(earnedCountQb, requester, 'ledger');
+
+    const claimCountQb = this.claimRepo
+      .createQueryBuilder('claim')
+      .select('COUNT(*)', 'total');
+    this.applySpiffActivityScope(claimCountQb, requester, 'claim');
+
+    const [earnedRows, claimRows, earnedTotalRaw, claimTotalRaw] = await Promise.all([
+      earnedQb.getRawMany(),
+      claimsQb.getMany(),
+      earnedCountQb.getRawOne<{ total: string | number | null }>(),
+      claimCountQb.getRawOne<{ total: string | number | null }>(),
+    ]);
+
+    const earnedItems = earnedRows.map((row) => this.serializeEarnedActivity(row));
+    const claimItems = claimRows.map((claim) => this.serializeClaimActivity(claim));
+    const merged = [...earnedItems, ...claimItems].sort((a, b) => {
+      const bTime = new Date(String(b.createdAt || '')).getTime() || 0;
+      const aTime = new Date(String(a.createdAt || '')).getTime() || 0;
+      return bTime - aTime;
+    });
+    const total = this.toNumber(earnedTotalRaw?.total) + this.toNumber(claimTotalRaw?.total);
+    const start = (page - 1) * limit;
+
+    return {
+      data: merged.slice(start, start + limit),
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     };
   }
 
@@ -1385,6 +1468,91 @@ export class SpiffService {
     if (claim.userId !== requester.id) {
       throw new ForbiddenException('Claim is outside your scope');
     }
+  }
+
+  private applySpiffActivityScope(qb: any, requester: AuthUser, alias: string): void {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId) {
+        throw new ForbiddenException('Company admin must be assigned to a company');
+      }
+      qb.andWhere(`${alias}.companyId = :activityCompanyId`, { activityCompanyId: requester.companyId });
+      return;
+    }
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (!requester.branchId) {
+        throw new ForbiddenException('Branch manager must be assigned to a branch');
+      }
+      qb.andWhere(`${alias}.branchId = :activityBranchId`, { activityBranchId: requester.branchId });
+      return;
+    }
+    qb.andWhere(`${alias}.userId = :activityUserId`, { activityUserId: requester.id });
+  }
+
+  private serializeEarnedActivity(row: Record<string, unknown>) {
+    const orderNumber = this.optionalText(row.orderNumber) || this.extractOrderNumberFromNote(row.note);
+    return {
+      id: `earned:${String(row.groupId || row.orderId || orderNumber || row.createdAt)}`,
+      type: 'EARNED',
+      title: orderNumber ? `Order ${orderNumber}` : 'SPIFF points earned',
+      subtitle: this.formatLedgerEvents(String(row.eventTypes || '')),
+      orderId: this.optionalText(row.orderId),
+      orderNumber,
+      orderStatus: this.optionalText(row.orderStatus),
+      orderAmount: this.roundMoney(this.toNumber(row.orderAmount)),
+      points: this.roundPoints(this.toNumber(row.points)),
+      companyName: this.optionalText(row.companyName),
+      branchName: this.optionalText(row.branchName),
+      createdAt: row.createdAt || new Date().toISOString(),
+    };
+  }
+
+  private serializeClaimActivity(claim: SpiffRedemptionClaim) {
+    const serialized = this.serializeClaim(claim);
+    return {
+      id: `claim:${claim.id}`,
+      type: 'REDEEMED',
+      title: `Claim ${claim.claimNumber}`,
+      subtitle: `${this.formatClaimStatus(claim.status)} - ${claim.giftCardType}`,
+      claimNumber: claim.claimNumber,
+      claimStatus: claim.status,
+      points: -this.roundPoints(this.toNumber(claim.requestedPoints)),
+      requestedPoints: this.roundPoints(this.toNumber(claim.requestedPoints)),
+      requestedAmount: serialized.requestedAmount,
+      giftCardType: claim.giftCardType,
+      reviewReason: claim.reviewReason,
+      giftbitLinkUrl: serialized.giftbitLinkUrl,
+      companyName: serialized.companyName,
+      branchName: serialized.branchName,
+      createdAt: claim.createdAt,
+      updatedAt: claim.updatedAt,
+    };
+  }
+
+  private extractOrderNumberFromNote(value: unknown): string | null {
+    const match = /\(([^)]+)\)/.exec(String(value || ''));
+    return match?.[1]?.trim() || null;
+  }
+
+  private formatLedgerEvents(value: string): string {
+    const labels = value
+      .split(',')
+      .map((event) => event.trim())
+      .filter(Boolean)
+      .map((event) => {
+        if (event === SpiffLedgerEvent.ORDER_PLACED) return 'Order placed';
+        if (event === SpiffLedgerEvent.ORDER_VALUE_BONUS) return 'Value bonus';
+        if (event === SpiffLedgerEvent.FAST_CLOSE_BONUS) return 'Fast close bonus';
+        if (event === SpiffLedgerEvent.QUOTE_CREATED) return 'Quote created';
+        return event.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+      });
+    return labels.join(' + ') || 'Points earned';
+  }
+
+  private formatClaimStatus(value: SpiffClaimStatus): string {
+    return String(value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   private serializeClaim(claim: SpiffRedemptionClaim) {

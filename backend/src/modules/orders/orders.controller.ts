@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Request, StreamableFile, UseGuards } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -67,6 +67,15 @@ export class OrdersController {
   @Get('trends')
   getTrends(@Request() req: { user: AuthUser }) {
     return this.ordersService.getTrends(req.user);
+  }
+
+  @Get(':id/pdf')
+  async downloadPdf(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    const file = await this.ordersService.generateOrderPdf(id, req.user);
+    return new StreamableFile(file.buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${file.fileName}"`,
+    });
   }
 
   @Get(':id')

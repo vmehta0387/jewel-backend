@@ -22,6 +22,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { SpiffService } from './spiff.service';
 import {
   CreateSpiffClaimDto,
+  FindSpiffActivityQueryDto,
   FindSpiffClaimsQueryDto,
   FulfillSpiffClaimDto,
   ReviewSpiffClaimDto,
@@ -77,6 +78,16 @@ export class SpiffController {
     @Request() req: { user: AuthUser },
   ) {
     return this.spiffService.findClaims(query, req.user);
+  }
+
+  @Get('activity')
+  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @AnyActionPermissions('spiff.view', 'mobile.spiff.view')
+  findActivity(
+    @Query() query: FindSpiffActivityQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.spiffService.findActivity(query, req.user);
   }
 
   @Post('claims')
