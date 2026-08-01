@@ -7,7 +7,7 @@ export const fetchMasters = (
   status: 'ACTIVE' | 'INACTIVE' | 'ALL' = 'ACTIVE',
 ) => {
   const params = new URLSearchParams({ type, status });
-  return apiRequest<{ data: MasterOption[] }>(`/products/masters?${params.toString()}`, { method: 'GET' }, token);
+  return apiRequest<{ data: MasterOption[] }>(`/products/lookup/masters?${params.toString()}`, { method: 'GET' }, token);
 };
 
 export const fetchAllGroupedMasters = (
@@ -15,5 +15,5 @@ export const fetchAllGroupedMasters = (
   status: 'ACTIVE' | 'INACTIVE' | 'ALL' = 'ACTIVE',
 ) => {
   const params = new URLSearchParams({ status });
-  return apiRequest<GroupedMastersResponse>(`/products/masters?${params.toString()}`, { method: 'GET' }, token);
+  return apiRequest<GroupedMastersResponse>(`/products/lookup/masters?${params.toString()}`, { method: 'GET' }, token);
 };

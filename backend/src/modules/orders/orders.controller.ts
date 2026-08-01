@@ -6,7 +6,6 @@ import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
 import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
-import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   CreateOrderDto,
@@ -18,12 +17,13 @@ import {
 } from './dto/order.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard)
-@TaskPermissions(TaskPermission.ORDER_ENTRIES)
+@TaskPermissions()
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get()
+  @TaskPermissions()
   findAll(@Query() query: FindOrdersQueryDto, @Request() req: { user: AuthUser }) {
     return this.ordersService.findAll(query, req.user);
   }
@@ -59,12 +59,18 @@ export class OrdersController {
     return this.ordersService.getSummary(req.user);
   }
 
+  @Get('period-summary')
+  getPeriodSummary(@Request() req: { user: AuthUser }) {
+    return this.ordersService.getPeriodSummary(req.user);
+  }
+
   @Get('trends')
   getTrends(@Request() req: { user: AuthUser }) {
     return this.ordersService.getTrends(req.user);
   }
 
   @Get(':id')
+  @TaskPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.ordersService.findOne(id, req.user);
   }

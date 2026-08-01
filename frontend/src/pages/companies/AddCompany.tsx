@@ -192,7 +192,7 @@ export default function AddCompany() {
 
   const fetchAccountManagers = async () => {
     try {
-      const response = await api.get('/users', { params: { role: 'INTERNAL_REP' } });
+      const response = await api.get('/users/lookup', { params: { role: 'INTERNAL_REP' } });
       const data = response.data || [];
       setAccountManagers(data.map((u: any) => ({ id: u.id, name: `${u.firstName} ${u.lastName}` })));
     } catch (error) {

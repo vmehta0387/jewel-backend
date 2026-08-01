@@ -101,7 +101,7 @@ export default function EditUser() {
   const fetchInitialData = async () => {
     try {
       const [companiesResponse, userResponse] = await Promise.all([
-        api.get('/companies', { params: { limit: 200, status: 'ACTIVE' } }),
+        api.get('/companies/lookup', { params: { limit: 200, status: 'ACTIVE' } }),
         api.get(`/users/${id}`),
       ]);
 

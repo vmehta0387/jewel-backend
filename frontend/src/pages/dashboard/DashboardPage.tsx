@@ -431,7 +431,7 @@ export default function DashboardPage() {
     setMetalLoading(true);
     setMetalError(null);
     try {
-      const response = await api.get('/products/masters', {
+      const response = await api.get('/products/lookup/masters', {
         params: { type: 'METAL_NAME', status: 'ALL' },
       });
 
@@ -487,7 +487,7 @@ export default function DashboardPage() {
   }, [selectedMetalId, metals]);
 
   const fetchCompaniesCount = async (): Promise<number> => {
-    const response = await api.get('/companies', {
+    const response = await api.get('/companies/lookup', {
       params: { page: 1, limit: 1, status: 'ALL' },
     });
     const total = response.data?.total;

@@ -48,6 +48,31 @@ export class CompaniesController {
     );
   }
 
+  @Get('lookup')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.INTERNAL_REP,
+    UserRole.COMPANY_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.SALES_REP,
+  )
+  @ActionPermissions()
+  findLookup(
+    @Request() req: { user: AuthUser },
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.companiesService.findLookup(
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 200,
+      search,
+      status,
+      req.user,
+    );
+  }
+
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   @ActionPermissions('company.view')

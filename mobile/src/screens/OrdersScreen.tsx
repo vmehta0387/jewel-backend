@@ -166,6 +166,12 @@ const safeText = (value?: string | null, fallback = '-') => {
   return trimmed || fallback;
 };
 
+const getOrderDesignName = (order: Order) =>
+  String(order.designName || order.design?.designName || '').trim();
+
+const getOrderDesignNo = (order: Order) =>
+  String(order.designNo || order.design?.designNo || '').trim();
+
 const formatRelativeTime = (date?: string | null) => {
   if (!date) return 'Just now';
   const parsed = new Date(date);
@@ -268,8 +274,7 @@ const OrdersScreen = () => {
     left: CONFIRM_POPOVER_MARGIN,
   });
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
-  const canSeeSalesRepFilter =
-    user?.role === 'BRANCH_MANAGER' || user?.role === 'COMPANY_ADMIN' || user?.role === 'SUPER_ADMIN';
+  const canSeeSalesRepFilter = Boolean(user && user.role !== 'SALES_REP');
 
   const loadOrders = useCallback(async () => {
     if (!token) return;
@@ -349,7 +354,8 @@ const OrdersScreen = () => {
       if (term) {
         const searchable = [
           order.orderNumber,
-          order.designNo,
+          getOrderDesignName(order),
+          getOrderDesignNo(order),
           order.purchaseOrderNumber,
           order.customerName,
           order.customerEmail,
@@ -378,7 +384,8 @@ const OrdersScreen = () => {
     return salesRepFilteredOrders.filter((order) => {
       const searchable = [
         order.orderNumber,
-        order.designNo,
+        getOrderDesignName(order),
+        getOrderDesignNo(order),
         order.purchaseOrderNumber,
         order.customerName,
         order.customerEmail,
@@ -439,15 +446,15 @@ const OrdersScreen = () => {
         status: order.status,
         shortDescription: order.shortDescription || undefined,
         designId: order.designId || '',
-        designNo: safeText(order.designNo, order.orderNumber),
-        designName: order.designNo || null,
+        designNo: safeText(getOrderDesignNo(order), order.orderNumber),
+        designName: getOrderDesignName(order) || null,
         imageUrl: order.designImageUrl || null,
         price: Number(order.price || 0),
         selection: parseSelectionFromSummaryText(order.shortDescription),
         customerName: order.customerName || undefined,
         customerPhone: order.customerPhone || undefined,
         customerEmail: order.customerEmail || undefined,
-        salesRepName: order.salesRepName || undefined,
+        salesRepName: order.salesRepName || order.salesRepEmail || undefined,
         purchaseOrderNumber: order.purchaseOrderNumber || undefined,
         branchName: order.branchName || undefined,
         notes: order.notes || undefined,
@@ -467,8 +474,8 @@ const OrdersScreen = () => {
             createdAt: order.createdAt,
             status: order.status,
             designId: order.designId,
-            designNo: safeText(order.designNo, order.orderNumber),
-            designName: order.designNo || null,
+            designNo: safeText(getOrderDesignNo(order), order.orderNumber),
+            designName: getOrderDesignName(order) || null,
             imageUrl: order.designImageUrl || null,
             unitPrice: Number(order.price || 0),
             shortDescription: order.shortDescription || undefined,
@@ -755,10 +762,11 @@ const OrdersScreen = () => {
   const getOrderCardDisplay = (order: Order) => {
     const pill = statusPillStyle(order.status);
     const price = formatMoney(order.price);
-    const title = safeText(order.designNo, order.orderNumber);
+    const title = safeText(getOrderDesignName(order), safeText(getOrderDesignNo(order), order.orderNumber));
     const subtitle =
       order.shortDescription?.replace(/\s*\|\s*/g, ' - ') ||
       order.customerName;
+    const salesRepName = order.salesRepName?.trim() || order.salesRepEmail?.trim() || '';
 
     const thumbRingColor =
       normalizeStatus(order.status) === 'SHIPPED'
@@ -769,11 +777,11 @@ const OrdersScreen = () => {
             ? '#C4826C'
             : '#B4A692';
 
-    return { pill, price, title, subtitle, thumbRingColor };
+    return { pill, price, title, subtitle, salesRepName, thumbRingColor };
   };
 
   const renderCardTop = (order: Order) => {
-    const { pill, price, title, subtitle, thumbRingColor } = getOrderCardDisplay(order);
+    const { pill, price, title, subtitle, salesRepName, thumbRingColor } = getOrderCardDisplay(order);
 
     return (
       <View style={styles.cardTopRow}>
@@ -803,6 +811,14 @@ const OrdersScreen = () => {
             </Text>
             <Text style={styles.cardPrice}>{price}</Text>
           </View>
+          {canSeeSalesRepFilter && salesRepName ? (
+            <View style={styles.cardSalesRepRow}>
+              <Ionicons name="person-outline" size={11} color="#9A7843" />
+              <Text style={styles.cardSalesRepText} numberOfLines={1}>
+                {salesRepName}
+              </Text>
+            </View>
+          ) : null}
 
           {order.purchaseOrderNumber?.trim() ? (
             <View style={styles.customerPoRow}>
@@ -1056,9 +1072,11 @@ const OrdersScreen = () => {
                   </View>
                   <View style={styles.cancelPopoverOrderDivider} />
                   <View style={styles.cancelPopoverOrderCol}>
-                    <Text style={styles.cancelPopoverOrderLabel}>Design No.</Text>
+                    <Text style={styles.cancelPopoverOrderLabel}>Design</Text>
                     <Text style={styles.cancelPopoverOrderValue} numberOfLines={1}>
-                      {activeConfirmationOrder?.designNo || '-'}
+                      {activeConfirmationOrder
+                        ? getOrderDesignName(activeConfirmationOrder) || getOrderDesignNo(activeConfirmationOrder) || '-'
+                        : '-'}
                     </Text>
                   </View>
                 </View>
@@ -1400,6 +1418,20 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     color: '#7C746A',
     fontWeight: '500',
+  },
+  cardSalesRepRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardSalesRepText: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 4,
+    fontSize: 11,
+    lineHeight: 14,
+    color: '#7A6040',
+    fontWeight: '700',
   },
   cardPrice: {
     fontSize: 18,

@@ -145,7 +145,7 @@ export default function EditCompany() {
 
   const fetchAccountManagers = async () => {
     try {
-      const response = await api.get('/users', { params: { role: 'INTERNAL_REP' } });
+      const response = await api.get('/users/lookup', { params: { role: 'INTERNAL_REP' } });
       const data = response.data || [];
       setAccountManagers(data.map((user: any) => ({ id: user.id, name: `${user.firstName} ${user.lastName}` })));
     } catch (error) {
@@ -158,7 +158,7 @@ export default function EditCompany() {
     try {
       const [branchesResponse, usersResponse] = await Promise.all([
         api.get('/branches', { params: { companyId, limit: 200, status: 'ALL' } }),
-        api.get('/users', { params: { companyId, status: 'ALL' } }),
+        api.get('/users/lookup', { params: { companyId, status: 'ALL' } }),
       ]);
 
       setCompanyBranches(branchesResponse.data.data || []);

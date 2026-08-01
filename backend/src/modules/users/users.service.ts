@@ -235,6 +235,75 @@ export class UsersService {
     );
   }
 
+  async findLookup(query: FindUsersQueryDto = {}, requester: AuthUser): Promise<UserResponse[]> {
+    const usersQuery = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.company', 'company')
+      .leftJoinAndSelect('user.branch', 'branch')
+      .orderBy('user.firstName', 'ASC')
+      .addOrderBy('user.lastName', 'ASC');
+
+    const search = query.search?.trim();
+    if (search) {
+      usersQuery.andWhere(
+        '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    if (query.role) {
+      usersQuery.andWhere('user.role = :role', { role: query.role });
+    }
+
+    const status = query.status || 'ACTIVE';
+    if (status === 'ACTIVE') {
+      usersQuery.andWhere('user.isActive = :isActive', { isActive: true });
+    } else if (status === 'INACTIVE') {
+      usersQuery.andWhere('user.isActive = :isActive', { isActive: false });
+    }
+
+    if (requester.role === UserRole.INTERNAL_REP) {
+      usersQuery.andWhere('company.accountManagerId = :requesterId', { requesterId: requester.id });
+    } else if (
+      requester.role === UserRole.COMPANY_ADMIN ||
+      requester.role === UserRole.BRANCH_MANAGER ||
+      requester.role === UserRole.SALES_REP
+    ) {
+      if (!requester.companyId) {
+        return [];
+      }
+      usersQuery.andWhere('user.companyId = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+      if (requester.branchId) {
+        usersQuery.andWhere('user.branchId = :requesterBranchId', { requesterBranchId: requester.branchId });
+      }
+    }
+
+    if (query.companyId?.trim() && requester.role === UserRole.SUPER_ADMIN) {
+      usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId.trim() });
+    }
+
+    if (query.branchId?.trim() && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
+      usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId.trim() });
+    }
+
+    const users = await usersQuery.getMany();
+    const userIds = users.map((user) => user.id);
+    const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
+      this.getManagedCompaniesMap(userIds),
+      this.getUserDetailedPermissionsMap(userIds),
+    ]);
+
+    return Promise.all(
+      users.map((user) =>
+        this.mapToUserResponse(
+          user,
+          managedCompaniesMap.get(user.id) || [],
+          detailedPermissionsMap.get(user.id) || [],
+        ),
+      ),
+    );
+  }
+
   async findOne(id: string, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({
       where: { id },
@@ -1299,39 +1368,29 @@ export class UsersService {
       phone?: string | null;
     }[]
   > {
-    if (requester.role === UserRole.BRANCH_MANAGER || requester.role === UserRole.SALES_REP) {
+    const qb = this.branchRepo
+      .createQueryBuilder('branch')
+      .leftJoin('branch.company', 'company')
+      .where('branch.isActive = :isActive', { isActive: true })
+      .orderBy('branch.name', 'ASC');
+
+    if (requester.role === UserRole.INTERNAL_REP) {
+      qb.andWhere('company.accountManagerId = :accountManagerId', { accountManagerId: requester.id });
+    } else if (
+      requester.role === UserRole.COMPANY_ADMIN ||
+      requester.role === UserRole.BRANCH_MANAGER ||
+      requester.role === UserRole.SALES_REP
+    ) {
       if (!requester.companyId) {
-        throw new ForbiddenException('User must be assigned to a company');
+        return [];
       }
-      const branches = await this.branchRepo.find({
-        where: { companyId: requester.companyId, isActive: true },
-        order: { name: 'ASC' },
-      });
-      return branches.map((branch) => ({
-        id: branch.id,
-        name: branch.name,
-        code: branch.code,
-        streetAddress: branch.streetAddress,
-        streetAddress2: branch.streetAddress2,
-        city: branch.city,
-        stateProvince: branch.stateProvince,
-        postalCode: branch.postalCode,
-        country: branch.country,
-        email: branch.email,
-        phone: branch.phone,
-      }));
+      qb.andWhere('branch.companyId = :companyId', { companyId: requester.companyId });
+      if (requester.branchId) {
+        qb.andWhere('branch.id = :branchId', { branchId: requester.branchId });
+      }
     }
 
-      if (requester.role !== UserRole.COMPANY_ADMIN) {
-        throw new ForbiddenException('Only company admins, branch managers, or sales reps can access branches');
-      }
-    if (!requester.companyId) {
-      throw new ForbiddenException('Company admin must be assigned to a company');
-    }
-    const branches = await this.branchRepo.find({
-      where: { companyId: requester.companyId, isActive: true },
-      order: { name: 'ASC' },
-    });
+    const branches = await qb.getMany();
     return branches.map((branch) => ({
       id: branch.id,
       name: branch.name,

@@ -63,11 +63,14 @@ export class ProductsController {
   }
 
   @Get()
+  @TaskPermissions()
   findAll(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
     return this.productsService.findAll(query, req.user);
   }
 
   @Get('dashboard-summary')
+  @TaskPermissions()
+  @ActionPermissions()
   getDashboardSummary(
     @Query() query: FindProductsQueryDto,
     @Request() req: { user: AuthUser },
@@ -76,6 +79,8 @@ export class ProductsController {
   }
 
   @Get('mobile/trending')
+  @TaskPermissions()
+  @ActionPermissions()
   findMobileTrending(
     @Query() query: FindMobileTrendingProductsQueryDto,
     @Request() req: { user: AuthUser },
@@ -84,6 +89,8 @@ export class ProductsController {
   }
 
   @Get('mobile/catalog')
+  @TaskPermissions()
+  @ActionPermissions()
   findMobileCatalog(
     @Query() query: FindMobileCatalogProductsQueryDto,
     @Request() req: { user: AuthUser },
@@ -91,22 +98,44 @@ export class ProductsController {
     return this.productsService.findMobileCatalog(query, req.user);
   }
 
+  @Get('mobile/masters')
+  @TaskPermissions()
+  @ActionPermissions()
+  findMobileMasters(@Query() query: FindDesignMastersQueryDto) {
+    return this.productsService.findMasters(query);
+  }
+
+  @Get('lookup/masters')
+  @TaskPermissions()
+  @ActionPermissions()
+  findLookupMasters(@Query() query: FindDesignMastersQueryDto) {
+    return this.productsService.findMasters(query);
+  }
+
   @Get('mobile/category-counts')
+  @TaskPermissions()
+  @ActionPermissions()
   findMobileCategoryCounts(@Request() req: { user: AuthUser }) {
     return this.productsService.findMobileCategoryCounts(req.user);
   }
 
   @Get('mobile/categories')
+  @TaskPermissions()
+  @ActionPermissions()
   findMobileCategories(@Request() req: { user: AuthUser }) {
     return this.productsService.findMobileCategories(req.user);
   }
 
   @Get('mobile/configurator/:id')
+  @TaskPermissions()
+  @ActionPermissions()
   findMobileConfigurator(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findMobileConfigurator(id, req.user);
   }
 
   @Get('mobile/configurator/:id/resolve')
+  @TaskPermissions()
+  @ActionPermissions()
   resolveMobileConfigurator(
     @Param('id') id: string,
     @Query() query: ResolveMobileDesignConfiguratorQueryDto,
@@ -153,16 +182,14 @@ export class ProductsController {
 
   @Get('packets')
   @TaskPermissions()
-  @AnyActionPermissions(
-    'master.view',
-    'dashboard.price_activity.view',
-    'dashboard.price_activity.packet_price.view',
-  )
+  @ActionPermissions()
   findPackets(@Query() query: FindPacketsQueryDto) {
     return this.productsService.findPackets(query);
   }
 
   @Get('media-library')
+  @TaskPermissions()
+  @ActionPermissions()
   findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
     return this.productsService.findMediaLibrary(query);
   }
@@ -290,11 +317,15 @@ export class ProductsController {
   }
 
   @Get('global-base-prices')
+  @TaskPermissions()
+  @ActionPermissions()
   findActiveGlobalBasePrices() {
     return this.productsService.findActiveGlobalBasePrices();
   }
 
   @Get('next-design-no')
+  @TaskPermissions()
+  @ActionPermissions()
   getNextDesignNo(
     @Query() query: GetNextDesignNoQueryDto,
     @Request() req: { user: AuthUser },
@@ -303,6 +334,8 @@ export class ProductsController {
   }
 
   @Get('next-version')
+  @TaskPermissions()
+  @ActionPermissions()
   getNextDesignVersion(
     @Query() query: GetNextDesignVersionQueryDto,
     @Request() req: { user: AuthUser },
@@ -338,16 +371,22 @@ export class ProductsController {
   }
 
   @Get('masters/:id/price-history')
+  @TaskPermissions()
+  @ActionPermissions()
   getMetalPriceHistory(@Param('id') id: string) {
     return this.productsService.getMetalPriceHistory(id);
   }
 
   @Get(':id/history')
+  @TaskPermissions()
+  @ActionPermissions()
   getHistory(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.getHistory(id, req.user);
   }
 
   @Get(':id')
+  @TaskPermissions()
+  @ActionPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findOne(id, req.user);
   }

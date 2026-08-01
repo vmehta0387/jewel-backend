@@ -124,10 +124,7 @@ export class OrdersService implements OnModuleInit {
       .leftJoinAndSelect('order.branch', 'branch')
       .leftJoinAndSelect('branch.branchManager', 'branchManager')
       .leftJoinAndSelect('order.design', 'design')
-      .leftJoinAndSelect('order.salesRep', 'salesRep')
-      .orderBy('order.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit);
+      .leftJoinAndSelect('order.salesRep', 'salesRep');
 
     this.applyScopeFilter(qb, requester, query.companyId, query.branchId);
 
@@ -140,6 +137,12 @@ export class OrdersService implements OnModuleInit {
 
     if (query.orderStatus) {
       qb.andWhere('order.status = :orderStatus', { orderStatus: query.orderStatus });
+    }
+
+    if (query.statusGroup === 'FULFILLED') {
+      qb.andWhere('order.status IN (:...fulfilledStatuses)', {
+        fulfilledStatuses: [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED],
+      });
     }
 
     if (query.designId) {
@@ -170,15 +173,26 @@ export class OrdersService implements OnModuleInit {
       });
     }
 
+    this.applyCreatedPeriodFilter(qb, query.period);
+
     if (query.search?.trim()) {
       const search = `%${query.search.trim()}%`;
       qb.andWhere(
-        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
+        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR design.designName LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
         { search },
       );
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const totalAmountRaw = await qb
+      .clone()
+      .select('COALESCE(SUM(order.price), 0)', 'totalAmount')
+      .getRawOne<{ totalAmount: string | number | null }>();
+
+    const [data, total] = await qb
+      .orderBy('order.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
     const enriched = await Promise.all(
       data.map(async (order) => {
         const primaryImage = Array.isArray(order.design?.imageUrls)
@@ -191,6 +205,7 @@ export class OrdersService implements OnModuleInit {
           companyName: order.company?.companyName ?? null,
           branchName: order.branch?.name ?? null,
           designNo: order.design?.designNo ?? null,
+          designName: order.design?.designName ?? null,
           designVersion: order.design?.version ?? null,
           costPrice: await this.resolveVisibleCostPrice(order, requester),
           salesRepName: this.getSalesRepDisplayName(order),
@@ -204,6 +219,7 @@ export class OrdersService implements OnModuleInit {
     return {
       data: enriched,
       total,
+      totalAmount: this.roundMoney(this.toNumber(totalAmountRaw?.totalAmount)),
       page,
       totalPages: Math.ceil(total / limit),
     };
@@ -230,6 +246,7 @@ export class OrdersService implements OnModuleInit {
       companyName: order.company?.companyName ?? null,
       branchName: order.branch?.name ?? null,
       designNo: order.design?.designNo ?? null,
+      designName: order.design?.designName ?? null,
       designVersion: order.design?.version ?? null,
       costPrice: await this.resolveVisibleCostPrice(order, requester),
       salesRepName: this.getSalesRepDisplayName(order),
@@ -240,29 +257,29 @@ export class OrdersService implements OnModuleInit {
   }
 
   async create(dto: CreateOrderDto, requester: AuthUser) {
-    const scope = this.resolveScope(requester, dto.companyId, dto.branchId);
+    const requestedBranchId = dto.branchId?.trim() || requester.branchId || null;
+    const branch = requestedBranchId
+      ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
+      : null;
+    if (requestedBranchId && !branch) {
+      throw new BadRequestException('Selected branch not found');
+    }
 
-    if (!scope.companyId) {
+    const requestedCompanyId = dto.companyId?.trim() || requester.companyId || null;
+    const effectiveCompanyId = branch?.companyId || requestedCompanyId;
+    const effectiveBranchId = branch?.id || requestedBranchId;
+
+    if (!effectiveCompanyId) {
       throw new BadRequestException('Company is required');
     }
-    if (!scope.branchId) {
+    if (!effectiveBranchId) {
       throw new BadRequestException('Branch is required');
     }
 
-    if (scope.companyId) {
-      const company = await this.companyRepo.findOne({ where: { id: scope.companyId } });
+    if (effectiveCompanyId) {
+      const company = await this.companyRepo.findOne({ where: { id: effectiveCompanyId } });
       if (!company) {
         throw new BadRequestException('Selected company not found');
-      }
-    }
-
-    if (scope.branchId) {
-      const branch = await this.branchRepo.findOne({ where: { id: scope.branchId } });
-      if (!branch) {
-        throw new BadRequestException('Selected branch not found');
-      }
-      if (scope.companyId && branch.companyId !== scope.companyId) {
-        throw new BadRequestException('Selected branch does not belong to the company');
       }
     }
 
@@ -272,13 +289,12 @@ export class OrdersService implements OnModuleInit {
       if (!design) {
         throw new NotFoundException('Design not found');
       }
-      this.assertDesignScope(design, requester, scope);
     }
 
     const pricing = await this.calculateOrderPrice({
       design,
-      companyId: scope.companyId ?? undefined,
-      branchId: scope.branchId ?? undefined,
+      companyId: effectiveCompanyId ?? undefined,
+      branchId: effectiveBranchId ?? undefined,
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -286,8 +302,8 @@ export class OrdersService implements OnModuleInit {
       const computedStatus = this.resolveCreateStatus(dto.status, requester);
       const order = this.orderRepo.create({
         orderNumber,
-        companyId: scope.companyId ?? null,
-        branchId: scope.branchId ?? null,
+        companyId: effectiveCompanyId ?? null,
+        branchId: effectiveBranchId ?? null,
         designId: dto.designId ?? null,
         salesRepId: requester.id,
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date()),
@@ -372,26 +388,24 @@ export class OrdersService implements OnModuleInit {
     if (!order) {
       throw new NotFoundException('Order not found');
     }
-    this.assertReadScope(order, requester);
-    this.assertApprovedOrderEditable(order, requester);
 
     const previousStatus = order.status;
-    const scope = this.resolveScope(requester, dto.companyId ?? order.companyId ?? undefined, dto.branchId ?? order.branchId ?? undefined);
-
-    if (dto.companyId !== undefined && scope.companyId) {
-      const company = await this.companyRepo.findOne({ where: { id: scope.companyId } });
-      if (!company) {
-        throw new BadRequestException('Selected company not found');
-      }
+    const requestedBranchId = dto.branchId?.trim() || order.branchId || requester.branchId || null;
+    const branch = requestedBranchId
+      ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
+      : null;
+    if (requestedBranchId && !branch) {
+      throw new BadRequestException('Selected branch not found');
     }
 
-    if (dto.branchId !== undefined && scope.branchId) {
-      const branch = await this.branchRepo.findOne({ where: { id: scope.branchId } });
-      if (!branch) {
-        throw new BadRequestException('Selected branch not found');
-      }
-      if (scope.companyId && branch.companyId !== scope.companyId) {
-        throw new BadRequestException('Selected branch does not belong to the company');
+    const requestedCompanyId = dto.companyId?.trim() || order.companyId || requester.companyId || null;
+    const effectiveCompanyId = branch?.companyId || requestedCompanyId;
+    const effectiveBranchId = branch?.id || requestedBranchId;
+
+    if (effectiveCompanyId) {
+      const company = await this.companyRepo.findOne({ where: { id: effectiveCompanyId } });
+      if (!company) {
+        throw new BadRequestException('Selected company not found');
       }
     }
 
@@ -401,17 +415,16 @@ export class OrdersService implements OnModuleInit {
       if (!design) {
         throw new NotFoundException('Design not found');
       }
-      this.assertDesignScope(design, requester, scope);
       order.designId = dto.designId;
     } else if (order.designId) {
       design = await this.designRepo.findOne({ where: { id: order.designId } });
     }
 
-    if (dto.companyId !== undefined) {
-      order.companyId = scope.companyId ?? null;
+    if (dto.companyId !== undefined || branch) {
+      order.companyId = effectiveCompanyId ?? null;
     }
-    if (dto.branchId !== undefined) {
-      order.branchId = scope.branchId ?? null;
+    if (dto.branchId !== undefined || branch) {
+      order.branchId = effectiveBranchId ?? null;
     }
     if (dto.deliveryDate !== undefined) {
       order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate, order.createdAt);
@@ -475,17 +488,24 @@ export class OrdersService implements OnModuleInit {
   }
 
   async getPricePreview(params: { designId: string; companyId: string; branchId: string }, requester: AuthUser) {
-    const scope = this.resolveScope(requester, params.companyId, params.branchId);
     const design = await this.designRepo.findOne({ where: { id: params.designId } });
     if (!design) {
       throw new NotFoundException('Design not found');
     }
-    this.assertDesignScope(design, requester, scope);
+
+    const branchId = params.branchId?.trim() || requester.branchId || undefined;
+    const branch = branchId
+      ? await this.branchRepo.findOne({ where: { id: branchId } })
+      : null;
+    if (branchId && !branch) {
+      throw new BadRequestException('Selected branch not found');
+    }
+    const effectiveCompanyId = branch?.companyId || params.companyId?.trim() || requester.companyId || undefined;
 
     const pricing = await this.calculateOrderPrice({
       design,
-      companyId: scope.companyId ?? undefined,
-      branchId: scope.branchId ?? undefined,
+      companyId: effectiveCompanyId,
+      branchId: branch?.id || branchId,
     });
 
     return pricing;
@@ -503,38 +523,38 @@ export class OrdersService implements OnModuleInit {
     this.applyScopeFilter(baseQuery, requester);
     baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
 
-    // NOTE:
-    // Revenue is recognized only when an order reaches COMPLETED. Using completedAt
-    // records the sale in the period it was completed, rather than when its quote
-    // was originally created. DB date boundaries avoid server-timezone drift.
+    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED];
+
+    // Dashboard placed-order totals exclude quotes/pending/cancelled and use the
+    // order creation date, so a shipped order created today is counted today.
     const summaryRow = await baseQuery.clone()
       .select('COUNT(*)', 'activeOrders')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= CURRENT_DATE AND order.completedAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
         'salesToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.completedAt < CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.createdAt < CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
         'salesYesterday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.completedAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN order.price ELSE 0 END), 0)`,
         'salesThisMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) AND order.completedAt < DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) AND order.createdAt < DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN order.price ELSE 0 END), 0)`,
         'salesLastMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= CURRENT_DATE AND order.completedAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN 1 ELSE 0 END), 0)`,
         'ordersToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.completedAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN 1 ELSE 0 END), 0)`,
         'ordersThisMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status = :completedStatus THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) THEN order.price ELSE 0 END), 0)`,
         'branchRevenueTotal',
       )
       .addSelect(`SUM(CASE WHEN order.status = :quoteStatus THEN 1 ELSE 0 END)`, 'quoteCount')
@@ -550,6 +570,7 @@ export class OrdersService implements OnModuleInit {
         approvedStatus: OrderStatus.APPROVED,
         productionStatus: OrderStatus.IN_PRODUCTION,
         shippedStatus: OrderStatus.SHIPPED,
+        fulfilledStatuses,
         completedStatus: OrderStatus.COMPLETED,
         cancelledStatus: OrderStatus.CANCELLED,
       })
@@ -602,6 +623,48 @@ export class OrdersService implements OnModuleInit {
       branchRevenueTotal,
       branchSalesRepCount,
       pendingApprovalOrders,
+    };
+  }
+
+  async getPeriodSummary(requester: AuthUser) {
+    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED];
+    const countExpr = (condition: string) =>
+      `COALESCE(SUM(CASE WHEN ${condition} THEN 1 ELSE 0 END), 0)`;
+    const amountExpr = (condition: string) =>
+      `COALESCE(SUM(CASE WHEN ${condition} THEN order.price ELSE 0 END), 0)`;
+    const periods = {
+      today: 'order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)',
+      weekly:
+        'order.createdAt >= DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY) AND order.createdAt < DATE_ADD(DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY), INTERVAL 7 DAY)',
+      monthly:
+        "order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH)",
+      annually:
+        "order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-01-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL 1 YEAR)",
+    };
+    const fulfilledCondition = 'order.status IN (:...fulfilledStatuses)';
+
+    const qb = this.orderRepo.createQueryBuilder('order');
+    this.applyScopeFilter(qb, requester);
+
+    const row = await qb
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .select(countExpr(`${fulfilledCondition} AND ${periods.today}`), 'todayCount')
+      .addSelect(amountExpr(`${fulfilledCondition} AND ${periods.today}`), 'todayAmount')
+      .addSelect(countExpr(`${fulfilledCondition} AND ${periods.weekly}`), 'weeklyCount')
+      .addSelect(amountExpr(`${fulfilledCondition} AND ${periods.weekly}`), 'weeklyAmount')
+      .addSelect(countExpr(`${fulfilledCondition} AND ${periods.monthly}`), 'monthlyCount')
+      .addSelect(amountExpr(`${fulfilledCondition} AND ${periods.monthly}`), 'monthlyAmount')
+      .addSelect(countExpr(`${fulfilledCondition} AND ${periods.annually}`), 'annuallyCount')
+      .addSelect(amountExpr(`${fulfilledCondition} AND ${periods.annually}`), 'annuallyAmount')
+      .setParameter('fulfilledStatuses', fulfilledStatuses)
+      .getRawOne<Record<string, string | number | null>>();
+
+    const read = (key: string) => this.toNumber(row?.[key] ?? 0);
+    return {
+      today: { count: read('todayCount'), totalAmount: this.roundMoney(read('todayAmount')) },
+      weekly: { count: read('weeklyCount'), totalAmount: this.roundMoney(read('weeklyAmount')) },
+      monthly: { count: read('monthlyCount'), totalAmount: this.roundMoney(read('monthlyAmount')) },
+      annually: { count: read('annuallyCount'), totalAmount: this.roundMoney(read('annuallyAmount')) },
     };
   }
 
@@ -714,19 +777,13 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (!requester.companyId) {
-      throw new ForbiddenException('User is not assigned to a company');
-    }
-
-    if (normalizedCompanyId && normalizedCompanyId !== requester.companyId) {
-      throw new ForbiddenException('You cannot access another company data');
+      qb.andWhere('1 = 0');
+      return;
     }
 
     qb.andWhere('order.companyId = :scopeCompanyId', { scopeCompanyId: requester.companyId });
 
     if (requester.branchId) {
-      if (normalizedBranchId && normalizedBranchId !== requester.branchId) {
-        throw new ForbiddenException('You cannot access another branch data');
-      }
       qb.andWhere('order.branchId = :scopeBranchId', {
         scopeBranchId: requester.branchId,
       });
@@ -741,25 +798,52 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  private applyCreatedPeriodFilter(
+    qb: any,
+    period?: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY',
+  ): void {
+    if (period === 'TODAY') {
+      qb.andWhere('order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)');
+      return;
+    }
+    if (period === 'WEEKLY') {
+      qb.andWhere(
+        'order.createdAt >= DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY) AND order.createdAt < DATE_ADD(DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY), INTERVAL 7 DAY)',
+      );
+      return;
+    }
+    if (period === 'MONTHLY') {
+      qb.andWhere(
+        "order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH)",
+      );
+      return;
+    }
+    if (period === 'ANNUALLY') {
+      qb.andWhere(
+        "order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-01-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL 1 YEAR)",
+      );
+    }
+  }
+
   private assertReadScope(order: Order, requester: AuthUser): void {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
     }
 
     if (!requester.companyId) {
-      throw new ForbiddenException('User is not assigned to a company');
+      throw new NotFoundException('Order not found');
     }
 
     if (order.companyId && order.companyId !== requester.companyId) {
-      throw new ForbiddenException('You cannot access another company data');
+      throw new NotFoundException('Order not found');
     }
 
     if (requester.branchId && order.branchId !== requester.branchId) {
-      throw new ForbiddenException('You cannot access another branch data');
+      throw new NotFoundException('Order not found');
     }
 
     if (requester.role === UserRole.SALES_REP && order.salesRepId !== requester.id) {
-      throw new ForbiddenException('You cannot access another sales order');
+      throw new NotFoundException('Order not found');
     }
   }
 

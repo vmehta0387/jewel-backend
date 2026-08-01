@@ -40,6 +40,20 @@ export class UsersController {
     return this.usersService.findAll(query, req.user);
   }
 
+  @Get('lookup')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.INTERNAL_REP,
+    UserRole.COMPANY_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.SALES_REP,
+  )
+  @TaskPermissions()
+  @ActionPermissions()
+  findLookup(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
+    return this.usersService.findLookup(query, req.user);
+  }
+
   @Get('export/template')
   @Roles(UserRole.SUPER_ADMIN)
   @ActionPermissions('user.import')

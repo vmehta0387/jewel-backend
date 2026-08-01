@@ -152,6 +152,14 @@ export class FindOrdersQueryDto {
   orderStatus?: OrderStatus;
 
   @IsOptional()
+  @IsIn(['FULFILLED'])
+  statusGroup?: 'FULFILLED';
+
+  @IsOptional()
+  @IsIn(['TODAY', 'WEEKLY', 'MONTHLY', 'ANNUALLY'])
+  period?: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
+
+  @IsOptional()
   @IsString()
   deliveryFrom?: string;
 

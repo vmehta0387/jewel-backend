@@ -1,17 +1,30 @@
 import { apiRequest } from './client';
 import type { OrdersResponse, Order } from '../types';
 
+export type OrderPeriod = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
+export type OrderStatusGroup = 'FULFILLED';
+export type OrderPeriodSummary = Record<'today' | 'weekly' | 'monthly' | 'annually', { count: number; totalAmount: number }>;
+export type FetchOrdersOptions = {
+  period?: OrderPeriod;
+  statusGroup?: OrderStatusGroup;
+  search?: string;
+};
+
 export const fetchOrders = (
   token: string,
   page = 1,
   limit = 25,
   status: 'ACTIVE' | 'INACTIVE' | 'ALL' = 'ACTIVE',
+  options: FetchOrdersOptions = {},
 ) => {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
     status,
   });
+  if (options.period) params.set('period', options.period);
+  if (options.statusGroup) params.set('statusGroup', options.statusGroup);
+  if (options.search?.trim()) params.set('search', options.search.trim());
   return apiRequest<OrdersResponse>(`/orders?${params.toString()}`, { method: 'GET' }, token);
 };
 
@@ -36,6 +49,9 @@ export const fetchOrderSummary = (token: string) =>
       cancelled: number;
     };
   }>('/orders/summary', { method: 'GET' }, token);
+
+export const fetchOrderPeriodSummary = (token: string) =>
+  apiRequest<OrderPeriodSummary>('/orders/period-summary', { method: 'GET' }, token);
 
 export const fetchOrderTrends = (token: string) =>
   apiRequest<{

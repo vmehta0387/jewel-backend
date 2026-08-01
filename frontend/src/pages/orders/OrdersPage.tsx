@@ -594,7 +594,7 @@ export default function OrdersPage() {
 
   const loadCompanies = async () => {
     if (companies.length) return;
-    const response = await api.get('/companies', { params: { limit: 200, status: 'ACTIVE' } });
+    const response = await api.get('/companies/lookup', { params: { limit: 200, status: 'ACTIVE' } });
     setCompanies(response.data?.data || []);
   };
 

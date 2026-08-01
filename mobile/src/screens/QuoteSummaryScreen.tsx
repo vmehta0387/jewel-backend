@@ -82,6 +82,9 @@ const parseVersion = (version?: string | null) => {
 const stripSelectionLabel = (value?: string | null) =>
   compact(value).replace(/^(metal|coverage|diamond quality|diamond|quality|carat weight|weight|ring size|stone|shape)\s*[:\-]\s*/i, '').trim();
 
+const getOrderDesignName = (order: Order) =>
+  compact(order.designName || order.design?.designName);
+
 const isLikelyMetal = (value?: string | null) => /(wg|yg|rg|pt|white|yellow|rose|gold|platinum|\b\d{1,2}\s*k\b)/i.test(compact(value));
 const isLikelyCoverage = (value?: string | null) => /(eternity|full|half|3\/4|quarter|stone|pav|halo|solitaire)/i.test(compact(value));
 const isLikelyQuality = (value?: string | null) => /(vvs|vs|si|if|fl|lab|ef|gh|ij)/i.test(compact(value));
@@ -202,12 +205,13 @@ const mergeOrderIntoSummary = (base: QuoteSummaryPayload, order: Order): QuoteSu
   shortDescription: order.shortDescription || base.shortDescription,
   designId: order.designId || base.designId,
   designNo: order.designNo || base.designNo,
+  designName: getOrderDesignName(order) || base.designName,
   imageUrl: order.designImageUrl || base.imageUrl,
   price: Number(order.price || base.price || 0),
   customerName: compact(order.customerName) || base.customerName,
   customerPhone: compact(order.customerPhone) || base.customerPhone,
   customerEmail: compact(order.customerEmail) || base.customerEmail,
-  salesRepName: compact(order.salesRepName) || base.salesRepName,
+  salesRepName: compact(order.salesRepName) || compact(order.salesRepEmail) || base.salesRepName,
   purchaseOrderNumber: compact(order.purchaseOrderNumber) || base.purchaseOrderNumber,
   branchName: compact(order.branchName) || base.branchName,
   notes: compact(order.notes) || base.notes,
@@ -416,6 +420,7 @@ const QuoteSummaryScreen = () => {
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
   const canModifyCurrentOrder = statusKey !== 'APPROVED' || isBranchManager;
 
   const handleBackToOrders = useCallback(() => {
@@ -571,7 +576,7 @@ const QuoteSummaryScreen = () => {
             Created {formatSummaryDate(displaySummary.createdAt)} - {displaySummary.customerName || 'Client'}
           </Text>
           <View style={styles.topDivider} />
-          {displaySummary.salesRepName ? (
+          {shouldShowSalesRep && displaySummary.salesRepName ? (
             <View style={styles.salesRepRow}>
               <View style={styles.salesRepIcon}>
                 <Ionicons name="person-outline" size={13} color="#9A7843" />

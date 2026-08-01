@@ -205,6 +205,70 @@ export class CompaniesService {
     };
   }
 
+  async findLookup(
+    page = 1,
+    limit = 200,
+    search?: string,
+    status?: string,
+    requester?: AuthUser,
+  ) {
+    const skip = (page - 1) * limit;
+    const query = this.companyRepo
+      .createQueryBuilder('company')
+      .select([
+        'company.id',
+        'company.companyName',
+        'company.companyCode',
+        'company.isActive',
+        'company.city',
+        'company.country',
+      ])
+      .orderBy('company.companyName', 'ASC')
+      .skip(skip)
+      .take(limit);
+
+    if (search?.trim()) {
+      const normalizedSearch = search.trim();
+      query.andWhere(
+        '(company.companyName LIKE :search OR company.companyCode LIKE :search OR company.city LIKE :search OR company.country LIKE :search)',
+        { search: `%${normalizedSearch}%` },
+      );
+    }
+
+    if (status === 'ACTIVE') {
+      query.andWhere('company.isActive = :isActive', { isActive: true });
+    } else if (status === 'INACTIVE') {
+      query.andWhere('company.isActive = :isActive', { isActive: false });
+    }
+
+    if (requester?.role === UserRole.INTERNAL_REP) {
+      query.andWhere('company.accountManagerId = :requesterId', { requesterId: requester.id });
+    } else if (
+      requester?.role === UserRole.COMPANY_ADMIN ||
+      requester?.role === UserRole.BRANCH_MANAGER ||
+      requester?.role === UserRole.SALES_REP
+    ) {
+      if (!requester.companyId) {
+        return {
+          data: [],
+          total: 0,
+          page,
+          totalPages: 0,
+        };
+      }
+      query.andWhere('company.id = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+    }
+
+    const [data, total] = await query.getManyAndCount();
+
+    return {
+      data,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   async findOne(id: string, requester?: AuthUser): Promise<Company> {
     const company = await this.companyRepo.findOne({
       where: { id },

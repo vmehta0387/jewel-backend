@@ -87,8 +87,13 @@ export class PricingService {
       throw new NotFoundException('Company not found');
     }
 
+    const branchWhere: any = { companyId, isActive: true };
+    if (requester.role === UserRole.BRANCH_MANAGER && requester.branchId) {
+      branchWhere.id = requester.branchId;
+    }
+
     const branches = await this.branchRepo.find({
-      where: { companyId, isActive: true },
+      where: branchWhere,
       relations: ['pricingSlabs'],
       order: { name: 'ASC' },
     });
@@ -116,6 +121,9 @@ export class PricingService {
     requester: AuthUser,
     dto: UpdateCompanyAdminCompanyPricingDto,
   ) {
+    if (requester.role !== UserRole.COMPANY_ADMIN) {
+      throw new ForbiddenException('Only company admin can update company pricing');
+    }
     const companyId = this.assertCompanyAdminScope(requester);
 
     const company = await this.companyRepo.findOne({ where: { id: companyId } });
@@ -165,6 +173,9 @@ export class PricingService {
 
     const branch = await this.branchRepo.findOne({ where: { id: normalizedBranchId, companyId } });
     if (!branch) {
+      throw new NotFoundException('Branch not found in your company');
+    }
+    if (requester.role === UserRole.BRANCH_MANAGER && requester.branchId && branch.id !== requester.branchId) {
       throw new NotFoundException('Branch not found in your company');
     }
 
@@ -768,8 +779,8 @@ export class PricingService {
   }
 
   private assertCompanyAdminScope(requester: AuthUser): string {
-    if (requester.role !== UserRole.COMPANY_ADMIN) {
-      throw new ForbiddenException('Only company admin can access pricing settings');
+    if (requester.role !== UserRole.COMPANY_ADMIN && requester.role !== UserRole.BRANCH_MANAGER) {
+      throw new ForbiddenException('Only company admin or branch manager can access pricing settings');
     }
     const companyId = String(requester.companyId || '').trim();
     if (!companyId) {

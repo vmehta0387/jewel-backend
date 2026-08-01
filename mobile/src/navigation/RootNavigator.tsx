@@ -20,6 +20,7 @@ import DesignDetailScreen from '../screens/DesignDetailScreen';
 import QuoteBuilderScreen from '../screens/QuoteBuilderScreen';
 import QuoteSummaryScreen from '../screens/QuoteSummaryScreen';
 import OrdersScreen from '../screens/OrdersScreen';
+import OrderPeriodListScreen from '../screens/OrderPeriodListScreen';
 import OrderDetailScreen from '../screens/OrderDetailScreen';
 import BranchTeamScreen from '../screens/BranchTeamScreen';
 import CompanyBranchesScreen from '../screens/CompanyBranchesScreen';
@@ -108,6 +109,7 @@ export type DesignsStackParamList = {
 
 export type OrdersStackParamList = {
   Orders: { initialFilter?: 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'CANCELLED' } | undefined;
+  OrderPeriodList: { initialPeriod?: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY'; openKey?: number } | undefined;
   OrderDetail: { orderId: string };
   QuoteBuilder: { draft: QuoteBuilderDraft };
   QuoteSummary: { summary: QuoteSummaryPayload };
@@ -265,6 +267,7 @@ const DesignsNavigator = () => (
 const OrdersNavigator = () => (
   <OrdersStack.Navigator screenOptions={{ headerShown: false }}>
     <OrdersStack.Screen name="Orders" component={OrdersScreen} options={{ title: 'Orders' }} />
+    <OrdersStack.Screen name="OrderPeriodList" component={OrderPeriodListScreen} options={{ title: 'Period Orders' }} />
     <OrdersStack.Screen name="OrderDetail" component={OrderDetailScreen} options={{ title: 'Order Detail' }} />
     <OrdersStack.Screen name="QuoteBuilder" component={QuoteBuilderScreen} options={{ title: 'Quote Builder' }} />
     <OrdersStack.Screen name="QuoteSummary" component={QuoteSummaryScreen} options={{ title: 'Order Summary' }} />

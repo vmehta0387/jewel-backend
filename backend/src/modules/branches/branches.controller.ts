@@ -22,8 +22,14 @@ export class BranchesController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
-  @ActionPermissions('branch.view')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.INTERNAL_REP,
+    UserRole.COMPANY_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.SALES_REP,
+  )
+  @ActionPermissions()
   findAll(
     @Request() req: { user: AuthUser },
     @Query('page') page?: string,
@@ -47,8 +53,14 @@ export class BranchesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
-  @ActionPermissions('branch.view')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.INTERNAL_REP,
+    UserRole.COMPANY_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.SALES_REP,
+  )
+  @ActionPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.branchesService.findOne(id, req.user);
   }

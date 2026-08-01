@@ -19,8 +19,14 @@ export class BranchEmployeesController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('branches')
-  @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN, UserRole.SALES_REP)
-  @ActionPermissions('branch.view')
+  @Roles(
+    UserRole.SUPER_ADMIN,
+    UserRole.INTERNAL_REP,
+    UserRole.COMPANY_ADMIN,
+    UserRole.BRANCH_MANAGER,
+    UserRole.SALES_REP,
+  )
+  @ActionPermissions()
   findBranches(@Request() req: { user: AuthUser }) {
     return this.usersService.findBranchEmployeeBranches(req.user);
   }

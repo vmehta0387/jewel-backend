@@ -94,7 +94,7 @@ export default function AddBranch() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await api.get('/companies', { params: { limit: 100 } });
+      const response = await api.get('/companies/lookup', { params: { limit: 100 } });
       setCompanies(response.data.data || []);
     } catch (error) {
       console.error(error);
@@ -104,7 +104,7 @@ export default function AddBranch() {
 
   const fetchBranchManagers = async (companyId: string) => {
     try {
-      const response = await api.get('/users', {
+      const response = await api.get('/users/lookup', {
         params: { role: 'BRANCH_MANAGER', companyId, status: 'ALL' },
       });
       setBranchManagers(response.data || []);

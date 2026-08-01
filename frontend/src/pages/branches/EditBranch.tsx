@@ -127,7 +127,7 @@ export default function EditBranch() {
 
     try {
       const [companyResponse, branchResponse] = await Promise.all([
-        api.get('/companies', { params: { limit: 100 } }),
+        api.get('/companies/lookup', { params: { limit: 100 } }),
         api.get(`/branches/${id}`),
       ]);
 
@@ -180,7 +180,7 @@ export default function EditBranch() {
     }
 
     try {
-      const response = await api.get('/users', {
+      const response = await api.get('/users/lookup', {
         params: { role: 'BRANCH_MANAGER', companyId, status: 'ALL' },
       });
       setBranchManagers(response.data || []);
@@ -192,7 +192,7 @@ export default function EditBranch() {
 
   const fetchSalesReps = async (branchId: string) => {
     try {
-      const response = await api.get('/users', {
+      const response = await api.get('/users/lookup', {
         params: { role: 'SALES_REP', branchId, status: 'ALL' },
       });
       setSalesReps(response.data || []);

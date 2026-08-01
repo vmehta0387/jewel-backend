@@ -145,6 +145,16 @@ export class BranchesService {
       query.andWhere('branch.companyId = :requesterCompanyId', { requesterCompanyId: requester.companyId });
     }
 
+    if (requester?.role === UserRole.BRANCH_MANAGER || requester?.role === UserRole.SALES_REP) {
+      if (!requester.companyId) {
+        throw new BadRequestException('User must be assigned to a company');
+      }
+      query.andWhere('branch.companyId = :requesterCompanyId', { requesterCompanyId: requester.companyId });
+      if (requester.branchId) {
+        query.andWhere('branch.id = :requesterBranchId', { requesterBranchId: requester.branchId });
+      }
+    }
+
     const [data, total] = await query.getManyAndCount();
 
     return {
@@ -171,6 +181,15 @@ export class BranchesService {
 
     if (requester?.role === UserRole.COMPANY_ADMIN && branch.companyId !== requester.companyId) {
       throw new NotFoundException('Branch not found');
+    }
+
+    if (requester?.role === UserRole.BRANCH_MANAGER || requester?.role === UserRole.SALES_REP) {
+      if (!requester.companyId || branch.companyId !== requester.companyId) {
+        throw new NotFoundException('Branch not found');
+      }
+      if (requester.branchId && branch.id !== requester.branchId) {
+        throw new NotFoundException('Branch not found');
+      }
     }
 
     return this.sanitizeBranch(branch);

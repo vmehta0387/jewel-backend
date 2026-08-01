@@ -2705,7 +2705,7 @@ export default function ProductsPage() {
   const fetchMasterOptions = async () => {
     setMastersLoading(true);
     try {
-      const response = await api.get('/products/masters');
+      const response = await api.get('/products/lookup/masters');
       setMasterOptions({
         jewelryGroups: response.data?.jewelryGroups || [],
         collections: response.data?.collections || [],

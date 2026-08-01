@@ -481,6 +481,15 @@ const BranchDashboardScreen = () => {
   const handleOpenSpiffActivity = useCallback(() => {
     navigation.navigate('SpiffRewards', { initialPanel: 'ACTIVITY' });
   }, [navigation]);
+  const openPeriodOrders = useCallback(
+    (initialPeriod: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY') => {
+      (navigation as any).navigate('OrdersTab', {
+        screen: 'OrderPeriodList',
+        params: { initialPeriod, openKey: Date.now() },
+      });
+    },
+    [navigation],
+  );
 
   const handleOpenNotificationEntry = useCallback(
     (_entry: NotificationFeedEntry) => {
@@ -541,7 +550,7 @@ const BranchDashboardScreen = () => {
           </View>
 
           <View style={styles.statsHorizontal}>
-            <View style={styles.statTile}>
+            <TouchableOpacity style={styles.statTile} onPress={() => openPeriodOrders('TODAY')} activeOpacity={0.85}>
               {statsLoading ? (
                 renderStatSkeleton()
               ) : (
@@ -570,9 +579,9 @@ const BranchDashboardScreen = () => {
                   </Text>
                 </>
               )}
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.statTile}>
+            <TouchableOpacity style={styles.statTile} onPress={() => openPeriodOrders('MONTHLY')} activeOpacity={0.85}>
               {statsLoading ? (
                 renderStatSkeleton()
               ) : (
@@ -592,7 +601,7 @@ const BranchDashboardScreen = () => {
                   </Text>
                 </>
               )}
-            </View>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.statTile, styles.statTileSpiff]}

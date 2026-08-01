@@ -123,7 +123,7 @@ export default function AddUser() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await api.get('/companies', { params: { limit: 200, status: 'ACTIVE' } });
+      const response = await api.get('/companies/lookup', { params: { limit: 200, status: 'ACTIVE' } });
       setCompanies(response.data.data || []);
     } catch (error) {
       console.error(error);

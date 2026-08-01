@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { PricingService } from './pricing.service';
@@ -13,13 +13,13 @@ import {
 } from './dto/company-admin-pricing.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
-@Roles(UserRole.COMPANY_ADMIN)
+@Roles(UserRole.COMPANY_ADMIN, UserRole.BRANCH_MANAGER)
 @Controller('pricing/company-admin')
 export class CompanyAdminPricingController {
   constructor(private readonly pricingService: PricingService) {}
 
   @Get('settings')
-  @AnyActionPermissions('pricing.company.update', 'pricing.branch.update', 'mobile.pricing.view')
+  @ActionPermissions()
   getPricingSettings(@Request() req: { user: AuthUser }) {
     return this.pricingService.getCompanyAdminPricingSettings(req.user);
   }

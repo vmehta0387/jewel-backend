@@ -81,8 +81,16 @@ export type Order = {
   isActive?: boolean;
   designId?: string | null;
   designNo?: string | null;
+  designName?: string | null;
   designVersion?: string | null;
   designImageUrl?: string | null;
+  design?: {
+    id?: string | null;
+    designNo?: string | null;
+    designName?: string | null;
+    version?: string | null;
+    imageUrls?: string[] | null;
+  } | null;
   salesRepId?: string | null;
   salesRepName?: string | null;
   salesRepEmail?: string | null;
@@ -106,6 +114,7 @@ export type Order = {
 export type OrdersResponse = {
   data: Order[];
   total: number;
+  totalAmount?: number;
   page: number;
   totalPages: number;
 };

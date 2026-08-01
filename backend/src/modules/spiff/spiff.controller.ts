@@ -53,8 +53,8 @@ export class SpiffController {
   }
 
   @Get('summary')
-  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
-  @AnyActionPermissions('spiff.view', 'mobile.spiff.view')
+  @TaskPermissions()
+  @ActionPermissions()
   getMySummary(@Request() req: { user: AuthUser }) {
     return this.spiffService.getMySummary(req.user);
   }
