@@ -122,14 +122,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       phone?: string;
       password: string;
     }) => {
-      const response = await signupApi(data);
-      assertMobileAccessRole(response.user);
-      setToken(response.accessToken);
-      setUser(response.user);
-      await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
-      await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+      await signupApi(data);
     },
-    [assertMobileAccessRole],
+    [],
   );
 
   const signIn = useCallback(

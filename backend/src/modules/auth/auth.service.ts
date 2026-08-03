@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -12,16 +12,18 @@ import { User } from '../users/entities/user.entity';
 import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
+import { HelpRequest } from './entities/help-request.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { HelpRequestDto } from './dto/help-request.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 import { getLegacySpiffPermissions } from './legacy-spiff-permissions';
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
@@ -35,10 +37,60 @@ export class AuthService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
+    @InjectRepository(HelpRequest)
+    private readonly helpRequestRepo: Repository<HelpRequest>,
     private readonly jwtService: JwtService,
   ) {}
 
-  async signup(dto: SignupDto): Promise<{ accessToken: string; user: AuthUser }> {
+  async onModuleInit() {
+    await this.ensureHelpRequestsTable();
+  }
+
+  private async ensureHelpRequestsTable() {
+    try {
+      await this.helpRequestRepo.query(`
+        CREATE TABLE IF NOT EXISTS help_requests (
+          id VARCHAR(36) NOT NULL,
+          contact_info VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          status VARCHAR(40) NOT NULL DEFAULT 'OPEN',
+          client_platform VARCHAR(40) NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          INDEX idx_help_requests_status_created (status, created_at)
+        )
+      `);
+    } catch {
+      // App startup should not fail if the table was already created with a compatible schema.
+    }
+  }
+
+  async createHelpRequest(dto: HelpRequestDto): Promise<{ success: true; message: string }> {
+    const contactInfo = this.optionalText(dto.contactInfo);
+    const message = this.optionalText(dto.message);
+    if (!contactInfo) {
+      throw new BadRequestException('Email or mobile number is required');
+    }
+    if (!message) {
+      throw new BadRequestException('Please enter your help message');
+    }
+
+    const request = this.helpRequestRepo.create({
+      id: randomUUID(),
+      contactInfo,
+      message,
+      status: 'OPEN',
+      clientPlatform: dto.clientPlatform || LoginClientPlatform.MOBILE_APP,
+    });
+    await this.helpRequestRepo.save(request);
+
+    return {
+      success: true,
+      message: 'We received your request. Administration will connect and respond to you shortly.',
+    };
+  }
+
+  async signup(dto: SignupDto): Promise<{ success: true; message: string }> {
     if (dto.clientPlatform !== LoginClientPlatform.MOBILE_APP) {
       throw new BadRequestException('Signup is only available from the mobile app');
     }
@@ -64,6 +116,9 @@ export class AuthService {
     const existingUser = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (existingUser) {
       if (!existingUser.isActive) {
+        if (!existingUser.lastSeenAt) {
+          throw new BadRequestException('Registration is already submitted for this email and is waiting for administrator approval.');
+        }
         throw new BadRequestException('This email was previously deleted by the user and cannot be used again. Please use another name and email to create a new account.');
       }
       throw new BadRequestException('Email is already registered');
@@ -82,7 +137,7 @@ export class AuthService {
       company,
       branch,
       phone: dto.phone?.trim() || null,
-      isActive: true,
+      isActive: false,
       taskPermissions: [
         TaskPermission.DESIGN_ENTRIES,
         TaskPermission.ORDER_ENTRIES,
@@ -92,18 +147,9 @@ export class AuthService {
 
     await this.userRepo.save(user);
 
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      companyId: company.id,
-      branchId: branch.id,
-      taskPermissions: user.taskPermissions || [],
-    };
-
     return {
-      accessToken: await this.jwtService.signAsync(payload),
-      user: await this.toAuthUser(user),
+      success: true,
+      message: 'Registration submitted successfully. Login access will be enabled shortly after administrator approval.',
     };
   }
 
@@ -300,6 +346,9 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!user.isActive && !user.lastSeenAt) {
+      throw new UnauthorizedException('Your registration is pending administrator approval. Login access will be enabled shortly.');
     }
     if (!user.isActive) {
       throw new UnauthorizedException('This account was deleted and no longer exists in the application. Please create a new account with a different email.');

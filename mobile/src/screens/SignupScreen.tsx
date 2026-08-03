@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -30,6 +30,7 @@ const SignupScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successVisible, setSuccessVisible] = useState(false);
 
   const canSubmit =
     firstName.trim().length > 0 &&
@@ -58,16 +59,17 @@ const SignupScreen = () => {
         phone: phone.trim() || undefined,
         password,
       });
-      Alert.alert(
-        'Registration Successful',
-        'Your account has been created and activated. You can start using the app now.',
-        [{ text: 'Continue' }],
-      );
+      setSuccessVisible(true);
     } catch (err: any) {
       setError(err?.message || 'Unable to sign up. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSuccessOk = () => {
+    setSuccessVisible(false);
+    navigation.navigate('Login');
   };
 
   return (
@@ -220,6 +222,29 @@ const SignupScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={successVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => undefined}
+      >
+        <View style={styles.successOverlay}>
+          <View style={styles.successCard}>
+            <View style={styles.successIconWrap}>
+              <Ionicons name="checkmark-circle-outline" size={30} color="#2F7D4E" />
+            </View>
+            <Text style={styles.successTitle}>Registration Successful</Text>
+            <Text style={styles.successMessage}>
+              Thank you for joining BLITZ NYC. Your registration has been received successfully.
+              Login access will be enabled shortly after approval by an administrator.
+            </Text>
+            <TouchableOpacity style={styles.successButton} onPress={handleSuccessOk} activeOpacity={0.9}>
+              <Text style={styles.successButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -228,6 +253,69 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 26, 21, 0.46)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6DED4',
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  successIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#EAF5EE',
+    borderWidth: 1,
+    borderColor: '#CBE5D4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  successTitle: {
+    color: '#211812',
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  successMessage: {
+    marginTop: 10,
+    color: '#6E6258',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  successButton: {
+    width: '100%',
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: '#1F1712',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 22,
+  },
+  successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
   keyboardView: {
     flex: 1,

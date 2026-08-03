@@ -5,6 +5,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -18,7 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../context/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { APP_VERSION, PLAY_STORE_URL, APP_STORE_URL, isVersionOutdated } from '../config';
-import { getMobileConfig } from '../api/auth';
+import { getMobileConfig, sendHelpRequest } from '../api/auth';
 
 const LoginScreen = () => {
   const { signIn, biometricAvailable, biometricEnabled, biometricSignIn } = useAuth();
@@ -29,7 +30,14 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signupEnabled, setSignupEnabled] = useState(true);
+  const [showHelpForm, setShowHelpForm] = useState(false);
+  const [helpContact, setHelpContact] = useState('');
+  const [helpMessage, setHelpMessage] = useState('');
+  const [helpLoading, setHelpLoading] = useState(false);
+  const [helpError, setHelpError] = useState<string | null>(null);
+  const [helpSuccessVisible, setHelpSuccessVisible] = useState(false);
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
+  const canSendHelp = helpContact.trim().length > 0 && helpMessage.trim().length > 0 && !helpLoading;
 
   useEffect(() => {
     const checkConfig = async () => {
@@ -99,6 +107,46 @@ const LoginScreen = () => {
     }
   };
 
+  const openHelpForm = () => {
+    setError(null);
+    setHelpError(null);
+    setShowHelpForm(true);
+  };
+
+  const closeHelpForm = () => {
+    setShowHelpForm(false);
+    setHelpError(null);
+  };
+
+  const handleHelpSubmit = async () => {
+    if (!helpContact.trim() || !helpMessage.trim()) {
+      setHelpError('Please enter your email/mobile number and message.');
+      return;
+    }
+
+    setHelpError(null);
+    setHelpLoading(true);
+    try {
+      await sendHelpRequest({
+        contactInfo: helpContact.trim(),
+        message: helpMessage.trim(),
+      });
+      setHelpContact('');
+      setHelpMessage('');
+      setShowHelpForm(false);
+      setHelpSuccessVisible(true);
+    } catch (err: any) {
+      setHelpError(err?.message || 'Unable to send your request. Please try again.');
+    } finally {
+      setHelpLoading(false);
+    }
+  };
+
+  const handleHelpSuccessOk = () => {
+    setHelpSuccessVisible(false);
+    setShowHelpForm(false);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
@@ -122,100 +170,184 @@ const LoginScreen = () => {
 
             <View style={styles.cardContainer}>
               <View style={styles.formContainer}>
-                <View style={styles.formHeader}>
-                  <Text style={styles.formTitle}>Sign in to continue</Text>
-                  <Text style={styles.formSubtitle}>Use your assigned work credentials</Text>
-                </View>
-
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.label}>EMAIL</Text>
-                  <TextInput
-                  style={styles.input}
-                  placeholder="Enter your email"
-                  placeholderTextColor="#A8A29A"
-                  value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                  />
-                </View>
-
-              <View style={[styles.inputWrapper, { marginBottom: 12 }]}>
-                <Text style={styles.label}>PASSWORD</Text>
-                <View style={styles.inputGroup}>
-                  <TextInput
-                    style={[styles.input, styles.inputWithIcon, styles.passwordInputBorder]}
-                    placeholder="**********"
-                    placeholderTextColor="#A8A29A"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    returnKeyType="done"
-                    onSubmitEditing={handleLogin}
-                  />
-                  <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
-                    <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#8D8780" />
-                  </TouchableOpacity>
-                </View>
-
-                {biometricAvailable && biometricEnabled ? (
-                  <TouchableOpacity style={styles.forgotBtn} onPress={handleBiometricLogin}>
-                    <View style={styles.biometricRow}>
-                      <Ionicons name="finger-print" size={14} color="#9E7A45" style={{ marginRight: 4 }} />
-                      <Text style={styles.forgotText}>Unlock with biometrics</Text>
+                {showHelpForm ? (
+                  <>
+                    <View style={styles.formHeader}>
+                      <Text style={styles.formTitle}>Contact your admin</Text>
+                      <Text style={styles.formSubtitle}>Send a message and your best contact detail for access help</Text>
                     </View>
-                  </TouchableOpacity>
+
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>EMAIL / MOBILE NUMBER</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Email or mobile number"
+                        placeholderTextColor="#A8A29A"
+                        value={helpContact}
+                        onChangeText={setHelpContact}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoCorrect={false}
+                        returnKeyType="next"
+                      />
+                    </View>
+
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>MESSAGE</Text>
+                      <TextInput
+                        style={[styles.input, styles.messageInput]}
+                        placeholder="Tell us how we can help"
+                        placeholderTextColor="#A8A29A"
+                        value={helpMessage}
+                        onChangeText={setHelpMessage}
+                        multiline
+                        textAlignVertical="top"
+                        returnKeyType="default"
+                      />
+                    </View>
+
+                    {helpError ? <Text style={styles.error}>{helpError}</Text> : null}
+
+                    <TouchableOpacity
+                      style={styles.signInTouch}
+                      onPress={handleHelpSubmit}
+                      disabled={!canSendHelp}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[styles.signInBtn, !canSendHelp && styles.actionBtnDisabled]}>
+                        {helpLoading ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <View style={styles.btnContent}>
+                            <Ionicons name="send-outline" size={16} color="#D2A85B" style={styles.btnFlashIcon} />
+                            <Text style={styles.signInButtonText}>Send message</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={closeHelpForm} style={styles.backToLoginBtn} activeOpacity={0.85}>
+                      <Ionicons name="arrow-back-outline" size={14} color="#97723F" />
+                      <Text style={styles.forgotText}>Back to login</Text>
+                    </TouchableOpacity>
+                  </>
                 ) : (
-                  <TouchableOpacity style={styles.forgotBtn}>
-                    <Text style={styles.forgotText}>Forgot password?</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-
-              <TouchableOpacity
-                style={styles.signInTouch}
-                onPress={handleLogin}
-                disabled={!canSubmit}
-                activeOpacity={0.85}
-              >
-                <View style={styles.signInBtn}>
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <View style={styles.btnContent}>
-                      <Ionicons name="flash-sharp" size={16} color="#D2A85B" style={styles.btnFlashIcon} />
-                      <Text style={styles.signInButtonText}>Sign in instantly</Text>
+                  <>
+                    <View style={styles.formHeader}>
+                      <Text style={styles.formTitle}>Sign in to continue</Text>
+                      <Text style={styles.formSubtitle}>Use your assigned work credentials</Text>
                     </View>
-                  )}
-                </View>
-              </TouchableOpacity>
 
-              <View style={styles.bottomLinkContainer}>
-                {signupEnabled ? (
-                  <TouchableOpacity onPress={() => navigation.navigate('Signup')} style={{ marginBottom: 12 }}>
-                    <Text style={styles.bottomLinkText}>
-                      <Text style={styles.bottomLinkMuted}>Don't have an account? </Text>
-                      Sign Up
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
+                    <View style={styles.inputWrapper}>
+                      <Text style={styles.label}>EMAIL</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter your email"
+                        placeholderTextColor="#A8A29A"
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        keyboardType="email-address"
+                        autoCorrect={false}
+                        returnKeyType="next"
+                      />
+                    </View>
 
-                <Text style={[styles.bottomLinkText, { fontSize: 11, opacity: 0.7, marginBottom: 8 }]}>
-                  <Text style={styles.bottomLinkMuted}>Need access? </Text>
-                  Contact your admin
-                </Text>
+                    <View style={[styles.inputWrapper, { marginBottom: 12 }]}>
+                      <Text style={styles.label}>PASSWORD</Text>
+                      <View style={styles.inputGroup}>
+                        <TextInput
+                          style={[styles.input, styles.inputWithIcon, styles.passwordInputBorder]}
+                          placeholder="**********"
+                          placeholderTextColor="#A8A29A"
+                          value={password}
+                          onChangeText={setPassword}
+                          secureTextEntry={!showPassword}
+                          returnKeyType="done"
+                          onSubmitEditing={handleLogin}
+                        />
+                        <TouchableOpacity style={styles.iconButton} onPress={() => setShowPassword((prev) => !prev)}>
+                          <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="#8D8780" />
+                        </TouchableOpacity>
+                      </View>
 
-                <Text style={styles.versionText}>v{APP_VERSION}</Text>
-              </View>
+                      {biometricAvailable && biometricEnabled ? (
+                        <TouchableOpacity style={styles.forgotBtn} onPress={handleBiometricLogin}>
+                          <View style={styles.biometricRow}>
+                            <Ionicons name="finger-print" size={14} color="#9E7A45" style={{ marginRight: 4 }} />
+                            <Text style={styles.forgotText}>Unlock with biometrics</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity style={styles.forgotBtn}>
+                          <Text style={styles.forgotText}>Forgot password?</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {error ? <Text style={styles.error}>{error}</Text> : null}
+
+                    <TouchableOpacity
+                      style={styles.signInTouch}
+                      onPress={handleLogin}
+                      disabled={!canSubmit}
+                      activeOpacity={0.85}
+                    >
+                      <View style={[styles.signInBtn, !canSubmit && styles.actionBtnDisabled]}>
+                        {loading ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <View style={styles.btnContent}>
+                            <Ionicons name="flash-sharp" size={16} color="#D2A85B" style={styles.btnFlashIcon} />
+                            <Text style={styles.signInButtonText}>Sign in instantly</Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.bottomLinkContainer}>
+                      {signupEnabled ? (
+                        <TouchableOpacity onPress={() => navigation.navigate('Signup')} style={{ marginBottom: 12 }}>
+                          <Text style={styles.bottomLinkText}>
+                            <Text style={styles.bottomLinkMuted}>Don't have an account? </Text>
+                            Sign Up
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      <TouchableOpacity onPress={openHelpForm} activeOpacity={0.85} style={{ marginBottom: 8 }}>
+                        <Text style={[styles.bottomLinkText, { fontSize: 11, opacity: 0.7 }]}>
+                          <Text style={styles.bottomLinkMuted}>Need access? </Text>
+                          Contact your admin
+                        </Text>
+                      </TouchableOpacity>
+
+                      <Text style={styles.versionText}>v{APP_VERSION}</Text>
+                    </View>
+                  </>
+                )}
             </View>
           </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={helpSuccessVisible} transparent animationType="fade" onRequestClose={() => undefined}>
+        <View style={styles.successOverlay}>
+          <View style={styles.successCard}>
+            <View style={styles.successIconWrap}>
+              <Ionicons name="checkmark-circle-outline" size={30} color="#2F7D4E" />
+            </View>
+            <Text style={styles.successTitle}>Request Received</Text>
+            <Text style={styles.successMessage}>
+              We received your request. Administration will connect and respond to you shortly.
+            </Text>
+            <TouchableOpacity style={styles.successButton} onPress={handleHelpSuccessOk} activeOpacity={0.9}>
+              <Text style={styles.successButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -334,6 +466,12 @@ const styles = StyleSheet.create({
     color: '#111111',
     fontSize: 15,
   },
+  messageInput: {
+    minHeight: 118,
+    height: 118,
+    paddingTop: 14,
+    lineHeight: 20,
+  },
   passwordInputBorder: {
     borderColor: '#D9D5CF',
   },
@@ -363,6 +501,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
+  backToLoginBtn: {
+    marginTop: 18,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   signInTouch: {
     marginTop: 18,
     shadowColor: '#000000',
@@ -379,6 +524,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
     backgroundColor: '#111111',
+  },
+  actionBtnDisabled: {
+    opacity: 0.55,
   },
   btnContent: {
     flexDirection: 'row',
@@ -417,6 +565,69 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontWeight: '500',
     opacity: 0.6,
+  },
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 26, 21, 0.46)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  successCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6DED4',
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  successIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#EAF5EE',
+    borderWidth: 1,
+    borderColor: '#CBE5D4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  successTitle: {
+    color: '#211812',
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  successMessage: {
+    marginTop: 10,
+    color: '#6E6258',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  successButton: {
+    width: '100%',
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: '#1F1712',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 22,
+  },
+  successButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });
 

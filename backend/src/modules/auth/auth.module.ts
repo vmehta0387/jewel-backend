@@ -7,6 +7,7 @@ import { User } from '../users/entities/user.entity';
 import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
+import { HelpRequest } from './entities/help-request.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -29,7 +30,7 @@ import { ActionPermissionsGuard } from './guards/action-permissions.guard';
         },
       }),
     }),
-    TypeOrmModule.forFeature([User, UserPermissionAction, Company, Branch]),
+    TypeOrmModule.forFeature([User, UserPermissionAction, Company, Branch, HelpRequest]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard],

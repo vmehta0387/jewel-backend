@@ -3,6 +3,8 @@ import { apiRequest } from './client';
 import type { AuthUser } from '../types';
 
 export type LoginResponse = { accessToken: string; user: AuthUser };
+export type SignupResponse = { success: true; message: string };
+export type HelpRequestResponse = { success: true; message: string };
 
 export const login = (email: string, password: string) =>
   apiRequest<LoginResponse>('/auth/login', {
@@ -17,7 +19,7 @@ export const signup = (data: {
   phone?: string;
   password: string;
 }) =>
-  apiRequest<LoginResponse>('/auth/signup', {
+  apiRequest<SignupResponse>('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({ ...data, clientPlatform: 'MOBILE_APP' }),
   });
@@ -35,6 +37,12 @@ export type MobileConfig = {
 export const getMobileConfig = () =>
   apiRequest<MobileConfig>('/auth/config', {
     method: 'GET',
+  });
+
+export const sendHelpRequest = (data: { contactInfo: string; message: string }) =>
+  apiRequest<HelpRequestResponse>('/auth/help-request', {
+    method: 'POST',
+    body: JSON.stringify({ ...data, clientPlatform: 'MOBILE_APP' }),
   });
 
 export const me = (token: string) =>

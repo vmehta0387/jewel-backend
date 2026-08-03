@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { HelpRequestDto } from './dto/help-request.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthUser } from './interfaces/auth-user.interface';
@@ -19,6 +20,11 @@ export class AuthController {
   @Post('signup')
   signup(@Body() dto: SignupDto) {
     return this.authService.signup(dto);
+  }
+
+  @Post('help-request')
+  createHelpRequest(@Body() dto: HelpRequestDto) {
+    return this.authService.createHelpRequest(dto);
   }
 
   @Get('config')
