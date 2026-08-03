@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { LoginClientPlatform } from './login.dto';
 
 export class SignupDto {
   @IsEmail()
@@ -20,4 +21,7 @@ export class SignupDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @IsEnum(LoginClientPlatform)
+  clientPlatform: LoginClientPlatform;
 }

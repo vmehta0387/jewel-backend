@@ -34,6 +34,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -197,6 +198,46 @@ const getMediaFileLabel = (uri?: string | null) => {
   if (imageMediaExtensions.has(extension)) return `${extension.toUpperCase()} unavailable`;
   if (videoMediaExtensions.has(extension)) return `${extension.toUpperCase()} video`;
   return `${extension.toUpperCase()} file`;
+};
+
+const isVideoMedia = (uri?: string | null) => videoMediaExtensions.has(getMediaExtension(uri));
+
+const MediaVideo = ({
+  uri,
+  style,
+  nativeControls,
+  autoPlay,
+}: {
+  uri: string;
+  style: any;
+  nativeControls?: boolean;
+  autoPlay?: boolean;
+}) => {
+  const player = useVideoPlayer(uri, (nextPlayer) => {
+    nextPlayer.loop = !nativeControls;
+    nextPlayer.muted = !nativeControls;
+    nextPlayer.staysActiveInBackground = false;
+    nextPlayer.showNowPlayingNotification = false;
+  });
+
+  useEffect(() => {
+    if (autoPlay) {
+      player.play();
+      return;
+    }
+    player.pause();
+  }, [autoPlay, player]);
+
+  return (
+    <VideoView
+      player={player}
+      style={style}
+      contentFit="contain"
+      nativeControls={nativeControls}
+      allowsFullscreen={false}
+      playsInline
+    />
+  );
 };
 
 // const formatStoneNumber = (value: string | number | null | undefined, decimals = 3) => {
@@ -622,17 +663,10 @@ const DesignDetailScreen = () => {
       if (!gallery.length) return;
       const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
       setSelectedImageIndex(boundedIndex);
-      try {
-        mediaListRef.current?.scrollToIndex({
-          index: boundedIndex,
-          animated: true,
-        });
-      } catch {
-        mediaListRef.current?.scrollToOffset({
-          offset: mediaFrameWidth * boundedIndex,
-          animated: true,
-        });
-      }
+      mediaListRef.current?.scrollToOffset({
+        offset: mediaFrameWidth * boundedIndex,
+        animated: true,
+      });
     },
     [gallery.length, mediaFrameWidth],
   );
@@ -743,8 +777,12 @@ const DesignDetailScreen = () => {
     panYRef.current.setValue(0);
   }, []);
 
-  const handleMediaImagePress = useCallback(
+  const handleMediaPress = useCallback(
     (uri: string) => {
+      if (isVideoMedia(uri)) {
+        openImageViewer(uri);
+        return;
+      }
       const now = Date.now();
       if (now - lastImageTapAtRef.current <= 320) {
         lastImageTapAtRef.current = 0;
@@ -1364,9 +1402,10 @@ const DesignDetailScreen = () => {
                     index,
                   })}
                   style={{ width: mediaFrameWidth }}
-                  renderItem={({ item }) => {
+                  renderItem={({ item, index }) => {
                     const extension = getMediaExtension(item);
                     const canPreviewImage = imageMediaExtensions.has(extension) && !failedMediaUrls.has(item);
+                    const canPreviewVideo = videoMediaExtensions.has(extension);
 
                     return (
                       <View style={[styles.mediaSlide, { width: mediaFrameWidth, height: mediaHeight }]}>
@@ -1374,7 +1413,7 @@ const DesignDetailScreen = () => {
                           <TouchableOpacity
                             style={styles.fixedMediaImageTapArea}
                             activeOpacity={0.96}
-                            onPress={() => handleMediaImagePress(item)}
+                            onPress={() => handleMediaPress(item)}
                           >
                             <Image
                               source={{ uri: item, cache: 'force-cache' }}
@@ -1382,6 +1421,23 @@ const DesignDetailScreen = () => {
                               resizeMode="contain"
                               onError={() => markMediaFailed(item)}
                             />
+                          </TouchableOpacity>
+                        ) : canPreviewVideo ? (
+                          <TouchableOpacity
+                            style={styles.fixedMediaImageTapArea}
+                            activeOpacity={0.92}
+                            onPress={() => handleMediaPress(item)}
+                          >
+                            <MediaVideo
+                              uri={item}
+                              style={styles.mediaVideo}
+                              autoPlay={index === selectedImageIndex}
+                            />
+                            <View style={styles.mediaVideoOverlay}>
+                              <View style={styles.mediaVideoPlayBtn}>
+                                <Ionicons name="play" size={22} color="#FFFFFF" />
+                              </View>
+                            </View>
                           </TouchableOpacity>
                         ) : (
                           <View style={styles.mediaFileFallback}>
@@ -1655,7 +1711,20 @@ const DesignDetailScreen = () => {
               </View>
 
               <View style={styles.imageViewerGestureArea}>
-                {imageViewerUri ? (
+                {imageViewerUri && isVideoMedia(imageViewerUri) ? (
+                  <MediaVideo
+                    uri={imageViewerUri}
+                    nativeControls
+                    autoPlay
+                    style={[
+                      styles.imageViewerVideo,
+                      {
+                        width,
+                        height: windowHeight * 0.78,
+                      },
+                    ]}
+                  />
+                ) : imageViewerUri ? (
                   <PinchGestureHandler
                     ref={pinchRef}
                     simultaneousHandlers={panRef}
@@ -1803,6 +1872,30 @@ const styles = StyleSheet.create({
   fixedMediaImageTapArea: {
     width: '100%',
     height: '100%',
+  },
+  mediaVideo: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#F1F0EE',
+  },
+  mediaVideoOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none' as any,
+  },
+  mediaVideoPlayBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(30, 26, 23, 0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 3,
   },
   mediaSkeleton: {
     width: '100%',
@@ -1962,6 +2055,10 @@ const styles = StyleSheet.create({
   },
   imageViewerImage: {
     alignSelf: 'center',
+  },
+  imageViewerVideo: {
+    alignSelf: 'center',
+    backgroundColor: '#000000',
   },
   detailScroll: {
     flex: 1,

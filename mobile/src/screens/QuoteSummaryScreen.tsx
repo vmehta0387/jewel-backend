@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
+  Linking,
+  PermissionsAndroid,
   Platform,
   ScrollView,
   StyleSheet,
@@ -28,6 +30,7 @@ import { salesRepRequiresApproval } from '../utils/permissions';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
+type PdfWriteTarget = string | null | undefined;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -77,6 +80,69 @@ const statusLabel = (status?: string) => {
 
 const normalizeStatus = (status?: string | null) => String(status || 'QUOTE').trim().toUpperCase();
 const compact = (value?: string | number | null) => String(value ?? '').trim();
+
+const requestAndroidPdfWritePermission = async () => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  const androidVersion = Number(Platform.Version);
+  if (Number.isFinite(androidVersion) && androidVersion >= 29) {
+    return true;
+  }
+
+  const permission = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
+  const hasPermission = await PermissionsAndroid.check(permission);
+  if (hasPermission) {
+    return true;
+  }
+
+  const result = await PermissionsAndroid.request(permission, {
+    title: 'Storage Permission',
+    message: 'Allow BLITZ NYC to save order PDFs on this device.',
+    buttonPositive: 'Allow',
+    buttonNegative: 'Cancel',
+  });
+
+  if (result === PermissionsAndroid.RESULTS.GRANTED) {
+    return true;
+  }
+
+  Alert.alert('Permission required', 'Storage permission is required to save the order PDF.');
+  return false;
+};
+
+const requestPdfWriteTarget = async (): Promise<PdfWriteTarget> => {
+  if (Platform.OS !== 'android') {
+    return null;
+  }
+
+  const hasWritePermission = await requestAndroidPdfWritePermission();
+  if (!hasWritePermission) {
+    return undefined;
+  }
+
+  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+  if (!permissions.granted) {
+    Alert.alert('Permission required', 'Please allow a save location to download the order PDF.');
+    return undefined;
+  }
+
+  return permissions.directoryUri;
+};
+
+const openSavedPdfLocation = async (folderUri: string, fileUri?: string) => {
+  try {
+    await Linking.openURL(folderUri);
+  } catch {
+    if (!fileUri) return;
+    try {
+      await Linking.openURL(fileUri);
+    } catch {
+      // Some Android file providers do not expose saved document URIs back to apps.
+    }
+  }
+};
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(compact(version));
   return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
@@ -244,6 +310,25 @@ const QuoteSummaryScreen = () => {
   const [sending, setSending] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    setToastMessage(message);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 2600);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -423,14 +508,23 @@ const QuoteSummaryScreen = () => {
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
+  const canEditApprovedOrder = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
-  const canModifyCurrentOrder = statusKey !== 'APPROVED' || isBranchManager;
+  const canModifyCurrentOrder = statusKey !== 'APPROVED' || canEditApprovedOrder;
 
   const handleBackToOrders = useCallback(() => {
     (navigation as any).navigate('OrdersTab', {
       screen: 'Orders',
     });
   }, [navigation]);
+
+  const handleOpenOrderDetails = useCallback(() => {
+    if (orderId) {
+      navigation.navigate('OrderDetail', { orderId });
+      return;
+    }
+    navigation.goBack();
+  }, [navigation, orderId]);
 
   const handleDownloadPdf = useCallback(async () => {
     if (!token || !orderId) {
@@ -446,6 +540,11 @@ const QuoteSummaryScreen = () => {
 
     setDownloadingPdf(true);
     try {
+      const writeTarget = await requestPdfWriteTarget();
+      if (writeTarget === undefined) {
+        return;
+      }
+
       const result = await FileSystem.downloadAsync(getOrderPdfUrl(orderId), localUri, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -453,23 +552,21 @@ const QuoteSummaryScreen = () => {
         throw new Error('Unable to download PDF.');
       }
 
-      if (Platform.OS === 'android') {
-        const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-        if (permissions.granted) {
-          const base64 = await FileSystem.readAsStringAsync(result.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
-            permissions.directoryUri,
-            fileName,
-            'application/pdf',
-          );
-          await FileSystem.writeAsStringAsync(targetUri, base64, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          Alert.alert('Downloaded', 'Order PDF saved successfully.');
-          return;
-        }
+      if (writeTarget) {
+        const base64 = await FileSystem.readAsStringAsync(result.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
+          writeTarget,
+          fileName,
+          'application/pdf',
+        );
+        await FileSystem.writeAsStringAsync(targetUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        showToast('File downloaded successfully.');
+        await openSavedPdfLocation(writeTarget, targetUri);
+        return;
       }
 
       if (await Sharing.isAvailableAsync()) {
@@ -478,7 +575,9 @@ const QuoteSummaryScreen = () => {
           UTI: 'com.adobe.pdf',
           dialogTitle: 'Save or share order PDF',
         });
+        showToast('File downloaded successfully.');
       } else {
+        showToast('File downloaded successfully.');
         Alert.alert('Downloaded', `PDF saved at ${result.uri}`);
       }
     } catch (err: any) {
@@ -486,7 +585,7 @@ const QuoteSummaryScreen = () => {
     } finally {
       setDownloadingPdf(false);
     }
-  }, [displaySummary.orderNumber, orderId, orderNumber, token]);
+  }, [displaySummary.orderNumber, orderId, orderNumber, showToast, token]);
 
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
@@ -546,7 +645,7 @@ const QuoteSummaryScreen = () => {
 
   const handleModifyOrder = useCallback(() => {
     if (!canModifyCurrentOrder) {
-      setError('Only branch managers can edit approved orders.');
+      setError('Only internal reps and super admin can edit approved orders.');
       return;
     }
 
@@ -700,7 +799,7 @@ const QuoteSummaryScreen = () => {
           ) : (
             <View style={styles.modifyLockedBox}>
               <Ionicons name="lock-closed-outline" size={14} color="#93826F" />
-              <Text style={styles.modifyLockedText}>Only branch managers can edit approved orders.</Text>
+              <Text style={styles.modifyLockedText}>Only internal reps and super admin can edit approved orders.</Text>
             </View>
           )}
         </View>
@@ -759,6 +858,15 @@ const QuoteSummaryScreen = () => {
         <View style={{ height: 138 }} />
       </ScrollView>
 
+      {toastMessage ? (
+        <View style={styles.toastWrap} pointerEvents="none">
+          <View style={styles.toastPill}>
+            <Ionicons name="checkmark-circle" size={15} color="#FFFFFF" />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.bottomBar}>
         {showManagerPendingActions ? (
           <View style={styles.managerDecisionRow}>
@@ -785,7 +893,7 @@ const QuoteSummaryScreen = () => {
           <View style={styles.smallActionsRow}>
             <TouchableOpacity
               style={styles.smallBtn}
-              onPress={statusKey === 'QUOTE' ? handleModifyOrder : () => navigation.goBack()}
+              onPress={statusKey === 'QUOTE' ? handleModifyOrder : handleOpenOrderDetails}
               activeOpacity={0.9}
             >
               <Ionicons name={actionConfig.leftIcon} size={13} color="#D08748" />
@@ -814,6 +922,34 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  toastWrap: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 96,
+    alignItems: 'center',
+  },
+  toastPill: {
+    maxWidth: 360,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#231913',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  toastText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   headerRow: {
     height: 56,

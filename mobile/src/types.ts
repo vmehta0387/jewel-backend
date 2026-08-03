@@ -117,6 +117,7 @@ export type OrdersResponse = {
   totalAmount?: number;
   page: number;
   totalPages: number;
+  statusCounts?: Partial<Record<string, number>>;
 };
 
 export type NotificationItem = {

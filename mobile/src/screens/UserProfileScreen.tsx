@@ -19,9 +19,10 @@ import Screen from '../components/Screen';
 import Card from '../components/Card';
 import ScreenHeader from '../components/ScreenHeader';
 import Button from '../components/Button';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { colors, radii, spacing } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { updateMyProfile, uploadMyPhoto } from '../api/auth';
+import { deactivateMyAccount, updateMyProfile, uploadMyPhoto } from '../api/auth';
 import { APP_VERSION } from '../config';
 
 const formatRole = (role?: string) => {
@@ -96,6 +97,8 @@ const UserProfileScreen = () => {
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [savingSecurity, setSavingSecurity] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   const [personalStatus, setPersonalStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [securityStatus, setSecurityStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -129,7 +132,7 @@ const UserProfileScreen = () => {
 
   // Check if security fields are modified
   const isSecurityDirty = useMemo(() => {
-    return securityForm.currentPassword !== '' || securityForm.password !== '';
+    return securityForm.password.trim().length > 0;
   }, [securityForm]);
 
   // Profile Photo Upload Handler
@@ -261,18 +264,19 @@ const UserProfileScreen = () => {
     }
   };
 
-  const handleSaveAll = async () => {
-    if (savingPersonal || savingSecurity) return;
-
-    if (isPersonalDirty) {
-      const personalSaved = await handleSavePersonal();
-      if (!personalSaved) return;
+  const handleDeleteAccount = useCallback(async () => {
+    if (!token || deletingAccount) return;
+    setDeletingAccount(true);
+    try {
+      await deactivateMyAccount(token);
+      setDeleteConfirmVisible(false);
+      await signOut({ clearBiometric: true });
+    } catch (e: any) {
+      Alert.alert('Unable to Delete Account', getErrorMessage(e));
+    } finally {
+      setDeletingAccount(false);
     }
-
-    if (isSecurityDirty) {
-      await handleSaveSecurity();
-    }
-  };
+  }, [deletingAccount, signOut, token]);
 
   const initial = (user?.firstName?.[0] || user?.email?.[0] || 'U').toUpperCase();
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'User Profile';
@@ -285,13 +289,6 @@ const UserProfileScreen = () => {
         subtitle="Manage your credentials and details"
         rightSlot={
           <View style={styles.headerActions}>
-            <Button
-              title="Save"
-              onPress={handleSaveAll}
-              loading={savingPersonal || savingSecurity}
-              disabled={!isPersonalDirty && !isSecurityDirty}
-              style={styles.headerSaveBtn}
-            />
             <Button title="Close" variant="ghost" onPress={() => navigation.goBack()} style={styles.closeBtn} />
           </View>
         }
@@ -522,35 +519,34 @@ const UserProfileScreen = () => {
         <TouchableOpacity
           style={styles.deleteBtn}
           activeOpacity={0.85}
-          onPress={() => {
-            Alert.alert(
-              'Delete Account Request',
-              'Are you sure you want to submit a request to delete your account and all associated data?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Request Deletion',
-                  style: 'destructive',
-                  onPress: () => {
-                    Alert.alert(
-                      'Request Submitted',
-                      'We submitted your request to the server. After verifying that this request was submitted by you yourself, the backend team will delete your account as well as all data in the next 2-3 working days.',
-                      [{ text: 'OK' }]
-                    );
-                  },
-                },
-              ]
-            );
-          }}
+          onPress={() => setDeleteConfirmVisible(true)}
+          disabled={deletingAccount}
         >
-          <Ionicons name="trash-outline" size={18} color={colors.danger} style={{ marginRight: 8, opacity: 0.8 }} />
-          <Text style={styles.deleteBtnText}>Request Account Deletion</Text>
+          {deletingAccount ? (
+            <ActivityIndicator size="small" color={colors.danger} style={{ marginRight: 8 }} />
+          ) : (
+            <Ionicons name="trash-outline" size={18} color={colors.danger} style={{ marginRight: 8, opacity: 0.8 }} />
+          )}
+          <Text style={styles.deleteBtnText}>{deletingAccount ? 'Deleting Account...' : 'Request Account Deletion'}</Text>
         </TouchableOpacity>
 
         <Text style={styles.versionText}>v{APP_VERSION}</Text>
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      <ConfirmDialog
+        visible={deleteConfirmVisible}
+        title="Delete Account Request"
+        message="This will deactivate your account immediately and sign you out. You will not be able to sign in again with this email."
+        tone="danger"
+        cancelText="Keep Account"
+        confirmText={deletingAccount ? 'Deleting...' : 'Delete Account'}
+        loading={deletingAccount}
+        onCancel={() => {
+          if (!deletingAccount) setDeleteConfirmVisible(false);
+        }}
+        onConfirm={handleDeleteAccount}
+      />
     </Screen>
   );
 };
@@ -561,11 +557,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: 4,
-  },
-  headerSaveBtn: {
-    minWidth: 64,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
   },
   closeBtn: {
     minWidth: 58,

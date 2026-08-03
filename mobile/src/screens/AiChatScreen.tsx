@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -17,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { chatDesigns } from '../api/ai';
+import ConfirmDialog from '../components/ConfirmDialog';
 import NotificationPopover from '../components/NotificationPopover';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 
@@ -37,6 +40,8 @@ type SuggestionCard = {
 
 const INITIAL_THREAD: ChatMessage[] = [];
 const DEFAULT_SUGGESTIONS: SuggestionCard[] = [];
+const SALES_AGENT_PHONE_DISPLAY = '646-821-4040';
+const SALES_AGENT_PHONE_URL = 'tel:6468214040';
 
 const getFirstName = (value?: string | null) => {
   const trimmed = String(value || '').trim();
@@ -90,6 +95,7 @@ const AiChatScreen = () => {
   const [loading, setLoading] = useState(false);
 
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [callAgentVisible, setCallAgentVisible] = useState(false);
 
   const canSend = input.trim().length > 0 && !loading;
   const hasSuggestionResults = suggestions.length > 0;
@@ -178,6 +184,15 @@ const AiChatScreen = () => {
     setNotificationsVisible(true);
   }, []);
 
+  const handleCallAgent = useCallback(async () => {
+    setCallAgentVisible(false);
+    try {
+      await Linking.openURL(SALES_AGENT_PHONE_URL);
+    } catch {
+      Alert.alert('Call unavailable', `Please dial ${SALES_AGENT_PHONE_DISPLAY}.`);
+    }
+  }, []);
+
   const handleOpenNotificationEntry = useCallback(
     (_entry: NotificationFeedEntry) => {
       navigation.navigate('OrdersTab');
@@ -241,9 +256,13 @@ const AiChatScreen = () => {
                 </View>
               ) : null}
             </TouchableOpacity>
-            <View style={styles.callAgentBtn}>
+            <TouchableOpacity
+              style={styles.callAgentBtn}
+              onPress={() => setCallAgentVisible(true)}
+              activeOpacity={0.85}
+            >
               <Text style={styles.callAgentText}>Call agent</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -362,6 +381,15 @@ const AiChatScreen = () => {
           visible={notificationsVisible}
           onClose={() => setNotificationsVisible(false)}
           onOpenNotification={handleOpenNotificationEntry}
+        />
+        <ConfirmDialog
+          visible={callAgentVisible}
+          title="Call Sales Agent"
+          message={`Connect with our US sales agent at ${SALES_AGENT_PHONE_DISPLAY}.`}
+          confirmText="Call Now"
+          cancelText="Close"
+          onCancel={() => setCallAgentVisible(false)}
+          onConfirm={handleCallAgent}
         />
       </SafeAreaView>
     </View>

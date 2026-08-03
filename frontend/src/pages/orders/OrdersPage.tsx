@@ -203,6 +203,8 @@ const orderStatusOptions = [
   'CANCELLED',
 ];
 
+const normalizeOrderStatus = (status?: string | null): string => String(status || '').trim().toUpperCase();
+
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 const publicAssetsBaseUrl = apiBaseUrl.replace(/\/api$/, '');
 const resolvePublicAssetUrl = (rawUrl: string): string => {
@@ -442,6 +444,7 @@ export default function OrdersPage() {
     () => (currentUser ? hasActionPermission(currentUser, 'order.status_update') : false),
     [currentUser],
   );
+  const canEditApprovedOrder = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'INTERNAL_REP';
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -982,6 +985,14 @@ export default function OrdersPage() {
   };
 
   const handleSaveOrder = async () => {
+    if (editingOrderId && normalizeOrderStatus(form.status) === 'APPROVED' && !canEditApprovedOrder) {
+      showAlert('Only internal reps and super admin can edit approved orders.', {
+        title: 'Approved order locked',
+        variant: 'warning',
+      });
+      return;
+    }
+
     const nextErrors: OrderFormErrors = {};
     if (!form.companyId) {
       nextErrors.companyId = 'Company is required.';
@@ -1163,6 +1174,14 @@ export default function OrdersPage() {
   }, [highlightedOrderId, orders]);
 
   const openEditModal = async (order: OrderRow) => {
+    if (normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder) {
+      showAlert('Only internal reps and super admin can edit approved orders.', {
+        title: 'Approved order locked',
+        variant: 'warning',
+      });
+      return;
+    }
+
     setShowAddModal(true);
     setEditOrderLoading(true);
     setEditingOrderId(order.id);
@@ -1792,8 +1811,13 @@ export default function OrdersPage() {
                           </svg>
                         </OrderActionIconButton>
                         <OrderActionIconButton
-                          title="Edit Order"
+                          title={
+                            normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder
+                              ? 'Only internal reps and super admin can edit approved orders'
+                              : 'Edit Order'
+                          }
                           onClick={() => openEditModal(order)}
+                          disabled={normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder}
                         >
                           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 20h9" />

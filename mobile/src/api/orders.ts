@@ -3,12 +3,15 @@ import { API_BASE_URL } from '../config';
 import type { OrdersResponse, Order } from '../types';
 
 export type OrderPeriod = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
-export type OrderStatusGroup = 'FULFILLED';
+export type OrderStatusGroup = 'FULFILLED' | 'SHIPPED_OR_COMPLETED';
 export type OrderPeriodSummary = Record<'today' | 'weekly' | 'monthly' | 'annually', { count: number; totalAmount: number }>;
 export type FetchOrdersOptions = {
   period?: OrderPeriod;
   statusGroup?: OrderStatusGroup;
   search?: string;
+  orderStatus?: string;
+  salesRepId?: string;
+  includeStatusCounts?: boolean;
 };
 
 export const fetchOrders = (
@@ -26,6 +29,9 @@ export const fetchOrders = (
   if (options.period) params.set('period', options.period);
   if (options.statusGroup) params.set('statusGroup', options.statusGroup);
   if (options.search?.trim()) params.set('search', options.search.trim());
+  if (options.orderStatus) params.set('orderStatus', options.orderStatus);
+  if (options.salesRepId) params.set('salesRepId', options.salesRepId);
+  if (options.includeStatusCounts) params.set('includeStatusCounts', 'true');
   return apiRequest<OrdersResponse>(`/orders?${params.toString()}`, { method: 'GET' }, token);
 };
 

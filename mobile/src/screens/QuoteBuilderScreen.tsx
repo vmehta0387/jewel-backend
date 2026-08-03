@@ -755,7 +755,8 @@ const QuoteBuilderScreen = () => {
   ]);
 
   const currentOrderStatus = String(order?.status || draft.status || '').toUpperCase();
-  const isApprovedOrderLocked = currentOrderStatus === 'APPROVED' && user?.role !== 'BRANCH_MANAGER';
+  const canEditApprovedOrder = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
+  const isApprovedOrderLocked = currentOrderStatus === 'APPROVED' && !canEditApprovedOrder;
   const canPersist = Boolean(
     token
     && companyId
@@ -806,7 +807,7 @@ const QuoteBuilderScreen = () => {
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
       if (!token || !companyId || !branchId) return null;
       if (isApprovedOrderLocked) {
-        setError('Only branch managers can edit approved orders.');
+        setError('Only internal reps and super admin can edit approved orders.');
         return null;
       }
       if (!(await confirmPurchaseOrderReuse({
@@ -1196,7 +1197,7 @@ const QuoteBuilderScreen = () => {
         {isApprovedOrderLocked ? (
           <View style={styles.lockedOrderNotice}>
             <Ionicons name="lock-closed-outline" size={14} color="#8A7C6B" />
-            <Text style={styles.lockedOrderNoticeText}>Only branch managers can edit approved orders.</Text>
+            <Text style={styles.lockedOrderNoticeText}>Only internal reps and super admin can edit approved orders.</Text>
           </View>
         ) : null}
         <View style={styles.bottomActionsRow}>

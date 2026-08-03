@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -57,6 +58,11 @@ const SignupScreen = () => {
         phone: phone.trim() || undefined,
         password,
       });
+      Alert.alert(
+        'Registration Successful',
+        'Your account has been created and activated. You can start using the app now.',
+        [{ text: 'Continue' }],
+      );
     } catch (err: any) {
       setError(err?.message || 'Unable to sign up. Please try again.');
     } finally {

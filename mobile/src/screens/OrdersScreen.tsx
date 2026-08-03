@@ -44,6 +44,7 @@ const CONFIRM_POPOVER_WIDTH = 312;
 const CONFIRM_POPOVER_MARGIN = 12;
 const CONFIRM_POPOVER_ESTIMATED_HEIGHT = 184;
 const THEME_ACTION_COLOR = '#BE9851';
+const ORDERS_PAGE_LIMIT = 15;
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'QUOTE', label: 'Quotes' },
@@ -258,10 +259,16 @@ const OrdersScreen = () => {
   const confirmationButtonRefs = useRef<Record<string, React.ElementRef<typeof TouchableOpacity> | null>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<FilterKey>('PENDING_APPROVAL');
   const [selectedSalesRepId, setSelectedSalesRepId] = useState('ALL');
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersTotalPages, setOrdersTotalPages] = useState(1);
+  const [ordersTotal, setOrdersTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Partial<Record<string, number>>>({});
   const [branchSalesReps, setBranchSalesReps] = useState<BranchEmployee[]>([]);
   const [actingOrderId, setActingOrderId] = useState<string | null>(null);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
@@ -276,31 +283,55 @@ const OrdersScreen = () => {
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const canSeeSalesRepFilter = Boolean(user && user.role !== 'SALES_REP');
 
-  const loadOrders = useCallback(async () => {
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(timeoutId);
+  }, [search]);
+
+  const loadOrders = useCallback(async (pageToLoad = 1, append = false) => {
     if (!token) return;
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [response, employeeRows] = await Promise.all([
-        fetchOrders(token, 1, 100, 'ALL'),
+        fetchOrders(token, pageToLoad, ORDERS_PAGE_LIMIT, 'ACTIVE', {
+          orderStatus: selectedFilter === 'SHIPPED' ? undefined : selectedFilter,
+          statusGroup: selectedFilter === 'SHIPPED' ? 'SHIPPED_OR_COMPLETED' : undefined,
+          search: debouncedSearch,
+          salesRepId: selectedSalesRepId === 'ALL' ? undefined : selectedSalesRepId,
+          includeStatusCounts: true,
+        }),
         canSeeSalesRepFilter ? fetchBranchEmployees(token).catch(() => []) : Promise.resolve([]),
       ]);
       const rows = (response.data || []).filter(
         (order) => order.isActive !== false,
       );
-      rows.sort((a, b) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTime - aTime;
+      setOrders((current) => {
+        if (!append) return rows;
+        const seen = new Set(current.map((order) => order.id));
+        return current.concat(rows.filter((order) => !seen.has(order.id)));
       });
-      setOrders(rows);
+      setOrdersPage(Number(response.page || pageToLoad));
+      setOrdersTotalPages(Math.max(1, Number(response.totalPages || 1)));
+      setOrdersTotal(Number(response.total || 0));
+      setStatusCounts(response.statusCounts || {});
       setBranchSalesReps(employeeRows.filter((employee) => employee.role === 'SALES_REP'));
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [canSeeSalesRepFilter, token]);
+  }, [canSeeSalesRepFilter, debouncedSearch, selectedFilter, selectedSalesRepId, token]);
+
+  const loadMoreOrders = useCallback(() => {
+    if (loading || loadingMore || ordersPage >= ordersTotalPages) return;
+    loadOrders(ordersPage + 1, true);
+  }, [loadOrders, loading, loadingMore, ordersPage, ordersTotalPages]);
 
   const salesRepOptions = useMemo(() => {
     const reps = new Map<string, string>();
@@ -341,74 +372,21 @@ const OrdersScreen = () => {
 
   const countsByFilter = useMemo(() => {
     const initial: Record<FilterKey, number> = {
-      QUOTE: 0,
-      PENDING_APPROVAL: 0,
-      APPROVED: 0,
-      IN_PRODUCTION: 0,
-      SHIPPED: 0,
-      CANCELLED: 0,
+      QUOTE: Number(statusCounts.QUOTE || 0),
+      PENDING_APPROVAL: Number(statusCounts.PENDING_APPROVAL || 0),
+      APPROVED: Number(statusCounts.APPROVED || 0),
+      IN_PRODUCTION: Number(statusCounts.IN_PRODUCTION || 0),
+      SHIPPED: Number(statusCounts.SHIPPED || 0) + Number(statusCounts.COMPLETED || 0),
+      CANCELLED: Number(statusCounts.CANCELLED || 0),
     };
-    const term = search.trim().toLowerCase();
-
-    salesRepFilteredOrders.forEach((order) => {
-      if (term) {
-        const searchable = [
-          order.orderNumber,
-          getOrderDesignName(order),
-          getOrderDesignNo(order),
-          order.purchaseOrderNumber,
-          order.customerName,
-          order.customerEmail,
-          order.shortDescription,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        if (!searchable.includes(term)) return;
-      }
-
-      const key = normalizeStatus(order.status);
-      if (key === 'QUOTE') initial.QUOTE += 1;
-      else if (key === 'PENDING_APPROVAL') initial.PENDING_APPROVAL += 1;
-      else if (key === 'APPROVED') initial.APPROVED += 1;
-      else if (key === 'IN_PRODUCTION') initial.IN_PRODUCTION += 1;
-      else if (key === 'SHIPPED') initial.SHIPPED += 1;
-      else if (key === 'CANCELLED') initial.CANCELLED += 1;
-    });
-
     return initial;
-  }, [salesRepFilteredOrders, search]);
+  }, [statusCounts]);
 
-  const filteredOrders = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return salesRepFilteredOrders.filter((order) => {
-      const searchable = [
-        order.orderNumber,
-        getOrderDesignName(order),
-        getOrderDesignNo(order),
-        order.purchaseOrderNumber,
-        order.customerName,
-        order.customerEmail,
-        order.shortDescription,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      const matchesSearch = !term || searchable.includes(term);
-      return matchesSearch && matchesFilter(order, selectedFilter);
-    });
-  }, [salesRepFilteredOrders, search, selectedFilter]);
+  const filteredOrders = salesRepFilteredOrders;
 
   const isSalesRepOrBranchManager = user?.role === 'SALES_REP' || user?.role === 'BRANCH_MANAGER';
-  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
   const headerTitle = isSalesRepOrBranchManager ? 'Branch Orders' : 'My Orders';
-  const visibleFilters = useMemo(() => {
-    if (isCompanyAdmin) {
-      return FILTERS.filter((filter) => filter.key !== 'QUOTE');
-    }
-    return FILTERS;
-  }, [isCompanyAdmin]);
+  const visibleFilters = FILTERS;
 
   useEffect(() => {
     const term = search.trim().toLowerCase();
@@ -421,12 +399,6 @@ const OrdersScreen = () => {
       setSelectedFilter(bestMatchTab.key);
     }
   }, [search, countsByFilter, selectedFilter, visibleFilters]);
-
-  useEffect(() => {
-    if (isCompanyAdmin && selectedFilter === 'QUOTE') {
-      setSelectedFilter('PENDING_APPROVAL');
-    }
-  }, [isCompanyAdmin, selectedFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -500,14 +472,14 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrderActiveStatus(token, order.id, false);
-        setOrders((prev) => prev.filter((row) => row.id !== order.id));
+        await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to suspend draft');
       } finally {
         setActingOrderId(null);
       }
     },
-    [token],
+    [loadOrders, token],
   );
 
   const markCancelled = useCallback(
@@ -516,14 +488,14 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrder(token, order.id, { status: 'CANCELLED' });
-        setOrders((prev) => prev.filter((row) => row.id !== order.id));
+        await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to update order');
       } finally {
         setActingOrderId(null);
       }
     },
-    [token],
+    [loadOrders, token],
   );
 
   const requestConfirmation = useCallback((order: Order, action: ConfirmationAction) => {
@@ -585,16 +557,14 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrder(token, order.id, { status: 'APPROVED' });
-        setOrders((prev) =>
-          prev.map((row) => (row.id === order.id ? { ...row, status: 'APPROVED' } : row)),
-        );
+        await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to approve order');
       } finally {
         setActingOrderId(null);
       }
     },
-    [token],
+    [loadOrders, token],
   );
 
   const renderTimeline = (status?: string | null) => {
@@ -952,9 +922,7 @@ const OrdersScreen = () => {
             ) : null}
             <Text style={styles.pageTitle}>{headerTitle}</Text>
           </View>
-          {isSalesRepOrBranchManager ? (
-            <Text style={styles.pageTotalText}>{formatCount(orders.length)} total</Text>
-          ) : null}
+          <Text style={styles.pageTotalText}>{formatCount(ordersTotal)} total</Text>
         </View>
 
         <View style={styles.searchBox}>
@@ -1003,7 +971,14 @@ const OrdersScreen = () => {
           </View>
         ) : null}
 
-        <View style={styles.filterRow}>{visibleFilters.map((item) => renderFilterChip(item))}</View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {visibleFilters.map((item) => renderFilterChip(item))}
+        </ScrollView>
       </View>
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -1016,7 +991,17 @@ const OrdersScreen = () => {
         showsVerticalScrollIndicator={false}
         onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}
         onScrollBeginDrag={closeConfirmation}
+        onEndReached={loadMoreOrders}
+        onEndReachedThreshold={0.35}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadOrders} tintColor="#8a6b55" colors={['#8a6b55']} />}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.listFooter}>
+              <ActivityIndicator size="small" color="#8a6b55" />
+              <Text style={styles.listFooterText}>Loading more...</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyWrap}>
@@ -1269,10 +1254,10 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
     paddingTop: 8,
-    paddingBottom: 2,
+    paddingBottom: 8,
+    paddingRight: 12,
   },
   filterChip: {
     minWidth: 66,
@@ -1282,7 +1267,6 @@ const styles = StyleSheet.create({
     borderColor: '#DCCFC0',
     backgroundColor: '#FAF8F5',
     marginRight: 8,
-    marginBottom: 6,
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
@@ -1323,6 +1307,17 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
     paddingTop: 2,
     flexGrow: 1,
+  },
+  listFooter: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listFooterText: {
+    marginTop: 6,
+    fontSize: 11,
+    color: '#8A8178',
+    fontWeight: '700',
   },
   card: {
     position: 'relative',

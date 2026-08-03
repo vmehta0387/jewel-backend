@@ -46,6 +46,12 @@ const PERIOD_SUMMARY_KEYS: Record<OrderPeriod, keyof OrderPeriodSummary> = {
 
 const compact = (value?: string | null) => String(value || '').trim();
 const money = (value?: number | null) => `$${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number(value || 0))}`;
+const formatOrderDate = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 const normalizeStatus = (value?: string | null) => {
   const status = compact(value).toUpperCase();
   if (status === 'IN_PRODUCTION' || status === 'PRODUCTION') return 'IN_PRODUCTION';
@@ -181,6 +187,7 @@ const OrderPeriodListScreen = () => {
   const renderCard = ({ item }: { item: Order }) => {
     const pill = pillColors(item.status);
     const salesRep = compact(item.salesRepName || item.salesRepEmail);
+    const poNumber = compact(item.purchaseOrderNumber);
     const subtitle = compact(item.shortDescription)?.replace(/\s*\|\s*/g, ' - ') || compact(item.customerName);
 
     return (
@@ -205,18 +212,28 @@ const OrderPeriodListScreen = () => {
             <Text style={styles.cardMeta} numberOfLines={2}>{subtitle || 'No details'}</Text>
             <Text style={styles.price}>{money(item.price)}</Text>
           </View>
-          {shouldShowSalesRep && salesRep ? (
-            <View style={styles.salesRepRow}>
-              <Ionicons name="person-outline" size={11} color="#9A7843" />
-              <Text style={styles.salesRepText} numberOfLines={1}>{salesRep}</Text>
+          <View style={styles.orderMetaLine}>
+            <View style={styles.orderMetaItem}>
+              <Ionicons name="calendar-outline" size={10} color="#9A7843" />
+              <Text style={styles.orderDateText} numberOfLines={1}>{formatOrderDate(item.createdAt)}</Text>
             </View>
-          ) : null}
-          {compact(item.purchaseOrderNumber) ? (
-            <View style={styles.poRow}>
-              <Text style={styles.poLabel}>Client PO</Text>
-              <Text style={styles.poValue} numberOfLines={1}>{compact(item.purchaseOrderNumber)}</Text>
-            </View>
-          ) : null}
+            {poNumber ? (
+              <>
+                <View style={styles.orderMetaDivider} />
+                <Text style={styles.poInlineText} numberOfLines={1}>
+                  <Text style={styles.poLabel}>Client PO </Text>
+                  {poNumber}
+                </Text>
+              </>
+            ) : null}
+            {shouldShowSalesRep && salesRep ? (
+              <>
+                <View style={styles.orderMetaDivider} />
+                <Ionicons name="person-outline" size={10} color="#9A7843" />
+                <Text style={styles.salesRepText} numberOfLines={1}>{salesRep}</Text>
+              </>
+            ) : null}
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -377,11 +394,13 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 3 },
   cardMeta: { flex: 1, color: '#7A6D63', fontSize: 9.5, lineHeight: 13, fontWeight: '600' },
   price: { color: '#B78248', fontSize: 15, fontWeight: '900' },
-  salesRepRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  salesRepText: { color: '#8A6B46', fontSize: 10, fontWeight: '800' },
-  poRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 },
+  orderMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, minWidth: 0 },
+  orderMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
+  orderMetaDivider: { width: 1, height: 10, backgroundColor: '#E7D7C9', flexShrink: 0 },
+  orderDateText: { color: '#7E6B5B', fontSize: 9.5, lineHeight: 12, fontWeight: '800' },
+  salesRepText: { flexShrink: 1, color: '#8A6B46', fontSize: 9.5, lineHeight: 12, fontWeight: '800' },
   poLabel: { color: '#7C6757', fontSize: 9.5, fontWeight: '800' },
-  poValue: { flex: 1, color: '#6D584A', fontSize: 9.5, fontWeight: '800' },
+  poInlineText: { flex: 1, minWidth: 0, color: '#6D584A', fontSize: 9.5, lineHeight: 12, fontWeight: '800' },
   emptyWrap: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
   emptyTitle: { marginTop: 8, color: '#2D241E', fontSize: 14, fontWeight: '800' },
   emptyText: { marginTop: 4, color: '#8B7A6C', fontSize: 12, textAlign: 'center' },

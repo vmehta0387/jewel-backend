@@ -39,6 +39,12 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch('me/deactivate')
+  deactivateMyAccount(@Request() req: { user: AuthUser }) {
+    return this.authService.deactivateMyAccount(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('me/photo')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
   uploadMyPhoto(

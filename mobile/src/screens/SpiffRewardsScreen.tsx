@@ -1,7 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Linking,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -73,6 +75,9 @@ const TIER_RATES = [
 const getTierLabel = (code?: string | null, fallback?: string | null) =>
   TIER_RATES.find((tier) => tier.code === String(code || '').toUpperCase())?.label || fallback || 'Starter';
 
+const SPIFF_PAGE_LIMIT = 15;
+const SCROLL_LOAD_OFFSET = 260;
+
 type SalesRepPanel = 'COMPANY_BOARD' | 'GLOBAL_BOARD' | 'REDEEM' | 'ACTIVITY';
 type BranchManagerPanel = 'BRANCH_BOARD' | 'COMPANY_BOARD';
 type CompanyAdminClaimFilter = 'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'FULFILLED';
@@ -108,6 +113,11 @@ const formatClaimAge = (value: string | null | undefined) => {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+const isNearScrollBottom = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+  return layoutMeasurement.height + contentOffset.y >= contentSize.height - SCROLL_LOAD_OFFSET;
+};
+
 const SpiffRewardsScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<DashboardStackParamList, 'SpiffRewards'>>();
@@ -131,6 +141,14 @@ const SpiffRewardsScreen = () => {
   const [globalLeaderboard, setGlobalLeaderboard] = useState<any>(null);
   const [claims, setClaims] = useState<SpiffClaim[]>([]);
   const [activity, setActivity] = useState<SpiffActivityItem[]>([]);
+  const [claimsPage, setClaimsPage] = useState(1);
+  const [claimsTotalPages, setClaimsTotalPages] = useState(1);
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [loadingMoreClaims, setLoadingMoreClaims] = useState(false);
+  const [loadingMoreActivity, setLoadingMoreActivity] = useState(false);
+  const claimsLoadingRef = useRef(false);
+  const activityLoadingRef = useRef(false);
 
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
@@ -159,6 +177,10 @@ const SpiffRewardsScreen = () => {
   const load = useCallback(async (silent = false) => {
     if (!token || !canViewSpiff) return;
     if (!silent) setLoading(true);
+    claimsLoadingRef.current = false;
+    activityLoadingRef.current = false;
+    setLoadingMoreClaims(false);
+    setLoadingMoreActivity(false);
 
     try {
       const [configRes, summaryRes, leaderboardRes, claimsRes, activityRes] = await Promise.all([
@@ -178,8 +200,8 @@ const SpiffRewardsScreen = () => {
               limit: 10,
             })
           : Promise.resolve(null),
-        fetchSpiffClaims(token, 1, 20),
-        fetchSpiffActivity(token, 1, 30),
+        fetchSpiffClaims(token, 1, SPIFF_PAGE_LIMIT),
+        fetchSpiffActivity(token, 1, SPIFF_PAGE_LIMIT),
       ]);
       let secondaryBoardRes: any = null;
       if (canViewLeaderboard && user?.role === 'SALES_REP') {
@@ -209,7 +231,11 @@ const SpiffRewardsScreen = () => {
       setLeaderboard(leaderboardRes);
       setGlobalLeaderboard(secondaryBoardRes);
       setClaims(claimsRes.data || []);
+      setClaimsPage(Number(claimsRes.page || 1));
+      setClaimsTotalPages(Math.max(1, Number(claimsRes.totalPages || 1)));
       setActivity(activityRes.data || []);
+      setActivityPage(Number(activityRes.page || 1));
+      setActivityTotalPages(Math.max(1, Number(activityRes.totalPages || 1)));
     } catch (error: any) {
       Alert.alert('SPIFF', error?.message || 'Unable to load SPIFF data right now.');
     } finally {
@@ -228,6 +254,63 @@ const SpiffRewardsScreen = () => {
     setRefreshing(true);
     load(true);
   }, [load]);
+
+  const loadMoreClaims = useCallback(async () => {
+    if (!token || claimsLoadingRef.current || claimsPage >= claimsTotalPages) return;
+    claimsLoadingRef.current = true;
+    setLoadingMoreClaims(true);
+    try {
+      const nextPage = claimsPage + 1;
+      const response = await fetchSpiffClaims(token, nextPage, SPIFF_PAGE_LIMIT);
+      setClaims((current) => {
+        const seen = new Set(current.map((claim) => claim.id));
+        return current.concat((response.data || []).filter((claim) => !seen.has(claim.id)));
+      });
+      setClaimsPage(Number(response.page || nextPage));
+      setClaimsTotalPages(Math.max(1, Number(response.totalPages || claimsTotalPages)));
+    } catch (error: any) {
+      Alert.alert('SPIFF', error?.message || 'Unable to load more claims right now.');
+    } finally {
+      claimsLoadingRef.current = false;
+      setLoadingMoreClaims(false);
+    }
+  }, [token, claimsPage, claimsTotalPages]);
+
+  const loadMoreActivity = useCallback(async () => {
+    if (!token || activityLoadingRef.current || activityPage >= activityTotalPages) return;
+    activityLoadingRef.current = true;
+    setLoadingMoreActivity(true);
+    try {
+      const nextPage = activityPage + 1;
+      const response = await fetchSpiffActivity(token, nextPage, SPIFF_PAGE_LIMIT);
+      setActivity((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return current.concat((response.data || []).filter((item) => !seen.has(item.id)));
+      });
+      setActivityPage(Number(response.page || nextPage));
+      setActivityTotalPages(Math.max(1, Number(response.totalPages || activityTotalPages)));
+    } catch (error: any) {
+      Alert.alert('SPIFF', error?.message || 'Unable to load more history right now.');
+    } finally {
+      activityLoadingRef.current = false;
+      setLoadingMoreActivity(false);
+    }
+  }, [token, activityPage, activityTotalPages]);
+
+  const handleSalesRepScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (!isNearScrollBottom(event)) return;
+    if (salesRepPanel === 'ACTIVITY') {
+      loadMoreActivity();
+    } else if (salesRepPanel === 'REDEEM') {
+      loadMoreClaims();
+    }
+  }, [salesRepPanel, loadMoreActivity, loadMoreClaims]);
+
+  const handleClaimsScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isNearScrollBottom(event)) {
+      loadMoreClaims();
+    }
+  }, [loadMoreClaims]);
 
   React.useEffect(() => {
     if (initialPanel) {
@@ -463,6 +546,8 @@ const SpiffRewardsScreen = () => {
             style={styles.scroll}
             contentContainerStyle={styles.srContent}
             showsVerticalScrollIndicator={false}
+            onScroll={handleSalesRepScroll}
+            scrollEventThrottle={16}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#A67F3F" />}
           >
             <View style={styles.srHeroCard}>
@@ -705,7 +790,13 @@ const SpiffRewardsScreen = () => {
 
               {salesRepPanel === 'ACTIVITY' ? (
                 activity.length ? (
-                  activity.map(renderActivityCard)
+                  <>
+                    {activity.map(renderActivityCard)}
+                    {loadingMoreActivity ? <Text style={styles.loadMoreText}>Loading more history...</Text> : null}
+                    {!loadingMoreActivity && activityPage >= activityTotalPages ? (
+                      <Text style={styles.loadMoreText}>All history loaded.</Text>
+                    ) : null}
+                  </>
                 ) : (
                   <Text style={styles.emptyText}>No activity yet.</Text>
                 )
@@ -806,6 +897,8 @@ const SpiffRewardsScreen = () => {
             style={styles.scroll}
             contentContainerStyle={styles.caContent}
             showsVerticalScrollIndicator={false}
+            onScroll={handleClaimsScroll}
+            scrollEventThrottle={16}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#B58A3E" />}
           >
             <View style={styles.caHero}>
@@ -967,6 +1060,10 @@ const SpiffRewardsScreen = () => {
             )}
 
             {companyApprovedClaims.length > 0 ? <View style={styles.caBottomSpace} /> : null}
+            {loadingMoreClaims ? <Text style={styles.loadMoreText}>Loading more claims...</Text> : null}
+            {!loadingMoreClaims && claimsPage >= claimsTotalPages && claims.length > 0 ? (
+              <Text style={styles.loadMoreText}>All claims loaded.</Text>
+            ) : null}
           </ScrollView>
         </SafeAreaView>
       </View>
@@ -995,6 +1092,8 @@ const SpiffRewardsScreen = () => {
           style={styles.scroll}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          onScroll={handleClaimsScroll}
+          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#A67F3F" />}
         >
           <View style={styles.statsGrid}>
@@ -1113,6 +1212,10 @@ const SpiffRewardsScreen = () => {
             ) : (
               <Text style={styles.emptyText}>No claims yet.</Text>
             )}
+            {loadingMoreClaims ? <Text style={styles.loadMoreText}>Loading more claims...</Text> : null}
+            {!loadingMoreClaims && claimsPage >= claimsTotalPages && claims.length > 0 ? (
+              <Text style={styles.loadMoreText}>All claims loaded.</Text>
+            ) : null}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -1981,6 +2084,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8B8179',
     fontWeight: '500',
+  },
+  loadMoreText: {
+    marginTop: 10,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#8B8179',
+    fontWeight: '700',
   },
 });
 

@@ -9,7 +9,9 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#FFFFFF",
+      "imageWidth": 180,
+      "imageHeight": 180
     },
     "ios": {
       "supportsTablet": true,
@@ -20,6 +22,10 @@
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -48,7 +54,8 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-font",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-video"
     ],
     "owner": "vmehta0387"
   }

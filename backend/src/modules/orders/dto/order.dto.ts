@@ -148,12 +148,20 @@ export class FindOrdersQueryDto {
   designId?: string;
 
   @IsOptional()
+  @IsUUID()
+  salesRepId?: string;
+
+  @IsOptional()
   @IsEnum(OrderStatus)
   orderStatus?: OrderStatus;
 
   @IsOptional()
-  @IsIn(['FULFILLED'])
-  statusGroup?: 'FULFILLED';
+  @IsIn(['true', 'false'])
+  includeStatusCounts?: 'true' | 'false';
+
+  @IsOptional()
+  @IsIn(['FULFILLED', 'SHIPPED_OR_COMPLETED'])
+  statusGroup?: 'FULFILLED' | 'SHIPPED_OR_COMPLETED';
 
   @IsOptional()
   @IsIn(['TODAY', 'WEEKLY', 'MONTHLY', 'ANNUALLY'])

@@ -189,6 +189,15 @@ const OrderDetailScreen = () => {
     [gemstoneRows],
   );
   const designDisplayName = order ? getOrderDesignName(order) || getOrderDesignNo(order) : '';
+  const metalDisplay = useMemo(() => {
+    const primaryMetal = designDetails?.metals?.[0];
+    return (
+      parsedSelection.metalColor ||
+      primaryMetal?.metalCaratage ||
+      primaryMetal?.goldColour ||
+      designDetails?.goldColour
+    );
+  }, [designDetails?.goldColour, designDetails?.metals, parsedSelection.metalColor]);
 
   useFocusEffect(
     useCallback(() => {
@@ -309,6 +318,7 @@ const OrderDetailScreen = () => {
           <View style={styles.detailsList}>
             <DetailRow label="Design" value={designDisplayName} boldValue />
             <DetailRow label="Category" value={designDetails?.jewelryGroup} />
+            <DetailRow label="Metal" value={metalDisplay} />
             {/* <DetailRow label="Sub Category" value={designDetails?.collection} /> */}
             <DetailRow label="Jewelry Size" value={parsedSelection.ringSize || designDetails?.jewelrySize} />
           </View>

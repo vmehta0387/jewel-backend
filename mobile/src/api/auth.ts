@@ -19,7 +19,7 @@ export const signup = (data: {
 }) =>
   apiRequest<LoginResponse>('/auth/signup', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, clientPlatform: 'MOBILE_APP' }),
   });
 
 export type MobileConfig = {
@@ -83,3 +83,6 @@ export const updateMyProfile = (
     },
     token,
   );
+
+export const deactivateMyAccount = (token: string) =>
+  apiRequest<{ success: true }>('/auth/me/deactivate', { method: 'PATCH' }, token);

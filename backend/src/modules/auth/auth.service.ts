@@ -10,6 +10,8 @@ import { extname, join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
 import { User } from '../users/entities/user.entity';
 import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
+import { Company } from '../companies/entities/company.entity';
+import { Branch } from '../branches/entities/branch.entity';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { LoginClientPlatform, LoginDto } from './dto/login.dto';
@@ -17,7 +19,6 @@ import { SignupDto } from './dto/signup.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthUser, JwtPayload } from './interfaces/auth-user.interface';
 import { getLegacySpiffPermissions } from './legacy-spiff-permissions';
-
 
 @Injectable()
 export class AuthService {
@@ -30,13 +31,41 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(UserPermissionAction)
     private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
     private readonly jwtService: JwtService,
   ) {}
 
   async signup(dto: SignupDto): Promise<{ accessToken: string; user: AuthUser }> {
+    if (dto.clientPlatform !== LoginClientPlatform.MOBILE_APP) {
+      throw new BadRequestException('Signup is only available from the mobile app');
+    }
+
+    const signupCompanyId = this.optionalText(process.env.MOBILE_SIGNUP_COMPANY_ID);
+    const signupBranchId = this.optionalText(process.env.MOBILE_SIGNUP_BRANCH_ID);
+    if (!signupCompanyId || !signupBranchId) {
+      throw new BadRequestException('Mobile signup company and branch are not configured');
+    }
+
+    const [company, branch] = await Promise.all([
+      this.companyRepo.findOne({ where: { id: signupCompanyId, isActive: true } }),
+      this.branchRepo.findOne({ where: { id: signupBranchId, isActive: true } }),
+    ]);
+    if (!company) {
+      throw new BadRequestException('Mobile signup company not found');
+    }
+    if (!branch || branch.companyId !== company.id) {
+      throw new BadRequestException('Mobile signup branch not found for the configured company');
+    }
+
     const normalizedEmail = dto.email.trim().toLowerCase();
     const existingUser = await this.userRepo.findOne({ where: { email: normalizedEmail } });
     if (existingUser) {
+      if (!existingUser.isActive) {
+        throw new BadRequestException('This email was previously deleted by the user and cannot be used again. Please use another name and email to create a new account.');
+      }
       throw new BadRequestException('Email is already registered');
     }
 
@@ -48,6 +77,10 @@ export class AuthService {
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
       role: UserRole.SALES_REP,
+      companyId: company.id,
+      branchId: branch.id,
+      company,
+      branch,
       phone: dto.phone?.trim() || null,
       isActive: true,
       taskPermissions: [
@@ -63,8 +96,8 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
-      companyId: null,
-      branchId: null,
+      companyId: company.id,
+      branchId: branch.id,
       taskPermissions: user.taskPermissions || [],
     };
 
@@ -104,6 +137,17 @@ export class AuthService {
       accessToken: await this.jwtService.signAsync(payload),
       user: await this.toAuthUser(user),
     };
+  }
+
+  async deactivateMyAccount(userId: string): Promise<{ success: true }> {
+    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    user.isActive = false;
+    user.lastSeenAt = new Date();
+    await this.userRepo.save(user);
+    return { success: true };
   }
 
   private assertLoginRoleAccess(user: User, clientPlatform?: LoginClientPlatform): void {
@@ -250,12 +294,15 @@ export class AuthService {
   private async validateUser(email: string, password: string): Promise<User> {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.userRepo.findOne({
-      where: { email: normalizedEmail, isActive: true },
+      where: { email: normalizedEmail },
       relations: ['branch', 'company'],
     });
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!user.isActive) {
+      throw new UnauthorizedException('This account was deleted and no longer exists in the application. Please create a new account with a different email.');
     }
 
     let passwordMatches = false;

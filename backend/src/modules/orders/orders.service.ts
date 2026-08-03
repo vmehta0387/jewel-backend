@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import puppeteer from 'puppeteer';
 import { Order } from './entities/order.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
@@ -135,18 +136,12 @@ export class OrdersService implements OnModuleInit {
       qb.andWhere('order.isActive = :isActive', { isActive: false });
     }
 
-    if (query.orderStatus) {
-      qb.andWhere('order.status = :orderStatus', { orderStatus: query.orderStatus });
-    }
-
-    if (query.statusGroup === 'FULFILLED') {
-      qb.andWhere('order.status IN (:...fulfilledStatuses)', {
-        fulfilledStatuses: [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED],
-      });
-    }
-
     if (query.designId) {
       qb.andWhere('order.designId = :designId', { designId: query.designId });
+    }
+
+    if (query.salesRepId) {
+      qb.andWhere('order.salesRepId = :salesRepId', { salesRepId: query.salesRepId });
     }
 
     if (query.deliveryFrom?.trim()) {
@@ -181,6 +176,24 @@ export class OrdersService implements OnModuleInit {
         '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR design.designName LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
         { search },
       );
+    }
+
+    const statusCounts = query.includeStatusCounts === 'true'
+      ? await this.getOrderStatusCounts(qb)
+      : undefined;
+
+    if (query.orderStatus) {
+      qb.andWhere('order.status = :orderStatus', { orderStatus: query.orderStatus });
+    }
+
+    if (query.statusGroup === 'FULFILLED') {
+      qb.andWhere('order.status IN (:...fulfilledStatuses)', {
+        fulfilledStatuses: [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED],
+      });
+    } else if (query.statusGroup === 'SHIPPED_OR_COMPLETED') {
+      qb.andWhere('order.status IN (:...shippedStatuses)', {
+        shippedStatuses: [OrderStatus.SHIPPED, OrderStatus.COMPLETED],
+      });
     }
 
     const totalAmountRaw = await qb
@@ -221,7 +234,8 @@ export class OrdersService implements OnModuleInit {
       total,
       totalAmount: this.roundMoney(this.toNumber(totalAmountRaw?.totalAmount)),
       page,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+      ...(statusCounts ? { statusCounts } : {}),
     };
   }
 
@@ -268,7 +282,7 @@ export class OrdersService implements OnModuleInit {
     const orderNo = this.optionalText(order.orderNumber) || 'order';
     const safeOrderNo = orderNo.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'order';
     return {
-      buffer: this.buildOrderSummaryPdf(order),
+      buffer: await this.buildOrderSummaryPdf(order),
       fileName: `${safeOrderNo}-summary.pdf`,
     };
   }
@@ -407,6 +421,7 @@ export class OrdersService implements OnModuleInit {
     }
 
     const previousStatus = order.status;
+    this.assertApprovedOrderEditable(order, requester);
     const requestedBranchId = dto.branchId?.trim() || order.branchId || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
@@ -815,6 +830,22 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  private async getOrderStatusCounts(qb: any): Promise<Partial<Record<OrderStatus, number>>> {
+    const rows = await qb
+      .clone()
+      .select('order.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('order.status')
+      .getRawMany() as Array<{ status: OrderStatus; count: string | number }>;
+
+    return rows.reduce((acc: Partial<Record<OrderStatus, number>>, row) => {
+      if (row.status) {
+        acc[row.status] = this.toNumber(row.count);
+      }
+      return acc;
+    }, {});
+  }
+
   private applyCreatedPeriodFilter(
     qb: any,
     period?: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY',
@@ -842,87 +873,272 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  private buildOrderSummaryPdf(order: Order & Record<string, any>): Buffer {
-    const lines: string[] = [];
-    const push = (text = '', x = 40, size = 10, font = 'F1') => lines.push(`${font}|${size}|${x}|${text}`);
-    const itemDetails = this.splitPdfLines(order.shortDescription, 78);
+  private async buildOrderSummaryPdf(order: Order & Record<string, any>): Promise<Buffer> {
+    const browser = await puppeteer.launch({
+      executablePath: this.optionalText(process.env.PUPPETEER_EXECUTABLE_PATH) || undefined,
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setContent(this.buildOrderSummaryHtml(order), { waitUntil: 'load' });
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  }
+
+  private buildOrderSummaryHtml(order: Order & Record<string, any>): string {
     const money = this.formatPdfMoney(order.price);
     const designLabel = this.optionalText(order.designName) || this.optionalText(order.design?.designName)
       || this.optionalText(order.designNo) || this.optionalText(order.design?.designNo) || '-';
+    const itemDetails = this.splitPdfLines(order.shortDescription, 90);
+    const notes = this.optionalText(order.notes);
+    const html = (value: unknown) => this.escapeHtml(this.optionalText(value) || '-');
+    const detailRows = itemDetails.map((row) => `<div>${this.escapeHtml(row)}</div>`).join('');
 
-    push('BLITZ NYC', 40, 22, 'F2');
-    push('Order Summary', 390, 18, 'F2');
-    push(`Generated ${this.formatPdfDate(new Date())}`, 390, 9);
-    push('');
-    push(`Order #: ${this.optionalText(order.orderNumber) || '-'}`, 40, 12, 'F2');
-    push(`Status: ${this.formatPdfStatus(order.status)}`, 300, 12, 'F2');
-    push(`Created: ${this.formatPdfDate(order.createdAt)}`, 40, 10);
-    push(`Company: ${this.optionalText(order.companyName) || this.optionalText(order.company?.companyName) || '-'}`, 40, 10);
-    push(`Branch: ${this.optionalText(order.branchName) || this.optionalText(order.branch?.name) || '-'}`, 300, 10);
-    push('');
-    push('Client', 40, 13, 'F2');
-    push(`Name: ${this.optionalText(order.customerName) || '-'}`);
-    push(`Phone: ${this.optionalText(order.customerPhone) || '-'}`);
-    push(`Email: ${this.optionalText(order.customerEmail) || '-'}`);
-    push('');
-    push('Order References', 40, 13, 'F2');
-    push(`Purchase Order: ${this.optionalText(order.purchaseOrderNumber) || '-'}`);
-    push(`Sales Rep: ${this.optionalText(order.salesRepName) || this.optionalText(order.salesRepEmail) || '-'}`);
-    push('');
-    push('Order Item', 40, 13, 'F2');
-    push(`Design: ${designLabel}`, 40, 11, 'F2');
-    itemDetails.forEach((line) => push(line));
-    if (order.notes) push(`Notes: ${this.optionalText(order.notes)}`);
-    push('');
-    push(`Quantity: ${order.quantity || 1}`, 40, 11, 'F2');
-    push(`Total Amount: ${money}`, 300, 14, 'F2');
-    push('');
-    push('This document was generated by Blitz NYC.', 40, 9);
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #241b16;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 18mm 15mm 14mm;
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-bar {
+      height: 20mm;
+      padding: 5mm 7mm;
+      color: #fff;
+      background: #1d1713;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand { font-size: 22px; font-weight: 800; letter-spacing: 0.4px; }
+    .doc-title { text-align: right; }
+    .doc-title strong { display: block; font-size: 18px; }
+    .doc-title span { display: block; margin-top: 2px; color: #d9c8b5; font-size: 10px; }
+    .order-head {
+      margin-top: 9mm;
+      padding-bottom: 6mm;
+      border-bottom: 1px solid #ddcfc0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10mm;
+    }
+    .order-no { font-size: 18px; font-weight: 800; }
+    .status {
+      min-width: 38mm;
+      padding: 3mm 5mm;
+      text-align: center;
+      color: #6d451f;
+      background: #fff7e8;
+      border: 1px solid #d8bd8f;
+      font-weight: 800;
+    }
+    .grid {
+      margin-top: 8mm;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8mm;
+    }
+    .panel {
+      min-height: 31mm;
+      padding: 6mm;
+      background: #fbf8f4;
+      border: 1px solid #e5d8ca;
+    }
+    .section-title {
+      margin: 0 0 4mm;
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5mm 9mm;
+    }
+    .fields.single { grid-template-columns: 1fr; }
+    .label {
+      color: #7f7165;
+      font-size: 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .value {
+      margin-top: 1mm;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .items { margin-top: 10mm; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th {
+      padding: 3mm;
+      color: #7b6f63;
+      border-bottom: 1px solid #dfd2c4;
+      font-size: 9px;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 4.5mm 3mm;
+      border-bottom: 1px solid #eee4da;
+      vertical-align: top;
+    }
+    .item-name { font-size: 13px; font-weight: 800; }
+    .item-detail {
+      margin-top: 2mm;
+      color: #4b423b;
+      font-size: 10px;
+      overflow-wrap: anywhere;
+    }
+    .qty { width: 22mm; text-align: center; font-weight: 800; }
+    .amount { width: 33mm; text-align: right; font-size: 13px; font-weight: 800; }
+    .notes {
+      margin-top: 9mm;
+      padding: 5mm 6mm;
+      background: #fcfaf6;
+      border: 1px solid #e5d8ca;
+    }
+    .notes-text {
+      margin-top: 2mm;
+      color: #4b423b;
+      overflow-wrap: anywhere;
+    }
+    .total-row {
+      margin-top: 16mm;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .total-box {
+      width: 68mm;
+      padding: 6mm 7mm;
+      background: #fff7e8;
+      border: 1px solid #d8bd8f;
+    }
+    .total-label {
+      color: #6d451f;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .total-amount {
+      margin-top: 1mm;
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .footer {
+      margin-top: auto;
+      padding-top: 5mm;
+      color: #756c63;
+      border-top: 1px solid #dfd2c4;
+      font-size: 10px;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="brand-bar">
+      <div class="brand">BLITZ NYC</div>
+      <div class="doc-title">
+        <strong>Order Summary</strong>
+        <span>Generated ${html(this.formatPdfDate(new Date()))}</span>
+      </div>
+    </section>
 
-    return this.renderSimplePdf(lines);
-  }
+    <section class="order-head">
+      <div class="order-no">ORDER # ${html(order.orderNumber)}</div>
+      <div class="status">${html(this.formatPdfStatus(order.status))}</div>
+    </section>
 
-  private renderSimplePdf(rows: string[]): Buffer {
-    const commands: string[] = [
-      '0.96 0.94 0.91 rg 0 792 595 50 re f',
-      '0.70 0.49 0.25 RG 40 786 m 555 786 l S',
-    ];
-    let y = 806;
-    rows.forEach((row) => {
-      if (!row) {
-        y -= 12;
-        return;
-      }
-      const [font, sizeText, xText, ...parts] = row.split('|');
-      const size = Number(sizeText) || 10;
-      const x = Number(xText) || 40;
-      y -= size + 6;
-      commands.push(`BT /${font} ${size} Tf ${x} ${y} Td (${this.escapePdfText(parts.join('|'))}) Tj ET`);
-    });
-    commands.push('0.86 0.80 0.73 RG 40 80 m 555 80 l S');
+    <section class="grid">
+      <div class="panel">
+        <h2 class="section-title">Client</h2>
+        <div class="fields single">
+          <div><div class="label">Name</div><div class="value">${html(order.customerName)}</div></div>
+          <div><div class="label">Phone</div><div class="value">${html(order.customerPhone)}</div></div>
+          <div><div class="label">Email</div><div class="value">${html(order.customerEmail)}</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 class="section-title">Order Details</h2>
+        <div class="fields">
+          <div><div class="label">Created</div><div class="value">${html(this.formatPdfDate(order.createdAt))}</div></div>
+          <div><div class="label">Purchase Order</div><div class="value">${html(order.purchaseOrderNumber)}</div></div>
+          <div><div class="label">Company</div><div class="value">${html(order.companyName || order.company?.companyName)}</div></div>
+          <div><div class="label">Branch</div><div class="value">${html(order.branchName || order.branch?.name)}</div></div>
+        </div>
+      </div>
+    </section>
 
-    const content = commands.join('\n');
-    const objects = [
-      '<< /Type /Catalog /Pages 2 0 R >>',
-      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
-      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
-      `<< /Length ${Buffer.byteLength(content, 'utf8')} >>\nstream\n${content}\nendstream`,
-    ];
-    let pdf = '%PDF-1.4\n';
-    const offsets: number[] = [0];
-    objects.forEach((obj, index) => {
-      offsets.push(Buffer.byteLength(pdf, 'utf8'));
-      pdf += `${index + 1} 0 obj\n${obj}\nendobj\n`;
-    });
-    const xref = Buffer.byteLength(pdf, 'utf8');
-    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-    offsets.slice(1).forEach((offset) => {
-      pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
-    });
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-    return Buffer.from(pdf, 'utf8');
+    <section class="items">
+      <h2 class="section-title">Order Item</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Design</th>
+            <th class="qty">Qty</th>
+            <th class="amount">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="item-name">${html(designLabel)}</div>
+              <div class="item-detail">${detailRows}</div>
+            </td>
+            <td class="qty">${html(order.quantity || 1)}</td>
+            <td class="amount">${html(money)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    ${notes ? `<section class="notes">
+      <h2 class="section-title">Notes</h2>
+      <div class="notes-text">${this.escapeHtml(notes)}</div>
+    </section>` : ''}
+
+    <section class="total-row">
+      <div class="total-box">
+        <div class="total-label">Total Amount</div>
+        <div class="total-amount">${html(money)}</div>
+      </div>
+    </section>
+
+    <footer class="footer">This document was generated by Blitz NYC.</footer>
+  </main>
+</body>
+</html>`;
   }
 
   private splitPdfLines(value?: string | null, maxLength = 80): string[] {
@@ -948,7 +1164,42 @@ export class OrdersService implements OnModuleInit {
   }
 
   private escapePdfText(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    return this.normalizePdfText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  private normalizePdfText(value: string): string {
+    return String(value || '')
+      .replace(/[–—]/g, '-')
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+  }
+
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private wrapPdfText(value?: string | null, maxLength = 80): string[] {
+    const clean = this.normalizePdfText(this.optionalText(value) || '-').replace(/\s+/g, ' ').trim();
+    const words = clean.split(' ');
+    const lines: string[] = [];
+    let current = '';
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxLength && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    });
+    if (current) lines.push(current);
+    return lines;
   }
 
   private formatPdfMoney(value: unknown): string {
@@ -989,8 +1240,9 @@ export class OrdersService implements OnModuleInit {
   }
 
   private assertApprovedOrderEditable(order: Pick<Order, 'status'>, requester: AuthUser): void {
-    if (order.status === OrderStatus.APPROVED && requester.role !== UserRole.BRANCH_MANAGER) {
-      throw new ForbiddenException('Only branch managers can edit approved orders');
+    const canEditApprovedOrder = requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP;
+    if (order.status === OrderStatus.APPROVED && !canEditApprovedOrder) {
+      throw new ForbiddenException('Only internal reps and super admin can edit approved orders');
     }
   }
 

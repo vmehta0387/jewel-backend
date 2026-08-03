@@ -32,7 +32,7 @@ type AuthContextValue = {
   }) => Promise<void>;
   biometricSignIn: () => Promise<void>;
   setBiometricPreference: (enabled: boolean) => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: (options?: { clearBiometric?: boolean }) => Promise<void>;
   refresh: (updatedUser?: AuthUser) => Promise<void>;
 };
 
@@ -241,12 +241,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setBiometricRequired(false);
   }, [assertMobileAccessRole, checkBiometricAvailable]);
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (options?: { clearBiometric?: boolean }) => {
     setUser(null);
     setToken(null);
-    setBiometricRequired(biometricEnabled);
+    const shouldClearBiometric = options?.clearBiometric === true;
+    setBiometricRequired(shouldClearBiometric ? false : biometricEnabled);
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(USER_KEY);
+    if (shouldClearBiometric) {
+      setBiometricEnabled(false);
+      setBiometricPrompted(false);
+      await AsyncStorage.removeItem(BIOMETRIC_KEY);
+      await AsyncStorage.removeItem(BIOMETRIC_PROMPTED_KEY);
+      await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+    }
   }, [biometricEnabled]);
 
   useEffect(() => {
