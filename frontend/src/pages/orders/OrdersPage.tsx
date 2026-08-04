@@ -21,6 +21,7 @@ interface OrderRow {
   companyName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
+  salesRepId?: string | null;
   salesRepName?: string | null;
   salesRepEmail?: string | null;
   deliveryDate?: string | null;
@@ -49,6 +50,15 @@ interface BranchOption {
   name: string;
   code?: string;
   companyId?: string;
+}
+
+interface SalesRepOption {
+  id: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  branchId?: string | null;
+  companyId?: string | null;
 }
 
 interface DesignOption {
@@ -122,6 +132,7 @@ interface DesignDetail {
 interface OrderFormState {
   companyId: string;
   branchId: string;
+  salesRepId: string;
   designId: string;
   deliveryDate: string;
   status: string;
@@ -138,11 +149,31 @@ interface OrderFormState {
 interface OrderFormErrors {
   companyId?: string;
   branchId?: string;
+  salesRepId?: string;
   designId?: string;
   deliveryDate?: string;
   price?: string;
   quantity?: string;
   totalAmount?: string;
+}
+
+type OrderSaveType = 'QUOTE' | 'ORDER';
+
+interface OrderSavePayload {
+  companyId: string;
+  branchId: string;
+  salesRepId: string;
+  designId: string;
+  deliveryDate?: string;
+  orderType?: OrderSaveType;
+  price: number;
+  quantity: number;
+  shortDescription: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  purchaseOrderNumber: string;
+  notes: string;
 }
 
 type ConfiguratorKey = 'diamondType' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
@@ -178,6 +209,7 @@ const emptyOptionGroups = (): Record<ConfiguratorKey, string[]> => ({
 const defaultForm: OrderFormState = {
   companyId: '',
   branchId: '',
+  salesRepId: '',
   designId: '',
   deliveryDate: '',
   status: 'QUOTE',
@@ -472,6 +504,7 @@ export default function OrdersPage() {
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
+  const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
   const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
   const [designOptionsLoading, setDesignOptionsLoading] = useState(false);
   const [designOptionsPage, setDesignOptionsPage] = useState(0);
@@ -500,7 +533,6 @@ export default function OrdersPage() {
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
   const [viewMediaUrls, setViewMediaUrls] = useState<string[]>([]);
-  const [pendingStatusChange, setPendingStatusChange] = useState<{ from: string; to: string } | null>(null);
   const [statusChangeOrder, setStatusChangeOrder] = useState<OrderRow | null>(null);
   const [statusChangeTarget, setStatusChangeTarget] = useState('');
   const [pendingOrderStatusChange, setPendingOrderStatusChange] = useState<{
@@ -508,6 +540,7 @@ export default function OrdersPage() {
     from: string;
     to: string;
   } | null>(null);
+  const [pendingOrderSaveChoice, setPendingOrderSaveChoice] = useState<OrderSavePayload | null>(null);
   const [alertDialog, setAlertDialog] = useState<{
     title: string;
     message: string;
@@ -533,8 +566,9 @@ export default function OrdersPage() {
       ...defaultForm,
       companyId: currentUser?.role === 'SUPER_ADMIN' ? '' : currentUser?.companyId || '',
       branchId: isBranchScopedUser ? currentUser?.branchId || '' : '',
+      salesRepId: currentUser?.role === 'SALES_REP' ? currentUser.id : '',
     }),
-    [currentUser?.role, currentUser?.companyId, currentUser?.branchId, isBranchScopedUser],
+    [currentUser?.role, currentUser?.id, currentUser?.companyId, currentUser?.branchId, isBranchScopedUser],
   );
 
   const pageOffset = (page - 1) * pageSize;
@@ -692,6 +726,22 @@ export default function OrdersPage() {
       params: { companyId, limit: 200, status: 'ACTIVE' },
     });
     setBranches(response.data?.data || []);
+  };
+
+  const loadSalesReps = async (branchId: string) => {
+    if (!branchId) {
+      setSalesReps([]);
+      return;
+    }
+
+    try {
+      const response = await api.get('/users/lookup', {
+        params: { role: 'SALES_REP', branchId, status: 'ACTIVE' },
+      });
+      setSalesReps(response.data || []);
+    } catch {
+      setSalesReps([]);
+    }
   };
 
   const loadOrderNumber = async () => {
@@ -890,11 +940,21 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!form.companyId) {
       setBranches([]);
-      setForm((prev) => ({ ...prev, branchId: '' }));
+      setSalesReps([]);
+      setForm((prev) => ({ ...prev, branchId: '', salesRepId: '' }));
       return;
     }
     loadBranches(form.companyId);
   }, [form.companyId]);
+
+  useEffect(() => {
+    if (!form.branchId) {
+      setSalesReps([]);
+      setForm((prev) => ({ ...prev, salesRepId: currentUser?.role === 'SALES_REP' ? currentUser.id : '' }));
+      return;
+    }
+    loadSalesReps(form.branchId);
+  }, [form.branchId, currentUser?.role, currentUser?.id]);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -984,6 +1044,22 @@ export default function OrdersPage() {
     }
   };
 
+  const submitOrderPayload = async (payload: OrderSavePayload) => {
+    if (editingOrderId) {
+      await api.put(`/orders/${editingOrderId}`, payload);
+    } else {
+      await api.post('/orders', payload);
+    }
+    setShowAddModal(false);
+    setEditingOrderId(null);
+    setEditingDesignNo('');
+    setForm(roleScopedDefaultForm);
+    setFormErrors({});
+    setDeliveryDateMin(toDateInputValue());
+    resetConfiguratorState();
+    await loadOrders();
+  };
+
   const handleSaveOrder = async () => {
     if (editingOrderId && normalizeOrderStatus(form.status) === 'APPROVED' && !canEditApprovedOrder) {
       showAlert('Only internal reps and super admin can edit approved orders.', {
@@ -999,6 +1075,9 @@ export default function OrdersPage() {
     }
     if (!form.branchId) {
       nextErrors.branchId = 'Branch is required.';
+    }
+    if (!form.salesRepId) {
+      nextErrors.salesRepId = 'Sales Rep is required.';
     }
     if (!form.designId) {
       nextErrors.designId = 'Design is required.';
@@ -1029,12 +1108,12 @@ export default function OrdersPage() {
 
     try {
       setSavingOrder(true);
-      const payload = {
+      const payload: OrderSavePayload = {
         companyId: form.companyId,
         branchId: form.branchId,
+        salesRepId: form.salesRepId,
         designId: form.designId,
         deliveryDate: form.deliveryDate || undefined,
-        status: form.status || undefined,
         price: Number(form.price || 0),
         quantity: Number(form.quantity || 1),
         shortDescription: form.shortDescription?.trim() || '',
@@ -1052,19 +1131,12 @@ export default function OrdersPage() {
       });
       if (!canContinue) return;
 
-      if (editingOrderId) {
-        await api.put(`/orders/${editingOrderId}`, payload);
-      } else {
-        await api.post('/orders', payload);
+      if (form.status === 'QUOTE') {
+        setPendingOrderSaveChoice(payload);
+        return;
       }
-      setShowAddModal(false);
-      setEditingOrderId(null);
-      setEditingDesignNo('');
-      setForm(roleScopedDefaultForm);
-      setFormErrors({});
-      setDeliveryDateMin(toDateInputValue());
-      resetConfiguratorState();
-      await loadOrders();
+
+      await submitOrderPayload({ ...payload, orderType: 'ORDER' });
     } catch (err: any) {
       const message =
         err?.response?.data?.message ||
@@ -1199,9 +1271,10 @@ export default function OrdersPage() {
       setForm({
         companyId: detail.companyId || '',
         branchId: detail.branchId || '',
+        salesRepId: detail.salesRepId || '',
         designId: detail.designId || '',
         deliveryDate: detail.deliveryDate || '',
-        status: detail.status || 'QUOTE',
+        status: normalizeOrderStatus(detail.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
         price: detail.price !== undefined && detail.price !== null ? String(detail.price) : '',
         quantity: detail.quantity !== undefined && detail.quantity !== null ? String(detail.quantity) : '1',
         shortDescription: detail.shortDescription || '',
@@ -1225,9 +1298,10 @@ export default function OrdersPage() {
       setForm({
         companyId: order.companyId || '',
         branchId: order.branchId || '',
+        salesRepId: order.salesRepId || '',
         designId: order.designId || '',
         deliveryDate: order.deliveryDate || '',
-        status: order.status || 'QUOTE',
+        status: normalizeOrderStatus(order.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
         price: order.price !== undefined && order.price !== null ? String(order.price) : '',
         quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
         shortDescription: order.shortDescription || '',
@@ -1242,12 +1316,6 @@ export default function OrdersPage() {
       }
       setEditOrderLoading(false);
     }
-  };
-
-  const requestStatusChange = (nextStatus: string) => {
-    if (!canUpdateOrderStatus) return;
-    if (!nextStatus || nextStatus === form.status) return;
-    setPendingStatusChange({ from: form.status, to: nextStatus });
   };
 
   const openOrderStatusChange = (order: OrderRow) => {
@@ -2082,8 +2150,8 @@ export default function OrdersPage() {
                       aria-describedby={formErrors.companyId ? 'company-error' : undefined}
                       onChange={(event) => {
                         setPriceManuallyEdited(false);
-                        setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '' }));
-                        setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined }));
+                        setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '', salesRepId: '' }));
+                        setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined, salesRepId: undefined }));
                       }}
                     >
                       <option value="">Select Company</option>
@@ -2116,8 +2184,8 @@ export default function OrdersPage() {
                       aria-describedby={formErrors.branchId ? 'branch-error' : undefined}
                       onChange={(event) => {
                         setPriceManuallyEdited(false);
-                        setForm((prev) => ({ ...prev, branchId: event.target.value }));
-                        setFormErrors((prev) => ({ ...prev, branchId: undefined }));
+                        setForm((prev) => ({ ...prev, branchId: event.target.value, salesRepId: '' }));
+                        setFormErrors((prev) => ({ ...prev, branchId: undefined, salesRepId: undefined }));
                       }}
                     >
                       <option value="">Select Branch</option>
@@ -2135,19 +2203,39 @@ export default function OrdersPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-slate-700">Status*</label>
+                    <label className="text-sm font-medium text-slate-700">Sales Rep*</label>
                     <select
-                      className="mt-1 w-full appearance-none rounded border border-slate-300 bg-none px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.status}
-                      disabled
-                      onChange={(event) => requestStatusChange(event.target.value)}
+                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                        formErrors.salesRepId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                      } ${
+                        currentUser?.role === 'SALES_REP' || !form.branchId ? 'appearance-none bg-none' : ''
+                      }`}
+                      value={form.salesRepId}
+                      disabled={currentUser?.role === 'SALES_REP' || !form.branchId}
+                      aria-invalid={Boolean(formErrors.salesRepId)}
+                      aria-describedby={formErrors.salesRepId ? 'sales-rep-error' : undefined}
+                      onChange={(event) => {
+                        setForm((prev) => ({ ...prev, salesRepId: event.target.value }));
+                        setFormErrors((prev) => ({ ...prev, salesRepId: undefined }));
+                      }}
                     >
-                      {orderStatusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
+                      <option value="">Select Sales Rep</option>
+                      {salesReps.map((salesRep) => {
+                        const fullName = `${salesRep.firstName || ''} ${salesRep.lastName || ''}`.trim();
+                        return (
+                          <option key={salesRep.id} value={salesRep.id}>
+                            {fullName || salesRep.email || 'Sales Rep'}
+                          </option>
+                        );
+                      })}
                     </select>
+                    {formErrors.salesRepId && (
+                      <p id="sales-rep-error" className="mt-1 text-xs font-medium text-rose-600">
+                        {formErrors.salesRepId}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -2527,26 +2615,69 @@ export default function OrdersPage() {
           )}
         </Modal>
       )}
-      {pendingStatusChange && (
-        <Modal title="Confirm status change" onClose={() => setPendingStatusChange(null)} size="max-w-md">
+      {pendingOrderSaveChoice && (
+        <Modal title="How would you like to generate?" onClose={() => setPendingOrderSaveChoice(null)} size="max-w-md">
           <div className="space-y-4">
-            <p className="text-sm text-slate-700">
-              Do you want to change status from <span className="font-semibold">{pendingStatusChange.from}</span> to{' '}
-              <span className="font-semibold">{pendingStatusChange.to}</span>?
+            <p className="text-sm leading-6 text-slate-600">
+              Save this entry as a quote draft, or generate it as an order for the selected sales rep?
             </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="secondary" type="button" onClick={() => setPendingStatusChange(null)}>
-                No
-              </Button>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              If you choose Order, approval status will follow the selected sales rep approval setting.
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <Button
+                variant="secondary"
                 type="button"
-                onClick={() => {
-                  setForm((prev) => ({ ...prev, status: pendingStatusChange.to }));
-                  setPendingStatusChange(null);
-                }}
+                disabled={savingOrder}
+                onClick={() => setPendingOrderSaveChoice(null)}
               >
-                Yes
+                Cancel
               </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="secondary"
+                  type="button"
+                  disabled={savingOrder}
+                  onClick={async () => {
+                    const payload = pendingOrderSaveChoice;
+                    setSavingOrder(true);
+                    try {
+                      await submitOrderPayload({ ...payload, orderType: 'QUOTE' });
+                      setPendingOrderSaveChoice(null);
+                    } catch (err: any) {
+                      const message =
+                        err?.response?.data?.message ||
+                        (editingOrderId ? 'Failed to update order' : 'Failed to create order');
+                      showAlert(message, { title: 'Unable to save quote', variant: 'error' });
+                    } finally {
+                      setSavingOrder(false);
+                    }
+                  }}
+                >
+                  Quote
+                </Button>
+                <Button
+                  type="button"
+                  disabled={savingOrder}
+                  onClick={async () => {
+                    const payload = pendingOrderSaveChoice;
+                    setSavingOrder(true);
+                    try {
+                      await submitOrderPayload({ ...payload, orderType: 'ORDER' });
+                      setPendingOrderSaveChoice(null);
+                    } catch (err: any) {
+                      const message =
+                        err?.response?.data?.message ||
+                        (editingOrderId ? 'Failed to update order' : 'Failed to create order');
+                      showAlert(message, { title: 'Unable to save order', variant: 'error' });
+                    } finally {
+                      setSavingOrder(false);
+                    }
+                  }}
+                >
+                  Order
+                </Button>
+              </div>
             </div>
           </div>
         </Modal>

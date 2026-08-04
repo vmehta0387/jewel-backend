@@ -13,6 +13,10 @@ export class CreateOrderDto {
   designId: string;
 
   @IsOptional()
+  @IsUUID()
+  salesRepId?: string;
+
+  @IsOptional()
   @IsString()
   deliveryDate?: string;
 
@@ -29,6 +33,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
+
+  @IsOptional()
+  @IsIn(['QUOTE', 'ORDER'])
+  orderType?: 'QUOTE' | 'ORDER';
 
   @IsOptional()
   @IsString()
@@ -67,6 +75,10 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsUUID()
   designId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  salesRepId?: string;
 
   @IsOptional()
   @IsString()
@@ -111,6 +123,10 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
+
+  @IsOptional()
+  @IsIn(['QUOTE', 'ORDER'])
+  orderType?: 'QUOTE' | 'ORDER';
 }
 
 export class FindOrdersQueryDto {

@@ -1352,6 +1352,7 @@ const VERSION_BUILDER_GENERATED_COLUMNS = [
   { key: 'metal', label: 'Metal', width: 180, minWidth: 130 },
   { key: 'purity', label: 'Purity', width: 110, minWidth: 80 },
   { key: 'quality', label: 'Quality', width: 120, minWidth: 90 },
+  { key: 'caratWeight', label: 'Diamond Wt', width: 130, minWidth: 100 },
   { key: 'coverage', label: 'Coverage', width: 140, minWidth: 110 },
   { key: 'size', label: 'Size', width: 100, minWidth: 80 },
   { key: 'metalWeight', label: 'Metal Weight', width: 140, minWidth: 110 },
@@ -9360,7 +9361,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <tbody>
                       {versionBuilderFilteredGeneratedRows.length === 0 ? (
                         <tr>
-                          <td className="px-4 py-5 text-sm text-slate-500" colSpan={10}>
+                          <td className="px-4 py-5 text-sm text-slate-500" colSpan={11}>
                             No generated variants match the current filters.
                           </td>
                         </tr>
@@ -9371,6 +9372,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.metal}>{previewRow.metal}</td>
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.metalPurity}>{previewRow.metalPurity}</td>
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.diamondQuality}>{previewRow.diamondQuality}</td>
+                            <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.caratWeight || '-'}>{previewRow.caratWeight || '-'}</td>
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.coverage}>{previewRow.coverage}</td>
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[13px] text-[#2b241d]" title={previewRow.size}>{previewRow.size}</td>
                             <td className="overflow-hidden text-ellipsis whitespace-nowrap px-4 py-3 text-[12px] font-semibold text-[#2b241d]" title={previewRow.metalWeight}>{previewRow.metalWeight}</td>

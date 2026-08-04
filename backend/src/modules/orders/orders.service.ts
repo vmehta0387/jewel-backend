@@ -9,6 +9,7 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Design } from '../products/entities/design.entity';
 import { User } from '../users/entities/user.entity';
+import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
@@ -52,6 +53,7 @@ export class OrdersService implements OnModuleInit {
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(UserPermissionAction) private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly spiffService: SpiffService,
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
@@ -329,14 +331,19 @@ export class OrdersService implements OnModuleInit {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      const selectedSalesRep = await this.resolveOrderSalesRep(dto.salesRepId, {
+        companyId: effectiveCompanyId,
+        branchId: effectiveBranchId,
+      });
       const { orderNumber } = await this.getNextOrderNumber();
-      const computedStatus = this.resolveCreateStatus(dto.status, requester);
+      const requestedStatus = dto.orderType === 'ORDER' ? undefined : dto.status;
+      const computedStatus = await this.resolveCreateStatus(requestedStatus, selectedSalesRep || requester);
       const order = this.orderRepo.create({
         orderNumber,
         companyId: effectiveCompanyId ?? null,
         branchId: effectiveBranchId ?? null,
         designId: dto.designId ?? null,
-        salesRepId: requester.id,
+        salesRepId: selectedSalesRep?.id || requester.id,
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date()),
         quantity: dto.quantity ?? 1,
         price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
@@ -382,22 +389,55 @@ export class OrdersService implements OnModuleInit {
     throw new BadRequestException('Unable to generate unique order number. Please retry.');
   }
 
-  private doesSalesRepRequireApproval(requester: AuthUser): boolean {
-    if (!requester.detailedPermissions || requester.detailedPermissions.length === 0) {
-      return true;
+  private async resolveOrderSalesRep(
+    salesRepId: string | undefined,
+    scope: { companyId: string | null; branchId: string | null },
+  ): Promise<User | null> {
+    const normalizedSalesRepId = salesRepId?.trim();
+    if (!normalizedSalesRepId) {
+      return null;
     }
-    return requester.detailedPermissions.some(
-      (permission) => permission.actionKey === 'order.require_approval',
-    );
+
+    const salesRep = await this.userRepo.findOne({ where: { id: normalizedSalesRepId } });
+    if (!salesRep || salesRep.role !== UserRole.SALES_REP || !salesRep.isActive) {
+      throw new BadRequestException('Selected sales rep not found');
+    }
+    if (scope.companyId && salesRep.companyId !== scope.companyId) {
+      throw new BadRequestException('Sales rep does not belong to the selected company');
+    }
+    if (scope.branchId && salesRep.branchId !== scope.branchId) {
+      throw new BadRequestException('Sales rep does not belong to the selected branch');
+    }
+    return salesRep;
   }
 
-  private resolveCreateStatus(requestedStatus: OrderStatus | undefined, requester: AuthUser): OrderStatus {
+  private async doesSalesRepRequireApproval(requester: AuthUser | User): Promise<boolean> {
+    if ('detailedPermissions' in requester) {
+      if (!requester.detailedPermissions || requester.detailedPermissions.length === 0) {
+        return true;
+      }
+      return requester.detailedPermissions.some(
+        (permission) => permission.actionKey === 'order.require_approval',
+      );
+    }
+
+    const permissions = await this.userPermissionActionRepo.find({
+      where: { userId: requester.id },
+      select: ['actionKey'],
+    });
+    if (!permissions.length) {
+      return true;
+    }
+    return permissions.some((permission) => permission.actionKey === 'order.require_approval');
+  }
+
+  private async resolveCreateStatus(requestedStatus: OrderStatus | undefined, requester: AuthUser | User): Promise<OrderStatus> {
     if (requestedStatus === OrderStatus.QUOTE) {
       return OrderStatus.QUOTE;
     }
 
     if (requester.role === UserRole.SALES_REP) {
-      const requiresApproval = this.doesSalesRepRequireApproval(requester);
+      const requiresApproval = await this.doesSalesRepRequireApproval(requester);
       if (requiresApproval) {
         return requestedStatus ?? OrderStatus.PENDING_APPROVAL;
       }
@@ -458,6 +498,13 @@ export class OrdersService implements OnModuleInit {
     if (dto.branchId !== undefined || branch) {
       order.branchId = effectiveBranchId ?? null;
     }
+    if (dto.salesRepId !== undefined) {
+      const selectedSalesRep = await this.resolveOrderSalesRep(dto.salesRepId, {
+        companyId: effectiveCompanyId,
+        branchId: effectiveBranchId,
+      });
+      order.salesRepId = selectedSalesRep?.id || null;
+    }
     if (dto.deliveryDate !== undefined) {
       order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate, order.createdAt);
     }
@@ -488,7 +535,16 @@ export class OrdersService implements OnModuleInit {
     if (dto.notes !== undefined) {
       order.notes = dto.notes?.trim() || null;
     }
-    if (dto.status !== undefined) {
+    if (dto.orderType === 'QUOTE') {
+      order.status = OrderStatus.QUOTE;
+      order.completedAt = null;
+    } else if (dto.orderType === 'ORDER' && order.status === OrderStatus.QUOTE) {
+      const selectedSalesRep = order.salesRepId
+        ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
+        : null;
+      order.status = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
+      order.completedAt = order.status === OrderStatus.COMPLETED ? new Date() : null;
+    } else if (dto.status !== undefined) {
       order.status = dto.status;
       if (dto.status === OrderStatus.COMPLETED && previousStatus !== OrderStatus.COMPLETED) {
         order.completedAt = new Date();
