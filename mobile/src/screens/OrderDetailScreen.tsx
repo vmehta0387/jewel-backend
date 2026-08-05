@@ -22,6 +22,7 @@ import { fetchOrder, updateOrder } from '../api/orders';
 import { fetchDesign } from '../api/designs';
 import type { Design, Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
+import { canApproveOrderByStatus, canEditOrderByStatus, canRejectOrderByStatus } from '../utils/orderLifecycle';
 
 const formatStatusLabel = (value?: string | null) =>
   String(value || 'PENDING_APPROVAL')
@@ -135,9 +136,9 @@ const OrderDetailScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canApproveReject = user?.role === 'BRANCH_MANAGER';
+  const canApproveReject = canApproveOrderByStatus(order?.status, user?.role) || canRejectOrderByStatus(order?.status, user?.role);
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
-  const isApprovedOrder = order?.status === 'APPROVED';
+  const canEditCurrentOrder = canEditOrderByStatus(order?.status, user?.role);
   const minimumDeliveryDate = useMemo(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -207,6 +208,10 @@ const OrderDetailScreen = () => {
 
   const handleSaveDeliveryDate = async () => {
     if (!token || !order) return;
+    if (!canEditOrderByStatus(order.status, user?.role)) {
+      setError('This order cannot be changed in its current status.');
+      return;
+    }
     setSavingDate(true);
     setError(null);
     try {
@@ -224,6 +229,13 @@ const OrderDetailScreen = () => {
 
   const handleManagerAction = async (nextStatus: 'APPROVED' | 'CANCELLED') => {
     if (!token || !order) return;
+    const allowed = nextStatus === 'APPROVED'
+      ? canApproveOrderByStatus(order.status, user?.role)
+      : canRejectOrderByStatus(order.status, user?.role);
+    if (!allowed) {
+      setError('This status action is not allowed for your role.');
+      return;
+    }
     setActionLoading(nextStatus);
     setError(null);
     try {
@@ -431,52 +443,44 @@ const OrderDetailScreen = () => {
               <Ionicons name="calendar-outline" size={18} color="#A79687" />
             </TouchableOpacity>
 
-            {!isApprovedOrder ? (
-              <View style={styles.actionRow}>
-                <TouchableOpacity 
-                  style={styles.actionBtnWrap} 
-                  disabled={Boolean(actionLoading)} 
-                  onPress={() => handleManagerAction('APPROVED')}
-                  activeOpacity={0.88}
-                >
-                  <LinearGradient colors={['#D8AB52', '#C6973F', '#A37728']} style={styles.actionBtnPrimary}>
-                    {actionLoading === 'APPROVED' ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" style={{marginRight: 6}} />
-                        <Text style={styles.actionBtnPrimaryText}>Approve Quote</Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
+            <View style={styles.actionRow}>
+              <TouchableOpacity 
+                style={styles.actionBtnWrap} 
+                disabled={Boolean(actionLoading)} 
+                onPress={() => handleManagerAction('APPROVED')}
+                activeOpacity={0.88}
+              >
+                <LinearGradient colors={['#D8AB52', '#C6973F', '#A37728']} style={styles.actionBtnPrimary}>
+                  {actionLoading === 'APPROVED' ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" style={{marginRight: 6}} />
+                      <Text style={styles.actionBtnPrimaryText}>Approve Quote</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
 
-                <TouchableOpacity 
-                  style={styles.actionBtnWrap} 
-                  disabled={Boolean(actionLoading)} 
-                  onPress={() => handleManagerAction('CANCELLED')}
-                  activeOpacity={0.88}
-                >
-                  <View style={styles.actionBtnSecondary}>
-                    {actionLoading === 'CANCELLED' ? (
-                      <ActivityIndicator color="#A04646" size="small" />
-                    ) : (
-                      <Text style={styles.actionBtnSecondaryText}>Cancel</Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionBtnWrap} 
+                disabled={Boolean(actionLoading)} 
+                onPress={() => handleManagerAction('CANCELLED')}
+                activeOpacity={0.88}
+              >
+                <View style={styles.actionBtnSecondary}>
+                  {actionLoading === 'CANCELLED' ? (
+                    <ActivityIndicator color="#A04646" size="small" />
+                  ) : (
+                    <Text style={styles.actionBtnSecondaryText}>Cancel</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.approvedInfoWrap}>
-                <Text style={styles.approvedInfoText}>
-                  This order is approved. Status actions are locked.
-                </Text>
-              </View>
-            )}
 
             <TouchableOpacity 
               style={[styles.actionBtnWrap, { marginTop: 12 }]} 
-              disabled={savingDate || Boolean(actionLoading)} 
+              disabled={savingDate || Boolean(actionLoading) || !canEditCurrentOrder} 
               onPress={handleSaveDeliveryDate}
               activeOpacity={0.88}
             >

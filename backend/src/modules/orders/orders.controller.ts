@@ -5,7 +5,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
-import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   CreateOrderDto,
@@ -78,6 +77,11 @@ export class OrdersController {
     });
   }
 
+  @Get(':id/history')
+  getHistory(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.ordersService.getHistory(id, req.user);
+  }
+
   @Get(':id')
   @TaskPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
@@ -95,13 +99,12 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @ActionPermissions('order.status_update')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.ordersService.update(id, { status: dto.status }, req.user);
+    return this.ordersService.update(id, dto, req.user);
   }
 
   @Patch(':id/active')

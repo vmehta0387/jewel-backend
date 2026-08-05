@@ -5,11 +5,11 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import puppeteer from 'puppeteer';
 import { Order } from './entities/order.entity';
+import { OrderHistory, OrderHistoryActionType, OrderHistoryChange } from './entities/order-history.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Design } from '../products/entities/design.entity';
 import { User } from '../users/entities/user.entity';
-import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
@@ -18,6 +18,8 @@ import { NotificationPriority } from '../notifications/entities/notification.ent
 import { NotificationsService } from '../notifications/notifications.service';
 import { SpiffService } from '../spiff/spiff.service';
 import { PricingService } from '../pricing/pricing.service';
+
+type OrderAuditSnapshot = Record<string, unknown>;
 
 @Injectable()
 export class OrdersService implements OnModuleInit {
@@ -37,6 +39,10 @@ export class OrdersService implements OnModuleInit {
       { name: 'customer_email', type: 'VARCHAR(255) NULL' },
       { name: 'purchase_order_number', type: 'VARCHAR(120) NULL' },
       { name: 'completed_at', type: 'DATETIME NULL' },
+      { name: 'ship_date', type: 'DATE NULL' },
+      { name: 'ship_via', type: 'VARCHAR(50) NULL' },
+      { name: 'tracking_no', type: 'VARCHAR(120) NULL' },
+      { name: 'invoice_no', type: 'VARCHAR(120) NULL' },
     ];
     for (const col of columns) {
       try {
@@ -45,15 +51,41 @@ export class OrdersService implements OnModuleInit {
         // Ignored if column already exists
       }
     }
+    await this.ensureOrderHistoryTable();
+  }
+
+  private async ensureOrderHistoryTable() {
+    try {
+      await this.orderRepo.query(`
+        CREATE TABLE IF NOT EXISTS order_history (
+          id varchar(36) NOT NULL,
+          order_id varchar(36) NOT NULL,
+          action_type varchar(50) NOT NULL,
+          summary text NOT NULL,
+          changes json NULL,
+          performed_by varchar(36) NULL,
+          performed_by_name varchar(255) NULL,
+          performed_by_role varchar(50) NULL,
+          metadata json NULL,
+          performed_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+          PRIMARY KEY (id),
+          INDEX idx_order_history_order_id (order_id),
+          INDEX idx_order_history_performed_at (performed_at),
+          CONSTRAINT fk_order_history_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+      `);
+    } catch (error: any) {
+      this.logger.warn(`Unable to ensure order_history table: ${error?.message || error}`);
+    }
   }
 
   constructor(
     @InjectRepository(Order) private readonly orderRepo: Repository<Order>,
+    @InjectRepository(OrderHistory) private readonly orderHistoryRepo: Repository<OrderHistory>,
     @InjectRepository(Company) private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(UserPermissionAction) private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly spiffService: SpiffService,
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
@@ -190,12 +222,10 @@ export class OrdersService implements OnModuleInit {
 
     if (query.statusGroup === 'FULFILLED') {
       qb.andWhere('order.status IN (:...fulfilledStatuses)', {
-        fulfilledStatuses: [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED],
+        fulfilledStatuses: [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED],
       });
-    } else if (query.statusGroup === 'SHIPPED_OR_COMPLETED') {
-      qb.andWhere('order.status IN (:...shippedStatuses)', {
-        shippedStatuses: [OrderStatus.SHIPPED, OrderStatus.COMPLETED],
-      });
+    } else if (query.statusGroup === 'COMPLETED') {
+      qb.andWhere('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED });
     }
 
     const totalAmountRaw = await qb
@@ -337,7 +367,17 @@ export class OrdersService implements OnModuleInit {
       });
       const { orderNumber } = await this.getNextOrderNumber();
       const requestedStatus = dto.orderType === 'ORDER' ? undefined : dto.status;
-      const computedStatus = await this.resolveCreateStatus(requestedStatus, selectedSalesRep || requester);
+      const computedStatus = await this.resolveCreateStatus(requestedStatus, requester);
+      this.assertOrderStatusChangeAllowed({ status: OrderStatus.QUOTE, salesRepId: selectedSalesRep?.id || requester.id }, requester, computedStatus);
+      const shippingFields = {
+        shipDate: dto.shipDate?.trim() || null,
+        shipVia: dto.shipVia?.trim() || null,
+        trackingNo: dto.trackingNo?.trim() || null,
+        invoiceNo: dto.invoiceNo?.trim() || null,
+      };
+      if (computedStatus === OrderStatus.COMPLETED) {
+        this.assertCompletedShippingFields(shippingFields);
+      }
       const order = this.orderRepo.create({
         orderNumber,
         companyId: effectiveCompanyId ?? null,
@@ -355,11 +395,13 @@ export class OrdersService implements OnModuleInit {
         notes: dto.notes?.trim() || null,
         status: computedStatus,
         completedAt: computedStatus === OrderStatus.COMPLETED ? new Date() : null,
+        ...shippingFields,
         isActive: true,
       });
 
       try {
         const saved = await this.orderRepo.save(order);
+        await this.recordOrderHistory(saved, 'ADD', requester, [], `Order ${saved.orderNumber} was created`);
         await this.safeTrackOrderCreated(saved);
         await this.safeNotifyOrderCreated(saved, requester);
         return saved;
@@ -411,44 +453,24 @@ export class OrdersService implements OnModuleInit {
     return salesRep;
   }
 
-  private async doesSalesRepRequireApproval(requester: AuthUser | User): Promise<boolean> {
-    if ('detailedPermissions' in requester) {
-      if (!requester.detailedPermissions || requester.detailedPermissions.length === 0) {
-        return true;
-      }
-      return requester.detailedPermissions.some(
-        (permission) => permission.actionKey === 'order.require_approval',
-      );
-    }
-
-    const permissions = await this.userPermissionActionRepo.find({
-      where: { userId: requester.id },
-      select: ['actionKey'],
-    });
-    if (!permissions.length) {
-      return true;
-    }
-    return permissions.some((permission) => permission.actionKey === 'order.require_approval');
-  }
-
   private async resolveCreateStatus(requestedStatus: OrderStatus | undefined, requester: AuthUser | User): Promise<OrderStatus> {
     if (requestedStatus === OrderStatus.QUOTE) {
       return OrderStatus.QUOTE;
     }
 
+    if (requestedStatus) {
+      return requestedStatus;
+    }
+
     if (requester.role === UserRole.SALES_REP) {
-      const requiresApproval = await this.doesSalesRepRequireApproval(requester);
-      if (requiresApproval) {
-        return requestedStatus ?? OrderStatus.PENDING_APPROVAL;
-      }
-      return OrderStatus.IN_PRODUCTION;
+      return OrderStatus.PENDING_APPROVAL;
     }
 
-    if (requester.role === UserRole.BRANCH_MANAGER) {
-      return requestedStatus ?? OrderStatus.APPROVED;
+    if (this.isOrderApprover(requester)) {
+      return OrderStatus.APPROVED;
     }
 
-    return requestedStatus ?? OrderStatus.QUOTE;
+    return OrderStatus.QUOTE;
   }
 
   async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {
@@ -461,7 +483,11 @@ export class OrdersService implements OnModuleInit {
     }
 
     const previousStatus = order.status;
-    this.assertApprovedOrderEditable(order, requester);
+    const beforeSnapshot = this.getOrderAuditSnapshot(order);
+    const hasDetailChanges = this.hasOrderDetailChanges(dto);
+    if (hasDetailChanges) {
+      this.assertOrderEditable(order, requester);
+    }
     const requestedBranchId = dto.branchId?.trim() || order.branchId || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
@@ -535,16 +561,35 @@ export class OrdersService implements OnModuleInit {
     if (dto.notes !== undefined) {
       order.notes = dto.notes?.trim() || null;
     }
+    if (dto.shipDate !== undefined) {
+      order.shipDate = dto.shipDate?.trim() || null;
+    }
+    if (dto.shipVia !== undefined) {
+      order.shipVia = dto.shipVia?.trim() || null;
+    }
+    if (dto.trackingNo !== undefined) {
+      order.trackingNo = dto.trackingNo?.trim() || null;
+    }
+    if (dto.invoiceNo !== undefined) {
+      order.invoiceNo = dto.invoiceNo?.trim() || null;
+    }
     if (dto.orderType === 'QUOTE') {
+      this.assertOrderStatusChangeAllowed(order, requester, OrderStatus.QUOTE);
       order.status = OrderStatus.QUOTE;
       order.completedAt = null;
     } else if (dto.orderType === 'ORDER' && order.status === OrderStatus.QUOTE) {
       const selectedSalesRep = order.salesRepId
         ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
         : null;
-      order.status = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
+      const nextStatus = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
+      this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
+      order.status = nextStatus;
       order.completedAt = order.status === OrderStatus.COMPLETED ? new Date() : null;
     } else if (dto.status !== undefined) {
+      this.assertOrderStatusChangeAllowed(order, requester, dto.status);
+      if (dto.status === OrderStatus.COMPLETED) {
+        this.assertCompletedShippingFields(order);
+      }
       order.status = dto.status;
       if (dto.status === OrderStatus.COMPLETED && previousStatus !== OrderStatus.COMPLETED) {
         order.completedAt = new Date();
@@ -555,6 +600,7 @@ export class OrdersService implements OnModuleInit {
 
     try {
       const saved = await this.orderRepo.save(order);
+      await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
       await this.safeTrackOrderTransition(saved, previousStatus);
       await this.safeNotifyOrderTransition(saved, previousStatus, requester);
       return saved;
@@ -566,6 +612,7 @@ export class OrdersService implements OnModuleInit {
         this.logger.warn('Detected missing order column on update, running column patch...');
         await this.ensureOrderTableColumns();
         const saved = await this.orderRepo.save(order);
+        await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
         await this.safeTrackOrderTransition(saved, previousStatus);
         await this.safeNotifyOrderTransition(saved, previousStatus, requester);
         return saved;
@@ -601,9 +648,30 @@ export class OrdersService implements OnModuleInit {
 
   async updateActiveStatus(id: string, isActive: boolean, requester: AuthUser) {
     const order = await this.findOne(id, requester);
-    this.assertApprovedOrderEditable(order, requester);
+    this.assertOrderEditable(order, requester);
+    const beforeSnapshot = this.getOrderAuditSnapshot(order);
     order.isActive = isActive;
-    return this.orderRepo.save(order);
+    const saved = await this.orderRepo.save(order);
+    await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
+    return saved;
+  }
+
+  async getHistory(id: string, requester: AuthUser) {
+    if (!this.isPowerOrderUser(requester)) {
+      throw new ForbiddenException('Only internal reps and super admin can view order history');
+    }
+
+    const order = await this.orderRepo.findOne({ where: { id } });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    this.assertReadScope(order, requester);
+
+    return this.orderHistoryRepo.find({
+      where: { orderId: id },
+      order: { performedAt: 'DESC' },
+      take: 200,
+    });
   }
 
   async getSummary(requester: AuthUser) {
@@ -611,10 +679,10 @@ export class OrdersService implements OnModuleInit {
     this.applyScopeFilter(baseQuery, requester);
     baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
 
-    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED];
+    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED];
 
     // Dashboard placed-order totals exclude quotes/pending/cancelled and use the
-    // order creation date, so a shipped order created today is counted today.
+    // order creation date, so a completed order created today is counted today.
     const summaryRow = await baseQuery.clone()
       .select('COUNT(*)', 'activeOrders')
       .addSelect(
@@ -649,7 +717,6 @@ export class OrdersService implements OnModuleInit {
       .addSelect(`SUM(CASE WHEN order.status = :pendingStatus THEN 1 ELSE 0 END)`, 'pendingCount')
       .addSelect(`SUM(CASE WHEN order.status = :approvedStatus THEN 1 ELSE 0 END)`, 'approvedCount')
       .addSelect(`SUM(CASE WHEN order.status = :productionStatus THEN 1 ELSE 0 END)`, 'productionCount')
-      .addSelect(`SUM(CASE WHEN order.status = :shippedStatus THEN 1 ELSE 0 END)`, 'shippedCount')
       .addSelect(`SUM(CASE WHEN order.status = :completedStatus THEN 1 ELSE 0 END)`, 'completedCount')
       .addSelect(`SUM(CASE WHEN order.status = :cancelledStatus THEN 1 ELSE 0 END)`, 'cancelledCount')
       .setParameters({
@@ -657,7 +724,6 @@ export class OrdersService implements OnModuleInit {
         pendingStatus: OrderStatus.PENDING_APPROVAL,
         approvedStatus: OrderStatus.APPROVED,
         productionStatus: OrderStatus.IN_PRODUCTION,
-        shippedStatus: OrderStatus.SHIPPED,
         fulfilledStatuses,
         completedStatus: OrderStatus.COMPLETED,
         cancelledStatus: OrderStatus.CANCELLED,
@@ -677,7 +743,6 @@ export class OrdersService implements OnModuleInit {
       pending: this.toNumber(summaryRow?.pendingCount ?? 0) + this.toNumber(summaryRow?.quoteCount ?? 0),
       approved: this.toNumber(summaryRow?.approvedCount ?? 0),
       inProduction: this.toNumber(summaryRow?.productionCount ?? 0),
-      shipped: this.toNumber(summaryRow?.shippedCount ?? 0),
       completed: this.toNumber(summaryRow?.completedCount ?? 0),
       cancelled: this.toNumber(summaryRow?.cancelledCount ?? 0),
     };
@@ -715,7 +780,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   async getPeriodSummary(requester: AuthUser) {
-    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.SHIPPED];
+    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED];
     const countExpr = (condition: string) =>
       `COALESCE(SUM(CASE WHEN ${condition} THEN 1 ELSE 0 END), 0)`;
     const amountExpr = (condition: string) =>
@@ -1295,11 +1360,230 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  private assertApprovedOrderEditable(order: Pick<Order, 'status'>, requester: AuthUser): void {
-    const canEditApprovedOrder = requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP;
-    if (order.status === OrderStatus.APPROVED && !canEditApprovedOrder) {
-      throw new ForbiddenException('Only internal reps and super admin can edit approved orders');
+  private isPowerOrderUser(requester: Pick<AuthUser, 'role'>): boolean {
+    return requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP;
+  }
+
+  private isSuperAdmin(requester: Pick<AuthUser, 'role'>): boolean {
+    return requester.role === UserRole.SUPER_ADMIN;
+  }
+
+  private isOrderApprover(requester: Pick<AuthUser, 'role'>): boolean {
+    return [
+      UserRole.BRANCH_MANAGER,
+      UserRole.COMPANY_ADMIN,
+      UserRole.SUPER_ADMIN,
+      UserRole.INTERNAL_REP,
+    ].includes(requester.role);
+  }
+
+  private assertOrderEditable(order: Pick<Order, 'status'>, requester: AuthUser): void {
+    if (order.status === OrderStatus.CANCELLED) {
+      throw new ForbiddenException('Cancelled orders cannot be changed');
     }
+
+    const lockedStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED];
+    if (lockedStatuses.includes(order.status) && !this.isPowerOrderUser(requester)) {
+      throw new ForbiddenException('Only internal reps and super admin can edit orders in this status');
+    }
+    if (order.status === OrderStatus.COMPLETED && !this.isSuperAdmin(requester)) {
+      throw new ForbiddenException('Only super admin can edit completed orders');
+    }
+  }
+
+  private assertOrderStatusChangeAllowed(
+    order: Pick<Order, 'status' | 'salesRepId'>,
+    requester: AuthUser,
+    nextStatus: OrderStatus,
+  ): void {
+    if (order.status === nextStatus) {
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new ForbiddenException('Cancelled orders cannot be changed');
+      }
+      return;
+    }
+
+    if (order.status === OrderStatus.CANCELLED) {
+      throw new ForbiddenException('Cancelled orders are final and cannot be changed');
+    }
+
+    if ([OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED].includes(order.status) && !this.isPowerOrderUser(requester)) {
+      throw new ForbiddenException('Only internal reps and super admin can change this order status');
+    }
+    if (order.status === OrderStatus.COMPLETED && !this.isSuperAdmin(requester)) {
+      throw new ForbiddenException('Only super admin can change completed orders');
+    }
+
+    if (nextStatus === OrderStatus.APPROVED && !this.isOrderApprover(requester)) {
+      throw new ForbiddenException('Only branch managers, company admins, internal reps and super admin can approve orders');
+    }
+
+    if ([OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED].includes(nextStatus) && !this.isPowerOrderUser(requester)) {
+      throw new ForbiddenException('Only internal reps and super admin can move orders to production or completed');
+    }
+
+    if (nextStatus === OrderStatus.CANCELLED && !this.canCancelOrder(order, requester)) {
+      throw new ForbiddenException('You are not allowed to cancel this order');
+    }
+  }
+
+  private canCancelOrder(order: Pick<Order, 'status' | 'salesRepId'>, requester: AuthUser): boolean {
+    if (this.isPowerOrderUser(requester) || this.isOrderApprover(requester)) {
+      return true;
+    }
+    return requester.role === UserRole.SALES_REP
+      && order.salesRepId === requester.id
+      && [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL].includes(order.status);
+  }
+
+  private hasOrderDetailChanges(dto: UpdateOrderDto): boolean {
+    return [
+      'companyId',
+      'branchId',
+      'designId',
+      'salesRepId',
+      'deliveryDate',
+      'quantity',
+      'price',
+      'shortDescription',
+      'customerName',
+      'customerPhone',
+      'customerEmail',
+      'purchaseOrderNumber',
+      'notes',
+      'shipDate',
+      'shipVia',
+      'trackingNo',
+      'invoiceNo',
+    ].some((field) => (dto as Record<string, unknown>)[field] !== undefined);
+  }
+
+  private assertCompletedShippingFields(order: Pick<Order, 'shipDate' | 'shipVia' | 'trackingNo' | 'invoiceNo'>): void {
+    if (!order.shipDate || !order.shipVia || !order.trackingNo || !order.invoiceNo) {
+      throw new BadRequestException('Ship date, ship via, tracking no. and invoice no. are required to complete an order');
+    }
+  }
+
+  private getOrderAuditSnapshot(order: Partial<Order>): OrderAuditSnapshot {
+    return {
+      companyId: order.companyId ?? null,
+      branchId: order.branchId ?? null,
+      designId: order.designId ?? null,
+      salesRepId: order.salesRepId ?? null,
+      deliveryDate: order.deliveryDate ?? null,
+      quantity: order.quantity ?? null,
+      price: this.normalizeAuditValue(order.price),
+      shortDescription: order.shortDescription ?? null,
+      customerName: order.customerName ?? null,
+      customerPhone: order.customerPhone ?? null,
+      customerEmail: order.customerEmail ?? null,
+      purchaseOrderNumber: order.purchaseOrderNumber ?? null,
+      status: order.status ?? null,
+      isActive: order.isActive ?? null,
+      notes: order.notes ?? null,
+      completedAt: this.normalizeAuditValue(order.completedAt),
+      shipDate: order.shipDate ?? null,
+      shipVia: order.shipVia ?? null,
+      trackingNo: order.trackingNo ?? null,
+      invoiceNo: order.invoiceNo ?? null,
+    };
+  }
+
+  private buildOrderChanges(before: OrderAuditSnapshot, after: OrderAuditSnapshot): OrderHistoryChange[] {
+    return Object.keys(after)
+      .filter((field) => JSON.stringify(before[field] ?? null) !== JSON.stringify(after[field] ?? null))
+      .map((field) => ({
+        field,
+        oldValue: before[field] ?? null,
+        newValue: after[field] ?? null,
+      }));
+  }
+
+  private normalizeAuditValue(value: unknown): unknown {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    if (typeof value === 'string' && value !== '' && !Number.isNaN(Number(value))) {
+      return Number(value);
+    }
+    return value ?? null;
+  }
+
+  private async recordOrderUpdateHistory(order: Order, beforeSnapshot: OrderAuditSnapshot, requester: AuthUser): Promise<void> {
+    const afterSnapshot = this.getOrderAuditSnapshot(order);
+    const changes = this.buildOrderChanges(beforeSnapshot, afterSnapshot);
+    if (!changes.length) {
+      return;
+    }
+
+    const statusChange = changes.find((change) => change.field === 'status');
+    const isActiveChange = changes.length === 1 && changes[0].field === 'isActive';
+    const actionType: OrderHistoryActionType = isActiveChange && afterSnapshot.isActive === false
+      ? 'SUSPEND'
+      : isActiveChange && afterSnapshot.isActive === true
+        ? 'RESUME'
+        : afterSnapshot.status === OrderStatus.CANCELLED
+      ? 'CANCEL'
+      : statusChange
+        ? 'STATUS_CHANGE'
+        : 'EDIT';
+
+    await this.recordOrderHistory(
+      order,
+      actionType,
+      requester,
+      changes,
+      this.buildOrderHistorySummary(order, actionType, changes),
+    );
+  }
+
+  private async recordOrderHistory(
+    order: Pick<Order, 'id' | 'orderNumber'>,
+    actionType: OrderHistoryActionType,
+    requester: AuthUser,
+    changes: OrderHistoryChange[],
+    summary: string,
+    metadata: Record<string, unknown> | null = null,
+  ): Promise<void> {
+    try {
+      await this.orderHistoryRepo.save(this.orderHistoryRepo.create({
+        orderId: order.id,
+        actionType,
+        summary,
+        changes: changes.length ? changes : null,
+        performedBy: requester.id,
+        performedByName: this.getRequesterDisplayName(requester),
+        performedByRole: requester.role,
+        metadata,
+      }));
+    } catch (error: any) {
+      this.logger.warn(`Order history skipped for order ${order.id}: ${error?.message || error}`);
+    }
+  }
+
+  private buildOrderHistorySummary(order: Pick<Order, 'orderNumber'>, actionType: OrderHistoryActionType, changes: OrderHistoryChange[]): string {
+    const statusChange = changes.find((change) => change.field === 'status');
+    if (actionType === 'CANCEL') {
+      return `Order ${order.orderNumber} was cancelled`;
+    }
+    if (actionType === 'SUSPEND') {
+      return `Order ${order.orderNumber} was suspended`;
+    }
+    if (actionType === 'RESUME') {
+      return `Order ${order.orderNumber} was resumed`;
+    }
+    if (actionType === 'STATUS_CHANGE' && statusChange) {
+      return `Order ${order.orderNumber} status changed from ${statusChange.oldValue || '-'} to ${statusChange.newValue || '-'}`;
+    }
+    return `Order ${order.orderNumber} was edited`;
+  }
+
+  private getRequesterDisplayName(requester: AuthUser): string {
+    const name = `${requester.firstName || ''} ${requester.lastName || ''}`.trim();
+    return name || requester.email || requester.id;
   }
 
   private assertDesignScope(design: Design, requester: AuthUser, scope: { companyId: string | null; branchId: string | null }) {
@@ -1725,12 +2009,6 @@ export class OrdersService implements OnModuleInit {
           priority: NotificationPriority.P2,
           title: `${orderLabel} moved to production`,
           message: `${orderLabel} for ${designLabel} is now in production.`,
-        },
-        [OrderStatus.SHIPPED]: {
-          type: 'ORDER_SHIPPED',
-          priority: NotificationPriority.P1,
-          title: `${orderLabel} shipped`,
-          message: `${orderLabel} for ${designLabel} has been shipped.`,
         },
         [OrderStatus.COMPLETED]: {
           type: 'ORDER_COMPLETED',

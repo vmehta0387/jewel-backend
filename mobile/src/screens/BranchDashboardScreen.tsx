@@ -5,6 +5,7 @@ import {
   Linking,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -72,8 +73,6 @@ const formatRelativeTime = (date: Date): string => {
 
 const statusIcon = (status: string): keyof typeof Ionicons.glyphMap => {
   switch (status) {
-    case 'SHIPPED':
-      return 'cube-outline';
     case 'APPROVED':
       return 'checkmark-circle-outline';
     case 'IN_PRODUCTION':
@@ -96,6 +95,7 @@ const BranchDashboardScreen = () => {
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 20 });
   const profileBtnRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     const checkConfig = async () => {
@@ -153,7 +153,6 @@ const BranchDashboardScreen = () => {
       pending: number;
       approved: number;
       inProduction: number;
-      shipped: number;
       completed: number;
       cancelled: number;
     };
@@ -173,6 +172,7 @@ const BranchDashboardScreen = () => {
     if (!token) {
       setStatsLoading(false);
       setTrendingLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -384,6 +384,7 @@ const BranchDashboardScreen = () => {
     } finally {
       setStatsLoading(false);
       setTrendingLoading(false);
+      setRefreshing(false);
     }
 
   }, [canLoadTeamMetrics, token, user?.id, user?.role, user?.firstName, user?.lastName]);
@@ -397,6 +398,12 @@ const BranchDashboardScreen = () => {
   const handleOpenNotifications = useCallback(() => {
     setNotificationsVisible(true);
   }, []);
+
+  const refreshDashboard = useCallback(() => {
+    if (refreshing || statsLoading) return;
+    setRefreshing(true);
+    loadDashboard();
+  }, [loadDashboard, refreshing, statsLoading]);
 
   const handleChangePhoto = useCallback(async () => {
     if (!token) return;
@@ -501,7 +508,19 @@ const BranchDashboardScreen = () => {
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refreshDashboard}
+              tintColor="#8a6b55"
+              colors={['#8a6b55']}
+            />
+          }
+        >
           <View style={styles.header}>
             <View style={styles.logoWrapRow}>
               <Image source={require('../../assets/icon.png')} style={[styles.headBoltIcon, { width: 23, height: 23, resizeMode: 'contain' }]} />
@@ -511,14 +530,20 @@ const BranchDashboardScreen = () => {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.bellTile} onPress={handleOpenNotifications}>
-              <Ionicons name="notifications-outline" size={20} color="#1E1E1E" />
-              {notificationCount > 0 && (
-                <View style={styles.redDot}>
-                  <Text style={styles.redDotText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.bellTile} onPress={refreshDashboard} disabled={refreshing || statsLoading}>
+                <Ionicons name="refresh-outline" size={20} color={refreshing || statsLoading ? '#BBAFA4' : '#1E1E1E'} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.bellTile} onPress={handleOpenNotifications}>
+                <Ionicons name="notifications-outline" size={20} color="#1E1E1E" />
+                {notificationCount > 0 && (
+                  <View style={styles.redDot}>
+                    <Text style={styles.redDotText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.greetingCard}>
@@ -974,6 +999,11 @@ const styles = StyleSheet.create({
   logoWrapRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headBoltIcon: {
     marginRight: 9,

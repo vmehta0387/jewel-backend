@@ -28,7 +28,7 @@ function HomeRedirect() {
     return <Navigate to="/login" replace />;
   }
 
-  if (user.role === 'COMPANY_ADMIN' || user.role === 'BRANCH_MANAGER') {
+  if (user.role === 'COMPANY_ADMIN') {
     return <Navigate to="/orders" replace />;
   }
 
@@ -49,7 +49,7 @@ export const router = createBrowserRouter([
     element: <PrivacyPolicyPage />,
   },
   {
-    element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN', 'BRANCH_MANAGER']} />,
+    element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']} />,
     children: [
       {
         element: <DashboardLayout />,

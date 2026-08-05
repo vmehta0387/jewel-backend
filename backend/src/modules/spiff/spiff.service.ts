@@ -48,6 +48,8 @@ type WalletSummary = {
 export class SpiffService {
   private static readonly SETTINGS_KEY_POINTS_PER_DOLLAR = 'POINTS_PER_DOLLAR';
   private readonly logger = new Logger(SpiffService.name);
+  private readonly activeLedgerOrderCondition =
+    '(ledger.orderId IS NULL OR ord.id IS NULL OR ord.status != :spiffCancelledStatus)';
 
   constructor(
     @InjectRepository(SpiffPointLedger)
@@ -152,10 +154,12 @@ export class SpiffService {
       const companyPointsQb = this.ledgerRepo
         .createQueryBuilder('ledger')
         .select('ledger.companyId', 'companyId')
-        .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+        .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
+        .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
         .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
         .where('ledger.companyId IS NOT NULL')
-        .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP });
+        .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
+        .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED });
 
       if (periodRange.startDate) {
         companyPointsQb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
@@ -204,11 +208,13 @@ export class SpiffService {
           .createQueryBuilder('ledger')
           .select('ledger.companyId', 'companyId')
           .addSelect('ledger.userId', 'userId')
-          .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
+          .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
           .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
           .where('ledger.companyId IN (:...companyIds)', { companyIds })
           .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
           .andWhere('ledger.userId IS NOT NULL')
+          .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED })
           .groupBy('ledger.companyId')
           .addGroupBy('ledger.userId')
           .orderBy('ledger.companyId', 'ASC')
@@ -274,10 +280,12 @@ export class SpiffService {
         const globalRepQb = this.ledgerRepo
           .createQueryBuilder('ledger')
           .select('ledger.userId', 'userId')
-          .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+          .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
+          .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
           .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
           .where('ledger.userId IS NOT NULL')
           .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
+          .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED })
           .groupBy('ledger.userId')
           .orderBy('points', 'DESC');
 
@@ -331,10 +339,12 @@ export class SpiffService {
     const qb = this.ledgerRepo
       .createQueryBuilder('ledger')
       .select('ledger.userId', 'userId')
-      .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+      .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
+      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
       .innerJoin(User, 'repUser', 'repUser.id = ledger.userId')
       .where('ledger.userId IS NOT NULL')
-      .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP });
+      .andWhere('repUser.role = :spiffRepRole', { spiffRepRole: UserRole.SALES_REP })
+      .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED });
 
     if (periodRange.startDate) {
       qb.andWhere('ledger.createdAt >= :startDate', { startDate: periodRange.startDate });
@@ -469,10 +479,13 @@ export class SpiffService {
       .leftJoin(User, 'user', 'user.id = ledger.userId')
       .leftJoin(Company, 'company', 'company.id = ledger.companyId')
       .leftJoin(Branch, 'branch', 'branch.id = ledger.branchId')
-      .select('COALESCE(ledger.orderId, ledger.id)', 'groupId')
+      .select(
+        `CASE WHEN ledger.eventType = :spiffCancelReversalEvent THEN ledger.id ELSE COALESCE(ledger.orderId, ledger.id) END`,
+        'groupId',
+      )
       .addSelect('ledger.orderId', 'orderId')
       .addSelect('MAX(ledger.createdAt)', 'createdAt')
-      .addSelect('COALESCE(SUM(CASE WHEN ledger.points > 0 THEN ledger.points ELSE 0 END), 0)', 'points')
+      .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
       .addSelect('GROUP_CONCAT(DISTINCT ledger.eventType)', 'eventTypes')
       .addSelect('MAX(ledger.note)', 'note')
       .addSelect('ord.orderNumber', 'orderNumber')
@@ -480,8 +493,11 @@ export class SpiffService {
       .addSelect('ord.status', 'orderStatus')
       .addSelect('company.companyName', 'companyName')
       .addSelect('branch.name', 'branchName')
-      .where('ledger.points > 0')
-      .groupBy('COALESCE(ledger.orderId, ledger.id)')
+      .where('ledger.points != 0')
+      .setParameter('spiffCancelReversalEvent', SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL)
+      .groupBy(
+        `CASE WHEN ledger.eventType = :spiffCancelReversalEvent THEN ledger.id ELSE COALESCE(ledger.orderId, ledger.id) END`,
+      )
       .addGroupBy('ledger.orderId')
       .addGroupBy('ord.orderNumber')
       .addGroupBy('ord.price')
@@ -506,8 +522,12 @@ export class SpiffService {
 
     const earnedCountQb = this.ledgerRepo
       .createQueryBuilder('ledger')
-      .select('COUNT(DISTINCT COALESCE(ledger.orderId, ledger.id))', 'total')
-      .where('ledger.points > 0');
+      .select(
+        `COUNT(DISTINCT CASE WHEN ledger.eventType = :spiffCancelReversalEvent THEN ledger.id ELSE COALESCE(ledger.orderId, ledger.id) END)`,
+        'total',
+      )
+      .where('ledger.points != 0')
+      .setParameter('spiffCancelReversalEvent', SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL);
     this.applySpiffActivityScope(earnedCountQb, requester, 'ledger');
 
     const claimCountQb = this.claimRepo
@@ -1064,6 +1084,11 @@ export class SpiffService {
     const prev = this.normalizeOrderStatus(previousStatus);
     const current = this.normalizeOrderStatus(order.status);
 
+    if (current === OrderStatus.CANCELLED && prev !== OrderStatus.CANCELLED) {
+      await this.recordOrderCancelledReversal(order);
+      return;
+    }
+
     if (current === OrderStatus.QUOTE) {
       await this.recordQuoteCreated(order);
     }
@@ -1156,6 +1181,35 @@ export class SpiffService {
     }
   }
 
+  private async recordOrderCancelledReversal(order: Order): Promise<void> {
+    const netRaw = await this.ledgerRepo
+      .createQueryBuilder('ledger')
+      .select('COALESCE(SUM(ledger.points), 0)', 'points')
+      .where('ledger.orderId = :orderId', { orderId: order.id })
+      .getRawOne<{ points: string | number | null }>();
+
+    const netPoints = this.roundPoints(this.toNumber(netRaw?.points));
+    if (netPoints <= 0) {
+      return;
+    }
+
+    await this.createLedgerEntryIfMissing({
+      userId: order.salesRepId!,
+      companyId: order.companyId || null,
+      branchId: order.branchId || null,
+      orderId: order.id,
+      points: -netPoints,
+      eventType: SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL,
+      eventKey: `order-cancelled-reversal:${order.id}`,
+      note: `Order cancelled - points reversed (${order.orderNumber})`,
+      metadata: {
+        orderNumber: order.orderNumber,
+        status: order.status,
+        reversedPoints: netPoints,
+      },
+    });
+  }
+
   private async createLedgerEntryIfMissing(input: {
     userId: string;
     companyId: string | null;
@@ -1168,7 +1222,7 @@ export class SpiffService {
     metadata?: Record<string, unknown>;
   }): Promise<void> {
     const points = this.roundPoints(this.toNumber(input.points));
-    if (points <= 0) {
+    if (points === 0) {
       return;
     }
 
@@ -1207,8 +1261,9 @@ export class SpiffService {
     const totalEarnedRaw = await this.ledgerRepo
       .createQueryBuilder('ledger')
       .select('COALESCE(SUM(ledger.points), 0)', 'points')
+      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
       .where('ledger.userId = :userId', { userId })
-      .andWhere('ledger.points > 0')
+      .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED })
       .getRawOne();
 
     const committedRaw = await this.claimRepo
@@ -1237,14 +1292,13 @@ export class SpiffService {
       .select('COALESCE(SUM(ledger.points), 0)', 'points')
       .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
       .where('ledger.userId = :userId', { userId })
-      .andWhere('ledger.points > 0')
       .andWhere('ledger.orderId IS NOT NULL')
-      .andWhere('(ord.id IS NULL OR ord.status NOT IN (:...unlockStatuses))', {
-        unlockStatuses: [OrderStatus.SHIPPED, OrderStatus.COMPLETED],
+      .andWhere('(ord.id IS NULL OR ord.status NOT IN (:...excludedStatuses))', {
+        excludedStatuses: [OrderStatus.COMPLETED, OrderStatus.CANCELLED],
       })
       .getRawOne();
 
-    const totalEarnedPoints = this.toNumber(totalEarnedRaw?.points);
+    const totalEarnedPoints = Math.max(this.toNumber(totalEarnedRaw?.points), 0);
     const lockedPoints = Math.max(this.toNumber(lockedRaw?.points), 0);
     const unlockedPoints = Math.max(totalEarnedPoints - lockedPoints, 0);
     const committedPoints = this.toNumber(committedRaw?.points);
@@ -1278,10 +1332,11 @@ export class SpiffService {
     const raw = await this.ledgerRepo
       .createQueryBuilder('ledger')
       .select('COALESCE(SUM(ledger.points), 0)', 'points')
+      .leftJoin(Order, 'ord', 'ord.id = ledger.orderId')
       .where('ledger.userId = :userId', { userId })
-      .andWhere('ledger.points > 0')
+      .andWhere(this.activeLedgerOrderCondition, { spiffCancelledStatus: OrderStatus.CANCELLED })
       .getRawOne();
-    return this.toNumber(raw?.points);
+    return Math.max(this.toNumber(raw?.points), 0);
   }
 
   private applyAwardRate(points: number, awardRate: number): number {
@@ -1493,11 +1548,22 @@ export class SpiffService {
 
   private serializeEarnedActivity(row: Record<string, unknown>) {
     const orderNumber = this.optionalText(row.orderNumber) || this.extractOrderNumberFromNote(row.note);
+    const eventTypes = String(row.eventTypes || '');
+    const isCancellationReversal = eventTypes
+      .split(',')
+      .map((event) => event.trim())
+      .includes(SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL);
     return {
       id: `earned:${String(row.groupId || row.orderId || orderNumber || row.createdAt)}`,
       type: 'EARNED',
-      title: orderNumber ? `Order ${orderNumber}` : 'SPIFF points earned',
-      subtitle: this.formatLedgerEvents(String(row.eventTypes || '')),
+      title: isCancellationReversal
+        ? orderNumber
+          ? `Order ${orderNumber} cancelled`
+          : 'Order cancelled'
+        : orderNumber
+          ? `Order ${orderNumber}`
+          : 'SPIFF points earned',
+      subtitle: this.formatLedgerEvents(eventTypes),
       orderId: this.optionalText(row.orderId),
       orderNumber,
       orderStatus: this.optionalText(row.orderStatus),
@@ -1546,6 +1612,7 @@ export class SpiffService {
         if (event === SpiffLedgerEvent.ORDER_VALUE_BONUS) return 'Value bonus';
         if (event === SpiffLedgerEvent.FAST_CLOSE_BONUS) return 'Fast close bonus';
         if (event === SpiffLedgerEvent.QUOTE_CREATED) return 'Quote created';
+        if (event === SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL) return 'Points reversed';
         return event.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
       });
     return labels.join(' + ') || 'Points earned';
@@ -1624,7 +1691,6 @@ export class SpiffService {
       OrderStatus.PENDING_APPROVAL,
       OrderStatus.APPROVED,
       OrderStatus.IN_PRODUCTION,
-      OrderStatus.SHIPPED,
       OrderStatus.COMPLETED,
     ].includes(status);
   }

@@ -35,8 +35,9 @@ import {
   getOrderIdFromNotification,
   type NotificationFeedEntry,
 } from '../utils/appNotifications';
+import { canApproveOrderByStatus } from '../utils/orderLifecycle';
 
-type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'CANCELLED';
+type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'COMPLETED' | 'CANCELLED';
 type ConfirmationAction = 'deleteDraft' | 'cancelOrder';
 type PopoverPosition = { top: number; left: number };
 
@@ -51,7 +52,7 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'PENDING_APPROVAL', label: 'Pending' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'IN_PRODUCTION', label: 'In Prod.' },
-  { key: 'SHIPPED', label: 'Shipped' },
+  { key: 'COMPLETED', label: 'Completed' },
   { key: 'CANCELLED', label: 'Cancelled' },
 ];
 
@@ -61,7 +62,7 @@ const normalizeStatus = (value?: string | null): FilterKey => {
   if (status === 'PENDING' || status === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
   if (status === 'APPROVED') return 'APPROVED';
   if (status === 'PRODUCTION' || status === 'IN_PRODUCTION') return 'IN_PRODUCTION';
-  if (status === 'SHIPPED' || status === 'COMPLETED') return 'SHIPPED';
+  if (status === 'COMPLETED') return 'COMPLETED';
   if (status === 'CANCELLED' || status === 'REJECTED') return 'CANCELLED';
   return 'PENDING_APPROVAL';
 };
@@ -77,8 +78,8 @@ const statusLabel = (status?: string | null) => {
       return 'Approved';
     case 'IN_PRODUCTION':
       return 'In Prod.';
-    case 'SHIPPED':
-      return 'Shipped';
+    case 'COMPLETED':
+      return 'Completed';
     case 'CANCELLED':
       return 'Cancelled';
     default:
@@ -116,7 +117,7 @@ const statusPillStyle = (status?: string | null) => {
       textColor: '#3D6CAF',
     };
   }
-  if (key === 'SHIPPED') {
+  if (key === 'COMPLETED') {
     return {
       backgroundColor: '#E8EFFC',
       borderColor: '#C4D4F4',
@@ -152,13 +153,12 @@ const statusTimelineIndex = (status?: string | null) => {
   if (key === 'PENDING_APPROVAL') return 1;
   if (key === 'APPROVED') return 2;
   if (key === 'IN_PRODUCTION') return 3;
-  if (key === 'SHIPPED') return 4;
+  if (key === 'COMPLETED') return 4;
   return 0;
 };
 
 const matchesFilter = (order: Order, filter: FilterKey) => {
   const key = normalizeStatus(order.status);
-  if (filter === 'SHIPPED') return key === 'SHIPPED';
   return key === filter;
 };
 
@@ -299,8 +299,7 @@ const OrdersScreen = () => {
     try {
       const [response, employeeRows] = await Promise.all([
         fetchOrders(token, pageToLoad, ORDERS_PAGE_LIMIT, 'ACTIVE', {
-          orderStatus: selectedFilter === 'SHIPPED' ? undefined : selectedFilter,
-          statusGroup: selectedFilter === 'SHIPPED' ? 'SHIPPED_OR_COMPLETED' : undefined,
+          orderStatus: selectedFilter,
           search: debouncedSearch,
           salesRepId: selectedSalesRepId === 'ALL' ? undefined : selectedSalesRepId,
           includeStatusCounts: true,
@@ -376,7 +375,7 @@ const OrdersScreen = () => {
       PENDING_APPROVAL: Number(statusCounts.PENDING_APPROVAL || 0),
       APPROVED: Number(statusCounts.APPROVED || 0),
       IN_PRODUCTION: Number(statusCounts.IN_PRODUCTION || 0),
-      SHIPPED: Number(statusCounts.SHIPPED || 0) + Number(statusCounts.COMPLETED || 0),
+      COMPLETED: Number(statusCounts.COMPLETED || 0),
       CANCELLED: Number(statusCounts.CANCELLED || 0),
     };
     return initial;
@@ -554,6 +553,7 @@ const OrdersScreen = () => {
   const approvePending = useCallback(
     async (order: Order) => {
       if (!token) return;
+      if (!canApproveOrderByStatus(order.status, user?.role)) return;
       setActingOrderId(order.id);
       try {
         await updateOrder(token, order.id, { status: 'APPROVED' });
@@ -564,12 +564,12 @@ const OrdersScreen = () => {
         setActingOrderId(null);
       }
     },
-    [loadOrders, token],
+    [loadOrders, token, user?.role],
   );
 
   const renderTimeline = (status?: string | null) => {
     const activeIndex = statusTimelineIndex(status);
-    const labels = ['Order\nCreated', 'Pending\nApproval', 'Approved', 'In\nProd.', 'Shipped'];
+    const labels = ['Order\nCreated', 'Pending\nApproval', 'Approved', 'In\nProd.', 'Completed'];
     return (
       <View style={styles.timelineWrap}>
         <Text style={styles.timelineTitle}>ORDER TIMELINE</Text>
@@ -643,7 +643,7 @@ const OrdersScreen = () => {
     }
 
     if (status === 'PENDING_APPROVAL') {
-      if (isBranchManager) {
+      if (canApproveOrderByStatus(order.status, user?.role)) {
         return (
           <View style={styles.actionRowThree}>
             <TouchableOpacity
@@ -739,7 +739,7 @@ const OrdersScreen = () => {
     const salesRepName = order.salesRepName?.trim() || order.salesRepEmail?.trim() || '';
 
     const thumbRingColor =
-      normalizeStatus(order.status) === 'SHIPPED'
+      normalizeStatus(order.status) === 'COMPLETED'
         ? '#4A8ADA'
         : normalizeStatus(order.status) === 'APPROVED'
           ? '#B2874A'
@@ -897,14 +897,25 @@ const OrdersScreen = () => {
             <Text style={styles.brandSub}>Built for closers</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.bellBtn} activeOpacity={0.9} onPress={openNotifications}>
-          <Ionicons name="notifications-outline" size={16} color="#7A6E61" />
-          {notificationCount > 0 ? (
-            <View style={styles.bellBadge}>
-              <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
+        <View style={styles.brandActions}>
+          <TouchableOpacity
+            style={styles.bellBtn}
+            activeOpacity={0.9}
+            onPress={() => loadOrders()}
+            disabled={loading}
+          >
+            <Ionicons name="refresh-outline" size={16} color={loading ? '#BBAFA4' : '#7A6E61'} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.bellBtn} activeOpacity={0.9} onPress={openNotifications}>
+            <Ionicons name="notifications-outline" size={16} color="#7A6E61" />
+            {notificationCount > 0 ? (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+              </View>
+            ) : null}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.topPanel} onTouchStart={activeConfirmationOrderId ? closeConfirmation : undefined}>
@@ -1112,6 +1123,11 @@ const styles = StyleSheet.create({
   brandLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  brandActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   brandBoltIcon: {
     marginRight: 9,

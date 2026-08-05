@@ -255,6 +255,11 @@ const SpiffRewardsScreen = () => {
     load(true);
   }, [load]);
 
+  const refreshSpiff = useCallback(() => {
+    if (refreshing || loading) return;
+    onRefresh();
+  }, [loading, onRefresh, refreshing]);
+
   const loadMoreClaims = useCallback(async () => {
     if (!token || claimsLoadingRef.current || claimsPage >= claimsTotalPages) return;
     claimsLoadingRef.current = true;
@@ -537,8 +542,13 @@ const SpiffRewardsScreen = () => {
               <Ionicons name="chevron-back" size={18} color="#8D8276" />
             </TouchableOpacity>
             <Text allowFontScaling={false} style={styles.srHeaderTitle}>Spiff Dashboard</Text>
-            <View style={styles.srAvatarChip}>
-              <Text allowFontScaling={false} style={styles.srAvatarChipText}>{initials}</Text>
+            <View style={styles.srHeaderActions}>
+              <TouchableOpacity style={styles.srRefreshBtn} onPress={refreshSpiff} disabled={refreshing || loading} activeOpacity={0.85}>
+                <Ionicons name="refresh-outline" size={17} color={refreshing || loading ? '#BBAFA4' : '#8D8276'} />
+              </TouchableOpacity>
+              <View style={styles.srAvatarChip}>
+                <Text allowFontScaling={false} style={styles.srAvatarChipText}>{initials}</Text>
+              </View>
             </View>
           </View>
 
@@ -823,8 +833,13 @@ const SpiffRewardsScreen = () => {
               <Ionicons name="chevron-back" size={18} color="#8D8276" />
             </TouchableOpacity>
             <Text allowFontScaling={false} style={styles.srHeaderTitle}>Spiff Dashboard</Text>
-            <View style={styles.srAvatarChip}>
-              <Text allowFontScaling={false} style={styles.srAvatarChipText}>{initials}</Text>
+            <View style={styles.srHeaderActions}>
+              <TouchableOpacity style={styles.srRefreshBtn} onPress={refreshSpiff} disabled={refreshing || loading} activeOpacity={0.85}>
+                <Ionicons name="refresh-outline" size={17} color={refreshing || loading ? '#BBAFA4' : '#8D8276'} />
+              </TouchableOpacity>
+              <View style={styles.srAvatarChip}>
+                <Text allowFontScaling={false} style={styles.srAvatarChipText}>{initials}</Text>
+              </View>
             </View>
           </View>
 
@@ -902,6 +917,9 @@ const SpiffRewardsScreen = () => {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#B58A3E" />}
           >
             <View style={styles.caHero}>
+              <TouchableOpacity style={styles.caRefreshBtn} onPress={refreshSpiff} disabled={refreshing || loading} activeOpacity={0.85}>
+                <Ionicons name="refresh-outline" size={18} color={refreshing || loading ? '#D9C9B0' : '#FFF7EC'} />
+              </TouchableOpacity>
               <Text allowFontScaling={false} style={styles.caHeroEyebrow}>SPIFF REDEMPTIONS</Text>
               <Text allowFontScaling={false} style={styles.caHeroTitle}>Approval Queue</Text>
               <Text allowFontScaling={false} style={styles.caHeroSub}>
@@ -1083,8 +1101,8 @@ const SpiffRewardsScreen = () => {
             <Text style={styles.headerSubtitle}>Claim points into gift cards</Text>
           </View>
 
-          <TouchableOpacity style={styles.refreshBtn} onPress={() => load(true)}>
-            <Ionicons name="refresh" size={17} color="#7A6E61" />
+          <TouchableOpacity style={styles.refreshBtn} onPress={refreshSpiff} disabled={refreshing || loading}>
+            <Ionicons name="refresh" size={17} color={refreshing || loading ? '#BBAFA4' : '#7A6E61'} />
           </TouchableOpacity>
         </View>
 
@@ -1253,6 +1271,21 @@ const styles = StyleSheet.create({
     borderColor: '#2E251E',
     paddingHorizontal: 14,
     paddingVertical: 14,
+    position: 'relative',
+  },
+  caRefreshBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 247, 236, 0.16)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
   },
   caHeroEyebrow: {
     marginTop: 14,
@@ -1531,6 +1564,21 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: '#2A231C',
     fontWeight: '700',
+  },
+  srHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  srRefreshBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#EEE7DD',
+    backgroundColor: '#FAF8F5',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   srAvatarChip: {
     width: 38,

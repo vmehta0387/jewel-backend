@@ -23,7 +23,7 @@ import { useCart } from '../context/CartContext';
 import { createOrder } from '../api/orders';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
-import { salesRepRequiresApproval } from '../utils/permissions';
+import { getOrderSubmitStatus } from '../utils/orderLifecycle';
 import { colors, radii, spacing } from '../theme';
 
 const formatMoney = (value: number) =>
@@ -94,8 +94,7 @@ const CartScreen = () => {
         return;
       }
 
-      const requiresApproval = salesRepRequiresApproval(user);
-      const targetStatus = user.role === 'BRANCH_MANAGER' ? 'APPROVED' : (requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION');
+      const targetStatus = getOrderSubmitStatus('PENDING_APPROVAL', user.role);
 
       for (const item of items) {
         await createOrder(token, {
@@ -116,12 +115,10 @@ const CartScreen = () => {
 
       clear();
       Alert.alert(
-        targetStatus === 'IN_PRODUCTION' ? 'Order Placed' : 'Quote sent successfully',
-        user.role === 'BRANCH_MANAGER'
-          ? 'Quote has been sent to Super Admin.'
-          : requiresApproval
-          ? 'Quote has been sent to Branch Manager for approval.'
-          : 'Order placed successfully and sent directly to Production.',
+        targetStatus === 'APPROVED' ? 'Order Approved' : 'Quote sent successfully',
+        targetStatus === 'APPROVED'
+          ? 'Quote has been approved.'
+          : 'Quote has been sent for approval.',
       );
       navigation.goBack();
     } catch (err: any) {

@@ -18,10 +18,7 @@ export default function ProtectedRoute({ allowedRoles, requiredTaskPermissions, 
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
-  const fallbackPath =
-    user.role === 'COMPANY_ADMIN' || user.role === 'BRANCH_MANAGER'
-      ? '/orders'
-      : '/dashboard';
+  const fallbackPath = user.role === 'COMPANY_ADMIN' ? '/orders' : '/dashboard';
 
   if (allowedRoles && !hasAllowedRole(user, allowedRoles)) {
     return <Navigate to={fallbackPath} replace />;

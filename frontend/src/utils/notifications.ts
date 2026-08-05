@@ -31,7 +31,7 @@ export const getNotificationToneClasses = (item: NotificationItem) => {
       dot: 'bg-[#c89d5a]',
     };
   }
-  if (type.includes('SHIPPED') || type.includes('FULFILLED') || type.includes('COMPLETED')) {
+  if (type.includes('FULFILLED') || type.includes('COMPLETED')) {
     return {
       card: 'border-[#d7e5fb] bg-[#f5f9ff] hover:bg-[#edf5ff]',
       dot: 'bg-[#6f8fce]',

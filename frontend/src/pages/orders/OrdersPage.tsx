@@ -9,7 +9,16 @@ import Pagination from '../../components/common/Pagination';
 import SearchableSelect from '../../components/common/SearchableSelect';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
-import { getStoredUser, hasActionPermission } from '../../utils/auth';
+import { getStoredUser } from '../../utils/auth';
+import {
+  canChangeOrderStatus,
+  canEditOrderByStatus,
+  canOpenOrderStatusChange,
+  canViewOrderHistory,
+  getAllowedOrderStatuses,
+  normalizeOrderStatus,
+  orderStatusOptions,
+} from '../../utils/orderLifecycle';
 
 interface OrderRow {
   id: string;
@@ -25,6 +34,10 @@ interface OrderRow {
   salesRepName?: string | null;
   salesRepEmail?: string | null;
   deliveryDate?: string | null;
+  shipDate?: string | null;
+  shipVia?: string | null;
+  trackingNo?: string | null;
+  invoiceNo?: string | null;
   quantity: number;
   costPrice?: number | null;
   price: number;
@@ -157,6 +170,29 @@ interface OrderFormErrors {
   totalAmount?: string;
 }
 
+interface OrderHistoryChange {
+  field: string;
+  oldValue: unknown;
+  newValue: unknown;
+}
+
+interface OrderHistoryRow {
+  id: string;
+  actionType: 'ADD' | 'EDIT' | 'STATUS_CHANGE' | 'CANCEL' | 'SUSPEND' | 'RESUME' | string;
+  summary: string;
+  changes?: OrderHistoryChange[] | null;
+  performedByName?: string | null;
+  performedByRole?: string | null;
+  performedAt: string;
+}
+
+interface CompletedShippingForm {
+  shipDate: string;
+  shipVia: string;
+  trackingNo: string;
+  invoiceNo: string;
+}
+
 type OrderSaveType = 'QUOTE' | 'ORDER';
 
 interface OrderSavePayload {
@@ -224,18 +260,18 @@ const defaultForm: OrderFormState = {
 };
 
 const DESIGN_DROPDOWN_PAGE_SIZE = 50;
-
-const orderStatusOptions = [
-  'QUOTE',
-  'PENDING_APPROVAL',
-  'APPROVED',
-  'IN_PRODUCTION',
-  'SHIPPED',
-  'COMPLETED',
-  'CANCELLED',
+const SHIP_VIA_OPTIONS = [
+  { value: 'UPS', label: 'UPS' },
+  { value: 'FED_EX', label: 'FED EX' },
+  { value: 'HAND_DELIVERY', label: 'HAND DELIVERY' },
+  { value: 'OTHER', label: 'OTHER' },
 ];
-
-const normalizeOrderStatus = (status?: string | null): string => String(status || '').trim().toUpperCase();
+const defaultCompletedShippingForm: CompletedShippingForm = {
+  shipDate: '',
+  shipVia: '',
+  trackingNo: '',
+  invoiceNo: '',
+};
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 const publicAssetsBaseUrl = apiBaseUrl.replace(/\/api$/, '');
@@ -472,11 +508,9 @@ export default function OrdersPage() {
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const canViewCostPrice = isSuperAdmin || isCompanyAdmin || currentUser?.role === 'BRANCH_MANAGER';
   const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
-  const canUpdateOrderStatus = useMemo(
-    () => (currentUser ? hasActionPermission(currentUser, 'order.status_update') : false),
-    [currentUser],
-  );
-  const canEditApprovedOrder = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'INTERNAL_REP';
+  const currentUserRole = currentUser?.role;
+  const currentUserId = currentUser?.id;
+  const canSeeOrderHistory = canViewOrderHistory(currentUserRole);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -489,6 +523,7 @@ export default function OrdersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editingOrderStatus, setEditingOrderStatus] = useState<string>('');
   const [editOrderLoading, setEditOrderLoading] = useState(false);
   const [viewOrderLoading, setViewOrderLoading] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -535,12 +570,20 @@ export default function OrdersPage() {
   const [viewMediaUrls, setViewMediaUrls] = useState<string[]>([]);
   const [statusChangeOrder, setStatusChangeOrder] = useState<OrderRow | null>(null);
   const [statusChangeTarget, setStatusChangeTarget] = useState('');
+  const [completedShippingForm, setCompletedShippingForm] = useState<CompletedShippingForm>(defaultCompletedShippingForm);
+  const [completedShippingErrors, setCompletedShippingErrors] = useState<Partial<Record<keyof CompletedShippingForm, string>>>({});
+  const [historyOrder, setHistoryOrder] = useState<OrderRow | null>(null);
+  const [historyRows, setHistoryRows] = useState<OrderHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [pendingOrderStatusChange, setPendingOrderStatusChange] = useState<{
     order: OrderRow;
     from: string;
     to: string;
+    shipping?: CompletedShippingForm;
   } | null>(null);
   const [pendingOrderSaveChoice, setPendingOrderSaveChoice] = useState<OrderSavePayload | null>(null);
+  const [orderSaveChoiceSubmitting, setOrderSaveChoiceSubmitting] = useState<OrderSaveType | null>(null);
   const [alertDialog, setAlertDialog] = useState<{
     title: string;
     message: string;
@@ -1052,6 +1095,7 @@ export default function OrdersPage() {
     }
     setShowAddModal(false);
     setEditingOrderId(null);
+    setEditingOrderStatus('');
     setEditingDesignNo('');
     setForm(roleScopedDefaultForm);
     setFormErrors({});
@@ -1061,9 +1105,9 @@ export default function OrdersPage() {
   };
 
   const handleSaveOrder = async () => {
-    if (editingOrderId && normalizeOrderStatus(form.status) === 'APPROVED' && !canEditApprovedOrder) {
-      showAlert('Only internal reps and super admin can edit approved orders.', {
-        title: 'Approved order locked',
+    if (editingOrderId && !canEditOrderByStatus(editingOrderStatus, currentUserRole)) {
+      showAlert('This order cannot be edited in its current status.', {
+        title: 'Order locked',
         variant: 'warning',
       });
       return;
@@ -1246,9 +1290,9 @@ export default function OrdersPage() {
   }, [highlightedOrderId, orders]);
 
   const openEditModal = async (order: OrderRow) => {
-    if (normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder) {
-      showAlert('Only internal reps and super admin can edit approved orders.', {
-        title: 'Approved order locked',
+    if (!canEditOrderByStatus(order.status, currentUserRole)) {
+      showAlert('This order cannot be edited in its current status.', {
+        title: 'Order locked',
         variant: 'warning',
       });
       return;
@@ -1257,6 +1301,7 @@ export default function OrdersPage() {
     setShowAddModal(true);
     setEditOrderLoading(true);
     setEditingOrderId(order.id);
+    setEditingOrderStatus(normalizeOrderStatus(order.status));
     setEditingDesignNo(order.designNo || '');
     setPriceManuallyEdited(false);
     setFormErrors({});
@@ -1319,34 +1364,90 @@ export default function OrdersPage() {
   };
 
   const openOrderStatusChange = (order: OrderRow) => {
-    if (!canUpdateOrderStatus) return;
+    if (!canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId)) {
+      showAlert('No status change is allowed for this order in its current status.', {
+        title: 'Status locked',
+        variant: 'warning',
+      });
+      return;
+    }
+    const allowedStatuses = getAllowedOrderStatuses(order.status, currentUserRole, order.salesRepId, currentUserId);
     setStatusChangeOrder(order);
-    setStatusChangeTarget(order.status || '');
+    setStatusChangeTarget(allowedStatuses.includes(order.status) ? order.status : allowedStatuses[0] || '');
+    setCompletedShippingForm({
+      shipDate: order.shipDate || toDateInputValue(),
+      shipVia: order.shipVia || '',
+      trackingNo: order.trackingNo || '',
+      invoiceNo: order.invoiceNo || '',
+    });
+    setCompletedShippingErrors({});
   };
 
   const closeOrderStatusChange = () => {
     setStatusChangeOrder(null);
     setStatusChangeTarget('');
+    setCompletedShippingForm(defaultCompletedShippingForm);
+    setCompletedShippingErrors({});
+  };
+
+  const validateCompletedShippingForm = () => {
+    const nextErrors: Partial<Record<keyof CompletedShippingForm, string>> = {};
+    if (!completedShippingForm.shipDate) nextErrors.shipDate = 'Ship date is required.';
+    if (!completedShippingForm.shipVia) nextErrors.shipVia = 'Ship via is required.';
+    if (!completedShippingForm.trackingNo.trim()) nextErrors.trackingNo = 'Tracking no. is required.';
+    if (!completedShippingForm.invoiceNo.trim()) nextErrors.invoiceNo = 'Invoice no. is required.';
+    setCompletedShippingErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   };
 
   const requestOrderStatusChange = () => {
-    if (!canUpdateOrderStatus) return;
     if (!statusChangeOrder || !statusChangeTarget || statusChangeTarget === statusChangeOrder.status) return;
+    if (!canChangeOrderStatus(statusChangeOrder.status, statusChangeTarget, currentUserRole, statusChangeOrder.salesRepId, currentUserId)) {
+      showAlert('This status change is not allowed for your role.', {
+        title: 'Status locked',
+        variant: 'warning',
+      });
+      return;
+    }
+    if (statusChangeTarget === 'COMPLETED' && !validateCompletedShippingForm()) {
+      return;
+    }
     setPendingOrderStatusChange({
       order: statusChangeOrder,
       from: statusChangeOrder.status,
       to: statusChangeTarget,
+      shipping: statusChangeTarget === 'COMPLETED'
+        ? {
+            shipDate: completedShippingForm.shipDate,
+            shipVia: completedShippingForm.shipVia,
+            trackingNo: completedShippingForm.trackingNo.trim(),
+            invoiceNo: completedShippingForm.invoiceNo.trim(),
+          }
+        : undefined,
     });
     closeOrderStatusChange();
   };
 
   const confirmOrderStatusChange = async () => {
-    if (!canUpdateOrderStatus) return;
     if (!pendingOrderStatusChange) return;
+    if (!canChangeOrderStatus(
+      pendingOrderStatusChange.from,
+      pendingOrderStatusChange.to,
+      currentUserRole,
+      pendingOrderStatusChange.order.salesRepId,
+      currentUserId,
+    )) {
+      showAlert('This status change is not allowed for your role.', {
+        title: 'Status locked',
+        variant: 'warning',
+      });
+      return;
+    }
     try {
       setStatusUpdatingOrderId(pendingOrderStatusChange.order.id);
       await api.patch(`/orders/${pendingOrderStatusChange.order.id}/status`, {
         status: pendingOrderStatusChange.to,
+        ...(pendingOrderStatusChange.shipping || {}),
       });
       setPendingOrderStatusChange(null);
       await loadOrders();
@@ -1359,6 +1460,44 @@ export default function OrdersPage() {
       setStatusUpdatingOrderId(null);
     }
   };
+
+  const openOrderHistory = async (order: OrderRow) => {
+    if (!canSeeOrderHistory) return;
+    setHistoryOrder(order);
+    setHistoryRows([]);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const response = await api.get<OrderHistoryRow[]>(`/orders/${order.id}/history`);
+      setHistoryRows(Array.isArray(response.data) ? response.data : []);
+    } catch (error: any) {
+      setHistoryError(error?.response?.data?.message || 'Unable to load order history.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const closeOrderHistory = () => {
+    setHistoryOrder(null);
+    setHistoryRows([]);
+    setHistoryError(null);
+    setHistoryLoading(false);
+  };
+
+  const formatHistoryValue = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return '-';
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  const getVisibleHistoryChanges = (row: OrderHistoryRow): OrderHistoryChange[] => {
+    if (!Array.isArray(row.changes)) return [];
+    if (row.actionType !== 'STATUS_CHANGE') return row.changes;
+    return row.changes.filter((change) => change.field !== 'status');
+  };
+
+  const formatShipVia = (value?: string | null) => SHIP_VIA_OPTIONS.find((option) => option.value === value)?.label || value || '-';
 
   const handleConfiguratorOptionChange = async (key: ConfiguratorKey, value: string) => {
     if (!form.designId || !value) return;
@@ -1545,6 +1684,13 @@ export default function OrdersPage() {
   // };
 
   const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
+    if (!canEditOrderByStatus(order.status, currentUserRole)) {
+      showAlert('This order cannot be changed in its current status.', {
+        title: 'Order locked',
+        variant: 'warning',
+      });
+      return;
+    }
     const confirmed = await confirmAppDialog(
       nextActive
         ? 'Resume this order? It will be visible in active orders again.'
@@ -1626,6 +1772,10 @@ export default function OrdersPage() {
             <div><span class="label">Branch</span>${order.branchName || '-'}</div>
             <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
             <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
+            <div><span class="label">Ship Date</span>${order.shipDate || '-'}</div>
+            <div><span class="label">Ship Via</span>${formatShipVia(order.shipVia)}</div>
+            <div><span class="label">Tracking No.</span>${order.trackingNo || '-'}</div>
+            <div><span class="label">Invoice No.</span>${order.invoiceNo || '-'}</div>
             <div><span class="label">Quantity</span>${order.quantity}</div>
             ${canViewCostPrice ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
             <div><span class="label">Sale Price</span>${formatMoney(Number(order.price || 0))}</div>
@@ -1879,13 +2029,9 @@ export default function OrdersPage() {
                           </svg>
                         </OrderActionIconButton>
                         <OrderActionIconButton
-                          title={
-                            normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder
-                              ? 'Only internal reps and super admin can edit approved orders'
-                              : 'Edit Order'
-                          }
+                          title={canEditOrderByStatus(order.status, currentUserRole) ? 'Edit Order' : 'Order locked'}
                           onClick={() => openEditModal(order)}
-                          disabled={normalizeOrderStatus(order.status) === 'APPROVED' && !canEditApprovedOrder}
+                          disabled={!canEditOrderByStatus(order.status, currentUserRole)}
                         >
                           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 20h9" />
@@ -1907,7 +2053,7 @@ export default function OrdersPage() {
                             </svg>
                           )}
                         </OrderActionIconButton>
-                        {canUpdateOrderStatus && (
+                        {canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId) && (
                           <OrderActionIconButton
                             title="Change Status"
                             onClick={() => openOrderStatusChange(order)}
@@ -1926,12 +2072,25 @@ export default function OrdersPage() {
                             )}
                           </OrderActionIconButton>
                         )}
+                        {canSeeOrderHistory && (
+                          <OrderActionIconButton
+                            title="Order History"
+                            onClick={() => openOrderHistory(order)}
+                            className="border-violet-200 bg-violet-50 text-violet-700 hover:border-violet-300 hover:bg-violet-100 hover:text-violet-800"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 8v5l3 2" />
+                              <path d="M3.05 11a9 9 0 1 1 2.64 7" />
+                              <path d="M3 18h3v-3" />
+                            </svg>
+                          </OrderActionIconButton>
+                        )}
                         {order.isActive ? (
                           <OrderActionIconButton
                             title="Suspend Order"
                             onClick={() => toggleOrderActive(order, false)}
                             className="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={activeToggleOrderId === order.id}
+                            disabled={activeToggleOrderId === order.id || !canEditOrderByStatus(order.status, currentUserRole)}
                           >
                             {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
@@ -1947,7 +2106,7 @@ export default function OrdersPage() {
                             title="Resume Order"
                             onClick={() => toggleOrderActive(order, true)}
                             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={activeToggleOrderId === order.id}
+                            disabled={activeToggleOrderId === order.id || !canEditOrderByStatus(order.status, currentUserRole)}
                           >
                             {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
@@ -2004,6 +2163,7 @@ export default function OrdersPage() {
           onClose={() => {
             setShowAddModal(false);
             setEditingOrderId(null);
+            setEditingOrderStatus('');
             setEditOrderLoading(false);
             setEditingDesignNo('');
             setFormErrors({});
@@ -2594,6 +2754,7 @@ export default function OrdersPage() {
               onClick={() => {
                 setShowAddModal(false);
                 setEditingOrderId(null);
+                setEditingOrderStatus('');
                 setEditOrderLoading(false);
                 setEditingDesignNo('');
                 setFormErrors({});
@@ -2616,7 +2777,13 @@ export default function OrdersPage() {
         </Modal>
       )}
       {pendingOrderSaveChoice && (
-        <Modal title="How would you like to generate?" onClose={() => setPendingOrderSaveChoice(null)} size="max-w-md">
+        <Modal
+          title="How would you like to generate?"
+          onClose={() => {
+            if (!orderSaveChoiceSubmitting) setPendingOrderSaveChoice(null);
+          }}
+          size="max-w-md"
+        >
           <div className="space-y-4">
             <p className="text-sm leading-6 text-slate-600">
               Save this entry as a quote draft, or generate it as an order for the selected sales rep?
@@ -2628,7 +2795,7 @@ export default function OrdersPage() {
               <Button
                 variant="secondary"
                 type="button"
-                disabled={savingOrder}
+                disabled={savingOrder || Boolean(orderSaveChoiceSubmitting)}
                 onClick={() => setPendingOrderSaveChoice(null)}
               >
                 Cancel
@@ -2637,9 +2804,10 @@ export default function OrdersPage() {
                 <Button
                   variant="secondary"
                   type="button"
-                  disabled={savingOrder}
+                  disabled={savingOrder || Boolean(orderSaveChoiceSubmitting)}
                   onClick={async () => {
                     const payload = pendingOrderSaveChoice;
+                    setOrderSaveChoiceSubmitting('QUOTE');
                     setSavingOrder(true);
                     try {
                       await submitOrderPayload({ ...payload, orderType: 'QUOTE' });
@@ -2651,16 +2819,25 @@ export default function OrdersPage() {
                       showAlert(message, { title: 'Unable to save quote', variant: 'error' });
                     } finally {
                       setSavingOrder(false);
+                      setOrderSaveChoiceSubmitting(null);
                     }
                   }}
                 >
-                  Quote
+                  {orderSaveChoiceSubmitting === 'QUOTE' ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Quote'
+                  )}
                 </Button>
                 <Button
                   type="button"
-                  disabled={savingOrder}
+                  disabled={savingOrder || Boolean(orderSaveChoiceSubmitting)}
                   onClick={async () => {
                     const payload = pendingOrderSaveChoice;
+                    setOrderSaveChoiceSubmitting('ORDER');
                     setSavingOrder(true);
                     try {
                       await submitOrderPayload({ ...payload, orderType: 'ORDER' });
@@ -2672,13 +2849,86 @@ export default function OrdersPage() {
                       showAlert(message, { title: 'Unable to save order', variant: 'error' });
                     } finally {
                       setSavingOrder(false);
+                      setOrderSaveChoiceSubmitting(null);
                     }
                   }}
                 >
-                  Order
+                  {orderSaveChoiceSubmitting === 'ORDER' ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden="true" />
+                      Generating...
+                    </>
+                  ) : (
+                    'Order'
+                  )}
                 </Button>
               </div>
             </div>
+          </div>
+        </Modal>
+      )}
+      {historyOrder && (
+        <Modal title={`Order history - ${historyOrder.orderNumber}`} onClose={closeOrderHistory} size="max-w-3xl">
+          <div className="space-y-3">
+            {historyLoading && (
+              <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600">
+                Loading order history...
+              </div>
+            )}
+            {historyError && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+                {historyError}
+              </div>
+            )}
+            {!historyLoading && !historyError && historyRows.length === 0 && (
+              <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600">
+                No history recorded yet.
+              </div>
+            )}
+            {!historyLoading && !historyError && historyRows.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-[0.1em] text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-bold">Description</th>
+                      <th className="px-3 py-2 font-bold">Action</th>
+                      <th className="px-3 py-2 font-bold">User Name</th>
+                      <th className="px-3 py-2 font-bold">User Role</th>
+                      <th className="px-3 py-2 font-bold">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {historyRows.map((row) => {
+                      const visibleChanges = getVisibleHistoryChanges(row);
+                      return (
+                        <tr key={row.id} className="align-top">
+                          <td className="px-3 py-3">
+                            <div className="font-semibold text-slate-900">{row.summary}</div>
+                            {visibleChanges.length > 0 && (
+                              <div className="mt-2 space-y-1 text-xs text-slate-500">
+                                {visibleChanges.map((change, index) => (
+                                  <div key={`${row.id}-${change.field}-${index}`}>
+                                    <span className="font-semibold text-slate-600">{change.field}</span>
+                                    {': '}
+                                    {formatHistoryValue(change.oldValue)}
+                                    {' -> '}
+                                    {formatHistoryValue(change.newValue)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 font-semibold text-slate-800">{row.actionType}</td>
+                          <td className="px-3 py-3">{row.performedByName || 'Unknown user'}</td>
+                          <td className="px-3 py-3">{row.performedByRole || '-'}</td>
+                          <td className="px-3 py-3 whitespace-nowrap">{row.performedAt ? new Date(row.performedAt).toLocaleString() : '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -2699,13 +2949,90 @@ export default function OrdersPage() {
                 value={statusChangeTarget}
                 onChange={(event) => setStatusChangeTarget(event.target.value)}
               >
-                {orderStatusOptions.map((status) => (
+                {getAllowedOrderStatuses(
+                  statusChangeOrder.status,
+                  currentUserRole,
+                  statusChangeOrder.salesRepId,
+                  currentUserId,
+                ).map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
                 ))}
               </select>
             </div>
+            {statusChangeTarget === 'COMPLETED' && (
+              <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Ship Date *</label>
+                  <input
+                    type="date"
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                      completedShippingErrors.shipDate ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                    }`}
+                    value={completedShippingForm.shipDate}
+                    onChange={(event) => {
+                      setCompletedShippingForm((prev) => ({ ...prev, shipDate: event.target.value }));
+                      setCompletedShippingErrors((prev) => ({ ...prev, shipDate: undefined }));
+                    }}
+                  />
+                  {completedShippingErrors.shipDate && <p className="mt-1 text-xs font-medium text-rose-600">{completedShippingErrors.shipDate}</p>}
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Ship Via *</label>
+                  <select
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                      completedShippingErrors.shipVia ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                    }`}
+                    value={completedShippingForm.shipVia}
+                    onChange={(event) => {
+                      setCompletedShippingForm((prev) => ({ ...prev, shipVia: event.target.value }));
+                      setCompletedShippingErrors((prev) => ({ ...prev, shipVia: undefined }));
+                    }}
+                  >
+                    <option value="">Select Ship Via</option>
+                    {SHIP_VIA_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  {completedShippingErrors.shipVia && <p className="mt-1 text-xs font-medium text-rose-600">{completedShippingErrors.shipVia}</p>}
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Tracking No. *</label>
+                  <input
+                    type="text"
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                      completedShippingErrors.trackingNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                    }`}
+                    value={completedShippingForm.trackingNo}
+                    onChange={(event) => {
+                      setCompletedShippingForm((prev) => ({ ...prev, trackingNo: event.target.value }));
+                      setCompletedShippingErrors((prev) => ({ ...prev, trackingNo: undefined }));
+                    }}
+                    placeholder="Enter tracking no."
+                  />
+                  {completedShippingErrors.trackingNo && <p className="mt-1 text-xs font-medium text-rose-600">{completedShippingErrors.trackingNo}</p>}
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Invoice No. *</label>
+                  <input
+                    type="text"
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
+                      completedShippingErrors.invoiceNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                    }`}
+                    value={completedShippingForm.invoiceNo}
+                    onChange={(event) => {
+                      setCompletedShippingForm((prev) => ({ ...prev, invoiceNo: event.target.value }));
+                      setCompletedShippingErrors((prev) => ({ ...prev, invoiceNo: undefined }));
+                    }}
+                    placeholder="Enter invoice no."
+                  />
+                  {completedShippingErrors.invoiceNo && <p className="mt-1 text-xs font-medium text-rose-600">{completedShippingErrors.invoiceNo}</p>}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" type="button" onClick={closeOrderStatusChange}>
                 Cancel
@@ -2729,6 +3056,14 @@ export default function OrdersPage() {
               <span className="font-semibold">{pendingOrderStatusChange.from}</span> to{' '}
               <span className="font-semibold">{pendingOrderStatusChange.to}</span>?
             </p>
+            {pendingOrderStatusChange.shipping && (
+              <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                <div><span className="font-semibold text-slate-700">Ship Date:</span> {pendingOrderStatusChange.shipping.shipDate}</div>
+                <div><span className="font-semibold text-slate-700">Ship Via:</span> {formatShipVia(pendingOrderStatusChange.shipping.shipVia)}</div>
+                <div><span className="font-semibold text-slate-700">Tracking No.:</span> {pendingOrderStatusChange.shipping.trackingNo}</div>
+                <div><span className="font-semibold text-slate-700">Invoice No.:</span> {pendingOrderStatusChange.shipping.invoiceNo}</div>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 variant="secondary"
@@ -3014,6 +3349,30 @@ export default function OrdersPage() {
               <label className="text-sm font-medium text-slate-700">Delivery Date</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.deliveryDate || '-'}
+              </div>
+              </div>
+              <div>
+              <label className="text-sm font-medium text-slate-700">Ship Date</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.shipDate || '-'}
+              </div>
+              </div>
+              <div>
+              <label className="text-sm font-medium text-slate-700">Ship Via</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {formatShipVia(viewOrder?.shipVia)}
+              </div>
+              </div>
+              <div>
+              <label className="text-sm font-medium text-slate-700">Tracking No.</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.trackingNo || '-'}
+              </div>
+              </div>
+              <div>
+              <label className="text-sm font-medium text-slate-700">Invoice No.</label>
+              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {viewOrder?.invoiceNo || '-'}
               </div>
               </div>
               <div>

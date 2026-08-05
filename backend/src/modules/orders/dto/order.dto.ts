@@ -61,6 +61,22 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  shipDate?: string;
+
+  @IsOptional()
+  @IsIn(['UPS', 'FED_EX', 'HAND_DELIVERY', 'OTHER'])
+  shipVia?: 'UPS' | 'FED_EX' | 'HAND_DELIVERY' | 'OTHER';
+
+  @IsOptional()
+  @IsString()
+  trackingNo?: string;
+
+  @IsOptional()
+  @IsString()
+  invoiceNo?: string;
 }
 
 export class UpdateOrderDto {
@@ -121,6 +137,22 @@ export class UpdateOrderDto {
   notes?: string;
 
   @IsOptional()
+  @IsString()
+  shipDate?: string;
+
+  @IsOptional()
+  @IsIn(['UPS', 'FED_EX', 'HAND_DELIVERY', 'OTHER'])
+  shipVia?: 'UPS' | 'FED_EX' | 'HAND_DELIVERY' | 'OTHER';
+
+  @IsOptional()
+  @IsString()
+  trackingNo?: string;
+
+  @IsOptional()
+  @IsString()
+  invoiceNo?: string;
+
+  @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
 
@@ -176,8 +208,8 @@ export class FindOrdersQueryDto {
   includeStatusCounts?: 'true' | 'false';
 
   @IsOptional()
-  @IsIn(['FULFILLED', 'SHIPPED_OR_COMPLETED'])
-  statusGroup?: 'FULFILLED' | 'SHIPPED_OR_COMPLETED';
+  @IsIn(['FULFILLED', 'COMPLETED'])
+  statusGroup?: 'FULFILLED' | 'COMPLETED';
 
   @IsOptional()
   @IsIn(['TODAY', 'WEEKLY', 'MONTHLY', 'ANNUALLY'])
@@ -218,6 +250,22 @@ export class FindPurchaseOrderUsageQueryDto {
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
   status: OrderStatus;
+
+  @IsOptional()
+  @IsString()
+  shipDate?: string;
+
+  @IsOptional()
+  @IsIn(['UPS', 'FED_EX', 'HAND_DELIVERY', 'OTHER'])
+  shipVia?: 'UPS' | 'FED_EX' | 'HAND_DELIVERY' | 'OTHER';
+
+  @IsOptional()
+  @IsString()
+  trackingNo?: string;
+
+  @IsOptional()
+  @IsString()
+  invoiceNo?: string;
 }
 
 export class UpdateOrderActiveStatusDto {

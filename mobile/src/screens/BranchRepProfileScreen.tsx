@@ -73,7 +73,6 @@ const PLACED_STATUSES = new Set([
   'PENDING_APPROVAL',
   'APPROVED',
   'IN_PRODUCTION',
-  'SHIPPED',
   'COMPLETED',
 ]);
 
@@ -83,7 +82,7 @@ const statusPill = (status?: string | null) => {
   const key = normalizeStatus(status);
   if (key === 'APPROVED') return { bg: '#E7F2EA', border: '#BFD9C8', text: '#2C7B4D', label: 'Approved' };
   if (key === 'IN_PRODUCTION') return { bg: '#EAF1FD', border: '#BFD2F1', text: '#3D6CAF', label: 'In Prod.' };
-  if (key === 'SHIPPED' || key === 'COMPLETED') return { bg: '#ECE9F9', border: '#D1C8EE', text: '#6551A5', label: 'Shipped' };
+  if (key === 'COMPLETED') return { bg: '#ECE9F9', border: '#D1C8EE', text: '#6551A5', label: 'Completed' };
   if (key === 'PENDING_APPROVAL') return { bg: '#F8F5F0', border: '#DCCFC0', text: '#2A221C', label: 'Pending' };
   return { bg: '#F6EFE6', border: '#E7D4B7', text: '#8C7048', label: 'Quote' };
 };

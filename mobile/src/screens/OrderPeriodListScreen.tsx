@@ -55,7 +55,7 @@ const formatOrderDate = (value?: string | null) => {
 const normalizeStatus = (value?: string | null) => {
   const status = compact(value).toUpperCase();
   if (status === 'IN_PRODUCTION' || status === 'PRODUCTION') return 'IN_PRODUCTION';
-  if (status === 'SHIPPED' || status === 'COMPLETED') return 'SHIPPED';
+  if (status === 'COMPLETED') return 'COMPLETED';
   return status === 'APPROVED' ? 'APPROVED' : status;
 };
 const statusLabel = (value?: string | null) => {
@@ -86,7 +86,7 @@ const parseSelection = (value?: string | null): QuoteSummaryPayload['selection']
 
 const pillColors = (status?: string | null) => {
   const key = normalizeStatus(status);
-  if (key === 'SHIPPED') return { bg: '#E8EFFC', border: '#BED1F1', text: '#3E6FA8' };
+  if (key === 'COMPLETED') return { bg: '#E8EFFC', border: '#BED1F1', text: '#3E6FA8' };
   if (key === 'IN_PRODUCTION') return { bg: '#EAF1FD', border: '#BFD2F1', text: '#3D6CAF' };
   return { bg: '#E7F2EA', border: '#BFD9C8', text: '#2C7B4D' };
 };

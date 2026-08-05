@@ -597,14 +597,25 @@ const DesignsScreen = () => {
               {catalogTitle}
             </Text>
 
-            <TouchableOpacity style={styles.bellBtn} activeOpacity={0.85} onPress={handleOpenNotifications}>
-              <Ionicons name="notifications-outline" size={18} color="#7A6E61" />
-              {notificationCount > 0 ? (
-                <View style={styles.bellBadge}>
-                  <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.bellBtn}
+                activeOpacity={0.85}
+                onPress={refreshDesigns}
+                disabled={loading}
+              >
+                <Ionicons name="refresh-outline" size={18} color={loading ? '#BBAFA4' : '#7A6E61'} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.bellBtn} activeOpacity={0.85} onPress={handleOpenNotifications}>
+                <Ionicons name="notifications-outline" size={18} color="#7A6E61" />
+                {notificationCount > 0 ? (
+                  <View style={styles.bellBadge}>
+                    <Text style={styles.bellBadgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.searchShell}>
@@ -873,6 +884,11 @@ const styles = StyleSheet.create({
     fontSize: 19,
     color: '#443D35',
     fontWeight: '700',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   bellBtn: {
     width: 34,

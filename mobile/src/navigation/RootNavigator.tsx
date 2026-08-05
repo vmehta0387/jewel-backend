@@ -108,7 +108,7 @@ export type DesignsStackParamList = {
 };
 
 export type OrdersStackParamList = {
-  Orders: { initialFilter?: 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'SHIPPED' | 'CANCELLED' } | undefined;
+  Orders: { initialFilter?: 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'COMPLETED' | 'CANCELLED' } | undefined;
   OrderPeriodList: { initialPeriod?: 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY'; openKey?: number } | undefined;
   OrderDetail: { orderId: string };
   QuoteBuilder: { draft: QuoteBuilderDraft };

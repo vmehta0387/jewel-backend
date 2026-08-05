@@ -99,6 +99,10 @@ export type Order = {
   price: number;
   quantity: number;
   deliveryDate?: string | null;
+  shipDate?: string | null;
+  shipVia?: string | null;
+  trackingNo?: string | null;
+  invoiceNo?: string | null;
   shortDescription?: string | null;
   notes?: string | null;
   customerName?: string | null;

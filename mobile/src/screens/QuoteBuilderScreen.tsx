@@ -34,7 +34,7 @@ import type { Design, Order } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
-import { salesRepRequiresApproval } from '../utils/permissions';
+import { canEditOrderByStatus, getOrderSubmitStatus, normalizeOrderStatus } from '../utils/orderLifecycle';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -754,9 +754,8 @@ const QuoteBuilderScreen = () => {
     handleDropdownSelect,
   ]);
 
-  const currentOrderStatus = String(order?.status || draft.status || '').toUpperCase();
-  const canEditApprovedOrder = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
-  const isApprovedOrderLocked = currentOrderStatus === 'APPROVED' && !canEditApprovedOrder;
+  const currentOrderStatus = normalizeOrderStatus(order?.status || draft.status || '');
+  const isOrderLocked = !canEditOrderByStatus(currentOrderStatus, user?.role);
   const canPersist = Boolean(
     token
     && companyId
@@ -764,7 +763,7 @@ const QuoteBuilderScreen = () => {
     && !saving
     && !sending
     && !loadingFamily
-    && !isApprovedOrderLocked,
+    && !isOrderLocked,
   );
 
   const clearCustomerError = useCallback((field: keyof CustomerFieldErrors) => {
@@ -806,8 +805,8 @@ const QuoteBuilderScreen = () => {
   const persistOrder = useCallback(
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
       if (!token || !companyId || !branchId) return null;
-      if (isApprovedOrderLocked) {
-        setError('Only internal reps and super admin can edit approved orders.');
+      if (isOrderLocked) {
+        setError('This order cannot be changed in its current status.');
         return null;
       }
       if (!(await confirmPurchaseOrderReuse({
@@ -820,8 +819,7 @@ const QuoteBuilderScreen = () => {
       }))) {
         return null;
       }
-      const requiresApproval = salesRepRequiresApproval(user);
-      const effectiveStatus = nextStatus === 'PENDING_APPROVAL' ? (requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION') : nextStatus;
+      const effectiveStatus = getOrderSubmitStatus(nextStatus, user?.role);
 
       const payload = {
         designId: activeDesign?.id || draft.designId,
@@ -883,7 +881,7 @@ const QuoteBuilderScreen = () => {
       customerPhone,
       customerEmail,
       notes,
-      isApprovedOrderLocked,
+      isOrderLocked,
       user,
     ],
   );
@@ -1194,10 +1192,10 @@ const QuoteBuilderScreen = () => {
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        {isApprovedOrderLocked ? (
+        {isOrderLocked ? (
           <View style={styles.lockedOrderNotice}>
             <Ionicons name="lock-closed-outline" size={14} color="#8A7C6B" />
-            <Text style={styles.lockedOrderNoticeText}>Only internal reps and super admin can edit approved orders.</Text>
+            <Text style={styles.lockedOrderNoticeText}>This order cannot be changed in its current status.</Text>
           </View>
         ) : null}
         <View style={styles.bottomActionsRow}>

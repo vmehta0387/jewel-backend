@@ -71,6 +71,18 @@ export class Order {
   @Column({ name: 'completed_at', type: 'datetime', nullable: true })
   completedAt: Date | null;
 
+  @Column({ name: 'ship_date', type: 'date', nullable: true })
+  shipDate: string | null;
+
+  @Column({ name: 'ship_via', type: 'varchar', length: 50, nullable: true })
+  shipVia: string | null;
+
+  @Column({ name: 'tracking_no', type: 'varchar', length: 120, nullable: true })
+  trackingNo: string | null;
+
+  @Column({ name: 'invoice_no', type: 'varchar', length: 120, nullable: true })
+  invoiceNo: string | null;
+
   @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })
   company: Company;

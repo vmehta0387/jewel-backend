@@ -3,19 +3,18 @@ import { Link } from 'react-router-dom';
 import loginLogo from '../../assets/login-logo.png';
 
 const contents = [
-  'Scope',
-  'Information We Collect',
-  'How We Use Information',
-  'Administrator Managed Accounts',
-  'Information Sharing',
-  'Data Security',
-  'Data Retention',
-  'Your Privacy Rights',
+  'Overview',
+  'User Registration',
+  'Secure Sign In',
+  'Jewelry Catalog',
+  'Product Information',
+  'Quotation Creation',
+  'Sales Orders',
+  'Spiff Rewards',
+  'AI Assistant',
+  'Notifications',
   'Account Deletion',
-  "Children's Privacy",
-  'Third-Party Services',
-  'Changes to this Privacy Policy',
-  'Contact Us',
+  'Security',
 ];
 
 export default function PrivacyPolicyPage() {
@@ -43,258 +42,89 @@ export default function PrivacyPolicyPage() {
                 BLITZ NYC
               </p>
               <h1 className="max-w-3xl text-4xl font-black leading-tight tracking-tight text-[#171311] sm:text-5xl">
-                Privacy Policy
+                BLITZ NYC
               </h1>
               <div className="mt-5 grid gap-3 text-sm font-semibold text-[#766b60] sm:grid-cols-3">
-                <p>
-                  <span className="block text-xs uppercase text-[#a3978b]">Effective Date</span>
-                  July 22, 2026
-                </p>
-                <p>
-                  <span className="block text-xs uppercase text-[#a3978b]">Last Updated</span>
-                  July 22, 2026
-                </p>
                 <p>
                   <span className="block text-xs uppercase text-[#a3978b]">Application</span>
                   Blitz NYC
                 </p>
+                <p>
+                  <span className="block text-xs uppercase text-[#a3978b]">Audience</span>
+                  Jewelry sales representatives
+                </p>
+                <p>
+                  <span className="block text-xs uppercase text-[#a3978b]">Access</span>
+                  Approved accounts only
+                </p>
               </div>
             </div>
 
-            <PolicySection title="Introduction">
+            <PolicySection title="Overview">
               <p>
-                Blitz NYC ("we", "our", "us") respects your privacy and is committed to
-                protecting your personal information. This Privacy Policy explains how information
-                is collected, used, stored, protected and deleted when you use our mobile
-                application and related services.
+                BLITZ NYC is a mobile application built for <strong>jewelry sales representatives</strong> to explore catalogs and manage sales activities.
+              </p>
+              <p>
+                To use the application, sales representatives must first register by submitting their information. Every registration request is reviewed and approved by <strong>BLITZ NYC</strong>. Once approved, users can securely sign in and access the platform.
+              </p>
+              <p>
+                BLITZ NYC publishes jewelry catalogs within the application. Registered sales representatives can browse the catalog, view product images, specifications, and pricing information. The pricing displayed in the application is intended to help sales representatives prepare quotations and sales orders. It is provided for business reference only and is not intended for direct online purchases.
+              </p>
+              <p>
+                Sales representatives can create quotations, view quotation details and status, create sales orders, and earn <strong>Spiff Rewards</strong> based on the value of the sales orders they generate through the platform.
+              </p>
+              <p>
+                The application also includes an <strong>AI-powered assistant</strong> that helps sales representatives quickly find matching jewelry from the available catalog. Sales representatives can describe the jewelry they are looking for by providing specifications such as jewelry type, style, metal, stone, or other product details. The AI assistant searches the available catalog and suggests the closest matching jewelry items.
+              </p>
+              <p>
+                If a sales representative no longer wishes to use the application, they can submit an account deletion request directly from the app. BLITZ NYC reviews and verifies every request before permanently deleting the account.
               </p>
             </PolicySection>
 
-            <PolicySection title="1. Scope">
-              <p>
-                This Privacy Policy applies to all users of the Blitz NYC mobile application,
-                website, and related services.
-              </p>
-            </PolicySection>
+            <PolicySection title="Features">
+              <FeatureBlock title="User Registration">
+                Register by submitting your information. Every registration request is reviewed and approved by BLITZ NYC before access to the platform is granted.
+              </FeatureBlock>
 
-            <PolicySection title="2. Information We Collect">
-              <PolicyList
-                items={[
-                  'Employee Name',
-                  'Business Email Address',
-                  'Business Phone Number',
-                  'Profile Photo',
-                  'Company Name',
-                  'Branch Information',
-                  'Job Title',
-                  'User Role',
-                  'Customer Name',
-                  'Customer Email Address',
-                  'Customer Phone Number',
-                  'Product Images',
-                  'CAD, STL and Other Business Documents uploaded by authorized users',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="Secure Sign In">
+                Securely sign in using your approved account credentials to access the application and all available features.
+              </FeatureBlock>
 
-            <PolicySection title="3. How We Use Information">
-              <PolicyList
-                items={[
-                  'Create and manage user accounts.',
-                  'Authenticate users.',
-                  'Provide application services.',
-                  'Improve application functionality.',
-                  'Maintain security.',
-                  'Respond to customer support requests.',
-                  'Comply with applicable laws.',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="Jewelry Catalog">
+                Browse jewelry catalogs published by BLITZ NYC with product images, specifications, and pricing information for reference and quotation purposes.
+              </FeatureBlock>
 
-            <PolicySection title="4. Administrator Managed Accounts">
-              <div className="rounded-2xl border-l-4 border-[#b1843f] bg-[#fff7ea] p-5 text-[#4d4238]">
-                <p>Blitz NYC is designed for organizations.</p>
-                <p>
-                  Users <strong>cannot create accounts themselves.</strong> Every account is
-                  created and managed by an authorized Organization Administrator.
-                </p>
-                <p>
-                  If you require access to the application, please contact your Organization
-                  Administrator.
-                </p>
-              </div>
-            </PolicySection>
+              <FeatureBlock title="Product Information">
+                View product images, specifications, and pricing information to better understand the jewelry available in the catalog.
+              </FeatureBlock>
 
-            <PolicySection title="5. Information Sharing">
-              <p>We do not sell your personal information.</p>
-              <p>Information may only be shared:</p>
-              <PolicyList
-                items={[
-                  'With your Organization Administrator.',
-                  'With service providers who help operate our services.',
-                  'When required by law.',
-                  'To protect our legal rights and security.',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="Quotation Creation">
+                Create quotations for customers and view quotation details and their current status directly within the application.
+              </FeatureBlock>
 
-            <PolicySection title="6. Data Security">
-              <PolicyList
-                items={[
-                  'Password encryption is implemented.',
-                  'JWT-based authentication is used.',
-                  'Role-based access control is enforced.',
-                  'Access is restricted to authorized personnel.',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="Sales Orders">
+                Create sales orders from the jewelry catalog and view order details and current status at any time.
+              </FeatureBlock>
 
-            <PolicySection title="7. Data Retention">
-              <p>
-                Personal information is retained only for as long as necessary to:
-              </p>
-              <PolicyList
-                items={[
-                  'Provide our services.',
-                  'Maintain organization records.',
-                  'Meet legal obligations.',
-                  'Resolve disputes.',
-                  'Prevent fraud.',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="Spiff Rewards">
+                Earn Spiff Rewards based on the value of the sales orders you generate through the platform.
+              </FeatureBlock>
 
-            <PolicySection title="8. Your Privacy Rights">
-              <p>You may request:</p>
-              <PolicyList
-                items={[
-                  'Access to your personal information.',
-                  'Correction of inaccurate information.',
-                  'Deletion of your account.',
-                  'Deletion of associated personal information.',
-                ]}
-              />
-            </PolicySection>
+              <FeatureBlock title="AI Assistant">
+                Describe the jewelry you need using specifications, and the AI assistant searches the catalog to suggest matching jewelry items.
+              </FeatureBlock>
 
-            <PolicySection title="9. Account Deletion">
-              <h3>How to Request Account Deletion</h3>
-              <ol className="list-decimal space-y-2 pl-5 font-semibold">
-                <li>Contact your Organization Administrator.</li>
-                <li>
-                  Or contact us at{' '}
-                  <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:info@clariondiamonds.com">
-                    info@clariondiamonds.com
-                  </a>
-                  .
-                </li>
-                <li>After identity verification, your request will be processed.</li>
-              </ol>
+              <FeatureBlock title="Notifications">
+                Receive notifications about quotation updates, sales order updates, approvals, and other important platform activities.
+              </FeatureBlock>
 
-              <h3>Data Deleted</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] border-collapse text-left text-sm">
-                  <thead>
-                    <tr>
-                      <th className="border border-[#e4d7c7] bg-[#b1843f] px-4 py-3 font-black text-white">
-                        Information
-                      </th>
-                      <th className="border border-[#e4d7c7] bg-[#b1843f] px-4 py-3 font-black text-white">
-                        Deleted
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[
-                      ['User Account', 'Yes'],
-                      ['Profile Information', 'Yes'],
-                      ['Email Address', 'Yes'],
-                      ['Phone Number', 'Yes'],
-                      ['User Generated Data', 'Yes (unless retention is legally required)'],
-                    ].map(([information, deleted]) => (
-                      <tr key={information}>
-                        <td className="border border-[#e4d7c7] px-4 py-3 font-semibold">{information}</td>
-                        <td className="border border-[#e4d7c7] px-4 py-3">{deleted}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <FeatureBlock title="Account Deletion">
+                Submit an account deletion request directly from the application. BLITZ NYC reviews every request before permanently deleting the account.
+              </FeatureBlock>
 
-              <h3>Data That May Be Retained</h3>
-              <p>
-                Some information may be retained for up to <strong>1-2 working days</strong> after
-                account deletion for:
-              </p>
-              <PolicyList
-                items={[
-                  'Fraud prevention',
-                  'Security investigations',
-                  'Backup recovery',
-                  'Legal compliance',
-                ]}
-              />
-              <p>
-                After the retention period expires, retained personal information is permanently
-                deleted unless a longer retention period is required by applicable law.
-              </p>
-            </PolicySection>
-
-            <PolicySection title="10. Children's Privacy">
-              <p>
-                Blitz NYC is intended solely for authorized employees and representatives of
-                organizations aged 18 years or older. The application is not intended for children,
-                and we do not knowingly collect personal information from individuals under 18 years
-                of age.
-              </p>
-            </PolicySection>
-
-            <PolicySection title="11. Third-Party Services">
-              <p>
-                The application may use trusted third-party services (such as cloud hosting,
-                analytics, crash reporting, or push notifications) solely to operate and improve the
-                application.
-              </p>
-            </PolicySection>
-
-            <PolicySection title="12. Changes to this Privacy Policy">
-              <p>
-                We may update this Privacy Policy periodically. Changes become effective when
-                published on this page.
-              </p>
-            </PolicySection>
-
-            <PolicySection title="13. Contact Us">
-              <address className="not-italic text-[#5b5148]">
-                Developer:
-                <br />
-                Clarion USA Inc.
-                <br />
-                <br />
-                Website:
-                <br />
-                <a
-                  className="font-bold text-[#9a6f33] hover:text-[#6f4a18]"
-                  href="https://www.clariondiamonds.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  https://www.clariondiamonds.com/
-                </a>
-                <br />
-                <br />
-                Support Email:
-                <br />
-                <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:info@clariondiamonds.com">
-                  info@clariondiamonds.com
-                </a>
-                <br />
-                <br />
-                Business Contact:
-                <br />
-                <a className="font-bold text-[#9a6f33] hover:text-[#6f4a18]" href="mailto:prateek@clariondiamonds.com">
-                  prateek@clariondiamonds.com
-                </a>
-              </address>
+              <FeatureBlock title="Security">
+                Access is available only to registered and approved sales representatives. BLITZ NYC uses secure authentication to help protect user information and provide secure access to the platform.
+              </FeatureBlock>
             </PolicySection>
 
             <footer className="mt-10 border-t border-[#eee5da] pt-6 text-center text-sm font-semibold text-[#766b60]">
@@ -332,14 +162,11 @@ function PolicySection({ title, children }: { title: string; children: ReactNode
   );
 }
 
-function PolicyList({ items }: { items: string[] }) {
+function FeatureBlock({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <ul className="grid gap-2 sm:grid-cols-2">
-      {items.map((item) => (
-        <li key={item} className="rounded-xl border border-[#eee5da] bg-[#fbf8f3] px-4 py-3 font-semibold text-[#5b5148]">
-          {item}
-        </li>
-      ))}
-    </ul>
+    <section className="rounded-2xl border border-[#eee5da] bg-[#fbf8f3] p-5">
+      <h3>{title}</h3>
+      <p>{children}</p>
+    </section>
   );
 }

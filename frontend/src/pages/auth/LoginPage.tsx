@@ -6,7 +6,7 @@ import api from '../../services/api';
 import { saveAuthSession } from '../../utils/auth';
 import loginLogo from '../../assets/login-logo.png';
 
-const ADMIN_PORTAL_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN', 'BRANCH_MANAGER']);
+const ADMIN_PORTAL_ALLOWED_ROLES = new Set(['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']);
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -30,10 +30,7 @@ export default function LoginPage() {
       }
       saveAuthSession(response.data.accessToken, nextUser);
 
-      const roleDefaultRoute =
-        nextUser.role === 'COMPANY_ADMIN' || nextUser.role === 'BRANCH_MANAGER'
-          ? '/orders'
-          : '/dashboard';
+      const roleDefaultRoute = nextUser.role === 'COMPANY_ADMIN' ? '/orders' : '/dashboard';
       const redirectTo = (location.state as { from?: string } | undefined)?.from || roleDefaultRoute;
       navigate(redirectTo, { replace: true });
     } catch (err) {

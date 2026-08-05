@@ -47,7 +47,7 @@ const getTone = (item: NotificationItem): NotificationTone => {
   if (type.includes('APPROVAL_REQUIRED') || type.includes('PENDING_APPROVAL') || type.includes('APPROVED')) {
     return 'alertGold';
   }
-  if (type.includes('SHIPPED') || type.includes('FULFILLED') || type.includes('COMPLETED')) {
+  if (type.includes('FULFILLED') || type.includes('COMPLETED')) {
     return 'info';
   }
   if (type.includes('CREATED') || type.includes('SUBMITTED')) {

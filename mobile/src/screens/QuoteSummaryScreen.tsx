@@ -26,7 +26,7 @@ import type { Design, Order } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
-import { salesRepRequiresApproval } from '../utils/permissions';
+import { canApproveOrderByStatus, canEditOrderByStatus, getOrderSubmitStatus } from '../utils/orderLifecycle';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
@@ -67,8 +67,6 @@ const statusLabel = (status?: string) => {
       return 'Approved';
     case 'IN_PRODUCTION':
       return 'In Production';
-    case 'SHIPPED':
-      return 'Shipped';
     case 'COMPLETED':
       return 'Completed';
     case 'CANCELLED':
@@ -405,14 +403,14 @@ const QuoteSummaryScreen = () => {
 
   const statusFlow = useMemo(() => {
     const key = normalizeStatus(currentStatus);
-    const pendingDone = ['PENDING_APPROVAL', 'APPROVED', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED'].includes(key);
-    const approvedDone = ['APPROVED', 'IN_PRODUCTION', 'SHIPPED', 'COMPLETED'].includes(key);
-    const shippedDone = ['SHIPPED', 'COMPLETED'].includes(key);
+    const pendingDone = ['PENDING_APPROVAL', 'APPROVED', 'IN_PRODUCTION', 'COMPLETED'].includes(key);
+    const approvedDone = ['APPROVED', 'IN_PRODUCTION', 'COMPLETED'].includes(key);
+    const completedDone = key === 'COMPLETED';
     return {
       created: true,
       pending: pendingDone,
       approved: approvedDone,
-      shipped: shippedDone,
+      completed: completedDone,
     };
   }, [currentStatus]);
 
@@ -429,8 +427,7 @@ const QuoteSummaryScreen = () => {
     setSending(true);
     setError(null);
     try {
-      const requiresApproval = salesRepRequiresApproval(user);
-      const targetStatus = requiresApproval ? 'PENDING_APPROVAL' : 'IN_PRODUCTION';
+      const targetStatus = getOrderSubmitStatus('PENDING_APPROVAL', user?.role);
 
       const payload = {
         designId: displaySummary.designId,
@@ -494,11 +491,10 @@ const QuoteSummaryScreen = () => {
       setOrderId(nextOrderId);
       setOrderNumber(nextOrderNumber);
       setCurrentStatus(targetStatus);
-      if (requiresApproval) {
-        Alert.alert('Sent', 'Order sent for approval.');
-      } else {
-        Alert.alert('Success', 'Order placed successfully and sent directly to Production.');
-      }
+      Alert.alert(
+        targetStatus === 'APPROVED' ? 'Approved' : 'Sent',
+        targetStatus === 'APPROVED' ? 'Order approved successfully.' : 'Order sent for approval.',
+      );
     } catch (err: any) {
       setError(err?.message || 'Unable to process order.');
     } finally {
@@ -507,10 +503,8 @@ const QuoteSummaryScreen = () => {
   }, [token, user, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection]);
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
-  const isBranchManager = user?.role === 'BRANCH_MANAGER';
-  const canEditApprovedOrder = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
-  const canModifyCurrentOrder = statusKey !== 'APPROVED' || canEditApprovedOrder;
+  const canModifyCurrentOrder = canEditOrderByStatus(statusKey, user?.role);
 
   const handleBackToOrders = useCallback(() => {
     (navigation as any).navigate('OrdersTab', {
@@ -589,13 +583,12 @@ const QuoteSummaryScreen = () => {
 
   const actionConfig = useMemo(() => {
     if (statusKey === 'QUOTE') {
-      const requiresApproval = salesRepRequiresApproval(user);
       return {
         primaryLabel: sending
           ? 'Processing...'
-          : requiresApproval
-          ? 'Send for Approval ->'
-          : 'Place Order (In Prod.) ->',
+          : canApproveOrderByStatus('PENDING_APPROVAL', user?.role)
+          ? 'Approve Order ->'
+          : 'Send for Approval ->',
         primaryDisabled: sending,
         leftLabel: 'Edit Order',
         leftIcon: 'create-outline' as const,
@@ -617,9 +610,9 @@ const QuoteSummaryScreen = () => {
         leftIcon: 'document-text-outline' as const,
       };
     }
-    if (statusKey === 'SHIPPED' || statusKey === 'COMPLETED') {
+    if (statusKey === 'COMPLETED') {
       return {
-        primaryLabel: 'Order Shipped',
+        primaryLabel: 'Order Completed',
         primaryDisabled: true,
         leftLabel: 'Order Details',
         leftIcon: 'checkmark-circle-outline' as const,
@@ -645,7 +638,7 @@ const QuoteSummaryScreen = () => {
 
   const handleModifyOrder = useCallback(() => {
     if (!canModifyCurrentOrder) {
-      setError('Only internal reps and super admin can edit approved orders.');
+      setError('This order cannot be changed in its current status.');
       return;
     }
 
@@ -704,7 +697,7 @@ const QuoteSummaryScreen = () => {
     [orderId, token],
   );
 
-  const showManagerPendingActions = isBranchManager && statusKey === 'PENDING_APPROVAL';
+  const showManagerPendingActions = canApproveOrderByStatus(statusKey, user?.role);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -799,7 +792,7 @@ const QuoteSummaryScreen = () => {
           ) : (
             <View style={styles.modifyLockedBox}>
               <Ionicons name="lock-closed-outline" size={14} color="#93826F" />
-              <Text style={styles.modifyLockedText}>Only internal reps and super admin can edit approved orders.</Text>
+              <Text style={styles.modifyLockedText}>This order cannot be changed in its current status.</Text>
             </View>
           )}
         </View>
@@ -846,10 +839,10 @@ const QuoteSummaryScreen = () => {
               </View>
               <View style={styles.statusLine} />
               <View style={styles.statusStep}>
-                <View style={[styles.statusDot, statusFlow.shipped ? styles.statusDotDoneNeutral : null]}>
-                  {statusFlow.shipped ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
+                <View style={[styles.statusDot, statusFlow.completed ? styles.statusDotDoneNeutral : null]}>
+                  {statusFlow.completed ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
                 </View>
-                <Text style={[styles.statusText, statusFlow.shipped ? styles.statusTextDoneNeutral : null]}>Shipped</Text>
+                <Text style={[styles.statusText, statusFlow.completed ? styles.statusTextDoneNeutral : null]}>Completed</Text>
               </View>
             </View>
           )}

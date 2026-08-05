@@ -3,7 +3,7 @@ import { API_BASE_URL } from '../config';
 import type { OrdersResponse, Order } from '../types';
 
 export type OrderPeriod = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
-export type OrderStatusGroup = 'FULFILLED' | 'SHIPPED_OR_COMPLETED';
+export type OrderStatusGroup = 'FULFILLED' | 'COMPLETED';
 export type OrderPeriodSummary = Record<'today' | 'weekly' | 'monthly' | 'annually', { count: number; totalAmount: number }>;
 export type FetchOrdersOptions = {
   period?: OrderPeriod;
@@ -51,7 +51,6 @@ export const fetchOrderSummary = (token: string) =>
       pending: number;
       approved: number;
       inProduction: number;
-      shipped: number;
       completed: number;
       cancelled: number;
     };
@@ -122,6 +121,10 @@ export type CreateOrderPayload = {
   quantity: number;
   price: number;
   deliveryDate?: string;
+  shipDate?: string;
+  shipVia?: 'UPS' | 'FED_EX' | 'HAND_DELIVERY' | 'OTHER' | string;
+  trackingNo?: string;
+  invoiceNo?: string;
   shortDescription?: string;
   purchaseOrderNumber?: string;
   customerName?: string;
