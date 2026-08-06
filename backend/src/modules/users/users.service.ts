@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -21,7 +22,7 @@ import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-employee.dto';
-import { CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
+import { CheckUserHandleQueryDto, CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import {
@@ -34,6 +35,7 @@ export interface UserResponse {
   email: string;
   firstName: string;
   lastName: string;
+  userHandle: string | null;
   role: UserRole;
   companyId: string | null;
   branchId: string | null;
@@ -81,7 +83,7 @@ interface UserImportRow {
 }
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
@@ -170,6 +172,24 @@ export class UsersService {
   };
 
   private readonly companyAdminManagedRoles: UserRole[] = [UserRole.BRANCH_MANAGER, UserRole.SALES_REP];
+
+  async onModuleInit() {
+    await this.ensureUserHandleColumn();
+  }
+
+  private async ensureUserHandleColumn() {
+    try {
+      await this.userRepo.query('ALTER TABLE users ADD COLUMN user_handle varchar(255) NULL');
+    } catch {
+      // Ignored when the column already exists.
+    }
+
+    try {
+      await this.userRepo.query('CREATE UNIQUE INDEX idx_users_user_handle ON users (user_handle)');
+    } catch {
+      // Ignored when the index already exists.
+    }
+  }
 
   async findAll(query: FindUsersQueryDto = {}, requester?: AuthUser): Promise<UserResponse[]> {
     const usersQuery = this.userRepo
@@ -304,6 +324,25 @@ export class UsersService {
     );
   }
 
+  async checkUserHandleAvailability(query: CheckUserHandleQueryDto): Promise<{
+    available: boolean;
+    normalizedUserHandle: string | null;
+    message?: string;
+  }> {
+    const normalizedUserHandle = this.normalizeUserHandle(query.userHandle);
+    if (!normalizedUserHandle) {
+      return { available: true, normalizedUserHandle };
+    }
+
+    const existing = await this.userRepo.findOne({ where: { userHandle: normalizedUserHandle } });
+    const available = !existing || existing.id === query.excludeUserId;
+    return {
+      available,
+      normalizedUserHandle,
+      message: available ? undefined : 'User handle name alreday exit. try other please',
+    };
+  }
+
   async findOne(id: string, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({
       where: { id },
@@ -344,6 +383,10 @@ export class UsersService {
 
     const normalizedEmail = this.normalizeEmail(dto.email);
     await this.ensureEmailAvailable(normalizedEmail);
+    const normalizedUserHandle = this.normalizeUserHandle(dto.userHandle);
+    if (normalizedUserHandle) {
+      await this.ensureUserHandleAvailable(normalizedUserHandle);
+    }
 
     const scopedOrg = await this.resolveScope(dto.role, dto.companyId, dto.branchId);
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -360,6 +403,7 @@ export class UsersService {
       passwordHash,
       firstName: dto.firstName.trim(),
       lastName: dto.lastName.trim(),
+      userHandle: normalizedUserHandle,
       role: dto.role,
       companyId: scopedOrg.companyId,
       branchId: scopedOrg.branchId,
@@ -417,6 +461,14 @@ export class UsersService {
 
     if (dto.lastName !== undefined) {
       user.lastName = dto.lastName.trim();
+    }
+
+    if (dto.userHandle !== undefined) {
+      const normalizedUserHandle = this.normalizeUserHandle(dto.userHandle);
+      if (normalizedUserHandle && normalizedUserHandle !== user.userHandle) {
+        await this.ensureUserHandleAvailable(normalizedUserHandle, id);
+      }
+      user.userHandle = normalizedUserHandle;
     }
 
     if (dto.phone !== undefined) {
@@ -1052,6 +1104,13 @@ export class UsersService {
     }
   }
 
+  private async ensureUserHandleAvailable(userHandle: string, excludeUserId?: string): Promise<void> {
+    const existing = await this.userRepo.findOne({ where: { userHandle } });
+    if (existing && existing.id !== excludeUserId) {
+      throw new ConflictException('User handle name alreday exit. try other please');
+    }
+  }
+
   private async ensureCompanyExists(companyId: string): Promise<void> {
     const company = await this.companyRepo.findOne({ where: { id: companyId } });
     if (!company) {
@@ -1197,6 +1256,11 @@ export class UsersService {
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private normalizeUserHandle(userHandle?: string | null): string | null {
+    const normalized = String(userHandle || '').trim().toLowerCase();
+    return normalized || null;
   }
 
   private workbookToBuffer(workbook: XLSX.WorkBook): Buffer {
@@ -1512,6 +1576,7 @@ export class UsersService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      userHandle: user.userHandle || null,
       role: user.role,
       companyId: user.companyId || null,
       branchId: user.branchId || null,

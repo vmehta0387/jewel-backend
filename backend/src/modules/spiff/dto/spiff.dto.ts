@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -29,6 +30,8 @@ export enum ClaimReviewAction {
   REJECT = 'REJECT',
   HOLD = 'HOLD',
 }
+
+export type SpiffPointAdjustmentAction = 'ADD' | 'REMOVE' | 'REDEEM';
 
 export class SpiffLeaderboardQueryDto {
   @IsOptional()
@@ -104,6 +107,14 @@ export class FindSpiffActivityQueryDto {
 }
 
 export class CreateSpiffClaimDto {
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsIn(['ADD', 'REMOVE', 'REDEEM'])
+  action?: SpiffPointAdjustmentAction;
+
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
@@ -112,6 +123,23 @@ export class CreateSpiffClaimDto {
   @IsOptional()
   @IsString()
   giftCardType?: string;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class CreateSpiffPointAdjustmentDto {
+  @IsString()
+  userId: string;
+
+  @IsIn(['ADD', 'REMOVE', 'REDEEM'])
+  action: SpiffPointAdjustmentAction;
+
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  points: number;
 
   @IsOptional()
   @IsString()

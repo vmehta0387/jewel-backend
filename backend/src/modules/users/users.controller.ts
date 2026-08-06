@@ -21,11 +21,17 @@ import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
-import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
-import { CreateUserDto, FindUsersQueryDto, UpdateUserDto, UpdateUserStatusDto } from './dto/user.dto';
+import {
+  CheckUserHandleQueryDto,
+  CreateUserDto,
+  FindUsersQueryDto,
+  UpdateUserDto,
+  UpdateUserStatusDto,
+} from './dto/user.dto';
 
 @UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard)
 @TaskPermissions(TaskPermission.USER_MANAGEMENT)
@@ -52,6 +58,13 @@ export class UsersController {
   @ActionPermissions()
   findLookup(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
     return this.usersService.findLookup(query, req.user);
+  }
+
+  @Get('user-handle/check')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @AnyActionPermissions('user.view', 'user.create', 'user.edit')
+  checkUserHandle(@Query() query: CheckUserHandleQueryDto) {
+    return this.usersService.checkUserHandleAvailability(query);
   }
 
   @Get('export/template')

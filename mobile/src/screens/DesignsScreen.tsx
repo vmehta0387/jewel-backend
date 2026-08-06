@@ -522,13 +522,21 @@ const DesignsScreen = () => {
 
   const activeFilterCount = useMemo(() => {
     let count = 0;
-    if (selectedCategory !== 'All') count += 1;
+    const presetCategory = route.params?.presetCategory;
+    if (selectedCategory !== 'All' && toLower(selectedCategory) !== toLower(presetCategory)) count += 1;
     if (selectedCollection !== 'All') count += 1;
     if (selectedShape !== 'All') count += 1;
     if (selectedDiamondType !== 'All') count += 1;
     if (selectedPriceBand !== 'ALL') count += 1;
     return count;
-  }, [selectedCategory, selectedCollection, selectedShape, selectedDiamondType, selectedPriceBand]);
+  }, [
+    route.params?.presetCategory,
+    selectedCategory,
+    selectedCollection,
+    selectedShape,
+    selectedDiamondType,
+    selectedPriceBand,
+  ]);
 
   const openSortMenu = useCallback(() => {
     setDraftSearch(search);

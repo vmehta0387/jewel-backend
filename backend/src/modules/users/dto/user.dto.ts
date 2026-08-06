@@ -26,6 +26,15 @@ export class FindUsersQueryDto {
   branchId?: string;
 }
 
+export class CheckUserHandleQueryDto {
+  @IsString()
+  userHandle: string;
+
+  @IsOptional()
+  @IsString()
+  excludeUserId?: string;
+}
+
 export class UserPermissionActionDto {
   @IsString()
   actionKey: string;
@@ -48,6 +57,10 @@ export class CreateUserDto {
 
   @IsString()
   lastName: string;
+
+  @IsOptional()
+  @IsString()
+  userHandle?: string | null;
 
   @IsEnum(UserRole)
   role: UserRole;
@@ -101,6 +114,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  userHandle?: string | null;
 
   @IsOptional()
   @IsEnum(UserRole)

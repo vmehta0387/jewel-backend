@@ -22,6 +22,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { SpiffService } from './spiff.service';
 import {
   CreateSpiffClaimDto,
+  CreateSpiffPointAdjustmentDto,
   FindSpiffActivityQueryDto,
   FindSpiffClaimsQueryDto,
   FulfillSpiffClaimDto,
@@ -92,12 +93,32 @@ export class SpiffController {
 
   @Post('claims')
   @TaskPermissions(TaskPermission.ORDER_ENTRIES)
-  @AnyActionPermissions('spiff.claim.create', 'mobile.spiff.claim.create')
-  createClaim(
+  @AnyActionPermissions('spiff.claim.create', 'mobile.spiff.claim.create', 'spiff.claim.review', 'mobile.spiff.claim.review')
+  updatePoints(
     @Body() dto: CreateSpiffClaimDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.spiffService.createClaim(dto, req.user);
+    return this.spiffService.updatePoints(dto, req.user);
+  }
+
+  @Post('point-adjustments')
+  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @AnyActionPermissions('spiff.claim.review', 'mobile.spiff.claim.review')
+  createPointAdjustment(
+    @Body() dto: CreateSpiffPointAdjustmentDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.spiffService.updatePoints(dto, req.user);
+  }
+
+  @Get('users/:userId/wallet')
+  @TaskPermissions(TaskPermission.ORDER_ENTRIES)
+  @AnyActionPermissions('spiff.claim.review', 'mobile.spiff.claim.review')
+  getUserWallet(
+    @Param('userId') userId: string,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.spiffService.getUserWallet(userId, req.user);
   }
 
   @Patch('claims/:id/review')

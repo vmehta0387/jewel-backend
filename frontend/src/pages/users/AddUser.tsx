@@ -28,6 +28,7 @@ interface BranchOption {
 interface FormState {
   firstName: string;
   lastName: string;
+  userHandle: string;
   email: string;
   password: string;
   role: UserRole;
@@ -81,6 +82,7 @@ export default function AddUser() {
   const [formData, setFormData] = useState<FormState>({
     firstName: '',
     lastName: '',
+    userHandle: '',
     email: '',
     password: '',
     role: presetRole,
@@ -96,6 +98,19 @@ export default function AddUser() {
   const canCustomizePermissions = Boolean(
     currentUser && hasActionPermission(currentUser, 'user.permissions.manage') && formData.role !== 'SUPER_ADMIN',
   );
+
+  const focusValidationError = (nextErrors: Record<string, string>) => {
+    const fieldKey = Object.keys(nextErrors).find((key) => key !== 'submit');
+    if (!fieldKey) return;
+
+    window.requestAnimationFrame(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[name="${fieldKey}"], [data-validation-key="${fieldKey}"]`,
+      );
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target?.focus?.();
+    });
+  };
 
   useEffect(() => {
     fetchCompanies();
@@ -171,7 +186,11 @@ export default function AddUser() {
     }
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    if (Object.keys(nextErrors).length > 0) {
+      focusValidationError(nextErrors);
+      return false;
+    }
+    return true;
   };
 
   const handleRoleChange = (role: UserRole) => {
@@ -188,9 +207,50 @@ export default function AddUser() {
     }));
   };
 
+  const validateUserHandleAvailability = async (focusOnError = false) => {
+    const userHandle = formData.userHandle.trim();
+    if (!userHandle) {
+      setErrors((prev) => {
+        const { userHandle: _userHandle, ...rest } = prev;
+        return rest;
+      });
+      return true;
+    }
+
+    try {
+      const response = await api.get('/users/user-handle/check', {
+        params: { userHandle },
+      });
+      if (!response.data?.available) {
+        const nextErrors = {
+          ...errors,
+          userHandle: response.data?.message || 'User handle name alreday exit. try other please',
+        };
+        setErrors((prev) => ({
+          ...prev,
+          userHandle: response.data?.message || 'User handle name alreday exit. try other please',
+        }));
+        if (focusOnError) {
+          focusValidationError(nextErrors);
+        }
+        return false;
+      }
+      setErrors((prev) => {
+        const { userHandle: _userHandle, ...rest } = prev;
+        return rest;
+      });
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!validateForm()) {
+      return;
+    }
+    if (!(await validateUserHandleAvailability(true))) {
       return;
     }
 
@@ -202,6 +262,7 @@ export default function AddUser() {
       const payload: Record<string, unknown> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
+        userHandle: formData.userHandle.trim() || null,
         email: formData.email.trim().toLowerCase(),
         password: formData.password,
         role: formData.role,
@@ -220,7 +281,11 @@ export default function AddUser() {
       navigate('/users');
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-      setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Failed to create user' });
+      const text = Array.isArray(message) ? message.join(', ') : message || 'Failed to create user';
+      const nextErrors: Record<string, string> =
+        text === 'User handle name alreday exit. try other please' ? { userHandle: text } : { submit: text };
+      setErrors(nextErrors);
+      focusValidationError(nextErrors);
     } finally {
       setIsSubmitting(false);
     }
@@ -277,6 +342,7 @@ export default function AddUser() {
         <Card title="User Information">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Input
+              name="firstName"
               label="First Name *"
               value={formData.firstName}
               onChange={(event) => setFormData({ ...formData, firstName: event.target.value })}
@@ -285,6 +351,7 @@ export default function AddUser() {
               required
             />
             <Input
+              name="lastName"
               label="Last Name *"
               value={formData.lastName}
               onChange={(event) => setFormData({ ...formData, lastName: event.target.value })}
@@ -293,6 +360,16 @@ export default function AddUser() {
               required
             />
             <Input
+              name="userHandle"
+              label="User Handle"
+              value={formData.userHandle}
+              onChange={(event) => setFormData({ ...formData, userHandle: event.target.value })}
+              onBlur={() => void validateUserHandleAvailability()}
+              placeholder="For Global Spiff's Leaderboard. Avoid using real name"
+              error={errors.userHandle}
+            />
+            <Input
+              name="email"
               label="Email *"
               type="email"
               value={formData.email}
@@ -302,6 +379,7 @@ export default function AddUser() {
               required
             />
             <Input
+              name="password"
               label="Password *"
               type="password"
               value={formData.password}
@@ -311,6 +389,7 @@ export default function AddUser() {
               required
             />
             <Input
+              name="phone"
               label="Phone"
               value={formData.phone}
               onChange={(event) => setFormData({ ...formData, phone: event.target.value })}
@@ -373,6 +452,7 @@ export default function AddUser() {
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
               <select
+                name="role"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 value={formData.role}
                 onChange={(event) => handleRoleChange(event.target.value as UserRole)}
@@ -389,6 +469,7 @@ export default function AddUser() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
                 <select
+                  name="companyId"
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
                     errors.companyId ? 'border-red-500' : 'border-gray-300'
                   }`}
@@ -413,6 +494,7 @@ export default function AddUser() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
                 <select
+                  name="branchId"
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
                     errors.branchId ? 'border-red-500' : 'border-gray-300'
                   }`}
@@ -434,6 +516,7 @@ export default function AddUser() {
         </Card>
 
         <Card title="Permissions">
+          <div data-validation-key="taskPermissions" tabIndex={-1}>
           <PermissionMatrix
             value={formData.taskPermissions}
             detailedValue={formData.detailedPermissions}
@@ -445,6 +528,7 @@ export default function AddUser() {
             onChange={(taskPermissions) => setFormData((prev) => ({ ...prev, taskPermissions }))}
             onDetailedChange={(detailedPermissions) => setFormData((prev) => ({ ...prev, detailedPermissions }))}
           />
+          </div>
         </Card>
 
         <div className="flex gap-3 sticky bottom-0 bg-white py-4 border-t">

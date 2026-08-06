@@ -341,6 +341,15 @@ const toDateInputValue = (value?: string | Date | null): string => {
   if (Number.isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
+const addDays = (value: string | Date | null | undefined, days: number): Date => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+const getExpectedDeliveryDefault = (createdAt?: string | Date | null): string => toDateInputValue(addDays(createdAt, 28));
+const getExpectedDeliveryMin = (createdAt?: string | Date | null): string => toDateInputValue(addDays(createdAt, 14));
 const formatWeight = (value?: number | null): string => Number(value || 0).toFixed(3);
 const formatDesignLabel = (designNo?: string | null, version?: string | null): string => {
   const safeNo = String(designNo || '').trim();
@@ -533,7 +542,7 @@ export default function OrdersPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<OrderFormState>(defaultForm);
   const [formErrors, setFormErrors] = useState<OrderFormErrors>({});
-  const [deliveryDateMin, setDeliveryDateMin] = useState(() => toDateInputValue());
+  const [deliveryDateMin, setDeliveryDateMin] = useState(() => getExpectedDeliveryMin());
   const [orderNumber, setOrderNumber] = useState('');
   const [editingDesignNo, setEditingDesignNo] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
@@ -1097,9 +1106,9 @@ export default function OrdersPage() {
     setEditingOrderId(null);
     setEditingOrderStatus('');
     setEditingDesignNo('');
-    setForm(roleScopedDefaultForm);
+    setForm({ ...roleScopedDefaultForm, deliveryDate: getExpectedDeliveryDefault() });
     setFormErrors({});
-    setDeliveryDateMin(toDateInputValue());
+    setDeliveryDateMin(getExpectedDeliveryMin());
     resetConfiguratorState();
     await loadOrders();
   };
@@ -1127,9 +1136,9 @@ export default function OrdersPage() {
       nextErrors.designId = 'Design is required.';
     }
     if (!form.deliveryDate) {
-      nextErrors.deliveryDate = 'Delivery date is required.';
+      nextErrors.deliveryDate = 'Expected delivery date is required.';
     } else if (deliveryDateMin && form.deliveryDate < deliveryDateMin) {
-      nextErrors.deliveryDate = 'Delivery date cannot be before order creation date.';
+      nextErrors.deliveryDate = 'Expected delivery date cannot be within 2 weeks of order creation date.';
     }
     if (!form.price || Number(form.price) <= 0) {
       nextErrors.price = 'Sale Price @ is required.';
@@ -1305,20 +1314,20 @@ export default function OrdersPage() {
     setEditingDesignNo(order.designNo || '');
     setPriceManuallyEdited(false);
     setFormErrors({});
-    setDeliveryDateMin(toDateInputValue(order.createdAt));
+    setDeliveryDateMin(getExpectedDeliveryMin(order.createdAt));
     setOrderNumber(order.orderNumber || '');
     resetConfiguratorState();
 
     try {
       const { detail, design } = await fetchOrderWithDesign(order.id);
       setEditingDesignNo(detail.designNo || order.designNo || '');
-      setDeliveryDateMin(toDateInputValue(detail.createdAt || order.createdAt));
+      setDeliveryDateMin(getExpectedDeliveryMin(detail.createdAt || order.createdAt));
       setForm({
         companyId: detail.companyId || '',
         branchId: detail.branchId || '',
         salesRepId: detail.salesRepId || '',
         designId: detail.designId || '',
-        deliveryDate: detail.deliveryDate || '',
+        deliveryDate: detail.deliveryDate || getExpectedDeliveryDefault(detail.createdAt || order.createdAt),
         status: normalizeOrderStatus(detail.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
         price: detail.price !== undefined && detail.price !== null ? String(detail.price) : '',
         quantity: detail.quantity !== undefined && detail.quantity !== null ? String(detail.quantity) : '1',
@@ -1345,7 +1354,7 @@ export default function OrdersPage() {
         branchId: order.branchId || '',
         salesRepId: order.salesRepId || '',
         designId: order.designId || '',
-        deliveryDate: order.deliveryDate || '',
+        deliveryDate: order.deliveryDate || getExpectedDeliveryDefault(order.createdAt),
         status: normalizeOrderStatus(order.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
         price: order.price !== undefined && order.price !== null ? String(order.price) : '',
         quantity: order.quantity !== undefined && order.quantity !== null ? String(order.quantity) : '1',
@@ -1771,7 +1780,7 @@ export default function OrdersPage() {
             <div><span class="label">Company</span>${order.companyName || '-'}</div>
             <div><span class="label">Branch</span>${order.branchName || '-'}</div>
             <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
-            <div><span class="label">Delivery Date</span>${order.deliveryDate || '-'}</div>
+            <div><span class="label">Expected Delivery Date</span>${order.deliveryDate || '-'}</div>
             <div><span class="label">Ship Date</span>${order.shipDate || '-'}</div>
             <div><span class="label">Ship Via</span>${formatShipVia(order.shipVia)}</div>
             <div><span class="label">Tracking No.</span>${order.trackingNo || '-'}</div>
@@ -1879,9 +1888,9 @@ export default function OrdersPage() {
             onClick={() => {
               setEditingOrderId(null);
               setEditingDesignNo('');
-              setForm(roleScopedDefaultForm);
+              setForm({ ...roleScopedDefaultForm, deliveryDate: getExpectedDeliveryDefault() });
               setFormErrors({});
-              setDeliveryDateMin(toDateInputValue());
+              setDeliveryDateMin(getExpectedDeliveryMin());
               resetConfiguratorState();
               setBranches([]);
               setPriceManuallyEdited(false);
@@ -2167,7 +2176,7 @@ export default function OrdersPage() {
             setEditOrderLoading(false);
             setEditingDesignNo('');
             setFormErrors({});
-            setDeliveryDateMin(toDateInputValue());
+            setDeliveryDateMin(getExpectedDeliveryMin());
             resetConfiguratorState();
           }}
           size="max-w-7xl"
@@ -2399,7 +2408,7 @@ export default function OrdersPage() {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-slate-700">Delivery Date*</label>
+                    <label className="text-sm font-medium text-slate-700">Expected Delivery Date*</label>
                     <input
                       type="date"
                       className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
@@ -2418,7 +2427,7 @@ export default function OrdersPage() {
                         if (value && deliveryDateMin && value < deliveryDateMin) {
                           setFormErrors((prev) => ({
                             ...prev,
-                            deliveryDate: 'Delivery date cannot be before order creation date.',
+                            deliveryDate: 'Expected delivery date cannot be within 2 weeks of order creation date.',
                           }));
                         } else if (value) {
                           setFormErrors((prev) => ({ ...prev, deliveryDate: undefined }));
@@ -2758,7 +2767,7 @@ export default function OrdersPage() {
                 setEditOrderLoading(false);
                 setEditingDesignNo('');
                 setFormErrors({});
-                setDeliveryDateMin(toDateInputValue());
+                setDeliveryDateMin(getExpectedDeliveryMin());
                 resetConfiguratorState();
               }}
             >
@@ -3346,7 +3355,7 @@ export default function OrdersPage() {
               </div>
               </div>
               <div>
-              <label className="text-sm font-medium text-slate-700">Delivery Date</label>
+              <label className="text-sm font-medium text-slate-700">Expected Delivery Date</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewOrder?.deliveryDate || '-'}
               </div>

@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
+  createSpiffPointAdjustment,
   createSpiffClaim,
   fetchSpiffActivity,
   fulfillSpiffClaim,
@@ -27,7 +28,9 @@ import {
   reviewSpiffClaim,
   type SpiffActivityItem,
   type SpiffClaim,
+  type SpiffPointAdjustmentAction,
 } from '../api/spiff';
+import { fetchUserLookup, type LookupUser } from '../api/users';
 import type { DashboardStackParamList } from '../navigation/RootNavigator';
 import { hasActionPermission, hasAnyActionPermission } from '../utils/permissions';
 
@@ -81,6 +84,12 @@ const SCROLL_LOAD_OFFSET = 260;
 type SalesRepPanel = 'COMPANY_BOARD' | 'GLOBAL_BOARD' | 'REDEEM' | 'ACTIVITY';
 type BranchManagerPanel = 'BRANCH_BOARD' | 'COMPANY_BOARD';
 type CompanyAdminClaimFilter = 'ALL' | 'PENDING_REVIEW' | 'APPROVED' | 'FULFILLED';
+type RepFilterOption = { id: string; label: string };
+
+const POINT_ACTION_OPTIONS: Array<{ key: SpiffPointAdjustmentAction; label: string }> = [
+  { key: 'ADD', label: 'Add' },
+  { key: 'REMOVE', label: 'Remove' },
+];
 
 const COMPANY_FILTER_STATUS: Record<CompanyAdminClaimFilter, string[] | null> = {
   ALL: null,
@@ -130,6 +139,7 @@ const SpiffRewardsScreen = () => {
   const canReviewClaim = hasAnyActionPermission(user, ['mobile.spiff.claim.review', 'spiff.claim.review']);
   const canFulfillClaim = hasActionPermission(user, 'spiff.claim.fulfill');
   const canViewLeaderboard = hasAnyActionPermission(user, ['mobile.spiff.leaderboard.view', 'spiff.view']);
+  const canAdjustPoints = canReviewClaim;
 
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -150,6 +160,13 @@ const SpiffRewardsScreen = () => {
   const claimsLoadingRef = useRef(false);
   const activityLoadingRef = useRef(false);
 
+  const [salesReps, setSalesReps] = useState<LookupUser[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState('');
+  const [selectedPointAction, setSelectedPointAction] = useState<SpiffPointAdjustmentAction>('ADD');
+  const [selectedRepCompanyId, setSelectedRepCompanyId] = useState('ALL');
+  const [selectedRepBranchId, setSelectedRepBranchId] = useState('ALL');
+  const [repDropdownOpen, setRepDropdownOpen] = useState(false);
+  const [advancedRepFiltersOpen, setAdvancedRepFiltersOpen] = useState(false);
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -183,7 +200,7 @@ const SpiffRewardsScreen = () => {
     setLoadingMoreActivity(false);
 
     try {
-      const [configRes, summaryRes, leaderboardRes, claimsRes, activityRes] = await Promise.all([
+      const [configRes, summaryRes, leaderboardRes, claimsRes, activityRes, salesRepsRes] = await Promise.all([
         fetchSpiffConfig(token),
         fetchSpiffSummary(token),
         canViewLeaderboard
@@ -202,6 +219,9 @@ const SpiffRewardsScreen = () => {
           : Promise.resolve(null),
         fetchSpiffClaims(token, 1, SPIFF_PAGE_LIMIT),
         fetchSpiffActivity(token, 1, SPIFF_PAGE_LIMIT),
+        canAdjustPoints
+          ? fetchUserLookup(token, { role: 'SALES_REP', status: 'ACTIVE' }).catch(() => [])
+          : Promise.resolve([]),
       ]);
       let secondaryBoardRes: any = null;
       if (canViewLeaderboard && user?.role === 'SALES_REP') {
@@ -236,13 +256,14 @@ const SpiffRewardsScreen = () => {
       setActivity(activityRes.data || []);
       setActivityPage(Number(activityRes.page || 1));
       setActivityTotalPages(Math.max(1, Number(activityRes.totalPages || 1)));
+      setSalesReps(salesRepsRes || []);
     } catch (error: any) {
       Alert.alert('SPIFF', error?.message || 'Unable to load SPIFF data right now.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token, canViewSpiff, canViewLeaderboard, user?.role]);
+  }, [token, canViewSpiff, canViewLeaderboard, canAdjustPoints, user?.role]);
 
   useFocusEffect(
     useCallback(() => {
@@ -380,6 +401,64 @@ const SpiffRewardsScreen = () => {
     }
   }, [token, canCreateClaim, requestedPoints, minRedeemPoints, note, load]);
 
+  const submitPointAdjustment = useCallback(async () => {
+    if (!token || !canAdjustPoints) return;
+    if (!selectedSalesRepId) {
+      const message = 'Select a sales rep.';
+      setClaimError(message);
+      Alert.alert('Unable to update points', message);
+      return;
+    }
+
+    const points = Math.round(Number(requestedPoints || 0) * 100) / 100;
+    if (!Number.isFinite(points) || points <= 0) {
+      const message = 'Enter valid points.';
+      setClaimError(message);
+      Alert.alert('Unable to update points', message);
+      return;
+    }
+
+    const selectedRepForConfirm = salesReps.find((rep) => rep.id === selectedSalesRepId);
+    const repName =
+      String(selectedRepForConfirm?.userHandle || '').trim() ||
+      String(selectedRepForConfirm?.firstName || '').trim() ||
+      selectedRepForConfirm?.email ||
+      'selected sales rep';
+    Alert.alert(
+      'Confirm update',
+      `Confirm ${selectedPointAction} ${formatPoints(points)} points for ${repName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Update Points',
+          onPress: async () => {
+            setClaimError(null);
+            setSubmitting(true);
+            try {
+              await createSpiffPointAdjustment(token, {
+                userId: selectedSalesRepId,
+                action: selectedPointAction,
+                points,
+                note: note.trim() || undefined,
+              });
+              setRequestedPoints('');
+              setNote('');
+              setClaimError(null);
+              await load(true);
+              Alert.alert('Points updated', `${selectedPointAction === 'REMOVE' ? 'Removed' : selectedPointAction === 'REDEEM' ? 'Redeemed' : 'Added'} ${formatPoints(points)} points.`);
+            } catch (error: any) {
+              const message = error?.message || 'Unable to update points right now.';
+              setClaimError(message);
+              Alert.alert('SPIFF', message);
+            } finally {
+              setSubmitting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [token, canAdjustPoints, selectedSalesRepId, requestedPoints, selectedPointAction, note, load, salesReps]);
+
   const nextTierHint = useMemo(() => {
     const nextTierAt = Number(summary?.tier?.nextTierAt || 0);
     const totalEarned = Number(summary?.wallet?.totalEarnedPoints || 0);
@@ -455,6 +534,235 @@ const SpiffRewardsScreen = () => {
     }
     return map;
   }, [leaderboard?.entries]);
+  const repCompanyOptions = useMemo<RepFilterOption[]>(() => {
+    const map = new Map<string, string>();
+    salesReps.forEach((rep) => {
+      const id = String(rep.company?.id || rep.companyId || '').trim();
+      const label = String(rep.company?.companyName || rep.companyName || '').trim();
+      if (id && label) map.set(id, label);
+    });
+    return [{ id: 'ALL', label: 'All Companies' }, ...Array.from(map, ([id, label]) => ({ id, label }))];
+  }, [salesReps]);
+  const repBranchOptions = useMemo<RepFilterOption[]>(() => {
+    const map = new Map<string, string>();
+    salesReps.forEach((rep) => {
+      const companyId = String(rep.company?.id || rep.companyId || '').trim();
+      if (selectedRepCompanyId !== 'ALL' && companyId !== selectedRepCompanyId) return;
+      const id = String(rep.branch?.id || rep.branchId || '').trim();
+      const label = String(rep.branch?.name || rep.branchName || '').trim();
+      if (id && label) map.set(id, label);
+    });
+    return [{ id: 'ALL', label: 'All Branches' }, ...Array.from(map, ([id, label]) => ({ id, label }))];
+  }, [salesReps, selectedRepCompanyId]);
+  const filteredSalesReps = useMemo(() => {
+    return salesReps.filter((rep) => {
+      const companyId = String(rep.company?.id || rep.companyId || '').trim();
+      const branchId = String(rep.branch?.id || rep.branchId || '').trim();
+      if (selectedRepCompanyId !== 'ALL' && companyId !== selectedRepCompanyId) return false;
+      if (selectedRepBranchId !== 'ALL' && branchId !== selectedRepBranchId) return false;
+      return true;
+    });
+  }, [salesReps, selectedRepBranchId, selectedRepCompanyId]);
+  const selectedSalesRep = useMemo(
+    () => salesReps.find((rep) => rep.id === selectedSalesRepId) || null,
+    [salesReps, selectedSalesRepId],
+  );
+  const getRepHandle = useCallback((rep: any) => String(rep?.userHandle || '').trim(), []);
+  const getRepPersonName = useCallback((rep: any) => {
+    return [rep?.firstName, rep?.lastName].filter(Boolean).join(' ').trim() || rep?.email || 'Sales Rep';
+  }, []);
+  const getRepSpiffName = useCallback((rep: any) => {
+    return getRepHandle(rep) || String(rep?.firstName || '').trim() || rep?.email || 'Sales Rep';
+  }, [getRepHandle]);
+
+  React.useEffect(() => {
+    if (selectedRepBranchId === 'ALL') return;
+    if (!repBranchOptions.some((option) => option.id === selectedRepBranchId)) {
+      setSelectedRepBranchId('ALL');
+    }
+  }, [repBranchOptions, selectedRepBranchId]);
+
+  React.useEffect(() => {
+    if (!selectedSalesRepId) return;
+    if (!filteredSalesReps.some((rep) => rep.id === selectedSalesRepId)) {
+      setSelectedSalesRepId('');
+    }
+  }, [filteredSalesReps, selectedSalesRepId]);
+
+  const renderPointAdjustmentForm = () => {
+    if (!canAdjustPoints) return null;
+    const repLabel = selectedSalesRep
+      ? getRepSpiffName(selectedSalesRep)
+      : 'Select Sales Rep';
+    const repMeta = selectedSalesRep
+      ? [selectedSalesRep.company?.companyName || selectedSalesRep.companyName, selectedSalesRep.branch?.name || selectedSalesRep.branchName]
+          .filter(Boolean)
+          .join(' - ')
+      : '';
+
+    return (
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Update Points</Text>
+        <Text style={styles.sectionSub}>Select a sales rep, action, and point amount</Text>
+
+        <TouchableOpacity
+          style={styles.advancedToggle}
+          activeOpacity={0.85}
+          onPress={() => setAdvancedRepFiltersOpen((value) => !value)}
+        >
+          <Text style={styles.advancedToggleText}>Advanced Filter</Text>
+          <Ionicons name={advancedRepFiltersOpen ? 'chevron-up' : 'chevron-down'} size={15} color="#6E6258" />
+        </TouchableOpacity>
+
+        {advancedRepFiltersOpen ? (
+          <>
+            <Text style={styles.fieldLabel}>Company</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adjustmentChipRow}>
+              {repCompanyOptions.map((option) => {
+                const selected = selectedRepCompanyId === option.id;
+                return (
+                  <TouchableOpacity
+                    key={`rep-company-${option.id}`}
+                    style={[styles.adjustmentChip, selected ? styles.adjustmentChipActive : null]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSelectedRepCompanyId(option.id);
+                      setSelectedRepBranchId('ALL');
+                    }}
+                  >
+                    <Text style={[styles.adjustmentChipText, selected ? styles.adjustmentChipTextActive : null]}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={styles.fieldLabel}>Branch</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adjustmentChipRow}>
+              {repBranchOptions.map((option) => {
+                const selected = selectedRepBranchId === option.id;
+                return (
+                  <TouchableOpacity
+                    key={`rep-branch-${option.id}`}
+                    style={[styles.adjustmentChip, selected ? styles.adjustmentChipActive : null]}
+                    activeOpacity={0.85}
+                    onPress={() => setSelectedRepBranchId(option.id)}
+                  >
+                    <Text style={[styles.adjustmentChipText, selected ? styles.adjustmentChipTextActive : null]}>{option.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        ) : null}
+
+        <Text style={styles.fieldLabel}>Sales Rep</Text>
+        <TouchableOpacity
+          style={[styles.dropdownButton, !selectedSalesRepId && claimError ? styles.inputError : null]}
+          activeOpacity={0.85}
+          onPress={() => setRepDropdownOpen((value) => !value)}
+        >
+          <View style={styles.dropdownTextWrap}>
+            <Text style={styles.dropdownValue} numberOfLines={1}>{repLabel}</Text>
+            {repMeta ? <Text style={styles.dropdownMeta} numberOfLines={1}>{repMeta}</Text> : null}
+          </View>
+          <Ionicons name={repDropdownOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#6E6258" />
+        </TouchableOpacity>
+
+        {repDropdownOpen ? (
+          <View style={styles.dropdownList}>
+            {filteredSalesReps.length ? (
+              filteredSalesReps.map((rep) => {
+                const selected = rep.id === selectedSalesRepId;
+                const name = getRepPersonName(rep);
+                const handle = getRepHandle(rep) || String(rep.firstName || '').trim() || 'Sales Rep';
+                const meta = [rep.company?.companyName || rep.companyName, rep.branch?.name || rep.branchName].filter(Boolean).join(' - ');
+                return (
+                  <TouchableOpacity
+                    key={rep.id}
+                    style={[styles.dropdownOption, selected ? styles.dropdownOptionActive : null]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSelectedSalesRepId(rep.id);
+                      setRepDropdownOpen(false);
+                      setClaimError(null);
+                    }}
+                  >
+                    <View style={styles.dropdownTextWrap}>
+                      <View style={styles.dropdownOptionNameRow}>
+                        <Text style={[styles.dropdownOptionText, selected ? styles.dropdownOptionTextActive : null]} numberOfLines={1}>
+                          {name}
+                        </Text>
+                        <Text style={[styles.dropdownOptionHandle, selected ? styles.dropdownOptionTextActive : null]} numberOfLines={1}>
+                          {handle}
+                        </Text>
+                      </View>
+                      {meta ? <Text style={styles.dropdownMeta} numberOfLines={1}>{meta}</Text> : null}
+                    </View>
+                    {selected ? <Ionicons name="checkmark-circle" size={16} color="#9C7127" /> : null}
+                  </TouchableOpacity>
+                );
+              })
+            ) : (
+              <Text style={styles.emptyText}>No sales reps found for this filter.</Text>
+            )}
+          </View>
+        ) : null}
+
+        <Text style={styles.fieldLabel}>Action</Text>
+        <View style={styles.actionSegment}>
+          {POINT_ACTION_OPTIONS.map((option) => {
+            const selected = selectedPointAction === option.key;
+            return (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.actionSegmentBtn, selected ? styles.actionSegmentBtnActive : null]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setSelectedPointAction(option.key);
+                  setClaimError(null);
+                }}
+              >
+                <Text style={[styles.actionSegmentText, selected ? styles.actionSegmentTextActive : null]}>{option.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Point to {selectedPointAction.toLowerCase()}</Text>
+        <View style={styles.pointsActionRow}>
+          <TouchableOpacity style={styles.pointsActionPrefix} activeOpacity={0.85}>
+            <Text style={styles.pointsActionPrefixText}>{selectedPointAction}</Text>
+          </TouchableOpacity>
+          <TextInput
+            style={[styles.pointsInput, claimError && styles.inputError]}
+            keyboardType="decimal-pad"
+            placeholder="Points"
+            placeholderTextColor="#9F978F"
+            value={requestedPoints}
+            onChangeText={handleRequestedPointsChange}
+          />
+        </View>
+        {claimError ? <Text style={styles.claimErrorText}>{claimError}</Text> : null}
+
+        <TextInput
+          style={styles.input}
+          placeholder="Notes (optional)"
+          placeholderTextColor="#9F978F"
+          value={note}
+          onChangeText={setNote}
+        />
+
+        <TouchableOpacity
+          style={[styles.primaryBtn, submitting ? styles.primaryBtnDisabled : null]}
+          onPress={submitPointAdjustment}
+          disabled={submitting}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.primaryBtnText}>{submitting ? 'Updating...' : 'Update Points'}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const runClaimReviewAction = useCallback(async (claimId: string, action: 'APPROVE' | 'HOLD' | 'REJECT') => {
     if (!token || !canReviewClaim) return;
@@ -942,6 +1250,8 @@ const SpiffRewardsScreen = () => {
               </View>
             </View>
 
+            {renderPointAdjustmentForm()}
+
             <View style={styles.caFilterRow}>
               {([
                 ['ALL', 'All'],
@@ -1132,7 +1442,9 @@ const SpiffRewardsScreen = () => {
             </View>
           </View>
 
-          {canCreateClaim ? (
+          {canAdjustPoints ? (
+            renderPointAdjustmentForm()
+          ) : canCreateClaim ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Redeem Points</Text>
             <Text style={styles.sectionSub}>Minimum {formatPoints(minRedeemPoints)} points</Text>
@@ -2011,6 +2323,187 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: '#C84A4A',
     backgroundColor: '#FFF8F8',
+  },
+  fieldLabel: {
+    marginTop: 10,
+    color: '#6E6258',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  advancedToggle: {
+    marginTop: 10,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DDD3C8',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  advancedToggleText: {
+    color: '#4B4038',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  adjustmentChipRow: {
+    gap: 8,
+    paddingTop: 8,
+    paddingRight: 4,
+  },
+  adjustmentChip: {
+    minHeight: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#DDD3C8',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adjustmentChipActive: {
+    backgroundColor: '#1F1A16',
+    borderColor: '#1F1A16',
+  },
+  adjustmentChipText: {
+    color: '#6E6258',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  adjustmentChipTextActive: {
+    color: '#FFFFFF',
+  },
+  dropdownButton: {
+    marginTop: 8,
+    minHeight: 44,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#DDD3C8',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  dropdownTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  dropdownValue: {
+    color: '#1F1A16',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  dropdownMeta: {
+    marginTop: 2,
+    color: '#8A7B6E',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  dropdownList: {
+    marginTop: 7,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#E9DED0',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  dropdownOption: {
+    minHeight: 44,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E8DF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropdownOptionActive: {
+    backgroundColor: '#FFF7EA',
+  },
+  dropdownOptionText: {
+    flex: 1,
+    color: '#302821',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  dropdownOptionNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dropdownOptionHandle: {
+    maxWidth: 120,
+    color: '#9C7127',
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  dropdownOptionTextActive: {
+    color: '#9C7127',
+  },
+  actionSegment: {
+    marginTop: 8,
+    flexDirection: 'row',
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#DDD3C8',
+    backgroundColor: '#FFFFFF',
+    padding: 3,
+  },
+  actionSegmentBtn: {
+    flex: 1,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSegmentBtnActive: {
+    backgroundColor: '#1F1A16',
+  },
+  actionSegmentText: {
+    color: '#6E6258',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  actionSegmentTextActive: {
+    color: '#FFFFFF',
+  },
+  pointsActionRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  pointsActionPrefix: {
+    height: 42,
+    minWidth: 84,
+    borderTopLeftRadius: 11,
+    borderBottomLeftRadius: 11,
+    backgroundColor: '#1F1A16',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  pointsActionPrefixText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  pointsInput: {
+    flex: 1,
+    height: 42,
+    borderTopRightRadius: 11,
+    borderBottomRightRadius: 11,
+    borderWidth: 1,
+    borderLeftWidth: 0,
+    borderColor: '#DDD3C8',
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#1F1A16',
+    backgroundColor: '#FFFFFF',
   },
   claimErrorText: {
     marginTop: 5,

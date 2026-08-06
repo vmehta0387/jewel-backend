@@ -41,6 +41,13 @@ const toYyyyMmDd = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+const addDays = (value: Date, days: number) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
 const CartScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const insets = useSafeAreaInsets();
@@ -53,13 +60,14 @@ const CartScreen = () => {
   const [customerEmail, setCustomerEmail] = useState('');
   const [notes, setNotes] = useState('');
   
-  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(null);
+  const [expectedDeliveryDate, setExpectedDeliveryDate] = useState<Date | null>(() => addDays(new Date(), 28));
   const [showIosDatePicker, setShowIosDatePicker] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const minimumDeliveryDate = useMemo(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + 14);
     return date;
   }, []);
 
@@ -296,7 +304,7 @@ const CartScreen = () => {
               <View style={styles.customerDivider} />
 
               <View style={styles.customerRow}>
-                <Text style={styles.customerLabel}>Delivery</Text>
+                <Text style={styles.customerLabel}>Expected Delivery</Text>
                 <TouchableOpacity style={{ flex: 1 }} onPress={openDeliveryDatePicker} activeOpacity={0.9}>
                   <Text style={[styles.customerInputText, !expectedDeliveryDate && { color: '#A59D96' }]}>
                     {expectedDeliveryDate ? toYyyyMmDd(expectedDeliveryDate) : 'Select expected date'}

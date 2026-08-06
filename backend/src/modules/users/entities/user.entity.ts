@@ -21,6 +21,9 @@ export class User {
   @Column({ name: 'last_name' })
   lastName: string;
 
+  @Column({ name: 'user_handle', unique: true, nullable: true })
+  userHandle: string | null;
+
   @Column({ type: 'enum', enum: UserRole })
   role: UserRole;
 

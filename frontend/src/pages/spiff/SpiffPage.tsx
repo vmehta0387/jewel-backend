@@ -101,6 +101,30 @@ type ClaimsResponse = {
 
 type ClaimStatusFilter = 'ALL' | 'PENDING_REVIEW' | 'HOLD' | 'APPROVED' | 'FULFILLED' | 'REJECTED';
 type LeaderboardEntityFilter = 'COMPANIES' | 'REPS';
+type SpiffPointAction = 'ADD' | 'REMOVE' | 'REDEEM';
+
+type SalesRepOption = {
+  id: string;
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  userHandle?: string | null;
+  email?: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
+  company?: {
+    id?: string | null;
+    companyName?: string | null;
+  } | null;
+  branchId?: string | null;
+  branchName?: string | null;
+  branch?: {
+    id?: string | null;
+    name?: string | null;
+  } | null;
+};
+
+type SpiffWalletSummary = SpiffSummary['wallet'];
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING_REVIEW: 'bg-amber-100 text-amber-800 border border-amber-200',
@@ -131,6 +155,31 @@ const formatDate = (value: string | null | undefined) => {
   if (Number.isNaN(parsed.getTime())) return '-';
   return parsed.toLocaleString();
 };
+
+const getSalesRepName = (rep: SalesRepOption) => {
+  return rep.name?.trim() || rep.firstName?.trim() || rep.email?.trim() || 'Sales Rep';
+};
+
+const getSalesRepPersonName = (rep: SalesRepOption) => {
+  const fullName = [rep.firstName, rep.lastName].filter(Boolean).join(' ').trim();
+  return fullName || rep.email?.trim() || 'Sales Rep';
+};
+
+const getSalesRepHandle = (rep: SalesRepOption) => {
+  return String(rep.userHandle || '').trim();
+};
+
+const getSalesRepCompanyId = (rep: SalesRepOption) =>
+  String(rep.company?.id || rep.companyId || '').trim();
+
+const getSalesRepCompanyName = (rep: SalesRepOption) =>
+  String(rep.company?.companyName || rep.companyName || '').trim();
+
+const getSalesRepBranchId = (rep: SalesRepOption) =>
+  String(rep.branch?.id || rep.branchId || '').trim();
+
+const getSalesRepBranchName = (rep: SalesRepOption) =>
+  String(rep.branch?.name || rep.branchName || '').trim();
 
 const getApiErrorMessage = (err: any, fallback: string) => {
   const message = err?.response?.data?.message;
@@ -174,13 +223,15 @@ const getScopeOptionsForRole = (
 
 export default function SpiffPage() {
   const [searchParams] = useSearchParams();
-  const { showAlert: showAppAlert, prompt: promptAppDialog, dialogNode } = useAppDialog();
+  const { showAlert: showAppAlert, confirm: confirmAppDialog, prompt: promptAppDialog, dialogNode } = useAppDialog();
   const claimCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const salesRepSearchRef = useRef<HTMLInputElement | null>(null);
+  const salesRepDropdownRef = useRef<HTMLDivElement | null>(null);
+  const adjustmentNoteRef = useRef<HTMLInputElement | null>(null);
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
   const [loading, setLoading] = useState(true);
-  const [savingClaim, setSavingClaim] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,11 +256,23 @@ export default function SpiffPage() {
   const [claimPage, setClaimPage] = useState(1);
   const [claimLimit, setClaimLimit] = useState(20);
 
-  const [claimPoints, setClaimPoints] = useState('');
-  const [claimNote, setClaimNote] = useState('');
   const [pointsPerDollarInput, setPointsPerDollarInput] = useState('');
+  const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
+  const [loadingSalesReps, setLoadingSalesReps] = useState(false);
+  const [showRepFilters, setShowRepFilters] = useState(false);
+  const [repCompanyFilters, setRepCompanyFilters] = useState<string[]>([]);
+  const [repBranchFilters, setRepBranchFilters] = useState<string[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState('');
+  const [salesRepDropdownOpen, setSalesRepDropdownOpen] = useState(false);
+  const [salesRepSearch, setSalesRepSearch] = useState('');
+  const [pointAction, setPointAction] = useState<SpiffPointAction>('ADD');
+  const [adjustmentPoints, setAdjustmentPoints] = useState('');
+  const [adjustmentNote, setAdjustmentNote] = useState('');
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
+  const [adjustmentErrors, setAdjustmentErrors] = useState<Record<string, string>>({});
+  const [selectedRepWallet, setSelectedRepWallet] = useState<SpiffWalletSummary | null>(null);
+  const [loadingSelectedRepWallet, setLoadingSelectedRepWallet] = useState(false);
 
-  const canCreateClaim = user ? hasActionPermission(user, 'spiff.claim.create') : false;
   const canReviewClaim = user ? hasActionPermission(user, 'spiff.claim.review') : false;
   const canFulfillClaim = user ? hasActionPermission(user, 'spiff.claim.fulfill') : false;
   const canEditConfig = user ? hasActionPermission(user, 'spiff.config.edit') : false;
@@ -231,6 +294,78 @@ export default function SpiffPage() {
     Number.isFinite(parsedPointsPerDollarInput) && parsedPointsPerDollarInput > 0
       ? conversionPreviewPoints / parsedPointsPerDollarInput
       : 0;
+  const repCompanyOptions = useMemo(() => {
+    const optionMap = new Map<string, string>();
+    salesReps.forEach((rep) => {
+      const companyId = getSalesRepCompanyId(rep);
+      if (companyId) {
+        optionMap.set(companyId, getSalesRepCompanyName(rep) || 'Unnamed company');
+      }
+    });
+    return Array.from(optionMap, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [salesReps]);
+  const repBranchOptions = useMemo(() => {
+    const optionMap = new Map<string, { id: string; name: string; companyId: string }>();
+    salesReps.forEach((rep) => {
+      const companyId = getSalesRepCompanyId(rep);
+      const branchId = getSalesRepBranchId(rep);
+      if (branchId) {
+        optionMap.set(branchId, {
+          id: branchId,
+          name: getSalesRepBranchName(rep) || 'Unnamed branch',
+          companyId,
+        });
+      }
+    });
+    return Array.from(optionMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [salesReps]);
+  const filteredSalesReps = useMemo(
+    () =>
+      salesReps.filter((rep) => {
+        const companyId = getSalesRepCompanyId(rep);
+        const branchId = getSalesRepBranchId(rep);
+        if (repCompanyFilters.length > 0 && (!companyId || !repCompanyFilters.includes(companyId))) return false;
+        if (repBranchFilters.length > 0 && (!branchId || !repBranchFilters.includes(branchId))) return false;
+        return true;
+      }),
+    [repBranchFilters, repCompanyFilters, salesReps],
+  );
+  const searchedSalesReps = useMemo(() => {
+    const search = salesRepSearch.trim().toLowerCase();
+    if (!search) return filteredSalesReps;
+    return filteredSalesReps.filter((rep) => {
+      const haystack = [
+        getSalesRepName(rep),
+        getSalesRepHandle(rep),
+        rep.email,
+        getSalesRepCompanyName(rep),
+        getSalesRepBranchName(rep),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(search);
+    });
+  }, [filteredSalesReps, salesRepSearch]);
+  const selectedSalesRep = useMemo(
+    () => salesReps.find((rep) => rep.id === selectedSalesRepId) || null,
+    [salesReps, selectedSalesRepId],
+  );
+  const adjustmentPointValue = Math.max(0, Math.floor(Number(adjustmentPoints || 0)));
+  const currentAvailablePoints = Number(selectedRepWallet?.availablePoints || 0);
+  const projectedAvailablePoints = selectedSalesRepId
+    ? Math.max(
+        0,
+        currentAvailablePoints +
+          (pointAction === 'ADD' ? adjustmentPointValue : -adjustmentPointValue),
+      )
+    : 0;
+  const pointActionLabel = pointAction === 'ADD' ? 'add' : pointAction === 'REDEEM' ? 'redeem' : 'remove';
+  const selectedFilterCount = repCompanyFilters.length + repBranchFilters.length;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -291,6 +426,39 @@ export default function SpiffPage() {
   }, [loadData]);
 
   useEffect(() => {
+    if (!canReviewClaim) {
+      setSalesReps([]);
+      return;
+    }
+
+    let isActive = true;
+    const loadSalesReps = async () => {
+      setLoadingSalesReps(true);
+      try {
+        const response = await api.get('/users/lookup', {
+          params: { role: 'SALES_REP', status: 'ACTIVE' },
+        });
+        if (isActive) {
+          setSalesReps((response.data || []) as SalesRepOption[]);
+        }
+      } catch {
+        if (isActive) {
+          setSalesReps([]);
+        }
+      } finally {
+        if (isActive) {
+          setLoadingSalesReps(false);
+        }
+      }
+    };
+
+    void loadSalesReps();
+    return () => {
+      isActive = false;
+    };
+  }, [canReviewClaim]);
+
+  useEffect(() => {
     if (!deepLinkedClaimId && !deepLinkedClaimNumber) {
       return;
     }
@@ -310,10 +478,114 @@ export default function SpiffPage() {
   }, [canViewGlobalRepLeaderboard, leaderboardEntity]);
 
   useEffect(() => {
+    if (!selectedSalesRepId || !canReviewClaim) {
+      setSelectedRepWallet(null);
+      setLoadingSelectedRepWallet(false);
+      return;
+    }
+
+    let isActive = true;
+    const loadSelectedRepWallet = async () => {
+      setLoadingSelectedRepWallet(true);
+      try {
+        const response = await api.get(`/spiff/users/${selectedSalesRepId}/wallet`);
+        if (isActive) {
+          setSelectedRepWallet(response.data as SpiffWalletSummary);
+        }
+      } catch {
+        if (isActive) {
+          setSelectedRepWallet(null);
+        }
+      } finally {
+        if (isActive) {
+          setLoadingSelectedRepWallet(false);
+        }
+      }
+    };
+
+    void loadSelectedRepWallet();
+    return () => {
+      isActive = false;
+    };
+  }, [canReviewClaim, selectedSalesRepId]);
+
+  useEffect(() => {
     if (claimPage > claimsTotalPages) {
       setClaimPage(claimsTotalPages);
     }
   }, [claimPage, claimsTotalPages]);
+
+  useEffect(() => {
+    const validBranchIds = new Set(repBranchOptions.map((branch) => branch.id));
+    const nextBranchFilters = repBranchFilters.filter((branchId) => validBranchIds.has(branchId));
+    if (nextBranchFilters.length !== repBranchFilters.length) {
+      setRepBranchFilters(nextBranchFilters);
+    }
+  }, [repBranchFilters, repBranchOptions]);
+
+  useEffect(() => {
+    if (
+      selectedSalesRepId &&
+      !filteredSalesReps.some((rep) => rep.id === selectedSalesRepId)
+    ) {
+      setSelectedSalesRepId('');
+    }
+  }, [filteredSalesReps, selectedSalesRepId]);
+
+  useEffect(() => {
+    if (!salesRepDropdownOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && salesRepDropdownRef.current?.contains(target)) return;
+      setSalesRepDropdownOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSalesRepDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [salesRepDropdownOpen]);
+
+  const toggleCompanyFilter = (companyId: string) => {
+    setRepCompanyFilters((current) =>
+      current.includes(companyId)
+        ? current.filter((id) => id !== companyId)
+        : [...current, companyId],
+    );
+  };
+
+  const toggleBranchFilter = (branchId: string) => {
+    const branch = repBranchOptions.find((option) => option.id === branchId);
+    setRepBranchFilters((current) =>
+      current.includes(branchId)
+        ? current.filter((id) => id !== branchId)
+        : [...current, branchId],
+    );
+    if (branch?.companyId) {
+      setRepCompanyFilters((current) =>
+        current.includes(branch.companyId) ? current : [...current, branch.companyId],
+      );
+    }
+  };
+
+  const clearRepFilters = () => {
+    setRepCompanyFilters([]);
+    setRepBranchFilters([]);
+  };
+
+  const applyRepFilters = () => {
+    setShowRepFilters(false);
+    setSalesRepDropdownOpen(true);
+    window.requestAnimationFrame(() => salesRepSearchRef.current?.focus());
+  };
 
   useEffect(() => {
     if (!claims.length || (!deepLinkedClaimId && !deepLinkedClaimNumber)) {
@@ -332,27 +604,70 @@ export default function SpiffPage() {
     });
   }, [claims, deepLinkedClaimId, deepLinkedClaimNumber]);
 
-  const submitClaim = async () => {
-    if (!canCreateClaim) return;
-    const requestedPoints = Math.floor(Number(claimPoints || 0));
-    if (!Number.isFinite(requestedPoints) || requestedPoints <= 0) {
-      showAppAlert('Enter valid points to redeem.', { variant: 'warning' });
+  const submitPointAdjustment = async () => {
+    if (!canReviewClaim) return;
+
+    const points = Math.floor(Number(adjustmentPoints || 0));
+    const nextErrors: Record<string, string> = {};
+    if (!selectedSalesRepId) {
+      nextErrors.salesRep = 'Select a sales rep.';
+    }
+    if (!Number.isFinite(points) || points <= 0) {
+      nextErrors.points = `Enter valid points to ${pointActionLabel}.`;
+    }
+    if (!adjustmentNote.trim()) {
+      nextErrors.note = 'Enter notes for point update.';
+    }
+    setAdjustmentErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      if (nextErrors.note) {
+        adjustmentNoteRef.current?.focus();
+      }
       return;
     }
 
-    setSavingClaim(true);
+    const repLabel = selectedSalesRep
+      ? getSalesRepHandle(selectedSalesRep) || getSalesRepName(selectedSalesRep)
+      : 'selected sales rep';
+    const confirmed = await confirmAppDialog(
+      `Confirm ${pointAction} ${formatNumber(points)} points for ${repLabel}?\n\nAvailable: ${formatNumber(currentAvailablePoints)}\nNext: ${formatNumber(projectedAvailablePoints)}\n\nNotes: ${adjustmentNote.trim()}`,
+      {
+        title: 'Confirm Point Update',
+        variant: pointAction === 'ADD' ? 'info' : 'warning',
+        confirmLabel: 'Update Points',
+        cancelLabel: 'Cancel',
+      },
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setSavingAdjustment(true);
     try {
-      await api.post('/spiff/claims', {
-        requestedPoints,
-        note: claimNote.trim() || undefined,
+      const response = await api.post('/spiff/claims', {
+        userId: selectedSalesRepId,
+        action: pointAction,
+        requestedPoints: points,
+        note: adjustmentNote.trim(),
       });
-      setClaimPoints('');
-      setClaimNote('');
+      if (response.data?.wallet) {
+        setSelectedRepWallet(response.data.wallet as SpiffWalletSummary);
+      }
+      setAdjustmentPoints('');
+      setAdjustmentNote('');
+      setAdjustmentErrors({});
+      setSelectedSalesRepId('');
+      setSelectedRepWallet(null);
+      setSalesRepSearch('');
+      setSalesRepDropdownOpen(false);
+      showAppAlert(`Points ${pointAction === 'ADD' ? 'added' : pointAction === 'REDEEM' ? 'redeemed' : 'removed'} successfully.`, {
+        variant: 'success',
+      });
       await loadData();
     } catch (err: any) {
-      showAppAlert(err?.response?.data?.message || 'Failed to create redemption claim', { variant: 'error' });
+      showAppAlert(getApiErrorMessage(err, 'Failed to update points'), { variant: 'error' });
     } finally {
-      setSavingClaim(false);
+      setSavingAdjustment(false);
     }
   };
 
@@ -572,41 +887,291 @@ export default function SpiffPage() {
         </div>
       ) : null}
 
-      {canCreateClaim ? (
-        <Card title="Redeem Points">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr_auto] lg:items-end">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Points to Redeem</label>
-              <input
-                type="number"
-                min={config?.minRedeemPoints || 1}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder={String(config?.minRedeemPoints || 500)}
-                value={claimPoints}
-                onChange={(event) => setClaimPoints(event.target.value)}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Minimum {formatNumber(config?.minRedeemPoints)} points
-              </p>
+      {canReviewClaim ? (
+        <Card
+          title={
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-[#251d17]">Update Points</h3>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-700">
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+                  Available:{' '}
+                  {selectedSalesRepId
+                    ? loadingSelectedRepWallet
+                      ? '--'
+                      : formatNumber(currentAvailablePoints)
+                    : '--'}
+                </span>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-emerald-800">
+                  Next:{' '}
+                  {selectedSalesRepId
+                    ? loadingSelectedRepWallet
+                      ? '--'
+                      : formatNumber(projectedAvailablePoints)
+                    : '--'}
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.15fr_1.3fr_1.25fr_auto] xl:items-end">
+              <div className="flex min-h-[68px] flex-col">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Sales Rep *
+                </label>
+                <div className="relative flex gap-2">
+                  <div ref={salesRepDropdownRef} className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm text-slate-900"
+                      onClick={() => setSalesRepDropdownOpen((value) => !value)}
+                      disabled={loadingSalesReps}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {loadingSalesReps
+                          ? 'Loading sales reps...'
+                          : selectedSalesRep
+                          ? getSalesRepHandle(selectedSalesRep) || getSalesRepName(selectedSalesRep)
+                          : 'Select sales rep'}
+                      </span>
+                      <span className="text-xs text-slate-500">{salesRepDropdownOpen ? '▲' : '▼'}</span>
+                    </button>
+
+                    {salesRepDropdownOpen ? (
+                      <div className="absolute left-0 top-[46px] z-40 w-[calc(100%-48px)] rounded-xl border border-slate-200 bg-white shadow-xl">
+                        <div className="border-b border-slate-100 p-2">
+                          <input
+                            ref={salesRepSearchRef}
+                            type="text"
+                            className="h-9 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#1F1A16]"
+                            placeholder="Search sales rep"
+                            value={salesRepSearch}
+                            onChange={(event) => setSalesRepSearch(event.target.value)}
+                          />
+                        </div>
+                        <div className="max-h-64 overflow-y-auto py-1">
+                          {searchedSalesReps.length ? searchedSalesReps.map((rep) => {
+                            const selected = rep.id === selectedSalesRepId;
+                            const meta = [getSalesRepCompanyName(rep), getSalesRepBranchName(rep)].filter(Boolean).join(' / ');
+                            const handle = getSalesRepHandle(rep);
+                            return (
+                              <button
+                                key={rep.id}
+                                type="button"
+                                className={`block w-full px-3 py-2 text-left text-sm transition ${
+                                  selected ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-50'
+                                }`}
+                                onClick={() => {
+                                  setSelectedSalesRepId(rep.id);
+                                  setSalesRepDropdownOpen(false);
+                                  setSalesRepSearch('');
+                                  setAdjustmentErrors((current) => {
+                                    const { salesRep: _salesRep, ...rest } = current;
+                                    return rest;
+                                  });
+                                }}
+                              >
+                                <span className="flex min-w-0 items-center justify-between gap-3">
+                                  <span className="min-w-0 truncate font-semibold">{getSalesRepPersonName(rep)}</span>
+                                  <span className={`shrink-0 text-xs font-bold ${selected ? 'text-slate-100' : 'text-[#9A6A2F]'}`}>
+                                    {handle || rep.firstName || 'Sales Rep'}
+                                  </span>
+                                </span>
+                                <span className={`block truncate text-xs ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
+                                  {meta || rep.email || '-'}
+                                </span>
+                              </button>
+                            );
+                          }) : (
+                            <p className="px-3 py-4 text-center text-sm text-slate-500">
+                              No sales reps found.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    title="Advanced filter"
+                    aria-label="Advanced filter"
+                    onClick={() => setShowRepFilters(true)}
+                    className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <span className="block h-0 w-0 border-l-[7px] border-r-[7px] border-t-[9px] border-l-transparent border-r-transparent border-t-slate-700" />
+                    <span className="absolute top-[22px] h-[7px] w-[3px] rounded-full bg-slate-700" />
+                    {selectedFilterCount ? (
+                      <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1F1A16] px-1 text-[10px] font-bold text-white">
+                        {selectedFilterCount}
+                      </span>
+                    ) : null}
+                  </button>
+                </div>
+                <p className="mt-1 min-h-[16px] text-xs font-semibold text-rose-600">
+                  {adjustmentErrors.salesRep || ''}
+                </p>
+              </div>
+
+              <div className="flex min-h-[68px] flex-col">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Point to {pointActionLabel} *
+                </label>
+                <div className="flex h-10 overflow-hidden rounded-xl border border-slate-300 bg-white">
+                  <select
+                    className="w-[116px] shrink-0 border-r border-slate-300 bg-slate-50 px-3 text-xs font-bold uppercase text-slate-700 outline-none"
+                    value={pointAction}
+                    onChange={(event) => setPointAction(event.target.value as SpiffPointAction)}
+                  >
+                    {(['ADD', 'REMOVE', 'REDEEM'] as SpiffPointAction[]).map((action) => (
+                      <option key={action} value={action}>
+                        {action}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    className="min-w-0 flex-1 px-3 text-sm outline-none"
+                    placeholder="Points"
+                    value={adjustmentPoints}
+                    onChange={(event) => {
+                      setAdjustmentPoints(event.target.value);
+                      setAdjustmentErrors((current) => {
+                        const { points: _points, ...rest } = current;
+                        return rest;
+                      });
+                    }}
+                  />
+                </div>
+                <p className="mt-1 min-h-[16px] text-xs font-semibold text-rose-600">
+                  {adjustmentErrors.points || ''}
+                </p>
+              </div>
+
+              <div className="flex min-h-[68px] flex-col">
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Notes *
+                </label>
+                <input
+                  ref={adjustmentNoteRef}
+                  type="text"
+                  className="h-10 w-full rounded-xl border border-slate-300 px-3 text-sm"
+                  placeholder="Reason for point update"
+                  value={adjustmentNote}
+                  onChange={(event) => {
+                    setAdjustmentNote(event.target.value);
+                    setAdjustmentErrors((current) => {
+                      const { note: _note, ...rest } = current;
+                      return rest;
+                    });
+                  }}
+                  required
+                />
+                <p className="mt-1 min-h-[16px] text-xs font-semibold text-rose-600">
+                  {adjustmentErrors.note || ''}
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                onClick={submitPointAdjustment}
+                disabled={savingAdjustment || loadingSalesReps || loading}
+                className="mb-[17px]"
+              >
+                {savingAdjustment ? 'Updating...' : 'Update Points'}
+              </Button>
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Notes (optional)</label>
-              <input
-                type="text"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Any redemption note"
-                value={claimNote}
-                onChange={(event) => setClaimNote(event.target.value)}
-              />
-              <p className="mt-1 text-xs text-slate-500">
-                Conversion: {config?.conversionDisplay || '100 points = $1'}
-              </p>
-            </div>
+            {showRepFilters ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6">
+                <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">Advanced Filter</h2>
+                      <p className="text-xs text-slate-500">Filter sales reps by one or more companies and branches.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRepFilters(false)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-lg leading-none text-slate-600 hover:bg-slate-50"
+                    >
+                      x
+                    </button>
+                  </div>
 
-            <Button type="button" onClick={submitClaim} disabled={savingClaim || loading}>
-              {savingClaim ? 'Submitting...' : 'Submit Claim'}
-            </Button>
+                  <div className="grid max-h-[60vh] grid-cols-1 gap-4 overflow-y-auto px-5 py-4 md:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-slate-700">Companies</p>
+                      <div className="space-y-2">
+                        {repCompanyOptions.length ? repCompanyOptions.map((company) => (
+                          <label
+                            key={company.id}
+                            className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={repCompanyFilters.includes(company.id)}
+                              onChange={() => toggleCompanyFilter(company.id)}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{company.name}</span>
+                          </label>
+                        )) : (
+                          <p className="rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-500">
+                            No companies found.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-sm font-semibold text-slate-700">Branches</p>
+                      <div className="space-y-2">
+                        {repBranchOptions.length ? repBranchOptions.map((branch) => (
+                          <label
+                            key={branch.id}
+                            className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={repBranchFilters.includes(branch.id)}
+                              onChange={() => toggleBranchFilter(branch.id)}
+                            />
+                            <span className="min-w-0 flex-1 truncate">{branch.name}</span>
+                          </label>
+                        )) : (
+                          <p className="rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-500">
+                            No branches found.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
+                    <p className="text-xs font-medium text-slate-500">
+                      {selectedFilterCount ? `${selectedFilterCount} filters selected` : 'No filters selected'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={clearRepFilters}
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyRepFilters}
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-[#1F1A16] px-4 text-sm font-bold text-white hover:opacity-95"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </Card>
       ) : null}

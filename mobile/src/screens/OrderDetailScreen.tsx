@@ -55,6 +55,13 @@ const toYyyyMmDd = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+const addDays = (value: Date, days: number) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
 const toDateOrNull = (value?: string | null): Date | null => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -140,10 +147,13 @@ const OrderDetailScreen = () => {
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
   const canEditCurrentOrder = canEditOrderByStatus(order?.status, user?.role);
   const minimumDeliveryDate = useMemo(() => {
-    const date = new Date();
+    const date = order?.createdAt ? new Date(order.createdAt) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      return addDays(new Date(), 14);
+    }
     date.setHours(0, 0, 0, 0);
-    return date;
-  }, []);
+    return addDays(date, 14);
+  }, [order?.createdAt]);
 
   const loadOrder = useCallback(async () => {
     if (!token) return;
@@ -351,7 +361,7 @@ const OrderDetailScreen = () => {
           <View style={styles.detailsList}>
             <DetailRow label="Sale Price" value={formatCompactCurrency(order.price)} boldValue />
             <DetailRow label="Quantity" value={order.quantity} />
-            <DetailRow label="Delivery Date" value={formatDateLocal(order.deliveryDate)} />
+            <DetailRow label="Expected Delivery Date" value={formatDateLocal(order.deliveryDate)} />
             <DetailRow label="Purchase Order" value={order.purchaseOrderNumber} />
           </View>
 
@@ -488,7 +498,7 @@ const OrderDetailScreen = () => {
                 {savingDate ? (
                   <ActivityIndicator color="#6A5F56" size="small" />
                 ) : (
-                  <Text style={styles.saveDateBtnText}>Save Delivery Date</Text>
+                  <Text style={styles.saveDateBtnText}>Save Expected Delivery Date</Text>
                 )}
               </View>
             </TouchableOpacity>

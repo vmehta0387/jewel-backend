@@ -1,7 +1,7 @@
 interface CardProps {
   children: React.ReactNode;
   className?: string;
-  title?: string;
+  title?: React.ReactNode;
 }
 
 export default function Card({ children, className = '', title }: CardProps) {
@@ -11,7 +11,11 @@ export default function Card({ children, className = '', title }: CardProps) {
     >
       {title && (
         <div className="border-b border-[#ebe2d5] px-6 py-4">
-          <h3 className="text-base font-semibold text-[#251d17]">{title}</h3>
+          {typeof title === 'string' ? (
+            <h3 className="text-base font-semibold text-[#251d17]">{title}</h3>
+          ) : (
+            title
+          )}
         </div>
       )}
       <div className="p-6">{children}</div>

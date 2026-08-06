@@ -5,6 +5,7 @@ export type AuthUser = {
   email: string;
   firstName?: string;
   lastName?: string;
+  userHandle?: string | null;
   role: UserRole;
   companyId?: string | null;
   branchId?: string | null;

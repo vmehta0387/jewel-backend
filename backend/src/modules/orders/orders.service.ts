@@ -384,7 +384,7 @@ export class OrdersService implements OnModuleInit {
         branchId: effectiveBranchId ?? null,
         designId: dto.designId ?? null,
         salesRepId: selectedSalesRep?.id || requester.id,
-        deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date()),
+        deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date(), { defaultOffsetDays: 28 }),
         quantity: dto.quantity ?? 1,
         price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
@@ -1653,10 +1653,20 @@ export class OrdersService implements OnModuleInit {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  private normalizeFutureDeliveryDate(value?: string | null, minDate?: Date): string | null {
+  private normalizeFutureDeliveryDate(
+    value?: string | null,
+    minDate?: Date,
+    options: { defaultOffsetDays?: number } = {},
+  ): string | null {
     const trimmed = value?.trim();
     if (!trimmed) {
-      return null;
+      if (options.defaultOffsetDays === undefined) {
+        return null;
+      }
+      const baseDate = minDate ? new Date(minDate) : new Date();
+      baseDate.setHours(0, 0, 0, 0);
+      baseDate.setDate(baseDate.getDate() + options.defaultOffsetDays);
+      return this.formatDateOnly(baseDate);
     }
 
     const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -1675,7 +1685,7 @@ export class OrdersService implements OnModuleInit {
       month = Number.parseInt(dmyMatch[2], 10);
       year = Number.parseInt(dmyMatch[3], 10);
     } else {
-      throw new BadRequestException('Delivery date must be in YYYY-MM-DD format');
+      throw new BadRequestException('Expected delivery date must be in YYYY-MM-DD format');
     }
 
     const parsed = new Date(year, month - 1, day);
@@ -1691,12 +1701,17 @@ export class OrdersService implements OnModuleInit {
     parsed.setHours(0, 0, 0, 0);
     const minimumDate = minDate ? new Date(minDate) : new Date();
     minimumDate.setHours(0, 0, 0, 0);
+    minimumDate.setDate(minimumDate.getDate() + 14);
 
     if (parsed.getTime() < minimumDate.getTime()) {
-      throw new BadRequestException('Delivery date cannot be before order creation date');
+      throw new BadRequestException('Expected delivery date cannot be within 2 weeks of order creation date');
     }
 
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  private formatDateOnly(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   private roundMoney(value: number): number {

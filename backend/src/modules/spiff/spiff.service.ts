@@ -5,6 +5,7 @@
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, Repository } from 'typeorm';
 import { Order } from '../orders/entities/order.entity';
@@ -25,10 +26,12 @@ import { SpiffLedgerEvent } from './enums/spiff-ledger-event.enum';
 import {
   ClaimReviewAction,
   CreateSpiffClaimDto,
+  CreateSpiffPointAdjustmentDto,
   FindSpiffActivityQueryDto,
   FindSpiffClaimsQueryDto,
   FulfillSpiffClaimDto,
   ReviewSpiffClaimDto,
+  SpiffPointAdjustmentAction,
   SpiffLeaderboardPeriod,
   SpiffLeaderboardQueryDto,
   SpiffLeaderboardScope,
@@ -252,8 +255,6 @@ export class SpiffService {
         const orderAgg = companyOrdersAgg.get(companyId) || { totalOrders: 0, totalGmv: 0 };
         const topRepInfo = topRepByCompany.get(companyId);
         const topRepUser = topRepInfo ? topRepUserById.get(topRepInfo.userId) : null;
-        const topRepName = [topRepUser?.firstName, topRepUser?.lastName].filter(Boolean).join(' ').trim();
-
         return {
           rank: index + 1,
           entityId: companyId,
@@ -262,7 +263,7 @@ export class SpiffService {
           points: this.toNumber(row.points),
           totalOrders: orderAgg.totalOrders,
           totalGmv: orderAgg.totalGmv,
-          topRepName: topRepName || topRepUser?.email || null,
+          topRepName: this.getSpiffUserDisplayName(topRepUser),
           topRepPoints: topRepInfo?.points || 0,
         };
       });
@@ -314,13 +315,12 @@ export class SpiffService {
         globalRepEntries = globalRepRows.slice(0, repLimit).map((row, index) => {
           const userId = String(row.userId || '').trim();
           const repUser = repUserById.get(userId);
-          const repName = [repUser?.firstName, repUser?.lastName].filter(Boolean).join(' ').trim();
           const repCompany = repUser?.companyId ? repCompanyById.get(repUser.companyId) : null;
 
           return {
             rank: index + 1,
             userId,
-            name: repName || repUser?.email || 'Unknown rep',
+            name: this.getSpiffUserDisplayName(repUser) || 'Unknown rep',
             companyName: repCompany?.companyName || null,
             role: repUser?.role || null,
             points: this.toNumber(row.points),
@@ -380,11 +380,10 @@ export class SpiffService {
     const entries = rows.slice(0, limit).map((row, index) => {
       const userId = String(row.userId || '').trim();
       const user = userById.get(userId);
-      const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
       return {
         rank: index + 1,
         entityId: userId,
-        name: displayName || user?.email || 'Unknown rep',
+        name: this.getSpiffUserDisplayName(user) || 'Unknown rep',
         subtitle: user?.role || null,
         points: this.toNumber(row.points),
       };
@@ -435,6 +434,7 @@ export class SpiffService {
             .orWhere('claim.giftCardType LIKE :like', { like })
             .orWhere('user.firstName LIKE :like', { like })
             .orWhere('user.lastName LIKE :like', { like })
+            .orWhere('user.userHandle LIKE :like', { like })
             .orWhere('user.email LIKE :like', { like })
             .orWhere('company.companyName LIKE :like', { like })
             .orWhere('branch.name LIKE :like', { like });
@@ -487,6 +487,7 @@ export class SpiffService {
       .addSelect('MAX(ledger.createdAt)', 'createdAt')
       .addSelect('COALESCE(SUM(ledger.points), 0)', 'points')
       .addSelect('GROUP_CONCAT(DISTINCT ledger.eventType)', 'eventTypes')
+      .addSelect("MAX(JSON_UNQUOTE(JSON_EXTRACT(ledger.metadata, '$.action')))", 'manualAction')
       .addSelect('MAX(ledger.note)', 'note')
       .addSelect('ord.orderNumber', 'orderNumber')
       .addSelect('ord.price', 'orderAmount')
@@ -560,7 +561,17 @@ export class SpiffService {
     };
   }
 
-  async createClaim(dto: CreateSpiffClaimDto, requester: AuthUser) {
+  async updatePoints(dto: CreateSpiffClaimDto | CreateSpiffPointAdjustmentDto, requester: AuthUser) {
+    const action = this.optionalText((dto as CreateSpiffPointAdjustmentDto).action)?.toUpperCase();
+    const targetUserId = this.optionalText((dto as CreateSpiffPointAdjustmentDto).userId);
+    if (action || targetUserId || requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.BRANCH_MANAGER) {
+      return this.applyPointUpdate(dto, requester);
+    }
+
+    return this.createRedemptionClaim(dto as CreateSpiffClaimDto, requester);
+  }
+
+  private async createRedemptionClaim(dto: CreateSpiffClaimDto, requester: AuthUser) {
     if (![UserRole.SALES_REP, UserRole.COMPANY_ADMIN].includes(requester.role)) {
       throw new ForbiddenException('Only sales users can create redemption claims');
     }
@@ -639,6 +650,96 @@ export class SpiffService {
     }
 
     throw new BadRequestException('Unable to generate claim number. Please retry.');
+  }
+
+  private async applyPointUpdate(dto: CreateSpiffClaimDto | CreateSpiffPointAdjustmentDto, requester: AuthUser) {
+    this.assertCanManageClaims(requester);
+
+    const targetUserId = this.optionalText((dto as CreateSpiffPointAdjustmentDto).userId);
+    if (!targetUserId) {
+      throw new BadRequestException('Sales rep is required');
+    }
+
+    const targetUser = await this.userRepo.findOne({
+      where: { id: targetUserId },
+      relations: ['company', 'branch'],
+    });
+    if (!targetUser || targetUser.role !== UserRole.SALES_REP) {
+      throw new NotFoundException('Sales rep not found');
+    }
+    this.assertUserAdjustmentScope(targetUser, requester);
+
+    const action = String((dto as CreateSpiffPointAdjustmentDto).action || '').toUpperCase() as SpiffPointAdjustmentAction;
+    const absolutePoints = this.roundPoints(
+      this.toNumber((dto as CreateSpiffPointAdjustmentDto).points ?? (dto as CreateSpiffClaimDto).requestedPoints),
+    );
+    if (!['ADD', 'REMOVE', 'REDEEM'].includes(action)) {
+      throw new BadRequestException('Action is required');
+    }
+    if (!Number.isFinite(absolutePoints) || absolutePoints <= 0) {
+      throw new BadRequestException('Points must be greater than zero');
+    }
+
+    const walletBefore = await this.computeWallet(targetUser.id);
+    const isDebitAction = action === 'REMOVE' || action === 'REDEEM';
+    if (isDebitAction && absolutePoints > walletBefore.availablePoints) {
+      throw new BadRequestException(
+        `Insufficient available points. Available: ${walletBefore.availablePoints}`,
+      );
+    }
+
+    const signedPoints = isDebitAction ? -absolutePoints : absolutePoints;
+    const actorName = [requester.firstName, requester.lastName].filter(Boolean).join(' ').trim();
+    const targetName = [targetUser.firstName, targetUser.lastName].filter(Boolean).join(' ').trim();
+    const actionLabel = action === 'ADD' ? 'Added' : action === 'REDEEM' ? 'Redeemed' : 'Removed';
+    const note = this.optionalText(dto.note) || `${actionLabel} by ${actorName || requester.email || 'admin'}`;
+
+    await this.createLedgerEntryIfMissing({
+      userId: targetUser.id,
+      companyId: targetUser.companyId || null,
+      branchId: targetUser.branchId || null,
+      orderId: null,
+      points: signedPoints,
+      eventType: SpiffLedgerEvent.MANUAL_ADJUSTMENT,
+      eventKey: `manual-adjustment:${randomUUID()}`,
+      note,
+      metadata: {
+        action,
+        enteredPoints: absolutePoints,
+        signedPoints,
+        adjustedByUserId: requester.id,
+        adjustedByName: actorName || requester.email || null,
+        targetUserName: targetName || targetUser.email,
+      },
+    });
+
+    return {
+      adjustment: {
+        userId: targetUser.id,
+        action,
+        points: signedPoints,
+        eventType: SpiffLedgerEvent.MANUAL_ADJUSTMENT,
+        note,
+      },
+      wallet: await this.computeWallet(targetUser.id),
+    };
+  }
+
+  async getUserWallet(userId: string, requester: AuthUser): Promise<WalletSummary> {
+    this.assertCanManageClaims(requester);
+
+    const targetUserId = this.optionalText(userId);
+    if (!targetUserId) {
+      throw new BadRequestException('Sales rep is required');
+    }
+
+    const targetUser = await this.userRepo.findOne({ where: { id: targetUserId } });
+    if (!targetUser || targetUser.role !== UserRole.SALES_REP) {
+      throw new NotFoundException('Sales rep not found');
+    }
+
+    this.assertUserAdjustmentScope(targetUser, requester);
+    return this.computeWallet(targetUser.id);
   }
 
   async reviewClaim(id: string, dto: ReviewSpiffClaimDto, requester: AuthUser) {
@@ -1525,6 +1626,28 @@ export class SpiffService {
     }
   }
 
+  private assertUserAdjustmentScope(targetUser: User, requester: AuthUser): void {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      if (!requester.companyId || targetUser.companyId !== requester.companyId) {
+        throw new ForbiddenException('Sales rep is outside your company scope');
+      }
+      return;
+    }
+
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (!requester.branchId || targetUser.branchId !== requester.branchId) {
+        throw new ForbiddenException('Sales rep is outside your branch scope');
+      }
+      return;
+    }
+
+    throw new ForbiddenException('Sales rep is outside your scope');
+  }
+
   private applySpiffActivityScope(qb: any, requester: AuthUser, alias: string): void {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
@@ -1549,14 +1672,28 @@ export class SpiffService {
   private serializeEarnedActivity(row: Record<string, unknown>) {
     const orderNumber = this.optionalText(row.orderNumber) || this.extractOrderNumberFromNote(row.note);
     const eventTypes = String(row.eventTypes || '');
+    const isManualAdjustment = eventTypes
+      .split(',')
+      .map((event) => event.trim())
+      .includes(SpiffLedgerEvent.MANUAL_ADJUSTMENT);
     const isCancellationReversal = eventTypes
       .split(',')
       .map((event) => event.trim())
       .includes(SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL);
+    const points = this.roundPoints(this.toNumber(row.points));
+    const manualAction = this.optionalText(row.manualAction)?.toUpperCase();
+    const manualTitle =
+      manualAction === 'REDEEM'
+        ? 'Points redeemed'
+        : points < 0
+        ? 'Points removed'
+        : 'Points added';
     return {
       id: `earned:${String(row.groupId || row.orderId || orderNumber || row.createdAt)}`,
       type: 'EARNED',
-      title: isCancellationReversal
+      title: isManualAdjustment
+        ? manualTitle
+        : isCancellationReversal
         ? orderNumber
           ? `Order ${orderNumber} cancelled`
           : 'Order cancelled'
@@ -1568,7 +1705,7 @@ export class SpiffService {
       orderNumber,
       orderStatus: this.optionalText(row.orderStatus),
       orderAmount: this.roundMoney(this.toNumber(row.orderAmount)),
-      points: this.roundPoints(this.toNumber(row.points)),
+      points,
       companyName: this.optionalText(row.companyName),
       branchName: this.optionalText(row.branchName),
       createdAt: row.createdAt || new Date().toISOString(),
@@ -1613,6 +1750,7 @@ export class SpiffService {
         if (event === SpiffLedgerEvent.FAST_CLOSE_BONUS) return 'Fast close bonus';
         if (event === SpiffLedgerEvent.QUOTE_CREATED) return 'Quote created';
         if (event === SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL) return 'Points reversed';
+        if (event === SpiffLedgerEvent.MANUAL_ADJUSTMENT) return 'Manual adjustment';
         return event.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
       });
     return labels.join(' + ') || 'Points earned';
@@ -1622,11 +1760,17 @@ export class SpiffService {
     return String(value || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
+  private getSpiffUserDisplayName(user?: User | null): string | null {
+    const userHandle = this.optionalText(user?.userHandle);
+    if (userHandle) return userHandle;
+
+    const firstName = this.optionalText(user?.firstName);
+    if (firstName) return firstName;
+
+    return this.optionalText(user?.email);
+  }
+
   private serializeClaim(claim: SpiffRedemptionClaim) {
-    const requestorName = [claim.user?.firstName, claim.user?.lastName]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
     const reviewerName = [claim.approvedBy?.firstName, claim.approvedBy?.lastName]
       .filter(Boolean)
       .join(' ')
@@ -1637,7 +1781,7 @@ export class SpiffService {
       ...claim,
       giftbitLinkUrl: rewardLink,
       requestedAmount: this.roundMoney(claim.requestedAmountCents / 100),
-      requestorName: requestorName || claim.user?.email || null,
+      requestorName: this.getSpiffUserDisplayName(claim.user),
       reviewerName: reviewerName || claim.approvedBy?.email || null,
       companyName: claim.company?.companyName || null,
       branchName: claim.branch?.name || null,

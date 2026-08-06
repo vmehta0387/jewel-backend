@@ -75,6 +75,8 @@ export type SpiffActivityItem = {
   updatedAt?: string;
 };
 
+export type SpiffPointAdjustmentAction = 'ADD' | 'REMOVE' | 'REDEEM';
+
 export const fetchSpiffConfig = (token: string) =>
   apiRequest<SpiffConfig>('/spiff/config', { method: 'GET' }, token);
 
@@ -122,6 +124,29 @@ export const createSpiffClaim = (
   apiRequest<{ claim: SpiffClaim }>('/spiff/claims', {
     method: 'POST',
     body: JSON.stringify(payload),
+  }, token);
+
+export const createSpiffPointAdjustment = (
+  token: string,
+  payload: { userId: string; action: SpiffPointAdjustmentAction; points: number; note?: string },
+) =>
+  apiRequest<{
+    adjustment: {
+      userId: string;
+      action: SpiffPointAdjustmentAction;
+      points: number;
+      eventType: 'MANUAL_ADJUSTMENT';
+      note?: string | null;
+    };
+    wallet: SpiffSummary['wallet'];
+  }>('/spiff/claims', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId: payload.userId,
+      action: payload.action,
+      requestedPoints: payload.points,
+      note: payload.note,
+    }),
   }, token);
 
 export const reviewSpiffClaim = (
