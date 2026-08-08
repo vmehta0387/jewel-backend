@@ -432,7 +432,7 @@ const DesignDetailScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
   const { width, height: windowHeight } = useWindowDimensions();
-  const mediaHeight = Math.min(178, Math.max(136, width * 0.38));
+  const mediaHeight = Math.min(width >= 700 ? 360 : 260, Math.max(156, width * 0.54));
   const mediaListRef = useRef<FlatList<string> | null>(null);
   const detailScrollRef = useRef<ScrollView | null>(null);
   const detailScrollYRef = useRef(0);
@@ -660,15 +660,16 @@ const DesignDetailScreen = () => {
 
   const goToMediaIndex = useCallback(
     (index: number) => {
-      if (!gallery.length) return;
+      if (!gallery.length || mediaViewportWidth <= 0) return;
       const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
       setSelectedImageIndex(boundedIndex);
-      mediaListRef.current?.scrollToOffset({
-        offset: mediaFrameWidth * boundedIndex,
+      mediaListRef.current?.scrollToIndex({
+        index: boundedIndex,
         animated: true,
+        viewPosition: 0,
       });
     },
-    [gallery.length, mediaFrameWidth],
+    [gallery.length, mediaViewportWidth],
   );
 
   const markMediaFailed = useCallback((uri: string) => {
@@ -794,14 +795,29 @@ const DesignDetailScreen = () => {
     [openImageViewer],
   );
 
+  const retryMediaScrollToIndex = useCallback(
+    (index: number, animated = false) => {
+      if (!gallery.length || mediaFrameWidth <= 0) return;
+      const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
+      requestAnimationFrame(() => {
+        mediaListRef.current?.scrollToIndex({
+          index: boundedIndex,
+          animated,
+          viewPosition: 0,
+        });
+      });
+    },
+    [gallery.length, mediaFrameWidth],
+  );
+
   useEffect(() => {
-    if (!gallery.length || selectedImageIndex < 0 || selectedImageIndex >= gallery.length) return;
+    if (!gallery.length || mediaViewportWidth <= 0 || selectedImageIndex < 0 || selectedImageIndex >= gallery.length) return;
     mediaListRef.current?.scrollToIndex({
       index: selectedImageIndex,
-      animated: true,
+      animated: false,
       viewPosition: 0,
     });
-  }, [gallery.length, mediaFrameWidth, selectedImageIndex]);
+  }, [gallery.length, mediaViewportWidth]);
 
   const displayPrice = useMemo(
     () => (activeDesign ? priceByDesignId[activeDesign.id] ?? activeDesign.displayPrice ?? activeDesign.totalValue ?? 0 : 0),
@@ -1382,6 +1398,7 @@ const DesignDetailScreen = () => {
                 <FlatList
                   ref={mediaListRef}
                   data={gallery}
+                  extraData={`${selectedImageIndex}-${failedMediaUrls.size}`}
                   horizontal
                   pagingEnabled
                   bounces={false}
@@ -1391,10 +1408,7 @@ const DesignDetailScreen = () => {
                   initialScrollIndex={Math.min(selectedImageIndex, Math.max(0, gallery.length - 1))}
                   onMomentumScrollEnd={handleMediaSwipeEnd}
                   onScrollToIndexFailed={(info) => {
-                    mediaListRef.current?.scrollToOffset({
-                      offset: mediaFrameWidth * info.index,
-                      animated: false,
-                    });
+                    retryMediaScrollToIndex(info.index);
                   }}
                   getItemLayout={(_, index) => ({
                     length: mediaFrameWidth,
@@ -1459,24 +1473,26 @@ const DesignDetailScreen = () => {
                   <Text style={styles.placeholderText}>Image coming soon</Text>
                 </View>
               )}
-              {!resolvingSelection && gallery.length > 1 && hasPreviousMedia ? (
+              {!resolvingSelection && gallery.length > 1 ? (
                 <TouchableOpacity
-                  style={[styles.mediaNavButton, styles.mediaNavButtonLeft]}
+                  style={[styles.mediaNavButton, styles.mediaNavButtonLeft, !hasPreviousMedia ? styles.mediaNavButtonDisabled : null]}
                   onPress={() => goToMediaIndex(selectedImageIndex - 1)}
                   activeOpacity={0.75}
+                  disabled={!hasPreviousMedia}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Ionicons name="chevron-back" size={20} color="#2A241F" />
+                  <Ionicons name="chevron-back" size={20} color={hasPreviousMedia ? '#2A241F' : '#9C948B'} />
                 </TouchableOpacity>
               ) : null}
-              {!resolvingSelection && gallery.length > 1 && hasNextMedia ? (
+              {!resolvingSelection && gallery.length > 1 ? (
                 <TouchableOpacity
-                  style={[styles.mediaNavButton, styles.mediaNavButtonRight]}
+                  style={[styles.mediaNavButton, styles.mediaNavButtonRight, !hasNextMedia ? styles.mediaNavButtonDisabled : null]}
                   onPress={() => goToMediaIndex(selectedImageIndex + 1)}
                   activeOpacity={0.75}
+                  disabled={!hasNextMedia}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 >
-                  <Ionicons name="chevron-forward" size={20} color="#2A241F" />
+                  <Ionicons name="chevron-forward" size={20} color={hasNextMedia ? '#2A241F' : '#9C948B'} />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1957,6 +1973,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
     zIndex: 10,
+  },
+  mediaNavButtonDisabled: {
+    opacity: 0.48,
   },
   mediaNavButtonLeft: {
     left: 8,

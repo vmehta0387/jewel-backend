@@ -119,6 +119,9 @@ export type DashboardStackParamList = {
   DashboardHome: undefined;
   SpiffRewards: { claimId?: string; claimNumber?: string; initialPanel?: 'ACTIVITY' | 'REDEEM' | 'COMPANY_BOARD' | 'GLOBAL_BOARD' } | undefined;
   UserProfile: undefined;
+  TeamList: { branchId?: string; branchName?: string } | undefined;
+  BranchEmployeeForm: { mode: 'create' } | { mode: 'edit'; employeeId: string };
+  BranchRepProfile: { employee: BranchEmployee };
 };
 
 export type TeamStackParamList = {
@@ -279,6 +282,9 @@ const DashboardNavigator = () => (
     <DashboardStack.Screen name="DashboardHome" component={BranchDashboardScreen} options={{ title: 'Dashboard' }} />
     <DashboardStack.Screen name="SpiffRewards" component={SpiffRewardsScreen} options={{ title: 'Spiff Rewards' }} />
     <DashboardStack.Screen name="UserProfile" component={UserProfileScreen} options={{ title: 'My Profile' }} />
+    <DashboardStack.Screen name="TeamList" component={BranchTeamScreen} options={{ title: 'Team' }} />
+    <DashboardStack.Screen name="BranchRepProfile" component={BranchRepProfileScreen} options={{ title: 'Rep Profile' }} />
+    <DashboardStack.Screen name="BranchEmployeeForm" component={BranchEmployeeFormScreen} options={{ title: 'Employee' }} />
   </DashboardStack.Navigator>
 );
 

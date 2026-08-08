@@ -33,7 +33,7 @@ export class BranchEmployeesController {
 
   @Get()
   @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
-  @ActionPermissions('team.employee.manage')
+  @ActionPermissions()
   findAll(@Request() req: { user: AuthUser }) {
     return this.usersService.findBranchEmployees(req.user);
   }

@@ -12,7 +12,7 @@ const USER_KEY = 'auth_user';
 const BIOMETRIC_KEY = 'auth_biometric_enabled';
 const BIOMETRIC_PROMPTED_KEY = 'auth_biometric_prompted';
 const SECURE_TOKEN_KEY = 'auth_secure_token';
-const MOBILE_ALLOWED_ROLES = new Set(['SALES_REP', 'BRANCH_MANAGER', 'COMPANY_ADMIN']);
+const MOBILE_ALLOWED_ROLES = new Set(['SALES_REP', 'BRANCH_MANAGER']);
 
 type AuthContextValue = {
   user: AuthUser | null;

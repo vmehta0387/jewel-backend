@@ -80,6 +80,10 @@ const BranchTeamScreen = () => {
 
   const selectedBranchId = String(route.params?.branchId || '').trim();
   const selectedBranchName = String(route.params?.branchName || '').trim();
+  const effectiveBranchId =
+    selectedBranchId || (user?.role === 'BRANCH_MANAGER' ? String(user.branchId || '').trim() : '');
+  const effectiveBranchName =
+    selectedBranchName || (user?.role === 'BRANCH_MANAGER' ? String(user.branchName || '').trim() : '');
 
   const loadTeam = useCallback(async () => {
     if (!token) return;
@@ -94,9 +98,9 @@ const BranchTeamScreen = () => {
       const nextSales: Record<string, number> = {};
       (ordersRes.data || []).forEach((order) => {
         if (toMonthKey(order.createdAt) !== currentMonth) return;
-        if (selectedBranchId) {
+        if (effectiveBranchId) {
           const row = order as Order & { branchId?: string | null };
-          if (String(row.branchId || '').trim() !== selectedBranchId) return;
+          if (String(row.branchId || '').trim() !== effectiveBranchId) return;
         }
         const repId = String(order.salesRepId || '').trim();
         if (!repId) return;
@@ -108,7 +112,7 @@ const BranchTeamScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedBranchId, token]);
+  }, [effectiveBranchId, token]);
 
   useFocusEffect(
     useCallback(() => {
@@ -117,9 +121,9 @@ const BranchTeamScreen = () => {
   );
 
   const scopedEmployees = useMemo(() => {
-    if (!selectedBranchId) return employees;
-    return employees.filter((emp) => String(emp.branch?.id || '').trim() === selectedBranchId);
-  }, [employees, selectedBranchId]);
+    if (!effectiveBranchId) return employees;
+    return employees.filter((emp) => String(emp.branch?.id || '').trim() === effectiveBranchId);
+  }, [effectiveBranchId, employees]);
 
   const managers = useMemo<ManagerRow[]>(() => {
     const currentMonth = toMonthKey(new Date().toISOString());
@@ -201,7 +205,7 @@ const BranchTeamScreen = () => {
       .filter((emp) => emp.role === 'SALES_REP')
       .map((emp) => {
         const name = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || emp.email;
-        const branchName = String(emp.branch?.name || selectedBranchName || 'Branch').trim();
+        const branchName = String(emp.branch?.name || effectiveBranchName || 'Branch').trim();
         const sales = Number(monthlySalesByRep[emp.id] || 0);
         let status: RepRow['status'] = 'Away';
         if (!emp.isActive || sales < 20000) status = 'Low';
@@ -216,22 +220,26 @@ const BranchTeamScreen = () => {
         };
       })
       .sort((a, b) => b.sales - a.sales);
-  }, [monthlySalesByRep, scopedEmployees, selectedBranchName]);
+  }, [effectiveBranchName, monthlySalesByRep, scopedEmployees]);
 
   const allCount = managers.length + reps.length;
-  const headerTitle = isCompanyAdmin ? `Team (${allCount})` : `${selectedBranchName ? `${selectedBranchName} Team` : 'My Team'} (${reps.length})`;
+  const headerTitle = isCompanyAdmin ? `Team (${allCount})` : `${effectiveBranchName ? `${effectiveBranchName} Team` : 'My Team'} (${reps.length})`;
 
   const goBack = useCallback(() => {
-    if (user?.role === 'COMPANY_ADMIN' && selectedBranchId) {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+    if (user?.role === 'COMPANY_ADMIN') {
       navigation.navigate('BranchesHome');
       return;
     }
     if (user?.role === 'BRANCH_MANAGER' || user?.role === 'SALES_REP') {
-      (navigation as any).navigate('DashboardTab');
+      (navigation as any).getParent()?.navigate('DashboardTab', { screen: 'DashboardHome' });
       return;
     }
     navigation.goBack();
-  }, [navigation, selectedBranchId, user?.role]);
+  }, [navigation, user?.role]);
 
   const resolveManagerEmployee = useCallback(
     (item: ManagerRow): BranchEmployee | undefined => {
@@ -273,17 +281,6 @@ const BranchTeamScreen = () => {
       </Text>
     </View>
   );
-
-  if (!canManageTeam) {
-    return (
-      <SafeAreaView style={styles.screen} edges={['top']}>
-        <View style={styles.emptyWrap}>
-          <Ionicons name="lock-closed-outline" size={24} color="#B9AFA3" />
-          <Text style={styles.emptyText}>You do not have permission to manage team.</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   if (!isCompanyAdmin) {
     return (

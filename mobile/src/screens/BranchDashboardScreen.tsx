@@ -498,6 +498,22 @@ const BranchDashboardScreen = () => {
     [navigation],
   );
 
+  const handleOpenPrimaryStat = useCallback(() => {
+    if (isBranchManager) return;
+    openPeriodOrders('TODAY');
+  }, [isBranchManager, openPeriodOrders]);
+
+  const handleOpenSecondaryStat = useCallback(() => {
+    if (isBranchManager) {
+      navigation.navigate('TeamList', {
+        branchId: user?.branchId || undefined,
+        branchName: user?.branchName || undefined,
+      });
+      return;
+    }
+    openPeriodOrders('MONTHLY');
+  }, [isBranchManager, navigation, openPeriodOrders, user?.branchId, user?.branchName]);
+
   const handleOpenNotificationEntry = useCallback(
     (_entry: NotificationFeedEntry) => {
       navigation.navigate('OrdersTab');
@@ -575,7 +591,7 @@ const BranchDashboardScreen = () => {
           </View>
 
           <View style={styles.statsHorizontal}>
-            <TouchableOpacity style={styles.statTile} onPress={() => openPeriodOrders('TODAY')} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.statTile} onPress={handleOpenPrimaryStat} activeOpacity={0.85}>
               {statsLoading ? (
                 renderStatSkeleton()
               ) : (
@@ -606,7 +622,7 @@ const BranchDashboardScreen = () => {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.statTile} onPress={() => openPeriodOrders('MONTHLY')} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.statTile} onPress={handleOpenSecondaryStat} activeOpacity={0.85}>
               {statsLoading ? (
                 renderStatSkeleton()
               ) : (

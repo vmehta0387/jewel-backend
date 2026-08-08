@@ -8036,7 +8036,7 @@ export class ProductsService {
       return null;
     }
     if (!this.isDesignBarcode(normalized)) {
-      throw new BadRequestException('Design barcode must use 3 letters followed by 4 digits, for example ABC1234');
+      throw new BadRequestException('Design barcode must contain digits only');
     }
     return normalized;
   }

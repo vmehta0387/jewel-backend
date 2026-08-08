@@ -92,7 +92,7 @@ const LoginScreen = () => {
     try {
       await signIn(email.trim(), password);
     } catch (err: any) {
-      setError(err?.message || 'Unable to sign in');
+      setError(err?.message || 'This role is not allowed to log in to the mobile application.');
     } finally {
       setLoading(false);
     }

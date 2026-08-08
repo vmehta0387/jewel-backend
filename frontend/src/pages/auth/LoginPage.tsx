@@ -89,13 +89,7 @@ export default function LoginPage() {
             <div className="pt-1 text-center">
               <p className="text-sm font-medium text-[#8f857b]">
                 Need access? <span className="font-bold text-[#b1843f]">Contact your admin</span>
-              </p>
-              <Link
-                to="/privacy-policy"
-                className="mt-3 inline-flex text-sm font-bold text-[#9a6f33] underline-offset-4 transition hover:text-[#6f4a18] hover:underline"
-              >
-                Privacy Policy
-              </Link>
+              </p>      
             </div>
           </form>
         </div>
