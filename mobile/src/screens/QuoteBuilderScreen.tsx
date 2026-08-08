@@ -296,6 +296,7 @@ const QuoteBuilderScreen = () => {
   const [notes, setNotes] = useState(draft.notes || '');
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const lastPoBlurCheckRef = useRef('');
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
@@ -886,6 +887,22 @@ const QuoteBuilderScreen = () => {
     ],
   );
 
+  const handlePurchaseOrderBlur = useCallback(async () => {
+    const poNumber = purchaseOrderNumber.trim();
+    if (!token || !companyId || !poNumber) return;
+    const checkKey = [companyId, order?.id || editingOrderId || '', poNumber.toLowerCase()].join('|');
+    if (lastPoBlurCheckRef.current === checkKey) return;
+    lastPoBlurCheckRef.current = checkKey;
+    await confirmPurchaseOrderReuse({
+      token,
+      companyId,
+      branchId,
+      purchaseOrderNumber: poNumber,
+      excludeOrderId: order?.id || editingOrderId,
+      onError: setError,
+    });
+  }, [branchId, companyId, editingOrderId, order?.id, purchaseOrderNumber, token]);
+
   const handleSave = useCallback(async () => {
     if (!canPersist) return;
     if (!validateCustomerDetails()) return;
@@ -1037,6 +1054,7 @@ const QuoteBuilderScreen = () => {
               value={purchaseOrderNumber}
               onChangeText={(value) => {
                 setPurchaseOrderNumber(value);
+                lastPoBlurCheckRef.current = '';
                 if (value.trim()) {
                   setPurchaseOrderError(false);
                   if (error === 'Purchase order number is required.') {
@@ -1044,6 +1062,7 @@ const QuoteBuilderScreen = () => {
                   }
                 }
               }}
+              onEndEditing={handlePurchaseOrderBlur}
               placeholder="PO-2024-LJ-0092"
               placeholderTextColor="#A69582"
               style={[styles.poInput, purchaseOrderError ? styles.poInputError : null]}

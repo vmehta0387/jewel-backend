@@ -10,7 +10,7 @@ export const confirmPurchaseOrderReuse = async (params: {
   onError?: (message: string) => void;
 }) => {
   const normalizedPo = String(params.purchaseOrderNumber || '').trim();
-  if (!params.token || !params.companyId || !params.branchId || !normalizedPo) return true;
+  if (!params.token || !params.companyId || !normalizedPo) return true;
 
   try {
     const usage = await fetchPurchaseOrderUsage(params.token, {

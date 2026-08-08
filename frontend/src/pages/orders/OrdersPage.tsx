@@ -512,6 +512,7 @@ export default function OrdersPage() {
   const { confirm: confirmAppDialog, dialogNode: appDialogNode } = useAppDialog();
   const deepLinkedOrderRef = useRef<string | null>(null);
   const orderRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const purchaseOrderBlurCheckRef = useRef('');
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
@@ -549,6 +550,7 @@ export default function OrdersPage() {
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
+  const [filterSalesReps, setFilterSalesReps] = useState<SalesRepOption[]>([]);
   const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
   const [designOptionsLoading, setDesignOptionsLoading] = useState(false);
   const [designOptionsPage, setDesignOptionsPage] = useState(0);
@@ -599,8 +601,10 @@ export default function OrdersPage() {
     variant?: 'info' | 'success' | 'warning' | 'error';
   } | null>(null);
   const [filters, setFilters] = useState({
+    search: '',
     orderStatus: '',
     companyId: '',
+    salesRepId: '',
     deliveryFrom: '',
     deliveryTo: '',
     createdFrom: '',
@@ -610,7 +614,7 @@ export default function OrdersPage() {
   const designRequestSeqRef = useRef(0);
 
   const isEditing = Boolean(editingOrderId);
-  const listTableColumnCount = canViewCostPrice ? 13 : 12;
+  const listTableColumnCount = canViewCostPrice ? 14 : 13;
   const canSelectOrderCompany = isSuperAdmin;
   const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
   const roleScopedDefaultForm = useMemo(
@@ -625,8 +629,10 @@ export default function OrdersPage() {
 
   const pageOffset = (page - 1) * pageSize;
   const hasActiveFilters = Boolean(
-    filters.orderStatus ||
+    filters.search ||
+      filters.orderStatus ||
       filters.companyId ||
+      filters.salesRepId ||
       filters.deliveryFrom ||
       filters.deliveryTo ||
       filters.createdFrom ||
@@ -662,8 +668,10 @@ export default function OrdersPage() {
           page,
           limit: pageSize,
           status: showInactive ? 'INACTIVE' : 'ACTIVE',
+          search: filters.search.trim() || undefined,
           orderStatus: filters.orderStatus || undefined,
           companyId: filters.companyId || undefined,
+          salesRepId: filters.salesRepId || undefined,
           deliveryFrom: filters.deliveryFrom || undefined,
           deliveryTo: filters.deliveryTo || undefined,
           createdFrom: filters.createdFrom || undefined,
@@ -793,6 +801,21 @@ export default function OrdersPage() {
       setSalesReps(response.data || []);
     } catch {
       setSalesReps([]);
+    }
+  };
+
+  const loadFilterSalesReps = async (companyId = filters.companyId) => {
+    try {
+      const response = await api.get('/users/lookup', {
+        params: {
+          role: 'SALES_REP',
+          status: 'ACTIVE',
+          companyId: companyId || undefined,
+        },
+      });
+      setFilterSalesReps(response.data || []);
+    } catch {
+      setFilterSalesReps([]);
     }
   };
 
@@ -939,8 +962,10 @@ export default function OrdersPage() {
     const today = toDateInputValue();
     const view = searchParams.get('view');
     const nextFilters = {
+      search: searchParams.get('search') || '',
       orderStatus: searchParams.get('orderStatus') || '',
       companyId: searchParams.get('companyId') || '',
+      salesRepId: searchParams.get('salesRepId') || '',
       deliveryFrom: searchParams.get('deliveryFrom') || '',
       deliveryTo: searchParams.get('deliveryTo') || '',
       createdFrom: searchParams.get('createdFrom') || '',
@@ -966,6 +991,10 @@ export default function OrdersPage() {
   useEffect(() => {
     loadCompanies();
   }, []);
+
+  useEffect(() => {
+    loadFilterSalesReps(filters.companyId);
+  }, [filters.companyId]);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -1058,7 +1087,7 @@ export default function OrdersPage() {
 
   const confirmPurchaseOrderReuse = async (payload: {
     companyId: string;
-    branchId: string;
+    branchId?: string;
     purchaseOrderNumber: string;
   }) => {
     const poNumber = payload.purchaseOrderNumber.trim();
@@ -1094,6 +1123,19 @@ export default function OrdersPage() {
       });
       return false;
     }
+  };
+
+  const checkPurchaseOrderUsageOnBlur = async () => {
+    const poNumber = form.purchaseOrderNumber.trim();
+    if (!form.companyId || !poNumber) return;
+    const checkKey = [form.companyId, editingOrderId || '', poNumber.toLowerCase()].join('|');
+    if (purchaseOrderBlurCheckRef.current === checkKey) return;
+    purchaseOrderBlurCheckRef.current = checkKey;
+    await confirmPurchaseOrderReuse({
+      companyId: form.companyId,
+      branchId: form.branchId || undefined,
+      purchaseOrderNumber: poNumber,
+    });
   };
 
   const submitOrderPayload = async (payload: OrderSavePayload) => {
@@ -1903,7 +1945,17 @@ export default function OrdersPage() {
       </div>
 
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Search</label>
+            <input
+              type="text"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.search}
+              placeholder="PO #, customer, order..."
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, search: event.target.value })); }}
+            />
+          </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Status</label>
             <select
@@ -1922,12 +1974,30 @@ export default function OrdersPage() {
             <select
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
               value={filters.companyId}
-              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: event.target.value })); }}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: event.target.value, salesRepId: '' })); }}
             >
               <option value="">All Companies</option>
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>{company.companyName}</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Rep Name</label>
+            <select
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.salesRepId}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: event.target.value })); }}
+            >
+              <option value="">All Reps</option>
+              {filterSalesReps.map((salesRep) => {
+                const fullName = `${salesRep.firstName || ''} ${salesRep.lastName || ''}`.trim();
+                return (
+                  <option key={salesRep.id} value={salesRep.id}>
+                    {fullName || salesRep.email || 'Sales Rep'}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div>
@@ -1956,8 +2026,10 @@ export default function OrdersPage() {
               onClick={() => {
                 setPage(1);
                 setFilters({
+                  search: '',
                   orderStatus: '',
                   companyId: '',
+                  salesRepId: '',
                   deliveryFrom: '',
                   deliveryTo: '',
                   createdFrom: '',
@@ -1979,6 +2051,7 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">Design</th>
                   <th className="app-table-head-cell">Company</th>
                   <th className="app-table-head-cell">Branch</th>
+                  <th className="app-table-head-cell">Rep Name</th>
                   <th className="app-table-head-cell">Delivery</th>
                   <th className="app-table-head-cell">Qty</th>
                   {canViewCostPrice && <th className="app-table-head-cell">Cost Price</th>}
@@ -2011,6 +2084,7 @@ export default function OrdersPage() {
                     <td className="app-table-cell text-sm text-slate-700">{formatDesignLabel(order.designNo, order.designVersion)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.companyName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
+                    <td className="app-table-cell text-sm text-slate-700">{order.salesRepName || order.salesRepEmail || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{formatDisplayDate(order.deliveryDate)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{Number(order.quantity || 0)}</td>
                     {canViewCostPrice && (
@@ -2628,7 +2702,11 @@ export default function OrdersPage() {
                       type="text"
                       className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={form.purchaseOrderNumber}
-                      onChange={(event) => setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }))}
+                      onChange={(event) => {
+                        purchaseOrderBlurCheckRef.current = '';
+                        setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }));
+                      }}
+                      onBlur={checkPurchaseOrderUsageOnBlur}
                     />
                   </div>
                 </div>

@@ -75,16 +75,16 @@ export const fetchPurchaseOrderUsage = (
   token: string,
   params: {
     companyId: string;
-    branchId: string;
+    branchId?: string | null;
     purchaseOrderNumber: string;
     excludeOrderId?: string | null;
   },
 ) => {
   const query = new URLSearchParams({
     companyId: params.companyId,
-    branchId: params.branchId,
     purchaseOrderNumber: params.purchaseOrderNumber,
   });
+  if (params.branchId) query.set('branchId', params.branchId);
   if (params.excludeOrderId) query.set('excludeOrderId', params.excludeOrderId);
 
   return apiRequest<{

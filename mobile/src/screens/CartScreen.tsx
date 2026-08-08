@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -64,6 +64,7 @@ const CartScreen = () => {
   const [showIosDatePicker, setShowIosDatePicker] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastPoBlurCheckRef = useRef('');
   const minimumDeliveryDate = useMemo(() => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -134,6 +135,21 @@ const CartScreen = () => {
     } finally {
       setPlacingOrder(false);
     }
+  };
+
+  const handlePurchaseOrderBlur = async () => {
+    const poNumber = purchaseOrderNumber.trim();
+    if (!poNumber || !token || !user?.companyId) return;
+    const checkKey = [user.companyId, poNumber.toLowerCase()].join('|');
+    if (lastPoBlurCheckRef.current === checkKey) return;
+    lastPoBlurCheckRef.current = checkKey;
+    await confirmPurchaseOrderReuse({
+      token,
+      companyId: user.companyId,
+      branchId: user.branchId,
+      purchaseOrderNumber: poNumber,
+      onError: setError,
+    });
   };
 
   const normalizeToDateOnly = (value: Date) => {
@@ -295,7 +311,11 @@ const CartScreen = () => {
                 <TextInput
                   style={styles.customerInput}
                   value={purchaseOrderNumber}
-                  onChangeText={setPurchaseOrderNumber}
+                  onChangeText={(value) => {
+                    lastPoBlurCheckRef.current = '';
+                    setPurchaseOrderNumber(value);
+                  }}
+                  onEndEditing={handlePurchaseOrderBlur}
                   placeholder="e.g. #PO-2024"
                   placeholderTextColor="#A59D96"
                   autoCapitalize="sentences"

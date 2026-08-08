@@ -236,8 +236,9 @@ export class FindPurchaseOrderUsageQueryDto {
   @IsUUID()
   companyId: string;
 
+  @IsOptional()
   @IsUUID()
-  branchId: string;
+  branchId?: string;
 
   @IsString()
   purchaseOrderNumber: string;

@@ -111,15 +111,14 @@ export class OrdersService implements OnModuleInit {
 
     try {
       const scope = this.resolveScope(requester, query.companyId, query.branchId);
-      if (!scope.companyId || !scope.branchId) {
-        throw new BadRequestException('Company and branch are required');
+      if (!scope.companyId) {
+        throw new BadRequestException('Company is required');
       }
 
       const qb = this.orderRepo
         .createQueryBuilder('order')
         .leftJoinAndSelect('order.design', 'design')
         .where('order.companyId = :companyId', { companyId: scope.companyId })
-        .andWhere('order.branchId = :branchId', { branchId: scope.branchId })
         .andWhere('LOWER(TRIM(order.purchaseOrderNumber)) = :purchaseOrderNumber', {
           purchaseOrderNumber: purchaseOrderNumber.toLowerCase(),
         })
