@@ -395,6 +395,13 @@ interface VersionBuilderSizeChartRowState {
   groups: Record<string, VersionBuilderSizeChartGroupCell>;
 }
 
+const getVersionBuilderSizeChartCellKey = (
+  coverage: string,
+  sizeKey: string,
+  rowId: string,
+  field: keyof VersionBuilderSizeChartGroupCell,
+): string => [coverage, sizeKey, rowId, field].join('|');
+
 const formatCreateFailureMessage = (error: any) => {
   const apiMessage = error?.response?.data?.message;
   if (Array.isArray(apiMessage)) {
@@ -789,8 +796,22 @@ const isVideoUrl = (url: string): boolean => {
   const clean = stripUrlSuffix(normalized);
   return ['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg'].some((ext) => clean.endsWith(ext));
 };
-const isGalleryUploadFile = (file: File): boolean =>
-  Boolean(file.type) && (file.type.startsWith('image/') || file.type.startsWith('video/'));
+const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.svg', '.avif']);
+const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg']);
+const getFileExtension = (fileName: string): string => {
+  const normalized = (fileName || '').trim().toLowerCase();
+  const dotIndex = normalized.lastIndexOf('.');
+  return dotIndex >= 0 ? normalized.slice(dotIndex) : '';
+};
+const isImageUploadFile = (file: File): boolean => {
+  const type = (file.type || '').trim().toLowerCase();
+  return type.startsWith('image/') || IMAGE_FILE_EXTENSIONS.has(getFileExtension(file.name));
+};
+const isVideoUploadFile = (file: File): boolean => {
+  const type = (file.type || '').trim().toLowerCase();
+  return type.startsWith('video/') || VIDEO_FILE_EXTENSIONS.has(getFileExtension(file.name));
+};
+const isGalleryUploadFile = (file: File): boolean => isImageUploadFile(file) || isVideoUploadFile(file);
 const MEDIA_GUIDANCE_TEXT =
   'Images: 1200 x 1200 px recommended, max 5 MB. Videos: MP4 preferred, max 10 seconds, max 50 MB, 1080p or lower for fast loading.';
 const IMAGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
@@ -819,7 +840,7 @@ const validateGalleryUploadFiles = async (
   notify: (message: string, options?: { title?: string; variant?: 'info' | 'success' | 'warning' | 'error' }) => void,
 ): Promise<File[]> => {
   const validTypeFiles = files.filter((file) =>
-    allowVideo ? isGalleryUploadFile(file) : Boolean(file.type) && file.type.startsWith('image/'),
+    allowVideo ? isGalleryUploadFile(file) : isImageUploadFile(file),
   );
 
   if (validTypeFiles.length === 0) {
@@ -831,7 +852,7 @@ const validateGalleryUploadFiles = async (
 
   const errors: string[] = [];
   for (const file of validTypeFiles) {
-    const isVideo = file.type.startsWith('video/');
+    const isVideo = isVideoUploadFile(file);
     const maxBytes = isVideo ? VIDEO_UPLOAD_MAX_BYTES : IMAGE_UPLOAD_MAX_BYTES;
     if (file.size > maxBytes) {
       errors.push(`${file.name}: max ${formatFileSizeMb(maxBytes)} allowed.`);
@@ -869,7 +890,7 @@ const validateGalleryUploadFiles = async (
 const isStlUploadFile = (file: File): boolean => {
   const name = (file.name || '').trim().toLowerCase();
   const type = (file.type || '').trim().toLowerCase();
-  return name.endsWith('.stl') || ['model/stl', 'application/sla', 'model/x.stl-ascii'].includes(type);
+  return name.endsWith('.stl') || ['model/stl', 'application/sla', 'model/x.stl-ascii', 'application/octet-stream'].includes(type);
 };
 const getFileNameFromUrl = (url: string): string => {
   const clean = stripUrlSuffix(url || '').trim();
@@ -1955,6 +1976,7 @@ export default function ProductsPage() {
   const [versionBuilderBaseMetalRows, setVersionBuilderBaseMetalRows] = useState<MetalRow[]>([]);
   const [versionBuilderChartCoverage, setVersionBuilderChartCoverage] = useState('');
   const [versionBuilderSizeChart, setVersionBuilderSizeChart] = useState<VersionBuilderSizeChartState>({});
+  const [versionBuilderManualSizeChartCells, setVersionBuilderManualSizeChartCells] = useState<Record<string, true>>({});
   const [versionBuilderLaborRows, setVersionBuilderLaborRows] = useState<LaborRow[]>([
     { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' },
   ]);
@@ -3899,6 +3921,8 @@ export default function ProductsPage() {
     setVersionBuilderCreateResults({});
     setVersionCreateProgress({ done: 0, total: 0 });
     setVersionBuilderGemRows([]);
+    setVersionBuilderSizeChart({});
+    setVersionBuilderManualSizeChartCells({});
     setVersionBuilderBaseMetalRows([]);
     setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
     setVersionBuilderOverheadRows([]);
@@ -3919,6 +3943,8 @@ export default function ProductsPage() {
     setVersionBuilderCreateResults({});
     setCreatingVersions(false);
     setVersionCreateProgress({ done: 0, total: 0 });
+    setVersionBuilderSizeChart({});
+    setVersionBuilderManualSizeChartCells({});
     setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
     setVersionBuilderOverheadRows([]);
     setShowVersionBuilderRequiredAxisValidation(false);
@@ -4455,6 +4481,7 @@ export default function ProductsPage() {
         );
       } else {
         showAppAlert(`Created ${createdRows.length} version(s) successfully.`);
+        closeVersionBuilderModal();
       }
     } catch (error: any) {
       showAppAlert(error?.response?.data?.message || 'Unable to create versions.');
@@ -4484,6 +4511,8 @@ export default function ProductsPage() {
             coverage,
           );
           const currentCell = existingRow?.groups?.[row.id] || defaultCell;
+          const countKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'count');
+          const ctPerStoneKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'ctPerStone');
 
           coverageState[sizeKey] = {
             metalWeights:
@@ -4493,8 +4522,12 @@ export default function ProductsPage() {
               ...(existingRow?.groups || {}),
               [row.id]: {
                 ...currentCell,
-                ...(field === 'pcs' ? { count: defaultCell.count } : {}),
-                ...(field === 'wtPerPcs' ? { ctPerStone: defaultCell.ctPerStone } : {}),
+                ...(field === 'pcs' && !versionBuilderManualSizeChartCells[countKey]
+                  ? { count: defaultCell.count }
+                  : {}),
+                ...(field === 'wtPerPcs' && !versionBuilderManualSizeChartCells[ctPerStoneKey]
+                  ? { ctPerStone: defaultCell.ctPerStone }
+                  : {}),
               },
             },
           };
@@ -4509,6 +4542,49 @@ export default function ProductsPage() {
         ? "We updated wt/pcs in 'composition size chart'."
         : "We updated pcs in 'composition size chart'.",
     );
+  };
+
+  const fillBlankVersionBuilderGemCellsInSizeChart = (row: GemRow) => {
+    if (!versionBuilderBaseDesign) {
+      return;
+    }
+
+    const mode = versionBuilderGemGroupModes[row.id] || 'varies';
+    setVersionBuilderSizeChart((prev) => {
+      const next: VersionBuilderSizeChartState = { ...prev };
+      versionBuilderSizeChartCoverages.forEach((coverage) => {
+        const coverageState = { ...(next[coverage] || {}) };
+        versionBuilderSizeChartSizes.forEach((sizeKey) => {
+          const existingRow = coverageState[sizeKey];
+          const defaultCell = getDefaultSizeChartGroupCell(
+            row,
+            mode,
+            versionBuilderBaseDesign.jewelrySize,
+            sizeKey,
+            coverage,
+          );
+          const currentCell = existingRow?.groups?.[row.id] || { count: '', ctPerStone: '' };
+          const countKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'count');
+          const ctPerStoneKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'ctPerStone');
+          const nextCell = {
+            count: versionBuilderManualSizeChartCells[countKey] ? currentCell.count : defaultCell.count,
+            ctPerStone: versionBuilderManualSizeChartCells[ctPerStoneKey] ? currentCell.ctPerStone : defaultCell.ctPerStone,
+          };
+
+          coverageState[sizeKey] = {
+            metalWeights:
+              existingRow?.metalWeights ||
+              buildDefaultMetalWeightsForPurities(versionBuilderMetalPurityColumns, versionBuilderBaseMetalWeightMap),
+            groups: {
+              ...(existingRow?.groups || {}),
+              [row.id]: nextCell,
+            },
+          };
+        });
+        next[coverage] = coverageState;
+      });
+      return next;
+    });
   };
 
   const updateVersionBuilderGemRow = (rowId: string, field: keyof GemRow, value: string) => {
@@ -4559,26 +4635,29 @@ export default function ProductsPage() {
     const packetPieces = packet.pieces != null ? String(packet.pieces) : '';
     const packetWtInCts = packet.weightUnit === 'CTS' && packet.weight != null ? String(packet.weight) : '';
     const packetRate = packet.sellingPrice != null ? String(packet.sellingPrice) : '';
+    const currentRow = versionBuilderGemRows.find((row) => row.id === rowId);
+    const nextRow = currentRow
+      ? {
+          ...currentRow,
+          packetId: packet.id,
+          stone: packet.stone || currentRow.stone,
+          shape: packet.shape || currentRow.shape,
+          size: packet.size || currentRow.size,
+          color: packet.color || currentRow.color,
+          quality: packet.quality || currentRow.quality,
+          wtPerPcs: packetWeightPerPc || currentRow.wtPerPcs,
+          pcs: packetPieces || currentRow.pcs,
+          wtInCts: packetWtInCts || currentRow.wtInCts,
+          pricePerCt: packetRate || currentRow.pricePerCt,
+        }
+      : null;
 
     setVersionBuilderGemRows((prev) =>
-      prev.map((row) =>
-        row.id === rowId
-          ? {
-              ...row,
-              packetId: packet.id,
-              stone: packet.stone || row.stone,
-              shape: packet.shape || row.shape,
-              size: packet.size || row.size,
-              color: packet.color || row.color,
-              quality: packet.quality || row.quality,
-              wtPerPcs: packetWeightPerPc || row.wtPerPcs,
-              pcs: packetPieces || row.pcs,
-              wtInCts: packetWtInCts || row.wtInCts,
-              pricePerCt: packetRate || row.pricePerCt,
-            }
-          : row,
-      ),
+      prev.map((row) => (nextRow && row.id === rowId ? nextRow : row)),
     );
+    if (nextRow) {
+      fillBlankVersionBuilderGemCellsInSizeChart(nextRow);
+    }
   };
 
   const toggleVersionBuilderValue = (groupId: keyof VersionBuilderSelections, value: string) => {
@@ -4649,6 +4728,10 @@ export default function ProductsPage() {
     }
 
     const nextValue = sanitizeNumericTextInput(value, field === 'count' ? 'integer' : 'decimal');
+    setVersionBuilderManualSizeChartCells((prev) => ({
+      ...prev,
+      [getVersionBuilderSizeChartCellKey(coverage, sizeKey, rowId, field)]: true,
+    }));
     setVersionBuilderSizeChart((prev) => {
       const coverageState = { ...(prev[coverage] || {}) };
       const sizeState = coverageState[sizeKey] || {
@@ -4827,15 +4910,24 @@ export default function ProductsPage() {
           const existingRow = coverageState[sizeKey];
           const groups: Record<string, VersionBuilderSizeChartGroupCell> = {};
           versionBuilderGemRows.forEach((row) => {
-            groups[row.id] =
-              existingRow?.groups?.[row.id] ||
-              getDefaultSizeChartGroupCell(
-                row,
-                versionBuilderGemGroupModes[row.id] || 'varies',
-                versionBuilderBaseDesign.jewelrySize,
-                sizeKey,
-                coverage,
-              );
+            const defaultCell = getDefaultSizeChartGroupCell(
+              row,
+              versionBuilderGemGroupModes[row.id] || 'varies',
+              versionBuilderBaseDesign.jewelrySize,
+              sizeKey,
+              coverage,
+            );
+            const existingCell = existingRow?.groups?.[row.id];
+            const countKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'count');
+            const ctPerStoneKey = getVersionBuilderSizeChartCellKey(coverage, sizeKey, row.id, 'ctPerStone');
+            groups[row.id] = existingCell
+              ? {
+                  count: versionBuilderManualSizeChartCells[countKey] ? existingCell.count : defaultCell.count,
+                  ctPerStone: versionBuilderManualSizeChartCells[ctPerStoneKey]
+                    ? existingCell.ctPerStone
+                    : defaultCell.ctPerStone,
+                }
+              : defaultCell;
           });
           coverageState[sizeKey] = {
             metalWeights:
@@ -4853,6 +4945,7 @@ export default function ProductsPage() {
     versionBuilderBaseMetalWeightMap,
     versionBuilderGemGroupModes,
     versionBuilderGemRows,
+    versionBuilderManualSizeChartCells,
     versionBuilderMetalPurityColumns,
     versionBuilderSizeChartCoverages,
     versionBuilderSizeChartSizes,
@@ -6115,6 +6208,12 @@ const createDefaultVendorRow = (): VendorRow => ({
     }
 
     if (savingDesign) return;
+    if (galleryUploading || stlUploading) {
+      showAppAlert('Please wait for file upload to finish before saving the design.', {
+        variant: 'warning',
+      });
+      return;
+    }
     if (!form.jewelryGroup.trim()) {
       showAppAlert('Category is required.');
       return;
@@ -6241,7 +6340,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       remarks: form.remarks.trim() || undefined,
       tags: selectedTags,
       imageUrls: galleryKeys,
-      stlFileUrl: stlRemoved ? null : stlItem?.key || stlItem?.url || undefined,
+      stlFileUrl: stlRemoved ? null : stlItem?.key || undefined,
       ijewelModelId: form.ijewelModelId.trim(),
       ijewelBaseName: form.ijewelBaseName.trim(),
     };
@@ -9892,6 +9991,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       type="button"
                       className="rounded-lg border border-[#171311] bg-[#171311] px-3 py-2 text-xs font-semibold text-white hover:bg-[#241d19]"
                       onClick={() => setShowGalleryPicker(true)}
+                      disabled={savingDesign || galleryUploading || stlUploading}
                     >
                       Choose From Gallery
                     </button>
@@ -9899,7 +9999,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       type="button"
                       className="rounded-lg border border-[#d8c5a4] bg-[#f7f2e9] px-3 py-2 text-xs font-semibold text-[#8f6a2c] hover:bg-[#f2e8d6] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => galleryUploadInputRef.current?.click()}
-                      disabled={galleryUploading}
+                      disabled={savingDesign || galleryUploading || stlUploading}
                     >
                       {galleryUploading ? 'Uploading...' : 'Add Media'}
                     </button>
@@ -9907,7 +10007,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       type="button"
                       className="rounded-lg border border-[#d8c5a4] bg-[#f7f2e9] px-3 py-2 text-xs font-semibold text-[#8f6a2c] hover:bg-[#f2e8d6] disabled:cursor-not-allowed disabled:opacity-60"
                       onClick={() => stlUploadInputRef.current?.click()}
-                      disabled={stlUploading}
+                      disabled={savingDesign || galleryUploading || stlUploading}
                     >
                       {stlUploading ? 'Uploading STL...' : 'Add STL'}
                     </button>
@@ -9952,6 +10052,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <button
                             type="button"
                             className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            disabled={savingDesign || galleryUploading || stlUploading}
                             onClick={() => { setStlItem(null); setStlRemoved(true); }}
                           >
                             Remove STL
@@ -9989,6 +10090,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <button
                                   type="button"
                                   className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                                  disabled={savingDesign || galleryUploading || stlUploading}
                                   onClick={() => setPrimaryGalleryItem(index)}
                                 >
                                   Make Primary
@@ -10002,7 +10104,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 type="button"
                                 className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
                                 onClick={() => moveGalleryItem(index, -1)}
-                                disabled={index === 0}
+                                disabled={index === 0 || savingDesign || galleryUploading || stlUploading}
                               >
                                 ^
                               </button>
@@ -10010,13 +10112,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 type="button"
                                 className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
                                 onClick={() => moveGalleryItem(index, 1)}
-                                disabled={index === galleryItems.length - 1}
+                                disabled={index === galleryItems.length - 1 || savingDesign || galleryUploading || stlUploading}
                               >
                                 v
                               </button>
                               <button
                                 type="button"
                                 className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
+                                disabled={savingDesign || galleryUploading || stlUploading}
                                 onClick={() => removeGalleryItem(index)}
                               >
                                 Remove
@@ -10640,8 +10743,8 @@ const createDefaultVendorRow = (): VendorRow => ({
             </div>
 
             <div className="sticky bottom-0 -mx-5 mt-2 flex justify-end gap-2 border-t border-[#dfd0be] bg-[#f7f2e9]/95 px-5 pb-1 pt-3 shadow-[0_-8px_16px_rgba(36,29,25,0.08)] sm:-mx-6 sm:px-6">
-              <Button type="button" onClick={() => saveDesign()} disabled={savingDesign}>
-                {savingDesign ? 'Saving...' : 'Save'}
+              <Button type="button" onClick={() => saveDesign()} disabled={savingDesign || galleryUploading || stlUploading}>
+                {savingDesign ? 'Saving...' : galleryUploading || stlUploading ? 'Uploading...' : 'Save'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>Close</Button>
             </div>

@@ -424,6 +424,7 @@ export class ProductsService {
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const barcode = await this.resolveDesignBarcode();
 
+    const stlFileUrl = this.normalizePersistentStlFileUrl(dto.stlFileUrl);
     const design = this.designRepo.create({
       designNo,
       familyDesignId,
@@ -455,7 +456,7 @@ export class ProductsService {
       totalValue: summary.totalValue,
       grossWeight: summary.grossWeight,
       livePrice: summary.totalValue,
-      stlFileUrl: this.optionalText(dto.stlFileUrl),
+      stlFileUrl,
       imageUrls: this.normalizeGalleryUrls(dto.imageUrls),
       ijewelModelId,
       ijewelBaseName: resolvedIjewelBase,
@@ -465,11 +466,17 @@ export class ProductsService {
       updatedBy: requester.id,
     });
 
-    let saved = await this.saveDesignWithUniqueBarcode(design);
-    if (!saved.familyDesignId) {
-      saved.familyDesignId = saved.id;
-      saved = await this.saveDesignWithUniqueBarcode(saved, saved.id);
-    }
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const designRepo = manager.getRepository(Design);
+      const stlFileRepo = manager.getRepository(DesignStlFile);
+      let transactionSaved = await this.saveDesignWithUniqueBarcode(design, undefined, designRepo);
+      if (!transactionSaved.familyDesignId) {
+        transactionSaved.familyDesignId = transactionSaved.id;
+        transactionSaved = await this.saveDesignWithUniqueBarcode(transactionSaved, transactionSaved.id, designRepo);
+      }
+      await this.syncDesignStlFileRecord(transactionSaved.id, transactionSaved.stlFileUrl, null, requester.id, stlFileRepo);
+      return transactionSaved;
+    });
 
     await this.replaceMetalRows(saved.id, normalizedMetals);
     await this.replaceGemstoneRows(saved.id, normalizedGemstones);
@@ -479,17 +486,6 @@ export class ProductsService {
     await this.replacePricingTierRows(saved.id, dto.pricingTiers || []);
     await this.replaceVendorRows(saved.id, dto.vendors || []);
     await this.setRelevantDesignLinks(saved, dto.relevantDesignIds || [], requester);
-
-    if (dto.stlFileUrl) {
-      await this.stlFileRepo.save(
-        this.stlFileRepo.create({
-          designId: saved.id,
-          fileName: this.deriveFileNameFromUrl(dto.stlFileUrl),
-          fileUrl: dto.stlFileUrl,
-          uploadedBy: requester.id,
-        }),
-      );
-    }
 
     await this.addHistory(saved.id, 'CREATED', 'Design added successfully.', requester.id);
     return this.findOne(saved.id, requester);
@@ -2762,7 +2758,8 @@ export class ProductsService {
     }
     if (dto.remarks !== undefined) design.remarks = this.optionalText(dto.remarks);
     if (dto.imageUrls !== undefined) design.imageUrls = this.normalizeGalleryUrls(dto.imageUrls);
-    if (dto.stlFileUrl !== undefined) design.stlFileUrl = this.optionalText(dto.stlFileUrl);
+    const previousStlFileUrl = design.stlFileUrl;
+    if (dto.stlFileUrl !== undefined) design.stlFileUrl = this.normalizePersistentStlFileUrl(dto.stlFileUrl);
     if (dto.ijewelModelId !== undefined) {
       design.ijewelModelId = this.optionalText(dto.ijewelModelId);
       if (design.ijewelModelId && /^https?:\/\//i.test(design.ijewelModelId)) {
@@ -2782,7 +2779,18 @@ export class ProductsService {
     design.livePrice = summary.totalValue;
     design.updatedBy = requester.id;
 
-    await this.designRepo.save(design);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(Design).save(design);
+      if (dto.stlFileUrl !== undefined) {
+        await this.syncDesignStlFileRecord(
+          id,
+          design.stlFileUrl,
+          previousStlFileUrl,
+          requester.id,
+          manager.getRepository(DesignStlFile),
+        );
+      }
+    });
 
     if (shouldSyncFamilyName) {
       await this.syncFamilyDesignName(design, design.designName, requester.id);
@@ -2818,17 +2826,6 @@ export class ProductsService {
 
     if (dto.relevantDesignIds !== undefined) {
       await this.setRelevantDesignLinks(design, dto.relevantDesignIds, requester);
-    }
-
-    if (dto.stlFileUrl) {
-      await this.stlFileRepo.save(
-        this.stlFileRepo.create({
-          designId: id,
-          fileName: this.deriveFileNameFromUrl(dto.stlFileUrl),
-          fileUrl: dto.stlFileUrl,
-          uploadedBy: requester.id,
-        }),
-      );
     }
 
     await this.addHistory(id, 'UPDATED', 'Design updated successfully.', requester.id);
@@ -2950,20 +2947,25 @@ export class ProductsService {
   async uploadStlFile(id: string, dto: UploadStlFileDto, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
+    const fileUrl = this.normalizePersistentStlFileUrl(dto.fileUrl);
 
-    await this.stlFileRepo.save(
-      this.stlFileRepo.create({
-        designId: id,
-        fileName: dto.fileName.trim(),
-        fileUrl: dto.fileUrl.trim(),
-        notes: this.optionalText(dto.notes),
-        uploadedBy: requester.id,
-      }),
-    );
-
-    design.stlFileUrl = dto.fileUrl.trim();
+    design.stlFileUrl = fileUrl;
     design.updatedBy = requester.id;
-    await this.designRepo.save(design);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(Design).save(design);
+      await this.syncDesignStlFileRecord(
+        id,
+        fileUrl,
+        null,
+        requester.id,
+        manager.getRepository(DesignStlFile),
+        dto.fileName,
+      );
+      const notes = this.optionalText(dto.notes);
+      if (notes) {
+        await manager.getRepository(DesignStlFile).update({ designId: id, fileUrl }, { notes });
+      }
+    });
 
     await this.addHistory(id, 'STL_UPLOADED', 'STL file uploaded successfully.', requester.id);
     return this.findOne(id, requester);
@@ -7529,6 +7531,71 @@ export class ProductsService {
       });
   }
 
+  private normalizePersistentStlFileUrl(value?: string | null): string | null {
+    const normalized = this.optionalText(value);
+    if (!normalized) {
+      return null;
+    }
+
+    const s3Config = this.getS3Client();
+    if (s3Config) {
+      const key = this.parseS3KeyFromUrl(normalized, s3Config.bucket);
+      if (key?.startsWith('design-stl/')) {
+        return `s3://${s3Config.bucket}/${key}`;
+      }
+    }
+
+    const localUploadPath = this.extractLocalUploadPath(normalized);
+    if (localUploadPath?.startsWith('design-stl/')) {
+      return `/uploads/${localUploadPath}`;
+    }
+
+    if (/^\/?uploads\/design-stl\//i.test(normalized)) {
+      return normalized.startsWith('/') ? normalized : `/${normalized}`;
+    }
+
+    if (/^s3:\/\/[^/]+\/design-stl\//i.test(normalized)) {
+      return normalized;
+    }
+
+    throw new BadRequestException('Invalid STL file reference. Please upload the STL file again.');
+  }
+
+  private async syncDesignStlFileRecord(
+    designId: string,
+    nextFileUrl: string | null | undefined,
+    previousFileUrl: string | null | undefined,
+    uploadedBy?: string | null,
+    repository: Repository<DesignStlFile> = this.stlFileRepo,
+    preferredFileName?: string | null,
+  ): Promise<void> {
+    const nextUrl = this.optionalText(nextFileUrl);
+    const previousUrl = this.optionalText(previousFileUrl);
+
+    if (!nextUrl) {
+      await repository.delete({ designId });
+      return;
+    }
+
+    const existingRows = await repository.find({ where: { designId } });
+    if (nextUrl === previousUrl) {
+      const matchingRows = existingRows.filter((row) => row.fileUrl === nextUrl);
+      if (existingRows.length === 1 && matchingRows.length === 1) {
+        return;
+      }
+    }
+
+    await repository.delete({ designId });
+    await repository.save(
+      repository.create({
+        designId,
+        fileName: this.optionalText(preferredFileName) || this.deriveFileNameFromUrl(nextUrl),
+        fileUrl: nextUrl,
+        uploadedBy: uploadedBy || null,
+      }),
+    );
+  }
+
   private async resolveGalleryUrls(urls: string[] | null | undefined): Promise<string[]> {
     if (!Array.isArray(urls) || urls.length === 0) {
       return [];
@@ -8002,14 +8069,18 @@ export class ProductsService {
     }
   }
 
-  private async saveDesignWithUniqueBarcode(design: Design, excludeDesignId?: string): Promise<Design> {
+  private async saveDesignWithUniqueBarcode(
+    design: Design,
+    excludeDesignId?: string,
+    repository: Repository<Design> = this.designRepo,
+  ): Promise<Design> {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       if (!this.isDesignBarcode(design.barcode)) {
         design.barcode = await this.resolveDesignBarcode(undefined, excludeDesignId || design.id);
       }
 
       try {
-        return await this.designRepo.save(design);
+        return await repository.save(design);
       } catch (error) {
         if (!this.isDuplicateDesignBarcodeError(error) || attempt === 19) {
           throw error;

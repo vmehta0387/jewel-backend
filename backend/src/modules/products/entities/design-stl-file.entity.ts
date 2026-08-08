@@ -22,7 +22,7 @@ export class DesignStlFile {
   @Column({ name: 'file_name' })
   fileName: string;
 
-  @Column({ name: 'file_url' })
+  @Column({ name: 'file_url', length: 500 })
   fileUrl: string;
 
   @Column({ type: 'text', nullable: true })

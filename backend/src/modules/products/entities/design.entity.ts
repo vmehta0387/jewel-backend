@@ -119,7 +119,7 @@ export class Design {
   @Column({ name: 'live_price', type: 'decimal', precision: 12, scale: 2, default: 0.0 })
   livePrice: number;
 
-  @Column({ name: 'stl_file_url', nullable: true })
+  @Column({ name: 'stl_file_url', nullable: true, length: 500 })
   stlFileUrl: string | null;
 
   @Column({ name: 'image_urls', type: 'json', nullable: true })
