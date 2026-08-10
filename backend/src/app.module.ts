@@ -12,6 +12,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { SpiffModule } from './modules/spiff/spiff.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
+import { ActivityEventsModule } from './modules/activity-events/activity-events.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
     SpiffModule,
     NotificationsModule,
     PermissionsModule,
+    ActivityEventsModule,
   ],
 })
 export class AppModule {}

@@ -35,6 +35,8 @@ import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 import { canEditOrderByStatus, getOrderSubmitStatus, normalizeOrderStatus } from '../utils/orderLifecycle';
+import { diffChanges } from '../utils/changeDiff';
+import { trackOrderChanged, trackOrderCreated } from '../utils/activityEvents';
 
 type QuoteRoute = RouteProp<DesignsStackParamList, 'QuoteBuilder'>;
 type QuoteNav = NativeStackNavigationProp<DesignsStackParamList>;
@@ -840,6 +842,33 @@ const QuoteBuilderScreen = () => {
         if (String(updated.status || '').toUpperCase() !== effectiveStatus) {
           updated = await updateOrder(token, targetOrderId, { status: effectiveStatus });
         }
+        trackOrderChanged(
+          updated.id,
+          diffChanges(
+            {
+              status: order?.status || draft.status,
+              designId: order?.designId || draft.designId,
+              price: order?.price || draft.unitPrice,
+              shortDescription: order?.shortDescription || draft.shortDescription,
+              purchaseOrderNumber: order?.purchaseOrderNumber || draft.purchaseOrderNumber,
+              customerName: order?.customerName || draft.customerName,
+              customerPhone: order?.customerPhone || draft.customerPhone,
+              customerEmail: order?.customerEmail || draft.customerEmail,
+              notes: order?.notes || draft.notes,
+            },
+            {
+              status: updated.status,
+              designId: updated.designId,
+              price: updated.price,
+              shortDescription: updated.shortDescription,
+              purchaseOrderNumber: updated.purchaseOrderNumber,
+              customerName: updated.customerName,
+              customerPhone: updated.customerPhone,
+              customerEmail: updated.customerEmail,
+              notes: updated.notes,
+            },
+          ),
+        );
         setOrder(updated);
         setEditingOrderId(updated.id);
         return updated;
@@ -862,6 +891,12 @@ const QuoteBuilderScreen = () => {
       if (String(created.status || '').toUpperCase() !== effectiveStatus) {
         created = await updateOrder(token, created.id, { status: effectiveStatus });
       }
+      trackOrderCreated(created.id, {
+        orderNumber: created.orderNumber,
+        designId: created.designId,
+        status: created.status,
+        price: created.price,
+      });
       setOrder(created);
       setEditingOrderId(created.id);
       return created;

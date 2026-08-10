@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, ViewStyle, ActivityIndicator, StyleProp } from 'react-native';
+import { trackActivity } from '../utils/activityTracker';
 import { colors, radii, spacing } from '../theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
@@ -12,6 +13,10 @@ const Button: React.FC<{
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }> = ({ title, onPress, variant = 'primary', loading, disabled, style }) => {
+  const handlePress = () => {
+    trackActivity('UI', 'BUTTON_PRESSED', { data: { title, variant } });
+    onPress();
+  };
   const stylesForVariant =
     variant === 'secondary'
       ? buttonStyles.secondary
@@ -29,7 +34,7 @@ const Button: React.FC<{
   return (
     <TouchableOpacity
       style={[buttonStyles.base, stylesForVariant, style, disabled ? buttonStyles.disabled : null]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled || loading}
     >
       {loading ? (

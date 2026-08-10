@@ -27,6 +27,8 @@ import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootN
 import { getDesignFamilyKey } from '../utils/designFamily';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 import { canApproveOrderByStatus, canEditOrderByStatus, getOrderSubmitStatus } from '../utils/orderLifecycle';
+import { diffChanges } from '../utils/changeDiff';
+import { trackOrderChanged, trackOrderCreated } from '../utils/activityEvents';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
@@ -465,6 +467,29 @@ const QuoteSummaryScreen = () => {
       let nextOrderNumber = orderNumber;
       if (nextOrderId) {
         const updated = await updateOrder(token, nextOrderId, payload);
+        trackOrderChanged(
+          updated.id,
+          diffChanges(
+            {
+              status: currentStatus,
+              shortDescription: displaySummary.shortDescription,
+              purchaseOrderNumber: displaySummary.purchaseOrderNumber,
+              customerName: displaySummary.customerName,
+              customerPhone: displaySummary.customerPhone,
+              customerEmail: displaySummary.customerEmail,
+              notes: displaySummary.notes,
+            },
+            {
+              status: updated.status,
+              shortDescription: updated.shortDescription,
+              purchaseOrderNumber: updated.purchaseOrderNumber,
+              customerName: updated.customerName,
+              customerPhone: updated.customerPhone,
+              customerEmail: updated.customerEmail,
+              notes: updated.notes,
+            },
+          ),
+        );
         nextOrderId = updated.id;
         nextOrderNumber = updated.orderNumber || nextOrderNumber;
         setDisplaySummary((prev) => mergeOrderIntoSummary(prev, updated));
@@ -483,6 +508,12 @@ const QuoteSummaryScreen = () => {
           notes: payload.notes,
           status: targetStatus,
         });
+        trackOrderCreated(created.id, {
+          orderNumber: created.orderNumber,
+          designId: created.designId,
+          status: created.status,
+          price: created.price,
+        });
         nextOrderId = created.id;
         nextOrderNumber = created.orderNumber || nextOrderNumber;
         setDisplaySummary((prev) => mergeOrderIntoSummary(prev, created));
@@ -500,7 +531,7 @@ const QuoteSummaryScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [token, user, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection]);
+  }, [token, user, displaySummary, retailPrice, orderId, orderNumber, resolvedSelection, currentStatus]);
 
   const statusKey = useMemo(() => normalizeStatus(currentStatus), [currentStatus]);
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
@@ -680,7 +711,10 @@ const QuoteSummaryScreen = () => {
       setSending(true);
       setError(null);
       try {
-        await updateOrder(token, orderId, { status: nextStatus });
+        const updated = await updateOrder(token, orderId, { status: nextStatus });
+        trackOrderChanged(orderId, [
+          { field: 'status', oldValue: currentStatus, newValue: updated.status || nextStatus },
+        ]);
         setCurrentStatus(nextStatus);
         Alert.alert(
           nextStatus === 'APPROVED' ? 'Approved' : 'Rejected',
@@ -694,7 +728,7 @@ const QuoteSummaryScreen = () => {
         setSending(false);
       }
     },
-    [orderId, token],
+    [currentStatus, orderId, token],
   );
 
   const showManagerPendingActions = canApproveOrderByStatus(statusKey, user?.role);

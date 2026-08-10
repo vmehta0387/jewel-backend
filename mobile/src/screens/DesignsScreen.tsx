@@ -27,6 +27,11 @@ import { fetchAllGroupedMasters } from '../api/masters';
 import type { Design, GroupedMastersResponse } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
+import {
+  trackDesignFilterApplied,
+  trackDesignListViewed,
+  trackDesignPageLoaded,
+} from '../utils/activityEvents';
 
 const formatRelativeTime = (date: Date): string => {
   const diffMs = Date.now() - date.getTime();
@@ -311,6 +316,18 @@ const DesignsScreen = () => {
       setTotalPages(response.totalPages || 1);
       setTotalDesigns(response.total || rows.length);
       loadedQueryKeyRef.current = activeQueryKey;
+
+      const trackingData = {
+        filters: activeQuery,
+        page: response.page || nextPage,
+        total: response.total || rows.length,
+        resultCount: rows.length,
+      };
+      if (append) {
+        trackDesignPageLoaded(response.page || nextPage, trackingData);
+      } else {
+        trackDesignListViewed(trackingData);
+      }
     } catch (err: any) {
       if (requestSeqRef.current === requestId) {
         setError(err?.message || 'Unable to load designs');
@@ -550,6 +567,15 @@ const DesignsScreen = () => {
   }, [search, selectedCategory, selectedCollection, selectedShape, selectedDiamondType, selectedPriceBand, sortOption]);
 
   const applyDraftFilters = useCallback(() => {
+    const nextFilters = {
+      search: draftSearch.trim() || undefined,
+      category: draftCategory !== 'All' ? draftCategory : undefined,
+      collection: draftCollection !== 'All' ? draftCollection : undefined,
+      shape: draftShape !== 'All' ? draftShape : undefined,
+      diamondType: draftDiamondType !== 'All' ? draftDiamondType : undefined,
+      priceBand: draftPriceBand !== 'ALL' ? draftPriceBand : undefined,
+      sort: draftSortOption,
+    };
     setSearch(draftSearch);
     setSelectedCategory(draftCategory);
     setSelectedCollection(draftCollection);
@@ -558,6 +584,7 @@ const DesignsScreen = () => {
     setSelectedPriceBand(draftPriceBand);
     setSortOption(draftSortOption);
     setSortMenuVisible(false);
+    trackDesignFilterApplied(nextFilters);
   }, [draftSearch, draftCategory, draftCollection, draftShape, draftDiamondType, draftPriceBand, draftSortOption]);
 
   const renderEmpty = () => {
@@ -664,11 +691,20 @@ const DesignsScreen = () => {
                     onPress={() => {
                       if (useCollectionRibbon) {
                         setSelectedCollection(item);
+                        trackDesignFilterApplied({
+                          ...catalogQueryRef.current,
+                          collection: item !== 'All' ? item : undefined,
+                        });
                         return;
                       }
 
                       setSelectedCategory(item);
                       setSelectedCollection('All');
+                      trackDesignFilterApplied({
+                        ...catalogQueryRef.current,
+                        category: item !== 'All' ? item : undefined,
+                        collection: undefined,
+                      });
                     }}
                     style={[styles.chip, styles.chipSpacing, selected ? styles.chipActive : null]}
                   >

@@ -50,6 +50,12 @@ import type { Design } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import { formatNumber } from '../utils/format';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
+import { diffChanges } from '../utils/changeDiff';
+import {
+  trackCreateOrderStarted,
+  trackDesignOptionsChanged,
+  trackDesignViewed,
+} from '../utils/activityEvents';
 
 type OptionVariant = 'default' | 'metal';
 
@@ -612,6 +618,11 @@ const DesignDetailScreen = () => {
       const selectedDesign = await loadStoneCountForDesign(response.selectedDesign);
       applyConfiguratorResponse({ ...response, selectedDesign });
       await loadPriceForDesign(selectedDesign);
+      trackDesignViewed(selectedDesign.id, {
+        designNo: selectedDesign.designNo,
+        designName: selectedDesign.designName,
+        sourceDesignId: route.params.designId,
+      });
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
@@ -879,6 +890,10 @@ const DesignDetailScreen = () => {
         if (resolveRequestSeqRef.current !== requestId) return;
         applyConfiguratorResponse({ ...response, selectedDesign }, nextFilters);
         await loadPriceForDesign(selectedDesign);
+        trackDesignOptionsChanged(
+          selectedDesign.id,
+          diffChanges(currentFilters, nextFilters, [selectedKey]),
+        );
       } catch (err: any) {
         if (resolveRequestSeqRef.current === requestId) {
           setError(err?.message || 'Unable to update design selection');
@@ -950,6 +965,11 @@ const DesignDetailScreen = () => {
           ringSize: selectedRingSize,
         },
       },
+    });
+    trackCreateOrderStarted(activeDesign.id, {
+      designNo: activeDesign.designNo,
+      designName: activeDesign.designName,
+      price: Math.round(Number(displayPrice || 0)),
     });
   }, [
     activeDesign,

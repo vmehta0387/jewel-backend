@@ -22,6 +22,11 @@ import {
   type NotificationFeedEntry,
   type NotificationTone,
 } from '../utils/appNotifications';
+import {
+  trackNotificationAction,
+  trackNotificationListViewed,
+  trackNotificationViewed,
+} from '../utils/activityEvents';
 
 type Props = {
   visible: boolean;
@@ -147,6 +152,12 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
       setPage(response.page || nextPage);
       setTotalPages(Math.max(1, response.totalPages || 1));
       setUnreadCount(Number.isFinite(response.unreadCount) ? response.unreadCount : 0);
+      trackNotificationListViewed({
+        filter: activeFilter,
+        page: response.page || nextPage,
+        total: response.total || nextEntries.length,
+        resultCount: nextEntries.length,
+      });
     } catch {
       if (nextPage === 1) {
         setEntries([]);
@@ -184,6 +195,10 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     if (!token) return;
     try {
       await markAllNotificationsRead(token);
+      trackNotificationAction('all', 'MARK_ALL_READ', {
+        filter: activeFilter,
+        unreadCount,
+      });
       await loadNotifications();
     } catch {
       // Keep the sheet usable even if mark-all fails.
@@ -232,9 +247,21 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
         void markNotificationRead(token, entry.notificationId, true).catch(() => {
           // Keep navigation responsive even if the read-state update fails.
         });
+        trackNotificationAction(entry.notificationId, 'MARK_READ', {
+          source: 'NotificationPopover',
+        });
       }
       onClose();
+      trackNotificationViewed(entry.notificationId, {
+        source: 'NotificationPopover',
+        title: entry.title,
+      });
       const handled = navigateFromEntry(entry);
+      if (handled) {
+        trackNotificationAction(entry.notificationId, 'ACTION_OPENED', {
+          source: 'NotificationPopover',
+        });
+      }
       if (!handled) {
         onOpenNotification?.(entry);
       }
@@ -259,6 +286,10 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
 
     try {
       await markNotificationRead(token, entry.notificationId, true);
+      trackNotificationAction(entry.notificationId, 'MARK_READ', {
+        source: 'NotificationPopover',
+        gesture: 'swipe',
+      });
     } catch {
       await loadNotifications();
     } finally {

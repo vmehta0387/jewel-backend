@@ -36,6 +36,14 @@ import {
   type NotificationFeedEntry,
 } from '../utils/appNotifications';
 import { canApproveOrderByStatus } from '../utils/orderLifecycle';
+import {
+  trackNotificationAction,
+  trackNotificationViewed,
+  trackOrderChanged,
+  trackOrderFilterApplied,
+  trackOrderListViewed,
+  trackOrderViewed,
+} from '../utils/activityEvents';
 
 type FilterKey = 'QUOTE' | 'PENDING_APPROVAL' | 'APPROVED' | 'IN_PRODUCTION' | 'COMPLETED' | 'CANCELLED';
 type ConfirmationAction = 'deleteDraft' | 'cancelOrder';
@@ -319,6 +327,20 @@ const OrdersScreen = () => {
       setOrdersTotal(Number(response.total || 0));
       setStatusCounts(response.statusCounts || {});
       setBranchSalesReps(employeeRows.filter((employee) => employee.role === 'SALES_REP'));
+      const trackingData = {
+        page: Number(response.page || pageToLoad),
+        total: Number(response.total || 0),
+        resultCount: rows.length,
+        filters: {
+          status: selectedFilter,
+          search: debouncedSearch || undefined,
+          salesRepId: selectedSalesRepId === 'ALL' ? undefined : selectedSalesRepId,
+        },
+      };
+      trackOrderListViewed(trackingData);
+      if (!append && (debouncedSearch || selectedSalesRepId !== 'ALL' || selectedFilter !== 'PENDING_APPROVAL')) {
+        trackOrderFilterApplied(trackingData.filters);
+      }
     } catch (err: any) {
       setError(err?.message || 'Unable to load orders');
     } finally {
@@ -430,6 +452,11 @@ const OrdersScreen = () => {
         branchName: order.branchName || undefined,
         notes: order.notes || undefined,
       };
+      trackOrderViewed(order.id, {
+        orderNumber: order.orderNumber,
+        status: order.status,
+        designId: order.designId,
+      });
       navigation.navigate('QuoteSummary', { summary });
     },
     [navigation],
@@ -471,6 +498,9 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrderActiveStatus(token, order.id, false);
+        trackOrderChanged(order.id, [
+          { field: 'isActive', oldValue: order.isActive !== false, newValue: false },
+        ]);
         await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to suspend draft');
@@ -487,6 +517,9 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrder(token, order.id, { status: 'CANCELLED' });
+        trackOrderChanged(order.id, [
+          { field: 'status', oldValue: order.status, newValue: 'CANCELLED' },
+        ]);
         await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to update order');
@@ -557,6 +590,9 @@ const OrdersScreen = () => {
       setActingOrderId(order.id);
       try {
         await updateOrder(token, order.id, { status: 'APPROVED' });
+        trackOrderChanged(order.id, [
+          { field: 'status', oldValue: order.status, newValue: 'APPROVED' },
+        ]);
         await loadOrders();
       } catch (err: any) {
         setError(err?.message || 'Unable to approve order');
@@ -859,11 +895,18 @@ const OrdersScreen = () => {
       if (token && !entry.isRead) {
         try {
           await markNotificationRead(token, entry.notificationId, true);
+          trackNotificationAction(entry.notificationId, 'MARK_READ', {
+            source: 'OrdersScreen',
+          });
         } catch {
           // ignore mark-read errors in UI tap path
         }
       }
       setNotificationsVisible(false);
+      trackNotificationViewed(entry.notificationId, {
+        source: 'OrdersScreen',
+        title: entry.title,
+      });
       const orderId = getOrderIdFromNotification(entry);
       const targetOrder = orders.find((order) => order.id === orderId);
       if (targetOrder) {
@@ -878,6 +921,10 @@ const OrdersScreen = () => {
 
       const spiffTarget = getSpiffClaimTargetFromNotification(entry);
       if (spiffTarget) {
+        trackNotificationAction(entry.notificationId, 'ACTION_OPENED', {
+          source: 'OrdersScreen',
+          target: 'SpiffRewards',
+        });
         (navigation as any).navigate('DashboardTab', {
           screen: 'SpiffRewards',
           params: spiffTarget,

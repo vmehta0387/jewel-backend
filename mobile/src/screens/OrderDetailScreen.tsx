@@ -23,6 +23,7 @@ import { fetchDesign } from '../api/designs';
 import type { Design, Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
 import { canApproveOrderByStatus, canEditOrderByStatus, canRejectOrderByStatus } from '../utils/orderLifecycle';
+import { trackOrderChanged, trackOrderViewed } from '../utils/activityEvents';
 
 const formatStatusLabel = (value?: string | null) =>
   String(value || 'PENDING_APPROVAL')
@@ -162,6 +163,11 @@ const OrderDetailScreen = () => {
     try {
       const data = await fetchOrder(token, route.params.orderId);
       setOrder(data);
+      trackOrderViewed(data.id, {
+        orderNumber: data.orderNumber,
+        status: data.status,
+        designId: data.designId,
+      });
       setDeliveryDate(toDateOrNull(data.deliveryDate));
       setDesignDetails(null);
 
@@ -228,6 +234,13 @@ const OrderDetailScreen = () => {
       const updated = await updateOrder(token, order.id, {
         deliveryDate: deliveryDate ? toYyyyMmDd(deliveryDate) : undefined,
       });
+      trackOrderChanged(order.id, [
+        {
+          field: 'deliveryDate',
+          oldValue: order.deliveryDate || null,
+          newValue: updated.deliveryDate || null,
+        },
+      ]);
       setOrder(updated);
       setDeliveryDate(toDateOrNull(updated.deliveryDate));
     } catch (err: any) {
@@ -253,6 +266,14 @@ const OrderDetailScreen = () => {
         status: nextStatus,
         deliveryDate: deliveryDate ? toYyyyMmDd(deliveryDate) : undefined,
       });
+      trackOrderChanged(order.id, [
+        { field: 'status', oldValue: order.status, newValue: updated.status || nextStatus },
+        {
+          field: 'deliveryDate',
+          oldValue: order.deliveryDate || null,
+          newValue: updated.deliveryDate || null,
+        },
+      ]);
       setOrder(updated);
       setDeliveryDate(toDateOrNull(updated.deliveryDate));
     } catch (err: any) {

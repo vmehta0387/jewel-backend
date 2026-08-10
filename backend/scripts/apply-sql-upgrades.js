@@ -56,6 +56,7 @@ function resolveSqlFiles(args) {
     path.resolve(backendRoot, 'METAL_PRICE_HISTORY_UPGRADE.sql'),
     path.resolve(backendRoot, 'DESIGN_MEDIA_LIBRARY_SOFT_DELETE_UPGRADE.sql'),
     path.resolve(backendRoot, 'ORDER_COMPLETED_SALES_UPGRADE.sql'),
+    path.resolve(repoRoot, 'DATABASE_ACTIVITY_EVENTS_UPGRADE.sql'),
   ].filter((filePath) => {
     if (fs.existsSync(filePath)) return true;
     console.warn(

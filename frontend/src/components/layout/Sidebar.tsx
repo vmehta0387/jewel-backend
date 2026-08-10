@@ -13,6 +13,7 @@ type MenuIconName =
   | 'designs'
   | 'masters'
   | 'orders'
+  | 'activity'
   | 'spiff';
 
 interface NavigationItem {
@@ -61,6 +62,7 @@ const navigation: NavigationItem[] = [
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES', actionPermission: 'master.view' },
   { name: 'Orders', path: '/orders', icon: 'orders' },
+  { name: 'Activity', path: '/activity-events', icon: 'activity', allowedRoles: ['SUPER_ADMIN'] },
   { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES', actionPermission: 'spiff.view' },
 ];
 
@@ -138,6 +140,18 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
       <>
         <rect x="6" y="4" width="12" height="16" rx="2" />
         <path d="M9 8h6M9 12h6M9 16h4" />
+      </>
+    );
+  } else if (name === 'activity') {
+    iconBody = (
+      <>
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M8 15l3-4 3 2 4-7" />
+        <circle cx="8" cy="15" r="1" />
+        <circle cx="11" cy="11" r="1" />
+        <circle cx="14" cy="13" r="1" />
+        <circle cx="18" cy="6" r="1" />
       </>
     );
   } else if (name === 'spiff') {

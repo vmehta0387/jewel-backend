@@ -6,13 +6,17 @@ import * as SecureStore from 'expo-secure-store';
 import type { AuthUser } from '../types';
 import { login as loginApi, me as meApi, signup as signupApi } from '../api/auth';
 import { setUnauthorizedHandler } from '../api/client';
+import { configureActivityContext, configureActivityTracker, flushActivityEvents } from '../utils/activityTracker';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 const BIOMETRIC_KEY = 'auth_biometric_enabled';
 const BIOMETRIC_PROMPTED_KEY = 'auth_biometric_prompted';
 const SECURE_TOKEN_KEY = 'auth_secure_token';
+const DEVICE_ID_KEY = 'activity_device_id';
 const MOBILE_ALLOWED_ROLES = new Set(['SALES_REP', 'BRANCH_MANAGER']);
+
+const createDeviceId = () => `mobile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -46,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricRequired, setBiometricRequired] = useState(false);
   const [biometricPrompted, setBiometricPrompted] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
 
   const checkBiometricAvailable = useCallback(async () => {
     try {
@@ -114,6 +119,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadStored();
   }, [loadStored]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const ensureDeviceId = async () => {
+      try {
+        const storedDeviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+        const nextDeviceId = storedDeviceId || createDeviceId();
+        if (!storedDeviceId) {
+          await AsyncStorage.setItem(DEVICE_ID_KEY, nextDeviceId);
+        }
+        if (mounted) {
+          setDeviceId(nextDeviceId);
+        }
+      } catch {
+        if (mounted) {
+          setDeviceId(createDeviceId());
+        }
+      }
+    };
+
+    void ensureDeviceId();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    configureActivityTracker(() => token);
+  }, [token]);
+
+  useEffect(() => {
+    configureActivityContext(() => ({
+      userId: user?.id,
+      deviceId,
+    }));
+  }, [deviceId, user?.id]);
+
   const signUp = useCallback(
     async (data: {
       firstName: string;
@@ -177,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(response.user);
       await AsyncStorage.setItem(TOKEN_KEY, response.accessToken);
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(response.user));
+      void flushActivityEvents();
     },
     [assertMobileAccessRole, checkBiometricAvailable],
   );
@@ -234,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(me));
     setToken(storedToken);
     setBiometricRequired(false);
+    void flushActivityEvents();
   }, [assertMobileAccessRole, checkBiometricAvailable]);
 
   const signOut = useCallback(async (options?: { clearBiometric?: boolean }) => {
