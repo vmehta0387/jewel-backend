@@ -1,6 +1,6 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { StageMaster } from './design-master-tables.entity';
 
 export enum DesignDurationType {
   MINUTES = 'MINUTES',
@@ -10,14 +10,16 @@ export enum DesignDurationType {
 
 @Entity('design_process_stages')
 export class DesignProcessStage {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'process_stage' })
-  processStage: string;
+  @Column({ name: 'process_stage_id', type: 'int' })
+  processStageId: number;
+
+  processStage?: string;
 
   @Column({ name: 'net_weight', type: 'decimal', precision: 12, scale: 3, default: 0.0 })
   netWeight: number;
@@ -43,13 +45,11 @@ export class DesignProcessStage {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => StageMaster)
+  @JoinColumn({ name: 'process_stage_id' })
+  processStageMaster: StageMaster;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

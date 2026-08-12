@@ -6,10 +6,9 @@ import {
   JoinColumn,
   ManyToOne,
   OneToMany,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
 import { User } from '../../users/entities/user.entity';
@@ -23,11 +22,24 @@ import { DesignVendor } from './design-vendor.entity';
 import { DesignRelevant } from './design-relevant.entity';
 import { DesignStlFile } from './design-stl-file.entity';
 import { DesignHistory } from './design-history.entity';
+import {
+  CollectionMaster,
+  DesignStatusMaster,
+  DiamondQualityMaster,
+  DiamondSpreadMaster,
+  DiamondTypeMaster,
+  DiamondWeightMaster,
+  JewelryGroupMaster,
+  JewelrySizeMaster,
+  MetalCaratageMaster,
+  StageMaster,
+  TagMaster,
+} from './design-master-tables.entity';
 
 @Entity('designs')
 export class Design {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
   @Column({ name: 'design_no' })
   designNo: string;
@@ -35,8 +47,8 @@ export class Design {
   @Column({ nullable: true, length: 7, unique: true })
   barcode: string | null;
 
-  @Column({ name: 'family_design_id', nullable: true })
-  familyDesignId: string | null;
+  @Column({ name: 'family_design_id', type: 'int', nullable: true })
+  familyDesignId: number | string | null;
 
   @Column({ name: 'design_name', nullable: true })
   designName: string | null;
@@ -50,41 +62,53 @@ export class Design {
   @Column({ name: 'branch_id', nullable: true })
   branchId: string | null;
 
-  @Column({ name: 'jewelry_group' })
-  jewelryGroup: string;
+  @Column({ name: 'jewelry_group_id', type: 'int' })
+  jewelryGroupId: number;
 
-  @Column({ nullable: true })
-  collection: string | null;
+  @Column({ name: 'collection_id', type: 'int', nullable: true })
+  collectionId: number | null;
 
-  @Column({ name: 'jewelry_size', nullable: true })
-  jewelrySize: string | null;
+  @Column({ name: 'jewelry_size_id', type: 'int', nullable: true })
+  jewelrySizeId: number | null;
 
-  @Column({ nullable: true })
-  stage: string | null;
+  @Column({ name: 'stage_id', type: 'int', nullable: true })
+  stageId: number | null;
 
-  @Column({ name: 'diamond_spread', nullable: true })
-  diamondSpread: string | null;
+  @Column({ name: 'diamond_spread_id', type: 'int', nullable: true })
+  diamondSpreadId: number | null;
 
-  @Column({ name: 'diamond_type', nullable: true })
-  diamondType: string | null;
+  @Column({ name: 'diamond_type_id', type: 'int', nullable: true })
+  diamondTypeId: number | null;
 
-  @Column({ name: 'diamond_weight', nullable: true })
-  diamondWeight: string | null;
+  @Column({ name: 'diamond_weight_id', type: 'int', nullable: true })
+  diamondWeightId: number | null;
 
-  @Column({ name: 'diamond_quality', nullable: true })
-  diamondQuality: string | null;
+  @Column({ name: 'diamond_quality_id', type: 'int', nullable: true })
+  diamondQualityId: number | null;
 
-  @Column({ name: 'design_status', nullable: true })
-  designStatus: string | null;
+  @Column({ name: 'design_status_id', type: 'int', nullable: true })
+  designStatusId: number | null;
 
-  @Column({ name: 'gold_colour', nullable: true })
-  goldColour: string | null;
+  @Column({ name: 'tags_id', type: 'int', nullable: true })
+  tagsId: number | null;
+
+  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  metalCaratageId: number | null;
+
+  jewelryGroup?: string;
+  collection?: string | null;
+  jewelrySize?: string | null;
+  stage?: string | null;
+  diamondSpread?: string | null;
+  diamondType?: string | null;
+  diamondWeight?: string | null;
+  diamondQuality?: string | null;
+  designStatus?: string | null;
+  tags?: string[] | null;
+  goldColour?: string | null;
 
   @Column({ name: 'stone_info', nullable: true })
   stoneInfo: string | null;
-
-  @Column({ type: 'json', nullable: true })
-  tags: string[];
 
   @Column({ name: 'drawer_location', nullable: true })
   drawerLocation: string | null;
@@ -151,6 +175,50 @@ export class Design {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
+  @ManyToOne(() => JewelryGroupMaster)
+  @JoinColumn({ name: 'jewelry_group_id' })
+  jewelryGroupMaster: JewelryGroupMaster;
+
+  @ManyToOne(() => CollectionMaster, { nullable: true })
+  @JoinColumn({ name: 'collection_id' })
+  collectionMaster: CollectionMaster | null;
+
+  @ManyToOne(() => JewelrySizeMaster, { nullable: true })
+  @JoinColumn({ name: 'jewelry_size_id' })
+  jewelrySizeMaster: JewelrySizeMaster | null;
+
+  @ManyToOne(() => StageMaster, { nullable: true })
+  @JoinColumn({ name: 'stage_id' })
+  stageMaster: StageMaster | null;
+
+  @ManyToOne(() => DiamondSpreadMaster, { nullable: true })
+  @JoinColumn({ name: 'diamond_spread_id' })
+  diamondSpreadMaster: DiamondSpreadMaster | null;
+
+  @ManyToOne(() => DiamondTypeMaster, { nullable: true })
+  @JoinColumn({ name: 'diamond_type_id' })
+  diamondTypeMaster: DiamondTypeMaster | null;
+
+  @ManyToOne(() => DiamondWeightMaster, { nullable: true })
+  @JoinColumn({ name: 'diamond_weight_id' })
+  diamondWeightMaster: DiamondWeightMaster | null;
+
+  @ManyToOne(() => DiamondQualityMaster, { nullable: true })
+  @JoinColumn({ name: 'diamond_quality_id' })
+  diamondQualityMaster: DiamondQualityMaster | null;
+
+  @ManyToOne(() => DesignStatusMaster, { nullable: true })
+  @JoinColumn({ name: 'design_status_id' })
+  designStatusMaster: DesignStatusMaster | null;
+
+  @ManyToOne(() => TagMaster, { nullable: true })
+  @JoinColumn({ name: 'tags_id' })
+  tagsMaster: TagMaster | null;
+
+  @ManyToOne(() => MetalCaratageMaster, { nullable: true })
+  @JoinColumn({ name: 'metal_caratage_id' })
+  metalCaratageMaster: MetalCaratageMaster | null;
+
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'created_by' })
   createdByUser: User;
@@ -199,10 +267,7 @@ export class Design {
   updatedAt: Date;
 
   @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
+  normalizeBeforeInsert() {
     this.designNo = this.designNo.trim().toUpperCase();
     this.version = (this.version || 'V1').trim().toUpperCase();
   }

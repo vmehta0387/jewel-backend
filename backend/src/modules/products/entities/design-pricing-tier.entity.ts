@@ -1,5 +1,4 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
 
 export enum DesignPricingIncrementBy {
@@ -9,11 +8,11 @@ export enum DesignPricingIncrementBy {
 
 @Entity('design_pricing_tiers')
 export class DesignPricingTier {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
   @Column()
   name: string;
@@ -51,10 +50,4 @@ export class DesignPricingTier {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

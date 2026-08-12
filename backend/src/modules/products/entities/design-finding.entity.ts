@@ -1,17 +1,19 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { FindingHeadMaster } from './design-master-tables.entity';
 
 @Entity('design_findings')
 export class DesignFinding {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'finding_head', nullable: true })
-  findingHead: string | null;
+  @Column({ name: 'finding_head_id', type: 'int', nullable: true })
+  findingHeadId: number | null;
+
+  findingHead?: string | null;
 
   @Column({ name: 'price_per_unit', type: 'decimal', precision: 12, scale: 2, default: 0.0 })
   pricePerUnit: number;
@@ -32,13 +34,11 @@ export class DesignFinding {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => FindingHeadMaster, { nullable: true })
+  @JoinColumn({ name: 'finding_head_id' })
+  findingHeadMaster: FindingHeadMaster | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

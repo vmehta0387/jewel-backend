@@ -1,14 +1,12 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
 
 export enum DesignMediaType {
@@ -19,8 +17,8 @@ export enum DesignMediaType {
 
 @Entity('design_media_library')
 export class DesignMediaLibrary {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
   @Column({ name: 'media_type', type: 'enum', enum: DesignMediaType })
   mediaType: DesignMediaType;
@@ -53,10 +51,4 @@ export class DesignMediaLibrary {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

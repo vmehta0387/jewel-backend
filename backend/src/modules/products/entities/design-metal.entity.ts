@@ -1,17 +1,20 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { MetalCaratageMaster } from './design-master-tables.entity';
 
 @Entity('design_metals')
 export class DesignMetal {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'gold_colour', nullable: true })
-  goldColour: string | null;
+  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  metalCaratageId: number | null;
+
+  goldColour?: string | null;
+  metalCaratage?: string | null;
 
   @Column({ name: 'net_wt', type: 'decimal', precision: 12, scale: 3, default: 0.0 })
   netWt: number;
@@ -41,13 +44,11 @@ export class DesignMetal {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => MetalCaratageMaster, { nullable: true })
+  @JoinColumn({ name: 'metal_caratage_id' })
+  metalCaratageMaster: MetalCaratageMaster | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

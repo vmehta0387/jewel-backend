@@ -1,17 +1,19 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { LaborHeadMaster } from './design-master-tables.entity';
 
 @Entity('design_labors')
 export class DesignLabor {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'labor_head', nullable: true })
-  laborHead: string | null;
+  @Column({ name: 'labor_head_id', type: 'int', nullable: true })
+  laborHeadId: number | null;
+
+  laborHead?: string | null;
 
   @Column({ name: 'labor_per_unit', type: 'decimal', precision: 12, scale: 2, default: 0.0 })
   laborPerUnit: number;
@@ -29,13 +31,11 @@ export class DesignLabor {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => LaborHeadMaster, { nullable: true })
+  @JoinColumn({ name: 'labor_head_id' })
+  laborHeadMaster: LaborHeadMaster | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

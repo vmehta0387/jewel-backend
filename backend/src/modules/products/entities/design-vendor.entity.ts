@@ -1,17 +1,19 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { VendorNameMaster } from './design-master-tables.entity';
 
 @Entity('design_vendors')
 export class DesignVendor {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'supplier_name' })
-  supplierName: string;
+  @Column({ name: 'vendor_name_id', type: 'int' })
+  vendorNameId: number;
+
+  supplierName?: string;
 
   @Column({ name: 'stock_type', nullable: true })
   stockType: string | null;
@@ -26,13 +28,11 @@ export class DesignVendor {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => VendorNameMaster)
+  @JoinColumn({ name: 'vendor_name_id' })
+  vendorNameMaster: VendorNameMaster;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

@@ -1,23 +1,21 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { Design } from './design.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('design_stl_files')
 export class DesignStlFile {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
   @Column({ name: 'file_name' })
   fileName: string;
@@ -42,10 +40,4 @@ export class DesignStlFile {
   @CreateDateColumn({ name: 'uploaded_at' })
   uploadedAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

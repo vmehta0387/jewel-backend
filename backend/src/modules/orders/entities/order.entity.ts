@@ -29,8 +29,8 @@ export class Order {
   @Column({ name: 'branch_id', nullable: true })
   branchId: string | null;
 
-  @Column({ name: 'design_id', nullable: true })
-  designId: string | null;
+  @Column({ name: 'design_id', type: 'int', nullable: true })
+  designId: number | string | null;
 
   @Column({ name: 'sales_rep_id', nullable: true })
   salesRepId: string | null;

@@ -1,17 +1,16 @@
-import { BeforeInsert, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn, Column } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Column } from 'typeorm';
 import { Design } from './design.entity';
 
 @Entity('design_relevant')
 export class DesignRelevant {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
-  @Column({ name: 'related_design_id' })
-  relatedDesignId: string;
+  @Column({ name: 'related_design_id', type: 'int' })
+  relatedDesignId: number | string;
 
   @ManyToOne(() => Design, (design) => design.relevantDesignLinks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })
@@ -24,10 +23,4 @@ export class DesignRelevant {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

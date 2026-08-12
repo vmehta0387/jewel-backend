@@ -1,23 +1,21 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { Design } from './design.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('design_history')
 export class DesignHistory {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
   @Column({ name: 'action_type' })
   actionType: string;
@@ -42,10 +40,4 @@ export class DesignHistory {
   @CreateDateColumn({ name: 'performed_at' })
   performedAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

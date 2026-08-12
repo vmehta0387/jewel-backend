@@ -34,6 +34,12 @@ export enum MobileCatalogCategory {
 }
 
 export class DesignMetalDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  metalCaratageId?: number;
+
   @IsString()
   @IsOptional()
   goldColour?: string;
@@ -157,6 +163,12 @@ export class DesignGemstoneDto {
   stoneType?: string;
 
   @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stoneTypeId?: number;
+
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @IsOptional()
@@ -188,6 +200,12 @@ export class DesignGemstoneDto {
 }
 
 export class DesignLaborDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  laborHeadId?: number;
+
   @IsString()
   @IsOptional()
   laborHead?: string;
@@ -209,6 +227,12 @@ export class DesignLaborDto {
 }
 
 export class DesignFindingDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  findingHeadId?: number;
+
   @IsString()
   @IsOptional()
   findingHead?: string;
@@ -236,8 +260,15 @@ export class DesignFindingDto {
 }
 
 export class DesignProcessStageDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  processStageId?: number;
+
   @IsString()
-  processStage: string;
+  @IsOptional()
+  processStage?: string;
 
   @Type(() => Number)
   @IsNumber()
@@ -291,8 +322,15 @@ export class DesignPricingTierDto {
 }
 
 export class DesignVendorDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  vendorNameId?: number;
+
   @IsString()
-  supplierName: string;
+  @IsOptional()
+  supplierName?: string;
 
   @IsString()
   @IsOptional()
@@ -341,44 +379,111 @@ export class CreateProductDto {
   branchId?: string;
 
   @IsString()
-  jewelryGroup: string;
+  @IsOptional()
+  jewelryGroup?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  jewelryGroupId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  collectionId?: number;
 
   @IsString()
   @IsOptional()
   collection?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  jewelrySizeId?: number;
+
   @IsString()
   @IsOptional()
   jewelrySize?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stageId?: number;
 
   @IsString()
   @IsOptional()
   stage?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondSpreadId?: number;
+
   @IsString()
   @IsOptional()
   diamondSpread?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondTypeId?: number;
 
   @IsString()
   @IsOptional()
   diamondType?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondWeightId?: number;
+
   @IsString()
   @IsOptional()
   diamondWeight?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondQualityId?: number;
 
   @IsString()
   @IsOptional()
   diamondQuality?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  designStatusId?: number;
+
   @IsString()
   @IsOptional()
   designStatus?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  metalCaratageId?: number;
 
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  tagsId?: number;
 
   @IsString()
   @IsOptional()
@@ -530,42 +635,108 @@ export class UpdateProductDto {
   @IsOptional()
   jewelryGroup?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  jewelryGroupId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  collectionId?: number;
+
   @IsString()
   @IsOptional()
   collection?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  jewelrySizeId?: number;
 
   @IsString()
   @IsOptional()
   jewelrySize?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stageId?: number;
+
   @IsString()
   @IsOptional()
   stage?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondSpreadId?: number;
 
   @IsString()
   @IsOptional()
   diamondSpread?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondTypeId?: number;
+
   @IsString()
   @IsOptional()
   diamondType?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondWeightId?: number;
 
   @IsString()
   @IsOptional()
   diamondWeight?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondQualityId?: number;
+
   @IsString()
   @IsOptional()
   diamondQuality?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  designStatusId?: number;
 
   @IsString()
   @IsOptional()
   designStatus?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  metalCaratageId?: number;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()
   tags?: string[];
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  tagsId?: number;
 
   @IsString()
   @IsOptional()

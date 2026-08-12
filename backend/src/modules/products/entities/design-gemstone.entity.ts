@@ -1,38 +1,54 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import {
+  DiamondTypeMaster,
+  PacketColorMaster,
+  PacketCutMaster,
+  PacketQualityMaster,
+  PacketShapeMaster,
+  PacketSizeMaster,
+  PacketStoneMaster,
+} from './design-master-tables.entity';
 
 @Entity('design_gemstones')
 export class DesignGemstone {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number | string;
 
-  @Column({ name: 'design_id' })
-  designId: string;
+  @Column({ name: 'design_id', type: 'int' })
+  designId: number | string;
 
   @Column({ name: 'packet_id', type: 'int', nullable: true })
   packetId: number | null;
 
-  @Column({ nullable: true })
-  stone: string | null;
+  @Column({ name: 'stone_id', type: 'int', nullable: true })
+  stoneId: number | null;
 
-  @Column({ nullable: true })
-  shape: string | null;
+  @Column({ name: 'shape_id', type: 'int', nullable: true })
+  shapeId: number | null;
 
-  @Column({ nullable: true })
-  size: string | null;
+  @Column({ name: 'size_id', type: 'int', nullable: true })
+  sizeId: number | null;
 
-  @Column({ nullable: true })
-  cut: string | null;
+  @Column({ name: 'cut_id', type: 'int', nullable: true })
+  cutId: number | null;
 
-  @Column({ nullable: true })
-  color: string | null;
+  @Column({ name: 'color_id', type: 'int', nullable: true })
+  colorId: number | null;
 
-  @Column({ nullable: true })
-  quality: string | null;
+  @Column({ name: 'quality_id', type: 'int', nullable: true })
+  qualityId: number | null;
 
-  @Column({ name: 'stone_type', nullable: true })
-  stoneType: string | null;
+  @Column({ name: 'stone_type_id', type: 'int', nullable: true })
+  stoneTypeId: number | null;
+
+  stone?: string | null;
+  shape?: string | null;
+  size?: string | null;
+  cut?: string | null;
+  color?: string | null;
+  quality?: string | null;
+  stoneType?: string | null;
 
   @Column({ name: 'wt_per_pcs', type: 'decimal', precision: 12, scale: 3, default: 0.0 })
   wtPerPcs: number;
@@ -56,13 +72,35 @@ export class DesignGemstone {
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
+  @ManyToOne(() => PacketStoneMaster, { nullable: true })
+  @JoinColumn({ name: 'stone_id' })
+  stoneMaster: PacketStoneMaster | null;
+
+  @ManyToOne(() => PacketShapeMaster, { nullable: true })
+  @JoinColumn({ name: 'shape_id' })
+  shapeMaster: PacketShapeMaster | null;
+
+  @ManyToOne(() => PacketSizeMaster, { nullable: true })
+  @JoinColumn({ name: 'size_id' })
+  sizeMaster: PacketSizeMaster | null;
+
+  @ManyToOne(() => PacketCutMaster, { nullable: true })
+  @JoinColumn({ name: 'cut_id' })
+  cutMaster: PacketCutMaster | null;
+
+  @ManyToOne(() => PacketColorMaster, { nullable: true })
+  @JoinColumn({ name: 'color_id' })
+  colorMaster: PacketColorMaster | null;
+
+  @ManyToOne(() => PacketQualityMaster, { nullable: true })
+  @JoinColumn({ name: 'quality_id' })
+  qualityMaster: PacketQualityMaster | null;
+
+  @ManyToOne(() => DiamondTypeMaster, { nullable: true })
+  @JoinColumn({ name: 'stone_type_id' })
+  stoneTypeMaster: DiamondTypeMaster | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }
