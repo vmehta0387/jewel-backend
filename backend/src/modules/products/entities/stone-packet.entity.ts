@@ -1,12 +1,19 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { JoinColumn, ManyToOne } from 'typeorm';
+import {
+  PacketColorMaster,
+  PacketCutMaster,
+  PacketQualityMaster,
+  PacketShapeMaster,
+  PacketSizeMaster,
+  PacketStoneMaster,
+} from './design-master-tables.entity';
 
 export enum StoneWeightUnit {
   CTS = 'CTS',
@@ -20,8 +27,8 @@ export enum StonePacketPriceIn {
 
 @Entity('stone_packets')
 export class StonePacket {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int', name: 'id' })
+  id: number;
 
   @Column({ name: 'barcode', length: 32, unique: true, nullable: true })
   barcode: string | null;
@@ -32,23 +39,23 @@ export class StonePacket {
   @Column({ name: 'stock_type', nullable: true })
   stockType: string | null;
 
-  @Column({ nullable: true })
-  stone: string | null;
+  @Column({ name: 'stone_id', type: 'int', nullable: true })
+  stoneId: number | null;
 
-  @Column({ nullable: true })
-  shape: string | null;
+  @Column({ name: 'shape_id', type: 'int', nullable: true })
+  shapeId: number | null;
 
-  @Column({ nullable: true })
-  size: string | null;
+  @Column({ name: 'size_id', type: 'int', nullable: true })
+  sizeId: number | null;
 
-  @Column({ nullable: true })
-  cut: string | null;
+  @Column({ name: 'cut_id', type: 'int', nullable: true })
+  cutId: number | null;
 
-  @Column({ nullable: true })
-  color: string | null;
+  @Column({ name: 'color_id', type: 'int', nullable: true })
+  colorId: number | null;
 
-  @Column({ nullable: true })
-  quality: string | null;
+  @Column({ name: 'quality_id', type: 'int', nullable: true })
+  qualityId: number | null;
 
   @Column({
     name: 'price_in',
@@ -81,16 +88,34 @@ export class StonePacket {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  @ManyToOne(() => PacketStoneMaster, { nullable: true })
+  @JoinColumn({ name: 'stone_id' })
+  stoneMaster: PacketStoneMaster | null;
+
+  @ManyToOne(() => PacketShapeMaster, { nullable: true })
+  @JoinColumn({ name: 'shape_id' })
+  shapeMaster: PacketShapeMaster | null;
+
+  @ManyToOne(() => PacketSizeMaster, { nullable: true })
+  @JoinColumn({ name: 'size_id' })
+  sizeMaster: PacketSizeMaster | null;
+
+  @ManyToOne(() => PacketCutMaster, { nullable: true })
+  @JoinColumn({ name: 'cut_id' })
+  cutMaster: PacketCutMaster | null;
+
+  @ManyToOne(() => PacketColorMaster, { nullable: true })
+  @JoinColumn({ name: 'color_id' })
+  colorMaster: PacketColorMaster | null;
+
+  @ManyToOne(() => PacketQualityMaster, { nullable: true })
+  @JoinColumn({ name: 'quality_id' })
+  qualityMaster: PacketQualityMaster | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

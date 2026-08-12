@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -85,33 +86,71 @@ export class DesignMetalDto {
 }
 
 export class DesignGemstoneDto {
-  @IsUUID()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  packetId?: string;
+  packetId?: number;
 
   @IsString()
   @IsOptional()
   stone?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stoneId?: number;
+
   @IsString()
   @IsOptional()
   shape?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  shapeId?: number;
 
   @IsString()
   @IsOptional()
   size?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  sizeId?: number;
+
   @IsString()
   @IsOptional()
   cut?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  cutId?: number;
 
   @IsString()
   @IsOptional()
   color?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  colorId?: number;
+
   @IsString()
   @IsOptional()
   quality?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  qualityId?: number;
 
   @IsString()
   @IsOptional()
@@ -901,25 +940,61 @@ export class FindPacketsQueryDto {
   @IsOptional()
   stone?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stoneId?: number;
+
   @IsString()
   @IsOptional()
   shape?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  shapeId?: number;
 
   @IsString()
   @IsOptional()
   size?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  sizeId?: number;
+
   @IsString()
   @IsOptional()
   cut?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  cutId?: number;
 
   @IsString()
   @IsOptional()
   color?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  colorId?: number;
+
   @IsString()
   @IsOptional()
   quality?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  qualityId?: number;
 
   @IsString()
   @IsOptional()
@@ -955,25 +1030,61 @@ export class CreateStonePacketDto {
   @IsOptional()
   stone?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stoneId?: number;
+
   @IsString()
   @IsOptional()
   shape?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  shapeId?: number;
 
   @IsString()
   @IsOptional()
   size?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  sizeId?: number;
+
   @IsString()
   @IsOptional()
   cut?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  cutId?: number;
 
   @IsString()
   @IsOptional()
   color?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  colorId?: number;
+
   @IsString()
   @IsOptional()
   quality?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  qualityId?: number;
 
   @IsIn(['WT', 'PCS'])
   @IsOptional()
@@ -1025,25 +1136,61 @@ export class UpdateStonePacketDto {
   @IsOptional()
   stone?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  stoneId?: number;
+
   @IsString()
   @IsOptional()
   shape?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  shapeId?: number;
 
   @IsString()
   @IsOptional()
   size?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  sizeId?: number;
+
   @IsString()
   @IsOptional()
   cut?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  cutId?: number;
 
   @IsString()
   @IsOptional()
   color?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  colorId?: number;
+
   @IsString()
   @IsOptional()
   quality?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  qualityId?: number;
 
   @IsIn(['WT', 'PCS'])
   @IsOptional()

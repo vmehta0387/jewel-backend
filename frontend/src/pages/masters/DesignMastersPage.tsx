@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import SmartDropdown, { SmartDropdownOption } from '../../components/common/SmartDropdown';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
@@ -39,31 +40,55 @@ type DesignMasterType =
 type MasterCategoryType = DesignMasterType | 'STONE_PACKET';
 type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
 type LaborApplyMode = 'FLAT' | 'PER_STONE' | 'PER_GRAM' | 'PER_GROUP';
-type OverheadApplyMode = 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT';
+type OverheadApplyMode = 'per_of_materials' | 'flat';
 
-interface MasterOption {
-  id: string;
+interface JoinedMasterRef {
+  id: string | number;
+  name?: string;
+  value?: string;
+  aliasName?: string | null;
+  label?: string;
+  metalId?: string | number | null;
+  metalColorId?: string | number | null;
+  metalPurityId?: string | number | null;
+  jewelryGroupId?: string | number | null;
+  purityPercentage?: number | null;
+  marketPricePerOunce?: number | null;
+  marketPricePerGm?: number | null;
+  livePricePerGm?: number | null;
+  defaultWastagePercent?: number | null;
+}
+
+interface MasterOption extends SmartDropdownOption {
+  id: string | number;
   value: string;
-  aliasName?: string;
-  vendorEmail?: string | null;
-  jewelryGroupId?: string;
-  jewelryGroup?: string;
-  metalName?: string;
-  purityPercentage?: number;
-  marketPricePerOunce?: number;
-  marketPricePerGm?: number;
-  livePricePerGm?: number;
-  defaultWastagePercent?: number;
+  aliasName?: string | null;
+  label?: string;
+  email?: string | null;
+  jewelryGroupId?: string | number | null;
+  jewelryGroup?: JoinedMasterRef | string | null;
+  metalId?: string | number | null;
+  metal?: JoinedMasterRef | string | null;
+  metalColorId?: string | number | null;
+  metalColor?: JoinedMasterRef | string | null;
+  metalPurityId?: string | number | null;
+  metalPurity?: JoinedMasterRef | string | null;
+  purityPercentage?: number | null;
+  marketPricePerOunce?: number | null;
+  marketPricePerGm?: number | null;
+  livePricePerGm?: number | null;
+  defaultWastagePercent?: number | null;
 }
 
 interface MasterRow {
-  id: string;
-  masterType: DesignMasterType;
+  id: string | number;
+  masterType?: DesignMasterType;
   value: string;
   aliasName?: string | null;
-  jewelryGroupId?: string | null;
-  jewelryGroup?: string | null;
+  jewelryGroupId?: string | number | null;
+  jewelryGroup?: JoinedMasterRef | string | null;
   description?: string | null;
+  email?: string | null;
   vendorEmail?: string | null;
   findingNo?: string | null;
   metalCaratage?: string | null;
@@ -71,9 +96,12 @@ interface MasterRow {
   pricePerUnit?: number | null;
   dimensions?: string | null;
   weightPerUnit?: number | null;
-  metalName?: string | null;
-  metalColor?: string | null;
-  metalPurity?: string | null;
+  metalId?: string | number | null;
+  metal?: JoinedMasterRef | string | null;
+  metalColorId?: string | number | null;
+  metalColor?: JoinedMasterRef | string | null;
+  metalPurityId?: string | number | null;
+  metalPurity?: JoinedMasterRef | string | null;
   purityPercentage?: number | null;
   marketPricePerOunce?: number | null;
   marketPricePerGm?: number | null;
@@ -96,12 +124,24 @@ interface PacketRow {
   id: string;
   barcode: string | null;
   packetName: string;
+  stoneId?: string | number | null;
   stone: string | null;
+  stoneMaster?: JoinedMasterRef | null;
+  shapeId?: string | number | null;
   shape: string | null;
+  shapeMaster?: JoinedMasterRef | null;
+  sizeId?: string | number | null;
   size: string | null;
+  sizeMaster?: JoinedMasterRef | null;
+  cutId?: string | number | null;
   cut: string | null;
+  cutMaster?: JoinedMasterRef | null;
+  colorId?: string | number | null;
   color: string | null;
+  colorMaster?: JoinedMasterRef | null;
+  qualityId?: string | number | null;
   quality: string | null;
+  qualityMaster?: JoinedMasterRef | null;
   priceIn: 'WT' | 'PCS';
   sellingPrice: number | null;
   weightPerPc: number | null;
@@ -441,11 +481,11 @@ interface MasterModalProps {
   onChangeDescription: (value: string) => void;
   onChangeVendorEmail: (value: string) => void;
   onChangeFindingNo: (value: string) => void;
-  onChangeJewelryGroupId: (value: string) => void;
+  onChangeJewelryGroupId: (value: string, option?: SmartDropdownOption | null) => void;
   onChangeMetalCaratage: (value: string) => void;
-  onChangeMetalName: (value: string) => void;
-  onChangeMetalColor: (value: string) => void;
-  onChangeMetalPurity: (value: string) => void;
+  onChangeMetalName: (value: string, option?: SmartDropdownOption | null) => void;
+  onChangeMetalColor: (value: string, option?: SmartDropdownOption | null) => void;
+  onChangeMetalPurity: (value: string, option?: SmartDropdownOption | null) => void;
   onChangePurityPercentage: (value: string) => void;
   onChangeMarketPricePerOunce: (value: string) => void;
   onChangeMarketPricePerGm: (value: string) => void;
@@ -474,7 +514,7 @@ interface PacketModalProps {
   masterOptions: PacketMasterOptions;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onChange: (key: keyof PacketForm, value: string) => void;
+  onChange: (key: keyof PacketForm, value: string, option?: SmartDropdownOption | null) => void;
   onRegeneratePacketName: () => void;
 }
 
@@ -484,6 +524,7 @@ interface PacketForm {
   stone: string;
   shape: string;
   size: string;
+  cut: string;
   color: string;
   quality: string;
   priceIn: 'WT' | 'PCS';
@@ -496,16 +537,9 @@ interface PacketMasterOptions {
   packetStones: MasterOption[];
   packetShapes: MasterOption[];
   packetSizes: MasterOption[];
+  packetCuts: MasterOption[];
   packetColors: MasterOption[];
   packetQualities: MasterOption[];
-}
-
-interface MetalMasterOptions {
-  jewelryGroups: MasterOption[];
-  metalNames: MasterOption[];
-  metalColors: MasterOption[];
-  metalPurities: MasterOption[];
-  metalCaratages: MasterOption[];
 }
 
 const defaultPacketForm: PacketForm = {
@@ -514,28 +548,13 @@ const defaultPacketForm: PacketForm = {
   stone: '',
   shape: '',
   size: '',
+  cut: '',
   color: '',
   quality: '',
   priceIn: 'WT',
   sellingPrice: '',
   weightPerPc: '',
   weightIn: 'CTS',
-};
-
-const emptyPacketMasterOptions: PacketMasterOptions = {
-  packetStones: [],
-  packetShapes: [],
-  packetSizes: [],
-  packetColors: [],
-  packetQualities: [],
-};
-
-const emptyMetalMasterOptions: MetalMasterOptions = {
-  jewelryGroups: [],
-  metalNames: [],
-  metalColors: [],
-  metalPurities: [],
-  metalCaratages: [],
 };
 
 function parseNum(value: string): number {
@@ -550,6 +569,47 @@ function parseOptionalNum(value: string): number | null {
   }
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function optionId(value?: string | number | null): string {
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function masterRefValue(ref?: JoinedMasterRef | string | null): string {
+  if (!ref) {
+    return '';
+  }
+  if (typeof ref === 'string') {
+    return ref;
+  }
+  return ref.value || ref.name || '';
+}
+
+function masterRefId(ref?: JoinedMasterRef | string | null): string {
+  if (!ref || typeof ref === 'string') {
+    return '';
+  }
+  return optionId(ref.id);
+}
+
+function masterRefOption(
+  id?: string | number | null,
+  ref?: JoinedMasterRef | string | null,
+  extras: Partial<MasterOption> = {},
+): MasterOption | null {
+  const resolvedId = optionId(id) || masterRefId(ref);
+  const resolvedValue = masterRefValue(ref);
+  if (!resolvedId && !resolvedValue) {
+    return null;
+  }
+  const refFields: Partial<MasterOption> = ref && typeof ref === 'object' ? (ref as Partial<MasterOption>) : {};
+  return {
+    ...refFields,
+    ...extras,
+    id: resolvedId || resolvedValue,
+    value: resolvedValue || resolvedId,
+    label: extras.label || refFields.label || resolvedValue || resolvedId,
+  };
 }
 
 function toPacketAbbreviation(value: string): string {
@@ -576,9 +636,24 @@ function toPacketAbbreviation(value: string): string {
 }
 
 function buildPacketNameFromForm(
-  form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'color' | 'quality'>,
+  form: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'cut' | 'color' | 'quality'>,
+  selected: {
+    stone?: MasterOption | null;
+    shape?: MasterOption | null;
+    size?: MasterOption | null;
+    cut?: MasterOption | null;
+    color?: MasterOption | null;
+    quality?: MasterOption | null;
+  } = {},
 ): string {
-  const parts = [form.stone, form.shape, form.size, form.color, form.quality]
+  const parts = [
+    selected.stone?.value || form.stone,
+    selected.shape?.value || form.shape,
+    selected.size?.value || form.size,
+    selected.cut?.value || form.cut,
+    selected.color?.value || form.color,
+    selected.quality?.value || form.quality,
+  ]
     .map((entry) => toPacketAbbreviation((entry || '').trim()))
     .filter((entry) => entry.length > 0);
   return parts.join('-');
@@ -594,19 +669,16 @@ function buildMetalCaratageName(metalName: string, metalPurity: string, metalCol
   return parts.join('-');
 }
 
-function getMasterDisplayName(row: Pick<MasterRow, 'value' | 'aliasName'>): string {
-  return (row.aliasName || row.value || '').trim();
+function getMasterDisplayName(row: Pick<MasterRow, 'value'>): string {
+  return (row.value || '').trim();
 }
 
 function getOverheadApplyModeLabel(mode?: OverheadApplyMode | null): string {
-  if (mode === 'FLAT') {
+  if (mode === 'flat') {
     return 'Flat';
   }
-  if (mode === 'PERCENT_MATERIALS') {
+  if (mode === 'per_of_materials') {
     return '% of Materials';
-  }
-  if (mode === 'PERCENT_BOM_SUBTOTAL') {
-    return '% of BOM Subtotal';
   }
   return '-';
 }
@@ -691,21 +763,19 @@ function MasterModal({
     return null;
   }
 
-  const normalizeLookup = (value?: string | null): string =>
-    (value || '').trim().toLowerCase();
   const filteredMetalColors =
     metalName.trim().length > 0
       ? metalColorOptions.filter(
-          (option) => normalizeLookup(option.metalName) === normalizeLookup(metalName),
+          (option) => optionId(option.metalId) === metalName,
         )
       : metalColorOptions;
   const filteredMetalPurities =
     metalName.trim().length > 0
       ? metalPurityOptions.filter(
-          (option) => normalizeLookup(option.metalName) === normalizeLookup(metalName),
+          (option) => optionId(option.metalId) === metalName,
         )
       : metalPurityOptions;
-  const isFlatOverheadMode = overheadApplyMode === 'FLAT';
+  const isFlatOverheadMode = overheadApplyMode === 'flat';
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6">
@@ -774,19 +844,17 @@ function MasterModal({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
-                <select
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                <SmartDropdown
                   value={jewelryGroupId}
-                  onChange={(event) => onChangeJewelryGroupId(event.target.value)}
-                  required
-                >
-                  <option value="">Select Category</option>
-                  {jewelryGroupOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.value}
-                    </option>
-                  ))}
-                </select>
+                  onChange={onChangeJewelryGroupId}
+                  config={{
+                    apiSubPath: '/products/master-tables/JEWELRY_GROUP/dropdown',
+                    options: jewelryGroupOptions,
+                    placeholder: 'Select Category',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
@@ -884,33 +952,36 @@ function MasterModal({
               <div className="grid grid-cols-1 gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 p-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  <SmartDropdown
                     value={jewelryGroupId}
-                    onChange={(event) => onChangeJewelryGroupId(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {jewelryGroupOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={onChangeJewelryGroupId}
+                    config={{
+                      apiSubPath: '/products/master-tables/JEWELRY_GROUP/dropdown',
+                      options: jewelryGroupOptions,
+                      placeholder: 'Select Category',
+                      valueKey: 'id',
+                      labelKey: 'value',
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  <SmartDropdown
                     value={laborApplyMode}
-                    onChange={(event) => onChangeLaborApplyMode(event.target.value as LaborApplyMode)}
-                    required
-                  >
-                    <option value="FLAT">Flat</option>
-                    <option value="PER_STONE">Per Stone</option>
-                    <option value="PER_GRAM">Per Gram</option>
-                    <option value="PER_GROUP">Per Group</option>
-                  </select>
+                    onChange={(nextValue) => onChangeLaborApplyMode(nextValue as LaborApplyMode)}
+                    config={{
+                      showSearch: false,
+                      placeholder: 'Select Apply Mode',
+                      options: [
+                        { id: 'FLAT', value: 'FLAT', label: 'Flat' },
+                        { id: 'PER_STONE', value: 'PER_STONE', label: 'Per Stone' },
+                        { id: 'PER_GRAM', value: 'PER_GRAM', label: 'Per Gram' },
+                        { id: 'PER_GROUP', value: 'PER_GROUP', label: 'Per Group' },
+                      ],
+                      valueKey: 'id',
+                      labelKey: 'label',
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Flat Cost</label>
@@ -978,33 +1049,34 @@ function MasterModal({
               <div className="grid grid-cols-1 gap-4 rounded-2xl border border-amber-100 bg-amber-50/40 p-4 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  <SmartDropdown
                     value={jewelryGroupId}
-                    onChange={(event) => onChangeJewelryGroupId(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {jewelryGroupOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={onChangeJewelryGroupId}
+                    config={{
+                      apiSubPath: '/products/master-tables/JEWELRY_GROUP/dropdown',
+                      options: jewelryGroupOptions,
+                      placeholder: 'Select Category',
+                      valueKey: 'id',
+                      labelKey: 'value',
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  <SmartDropdown
                     value={overheadApplyMode}
-                    onChange={(event) =>
-                      onChangeOverheadApplyMode(event.target.value as OverheadApplyMode)
-                    }
-                    required
-                  >
-                    <option value="PERCENT_MATERIALS">% of Materials</option>
-                    <option value="FLAT">Flat</option>
-                  </select>
+                    onChange={(nextValue) => onChangeOverheadApplyMode(nextValue as OverheadApplyMode)}
+                    config={{
+                      showSearch: false,
+                      placeholder: 'Select Apply Mode',
+                      options: [
+                        { id: 'per_of_materials', value: 'per_of_materials', label: '% of Materials' },
+                        { id: 'flat', value: 'flat', label: 'Flat' },
+                      ],
+                      valueKey: 'id',
+                      labelKey: 'label',
+                    }}
+                  />
                 </div>
                 {isFlatOverheadMode ? (
                   <div>
@@ -1169,19 +1241,17 @@ function MasterModal({
               {isMetalColorType ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  <SmartDropdown
                     value={metalName}
-                    onChange={(event) => onChangeMetalName(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Metal Name</option>
-                    {metalNameOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={onChangeMetalName}
+                    config={{
+                      apiSubPath: '/products/master-tables/METAL_NAME/dropdown',
+                      options: metalNameOptions,
+                      placeholder: 'Select Metal Name',
+                      valueKey: 'id',
+                      labelKey: 'value',
+                    }}
+                  />
                 </div>
               ) : null}
 
@@ -1189,19 +1259,17 @@ function MasterModal({
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-                    <select
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      <SmartDropdown
                       value={metalName}
-                      onChange={(event) => onChangeMetalName(event.target.value)}
-                      required
-                    >
-                    <option value="">Select Metal Name</option>
-                    {metalNameOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                      onChange={onChangeMetalName}
+                      config={{
+                        apiSubPath: '/products/master-tables/METAL_NAME/dropdown',
+                        options: metalNameOptions,
+                        placeholder: 'Select Metal Name',
+                        valueKey: 'id',
+                        labelKey: 'value',
+                      }}
+                    />
                 </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Percentage*</label>
@@ -1223,51 +1291,50 @@ function MasterModal({
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-                    <select
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      <SmartDropdown
                       value={metalName}
-                      onChange={(event) => onChangeMetalName(event.target.value)}
-                      required
-                    >
-                    <option value="">Select Metal Name</option>
-                    {metalNameOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                      onChange={onChangeMetalName}
+                      config={{
+                        apiSubPath: '/products/master-tables/METAL_NAME/dropdown',
+                        options: metalNameOptions,
+                        placeholder: 'Select Metal Name',
+                        valueKey: 'id',
+                        labelKey: 'value',
+                      }}
+                    />
                 </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Purity*</label>
-                    <select
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    <SmartDropdown
                       value={metalPurity}
-                      onChange={(event) => onChangeMetalPurity(event.target.value)}
-                      required
-                    >
-                      <option value="">Select Metal Purity</option>
-                      {filteredMetalPurities.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {getMetalPurityDisplay(option)}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={onChangeMetalPurity}
+                      config={{
+                        apiSubPath: '/products/master-tables/METAL_PURITY/dropdown',
+                        extraParams: metalName ? { metalId: metalName } : undefined,
+                        options: filteredMetalPurities.map((option) => ({
+                          ...option,
+                          label: getMetalPurityDisplay(option),
+                        })),
+                        placeholder: 'Select Metal Purity',
+                        valueKey: 'id',
+                        labelKey: 'label',
+                      }}
+                    />
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Color*</label>
-                    <select
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                    <SmartDropdown
                       value={metalColor}
-                      onChange={(event) => onChangeMetalColor(event.target.value)}
-                      required
-                    >
-                    <option value="">Select Metal Color</option>
-                    {filteredMetalColors.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
+                      onChange={onChangeMetalColor}
+                      config={{
+                        apiSubPath: '/products/master-tables/METAL_COLOR/dropdown',
+                        extraParams: metalName ? { metalId: metalName } : undefined,
+                        options: filteredMetalColors,
+                        placeholder: 'Select Metal Color',
+                        valueKey: 'id',
+                        labelKey: 'value',
+                      }}
+                    />
                 </div>
                 <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
@@ -1380,63 +1447,99 @@ function PacketModal({
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Stone*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.stone} onChange={(event) => onChange('stone', event.target.value)}>
-                  <option value="">Select Stone</option>
-                  {!masterOptions.packetStones.some((option) => option.value === form.stone) && form.stone ? (
-                    <option value={form.stone}>{form.stone}</option>
-                  ) : null}
-                  {masterOptions.packetStones.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
+                <SmartDropdown
+                  value={form.stone}
+                  onChange={(nextValue, option) => onChange('stone', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_STONE/dropdown',
+                    options: masterOptions.packetStones.some((option) => optionId(option.id) === form.stone) || !form.stone
+                      ? masterOptions.packetStones
+                      : [{ id: form.stone, value: form.stone }, ...masterOptions.packetStones],
+                    placeholder: 'Select Stone',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Shape*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.shape} onChange={(event) => onChange('shape', event.target.value)}>
-                  <option value="">Select Shape</option>
-                  {!masterOptions.packetShapes.some((option) => option.value === form.shape) && form.shape ? (
-                    <option value={form.shape}>{form.shape}</option>
-                  ) : null}
-                  {masterOptions.packetShapes.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
+                <SmartDropdown
+                  value={form.shape}
+                  onChange={(nextValue, option) => onChange('shape', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_SHAPE/dropdown',
+                    options: masterOptions.packetShapes.some((option) => optionId(option.id) === form.shape) || !form.shape
+                      ? masterOptions.packetShapes
+                      : [{ id: form.shape, value: form.shape }, ...masterOptions.packetShapes],
+                    placeholder: 'Select Shape',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Size*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.size} onChange={(event) => onChange('size', event.target.value)}>
-                  <option value="">Select Size</option>
-                  {!masterOptions.packetSizes.some((option) => option.value === form.size) && form.size ? (
-                    <option value={form.size}>{form.size}</option>
-                  ) : null}
-                  {masterOptions.packetSizes.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
+                <SmartDropdown
+                  value={form.size}
+                  onChange={(nextValue, option) => onChange('size', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_SIZE/dropdown',
+                    options: masterOptions.packetSizes.some((option) => optionId(option.id) === form.size) || !form.size
+                      ? masterOptions.packetSizes
+                      : [{ id: form.size, value: form.size }, ...masterOptions.packetSizes],
+                    placeholder: 'Select Size',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Cut*</label>
+                <SmartDropdown
+                  value={form.cut}
+                  onChange={(nextValue, option) => onChange('cut', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_CUT/dropdown',
+                    options: masterOptions.packetCuts.some((option) => optionId(option.id) === form.cut) || !form.cut
+                      ? masterOptions.packetCuts
+                      : [{ id: form.cut, value: form.cut }, ...masterOptions.packetCuts],
+                    placeholder: 'Select Cut',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Color*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.color} onChange={(event) => onChange('color', event.target.value)}>
-                  <option value="">Select Color</option>
-                  {!masterOptions.packetColors.some((option) => option.value === form.color) && form.color ? (
-                    <option value={form.color}>{form.color}</option>
-                  ) : null}
-                  {masterOptions.packetColors.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
+                <SmartDropdown
+                  value={form.color}
+                  onChange={(nextValue, option) => onChange('color', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_COLOR/dropdown',
+                    options: masterOptions.packetColors.some((option) => optionId(option.id) === form.color) || !form.color
+                      ? masterOptions.packetColors
+                      : [{ id: form.color, value: form.color }, ...masterOptions.packetColors],
+                    placeholder: 'Select Color',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-700">Quality*</label>
-                <select className="w-full rounded border border-slate-300 px-2 py-2 text-sm" value={form.quality} onChange={(event) => onChange('quality', event.target.value)}>
-                  <option value="">Select Quality</option>
-                  {!masterOptions.packetQualities.some((option) => option.value === form.quality) && form.quality ? (
-                    <option value={form.quality}>{form.quality}</option>
-                  ) : null}
-                  {masterOptions.packetQualities.map((option) => (
-                    <option key={option.id} value={option.value}>{option.value}</option>
-                  ))}
-                </select>
+                <SmartDropdown
+                  value={form.quality}
+                  onChange={(nextValue, option) => onChange('quality', nextValue, option)}
+                  config={{
+                    apiSubPath: '/products/master-tables/PACKET_QUALITY/dropdown',
+                    options: masterOptions.packetQualities.some((option) => optionId(option.id) === form.quality) || !form.quality
+                      ? masterOptions.packetQualities
+                      : [{ id: form.quality, value: form.quality }, ...masterOptions.packetQualities],
+                    placeholder: 'Select Quality',
+                    valueKey: 'id',
+                    labelKey: 'value',
+                  }}
+                />
               </div>
               <div className="xl:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-slate-700">Packet Name*</label>
@@ -1601,14 +1704,22 @@ export default function DesignMastersPage() {
   const [formRatePerGram, setFormRatePerGram] = useState('');
   const [formRatePerGroup, setFormRatePerGroup] = useState('');
   const [formOverheadApplyMode, setFormOverheadApplyMode] =
-    useState<OverheadApplyMode>('PERCENT_MATERIALS');
+    useState<OverheadApplyMode>('per_of_materials');
   const [formRatePercent, setFormRatePercent] = useState('');
   const [formFlatAmount, setFormFlatAmount] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
   const [metalCaratageCombinationChanged, setMetalCaratageCombinationChanged] = useState(false);
-  const [packetMasterOptions, setPacketMasterOptions] = useState<PacketMasterOptions>(emptyPacketMasterOptions);
-  const [metalMasterOptions, setMetalMasterOptions] = useState<MetalMasterOptions>(emptyMetalMasterOptions);
+  const [selectedJewelryGroupOption, setSelectedJewelryGroupOption] = useState<MasterOption | null>(null);
+  const [selectedMetalOption, setSelectedMetalOption] = useState<MasterOption | null>(null);
+  const [selectedMetalColorOption, setSelectedMetalColorOption] = useState<MasterOption | null>(null);
+  const [selectedMetalPurityOption, setSelectedMetalPurityOption] = useState<MasterOption | null>(null);
+  const [selectedPacketStoneOption, setSelectedPacketStoneOption] = useState<MasterOption | null>(null);
+  const [selectedPacketShapeOption, setSelectedPacketShapeOption] = useState<MasterOption | null>(null);
+  const [selectedPacketSizeOption, setSelectedPacketSizeOption] = useState<MasterOption | null>(null);
+  const [selectedPacketCutOption, setSelectedPacketCutOption] = useState<MasterOption | null>(null);
+  const [selectedPacketColorOption, setSelectedPacketColorOption] = useState<MasterOption | null>(null);
+  const [selectedPacketQualityOption, setSelectedPacketQualityOption] = useState<MasterOption | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const isPacketType = selectedType === 'STONE_PACKET';
@@ -1682,11 +1793,29 @@ export default function DesignMastersPage() {
     if (!showModal || !isPacketType || packetNameManuallyEdited) {
       return;
     }
-    const computedPacketName = buildPacketNameFromForm(packetForm);
+    const computedPacketName = buildPacketNameFromForm(packetForm, {
+      stone: selectedPacketStoneOption,
+      shape: selectedPacketShapeOption,
+      size: selectedPacketSizeOption,
+      cut: selectedPacketCutOption,
+      color: selectedPacketColorOption,
+      quality: selectedPacketQualityOption,
+    });
     if (computedPacketName && computedPacketName !== packetForm.packetName) {
       setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
     }
-  }, [isPacketType, packetForm, packetNameManuallyEdited, showModal]);
+  }, [
+    isPacketType,
+    packetForm,
+    packetNameManuallyEdited,
+    selectedPacketColorOption,
+    selectedPacketCutOption,
+    selectedPacketQualityOption,
+    selectedPacketShapeOption,
+    selectedPacketSizeOption,
+    selectedPacketStoneOption,
+    showModal,
+  ]);
 
   useEffect(() => {
     if (selectedType !== 'METAL_NAME') return;
@@ -1701,12 +1830,11 @@ export default function DesignMastersPage() {
 
   useEffect(() => {
     if (selectedType !== 'METAL_CARATAGE') return;
-    const selectedMetal = metalMasterOptions.metalNames.find((row) => row.value === formMetalName);
-    const selectedPurity = metalMasterOptions.metalPurities.find(
-      (row) => row.value === formMetalPurity && (!formMetalName || row.metalName === formMetalName),
-    );
+    const selectedMetal = selectedMetalOption;
+    const selectedPurity = selectedMetalPurityOption;
+    const selectedColor = selectedMetalColorOption;
     const purityPercent =
-      selectedPurity?.purityPercentage !== undefined
+      selectedPurity?.purityPercentage !== undefined && selectedPurity.purityPercentage !== null
         ? selectedPurity.purityPercentage
         : parseNum(formPurityPercentage);
     if (purityPercent > 0 && String(purityPercent) !== formPurityPercentage) {
@@ -1714,7 +1842,9 @@ export default function DesignMastersPage() {
     }
 
     const basePricePerGm =
-      selectedMetal?.marketPricePerGm !== undefined ? selectedMetal.marketPricePerGm : 0;
+      selectedMetal?.marketPricePerGm !== undefined && selectedMetal.marketPricePerGm !== null
+        ? selectedMetal.marketPricePerGm
+        : 0;
     const shouldAutoFillLivePrice = !editingRow || formLivePricePerGm.trim().length === 0;
     if (basePricePerGm > 0 && purityPercent > 0 && shouldAutoFillLivePrice) {
       const computed = ((basePricePerGm * purityPercent) / 100).toFixed(2);
@@ -1725,7 +1855,12 @@ export default function DesignMastersPage() {
 
     const shouldSyncCaratageName = !editingRow || metalCaratageCombinationChanged;
     if (shouldSyncCaratageName && formMetalName && formMetalPurity && formMetalColor) {
-      const computedValue = buildMetalCaratageName(formMetalName, formMetalPurity, formMetalColor, selectedPurity);
+      const computedValue = buildMetalCaratageName(
+        selectedMetal?.value || '',
+        selectedPurity?.value || '',
+        selectedColor?.value || '',
+        selectedPurity,
+      );
       if (computedValue !== formValue) {
         setFormValue(computedValue);
       }
@@ -1743,27 +1878,36 @@ export default function DesignMastersPage() {
     formPurityPercentage,
     formValue,
     metalCaratageCombinationChanged,
-    metalMasterOptions.metalNames,
-    metalMasterOptions.metalPurities,
+    selectedMetalColorOption,
+    selectedMetalOption,
+    selectedMetalPurityOption,
     selectedType,
   ]);
 
-  const handleMetalNameChange = useCallback((value: string) => {
+  const handleMetalNameChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalName(value);
+    setSelectedMetalOption((option as MasterOption) || null);
+    setFormMetalColor('');
+    setFormMetalPurity('');
+    setSelectedMetalColorOption(null);
+    setSelectedMetalPurityOption(null);
     if (selectedType === 'METAL_CARATAGE') {
       setMetalCaratageCombinationChanged(true);
     }
   }, [selectedType]);
 
-  const handleMetalColorChange = useCallback((value: string) => {
+  const handleMetalColorChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalColor(value);
+    setSelectedMetalColorOption((option as MasterOption) || null);
     if (selectedType === 'METAL_CARATAGE') {
       setMetalCaratageCombinationChanged(true);
     }
   }, [selectedType]);
 
-  const handleMetalPurityChange = useCallback((value: string) => {
+  const handleMetalPurityChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalPurity(value);
+    const selectedOption = (option as MasterOption) || null;
+    setSelectedMetalPurityOption(selectedOption);
 
     if (selectedType !== 'METAL_CARATAGE') {
       return;
@@ -1771,19 +1915,17 @@ export default function DesignMastersPage() {
 
     setMetalCaratageCombinationChanged(true);
 
-    const selectedPurity = metalMasterOptions.metalPurities.find(
-      (row) => row.value === value && (!formMetalName || row.metalName === formMetalName),
-    );
+    const selectedPurity = selectedOption;
     const purityPercent = selectedPurity?.purityPercentage;
     if (purityPercent !== undefined && purityPercent !== null) {
       setFormPurityPercentage(String(purityPercent));
     }
 
-    const basePricePerGm = metalMasterOptions.metalNames.find((row) => row.value === formMetalName)?.marketPricePerGm ?? 0;
+    const basePricePerGm = selectedMetalOption?.marketPricePerGm ?? 0;
     if (basePricePerGm > 0 && purityPercent !== undefined && purityPercent !== null && purityPercent > 0) {
       setFormLivePricePerGm(((basePricePerGm * purityPercent) / 100).toFixed(2));
     }
-  }, [formMetalName, metalMasterOptions.metalNames, metalMasterOptions.metalPurities, selectedType]);
+  }, [formMetalName, selectedMetalOption, selectedType]);
 
   const fetchRows = async () => {
     setLoading(true);
@@ -1799,14 +1941,14 @@ export default function DesignMastersPage() {
         setPacketRows(response.data?.data || []);
         setMasterRows([]);
       } else {
-        const response = await api.get('/products/masters', {
+        const response = await api.get(`/products/master-tables/${selectedType}`, {
           params: {
-            type: selectedType,
-            status: viewInactive ? 'INACTIVE' : 'ACTIVE',
+            includeInactive: viewInactive ? true : undefined,
             search: searchTerm || undefined,
           },
         });
-        setMasterRows(response.data?.data || []);
+        const rows = Array.isArray(response.data) ? response.data : [];
+        setMasterRows(rows.filter((row: MasterRow) => Boolean(row.isActive) !== viewInactive));
         setPacketRows([]);
       }
     } catch {
@@ -1817,58 +1959,9 @@ export default function DesignMastersPage() {
     }
   };
 
-  const fetchPacketMasterOptions = async () => {
-    try {
-      const response = await api.get('/products/masters');
-      setPacketMasterOptions({
-        packetStones: response.data?.packetStones || [],
-        packetShapes: response.data?.packetShapes || [],
-        packetSizes: response.data?.packetSizes || [],
-        packetColors: response.data?.packetColors || [],
-        packetQualities: response.data?.packetQualities || [],
-      });
-    } catch {
-      setPacketMasterOptions(emptyPacketMasterOptions);
-    }
-  };
-
-  const fetchMetalMasterOptions = async () => {
-    try {
-      const response = await api.get('/products/masters');
-      setMetalMasterOptions({
-        jewelryGroups: response.data?.jewelryGroups || [],
-        metalNames: response.data?.metalNames || [],
-        metalColors: response.data?.metalColors || [],
-        metalPurities: response.data?.metalPurities || [],
-        metalCaratages: response.data?.metalCaratages || [],
-      });
-    } catch {
-      setMetalMasterOptions(emptyMetalMasterOptions);
-    }
-  };
-
   useEffect(() => {
     fetchRows();
   }, [selectedType, viewInactive, searchTerm]);
-
-  useEffect(() => {
-    fetchPacketMasterOptions();
-    fetchMetalMasterOptions();
-  }, []);
-
-  useEffect(() => {
-    if (selectedType === 'STONE_PACKET') {
-      fetchPacketMasterOptions();
-    }
-    if (
-      selectedType === 'METAL_NAME' ||
-      selectedType === 'METAL_COLOR' ||
-      selectedType === 'METAL_PURITY' ||
-      selectedType === 'METAL_CARATAGE'
-    ) {
-      fetchMetalMasterOptions();
-    }
-  }, [selectedType]);
 
   const resetModalState = () => {
     setEditingRow(null);
@@ -1876,7 +1969,6 @@ export default function DesignMastersPage() {
     setFormValue('');
     setFormAliasName('');
     setFormDescription('');
-    setFormVendorEmail('');
     setFormVendorEmail('');
     setFormFindingNo('');
     setFormJewelryGroupId('');
@@ -1898,12 +1990,22 @@ export default function DesignMastersPage() {
     setFormRatePerStone('');
     setFormRatePerGram('');
     setFormRatePerGroup('');
-    setFormOverheadApplyMode('PERCENT_MATERIALS');
+    setFormOverheadApplyMode('per_of_materials');
     setFormRatePercent('');
     setFormFlatAmount('');
     setPacketForm(defaultPacketForm);
     setPacketNameManuallyEdited(false);
     setMetalCaratageCombinationChanged(false);
+    setSelectedJewelryGroupOption(null);
+    setSelectedMetalOption(null);
+    setSelectedMetalColorOption(null);
+    setSelectedMetalPurityOption(null);
+    setSelectedPacketStoneOption(null);
+    setSelectedPacketShapeOption(null);
+    setSelectedPacketSizeOption(null);
+    setSelectedPacketCutOption(null);
+    setSelectedPacketColorOption(null);
+    setSelectedPacketQualityOption(null);
   };
 
   const openCreate = () => {
@@ -1920,18 +2022,36 @@ export default function DesignMastersPage() {
     setFormValue(row.value || '');
     setFormAliasName(row.aliasName || row.value || '');
     setFormDescription(row.description || '');
-    setFormVendorEmail(row.vendorEmail || '');
-    setFormVendorEmail(row.vendorEmail || '');
+    setFormVendorEmail(row.email || row.vendorEmail || '');
     setFormFindingNo(row.findingNo || '');
     setFormJewelryGroupId(
-      row.jewelryGroupId ||
-        metalMasterOptions.jewelryGroups.find((option) => option.value === row.jewelryGroup)?.id ||
+      optionId(row.jewelryGroupId) ||
+        masterRefId(row.jewelryGroup) ||
         '',
     );
+    setSelectedJewelryGroupOption(masterRefOption(row.jewelryGroupId, row.jewelryGroup));
     setFormMetalCaratage(row.metalCaratage || '');
-    setFormMetalName(row.metalName || '');
-    setFormMetalColor(row.metalColor || '');
-    setFormMetalPurity(row.metalPurity || '');
+    setFormMetalName(optionId(row.metalId) || masterRefId(row.metal) || '');
+    setFormMetalColor(optionId(row.metalColorId) || masterRefId(row.metalColor) || '');
+    setFormMetalPurity(optionId(row.metalPurityId) || masterRefId(row.metalPurity) || '');
+    setSelectedMetalOption(
+      masterRefOption(row.metalId, row.metal, {
+        marketPricePerOunce: row.marketPricePerOunce,
+        marketPricePerGm: row.marketPricePerGm,
+        livePricePerGm: row.livePricePerGm,
+      }),
+    );
+    setSelectedMetalColorOption(
+      masterRefOption(row.metalColorId, row.metalColor, {
+        metalId: row.metalId || masterRefId(row.metal) || undefined,
+      }),
+    );
+    setSelectedMetalPurityOption(
+      masterRefOption(row.metalPurityId, row.metalPurity, {
+        metalId: row.metalId || masterRefId(row.metal) || undefined,
+        purityPercentage: row.purityPercentage,
+      }),
+    );
     setFormPurityPercentage(
       row.purityPercentage !== null && row.purityPercentage !== undefined
         ? String(row.purityPercentage)
@@ -1972,9 +2092,7 @@ export default function DesignMastersPage() {
     setFormRatePerGroup(
       row.ratePerGroup !== null && row.ratePerGroup !== undefined ? String(row.ratePerGroup) : '',
     );
-    setFormOverheadApplyMode(
-      row.overheadApplyMode === 'FLAT' ? 'FLAT' : 'PERCENT_MATERIALS',
-    );
+    setFormOverheadApplyMode(row.overheadApplyMode === 'flat' ? 'flat' : 'per_of_materials');
     setFormRatePercent(
       row.ratePercent !== null && row.ratePercent !== undefined ? String(row.ratePercent) : '',
     );
@@ -1991,11 +2109,12 @@ export default function DesignMastersPage() {
     setPacketForm({
       barcode: row.barcode || '',
       packetName: row.packetName || '',
-      stone: row.stone || '',
-      shape: row.shape || '',
-      size: row.size || '',
-      color: row.color || '',
-      quality: row.quality || '',
+      stone: optionId(row.stoneId) || masterRefId(row.stoneMaster) || '',
+      shape: optionId(row.shapeId) || masterRefId(row.shapeMaster) || '',
+      size: optionId(row.sizeId) || masterRefId(row.sizeMaster) || '',
+      cut: optionId(row.cutId) || masterRefId(row.cutMaster) || '',
+      color: optionId(row.colorId) || masterRefId(row.colorMaster) || '',
+      quality: optionId(row.qualityId) || masterRefId(row.qualityMaster) || '',
       priceIn: row.priceIn || 'WT',
       sellingPrice:
         row.sellingPrice !== null && row.sellingPrice !== undefined ? String(row.sellingPrice) : '',
@@ -2007,11 +2126,25 @@ export default function DesignMastersPage() {
             : '',
       weightIn: 'CTS',
     });
+    setSelectedPacketStoneOption(masterRefOption(row.stoneId, row.stoneMaster));
+    setSelectedPacketShapeOption(masterRefOption(row.shapeId, row.shapeMaster));
+    setSelectedPacketSizeOption(masterRefOption(row.sizeId, row.sizeMaster));
+    setSelectedPacketCutOption(masterRefOption(row.cutId, row.cutMaster));
+    setSelectedPacketColorOption(masterRefOption(row.colorId, row.colorMaster));
+    setSelectedPacketQualityOption(masterRefOption(row.qualityId, row.qualityMaster));
     setPacketNameManuallyEdited(true);
     setShowModal(true);
   };
 
-  const updatePacketFormField = (key: keyof PacketForm, value: string) => {
+  const updatePacketFormField = (key: keyof PacketForm, value: string, option?: SmartDropdownOption | null) => {
+    const selectedOption = (option as MasterOption) || null;
+    if (key === 'stone') setSelectedPacketStoneOption(selectedOption);
+    if (key === 'shape') setSelectedPacketShapeOption(selectedOption);
+    if (key === 'size') setSelectedPacketSizeOption(selectedOption);
+    if (key === 'cut') setSelectedPacketCutOption(selectedOption);
+    if (key === 'color') setSelectedPacketColorOption(selectedOption);
+    if (key === 'quality') setSelectedPacketQualityOption(selectedOption);
+
     setPacketForm((prev) => {
       const next = { ...prev, [key]: value } as PacketForm;
       if (
@@ -2023,7 +2156,14 @@ export default function DesignMastersPage() {
         key !== 'sellingPrice' &&
         key !== 'weightPerPc'
       ) {
-        const computedPacketName = buildPacketNameFromForm(next);
+        const computedPacketName = buildPacketNameFromForm(next, {
+          stone: key === 'stone' ? selectedOption : selectedPacketStoneOption,
+          shape: key === 'shape' ? selectedOption : selectedPacketShapeOption,
+          size: key === 'size' ? selectedOption : selectedPacketSizeOption,
+          cut: key === 'cut' ? selectedOption : selectedPacketCutOption,
+          color: key === 'color' ? selectedOption : selectedPacketColorOption,
+          quality: key === 'quality' ? selectedOption : selectedPacketQualityOption,
+        });
         if (computedPacketName) {
           next.packetName = computedPacketName;
         }
@@ -2036,7 +2176,14 @@ export default function DesignMastersPage() {
   };
 
   const regeneratePacketName = () => {
-    const computedPacketName = buildPacketNameFromForm(packetForm);
+    const computedPacketName = buildPacketNameFromForm(packetForm, {
+      stone: selectedPacketStoneOption,
+      shape: selectedPacketShapeOption,
+      size: selectedPacketSizeOption,
+      cut: selectedPacketCutOption,
+      color: selectedPacketColorOption,
+      quality: selectedPacketQualityOption,
+    });
     setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
     setPacketNameManuallyEdited(false);
   };
@@ -2048,11 +2195,12 @@ export default function DesignMastersPage() {
       const payload = {
         barcode: packetForm.barcode.trim() || undefined,
         packetName: packetForm.packetName.trim(),
-        stone: packetForm.stone.trim(),
-        shape: packetForm.shape.trim(),
-        size: packetForm.size.trim(),
-        color: packetForm.color.trim(),
-        quality: packetForm.quality.trim(),
+        stoneId: packetForm.stone.trim(),
+        shapeId: packetForm.shape.trim(),
+        sizeId: packetForm.size.trim(),
+        cutId: packetForm.cut.trim(),
+        colorId: packetForm.color.trim(),
+        qualityId: packetForm.quality.trim(),
         priceIn: packetForm.priceIn,
         sellingPrice: parseNum(packetForm.sellingPrice),
         weightPerPc: parseNum(packetForm.weightPerPc),
@@ -2061,8 +2209,8 @@ export default function DesignMastersPage() {
         weightUnit: 'CTS',
       };
 
-      if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
-        showAppAlert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
+      if (!payload.packetName || !payload.stoneId || !payload.shapeId || !payload.sizeId || !payload.cutId || !payload.colorId || !payload.qualityId) {
+        showAppAlert('Packet Name, Stone, Shape, Size, Cut, Color and Quality are required.');
         return;
       }
       if (payload.sellingPrice < 0) {
@@ -2101,19 +2249,16 @@ export default function DesignMastersPage() {
       formMetalColor &&
       (!editingRow || metalCaratageCombinationChanged)
     ) {
-      const selectedPurityOptionForName = metalMasterOptions.metalPurities.find(
-        (option) =>
-          option.value === formMetalPurity &&
-          (!formMetalName || option.metalName === formMetalName),
-      );
+      const selectedMetalOptionForName = selectedMetalOption;
+      const selectedColorOptionForName = selectedMetalColorOption;
+      const selectedPurityOptionForName = selectedMetalPurityOption;
       const autoValue = buildMetalCaratageName(
-        formMetalName,
-        formMetalPurity,
-        formMetalColor,
+        selectedMetalOptionForName?.value || '',
+        selectedPurityOptionForName?.value || '',
+        selectedColorOptionForName?.value || '',
         selectedPurityOptionForName,
       );
       value = autoValue;
-      aliasName = autoValue;
     }
     if (!value || !aliasName) {
       showAppAlert('Master name and alias name are required.');
@@ -2141,11 +2286,7 @@ export default function DesignMastersPage() {
 
     const selectedPurityOption =
       selectedType === 'METAL_CARATAGE'
-        ? metalMasterOptions.metalPurities.find(
-            (option) =>
-              option.value === formMetalPurity &&
-              (!formMetalName || option.metalName === formMetalName),
-          )
+        ? selectedMetalPurityOption
         : null;
     const resolvedPurityPercentage =
       parseOptionalNum(formPurityPercentage) ??
@@ -2159,18 +2300,18 @@ export default function DesignMastersPage() {
           }
         : selectedType === 'METAL_COLOR'
           ? {
-              metalName: formMetalName.trim(),
+              metalId: formMetalName.trim(),
             }
           : selectedType === 'METAL_PURITY'
             ? {
-                metalName: formMetalName.trim(),
+                metalId: formMetalName.trim(),
                 purityPercentage: parseOptionalNum(formPurityPercentage),
               }
             : selectedType === 'METAL_CARATAGE'
               ? {
-                  metalName: formMetalName.trim(),
-                  metalColor: formMetalColor.trim(),
-                  metalPurity: formMetalPurity.trim(),
+                  metalId: formMetalName.trim(),
+                  metalColorId: formMetalColor.trim(),
+                  metalPurityId: formMetalPurity.trim(),
                   purityPercentage: resolvedPurityPercentage,
                   livePricePerGm: parseOptionalNum(formLivePricePerGm),
                   defaultWastagePercent: parseOptionalNum(formDefaultWastage) ?? 0,
@@ -2200,16 +2341,16 @@ export default function DesignMastersPage() {
         ? {
             overheadApplyMode: formOverheadApplyMode,
             ratePercent:
-              formOverheadApplyMode === 'FLAT' ? null : parseOptionalNum(formRatePercent),
+              formOverheadApplyMode === 'flat' ? null : parseOptionalNum(formRatePercent),
             flatAmount:
-              formOverheadApplyMode === 'FLAT' ? parseOptionalNum(formFlatAmount) : null,
+              formOverheadApplyMode === 'flat' ? parseOptionalNum(formFlatAmount) : null,
           }
         : null;
     const descriptionPayload = selectedType === 'FINDING_HEAD' ? null : formDescription.trim() || null;
     const vendorPayload =
       selectedType === 'VENDOR_NAME'
         ? {
-            vendorEmail: formVendorEmail.trim() || null,
+            email: formVendorEmail.trim() || null,
           }
         : null;
 
@@ -2248,14 +2389,14 @@ export default function DesignMastersPage() {
 
     if (selectedType === 'OVERHEAD_RULE') {
       if (
-        formOverheadApplyMode === 'FLAT' &&
+        formOverheadApplyMode === 'flat' &&
         parseOptionalNum(formFlatAmount) === null
       ) {
         showAppAlert('Flat Amount is required for flat overhead mode.');
         return;
       }
       if (
-        formOverheadApplyMode !== 'FLAT' &&
+        formOverheadApplyMode !== 'flat' &&
         parseOptionalNum(formRatePercent) === null
       ) {
         showAppAlert('Rate Percent is required for percentage overhead mode.');
@@ -2303,7 +2444,7 @@ export default function DesignMastersPage() {
     setSaving(true);
     try {
       if (editingRow) {
-        await api.put(`/products/masters/${editingRow.id}`, {
+        await api.patch(`/products/master-tables/${selectedType}/${editingRow.id}`, {
           value,
           aliasName,
           description: descriptionPayload,
@@ -2316,8 +2457,7 @@ export default function DesignMastersPage() {
           ...(defaultWastagePayload || {}),
         });
       } else {
-        await api.post('/products/masters', {
-          masterType: selectedType,
+        await api.post(`/products/master-tables/${selectedType}`, {
           value,
           aliasName,
           description: descriptionPayload,
@@ -2346,7 +2486,7 @@ export default function DesignMastersPage() {
       if (isPacketType) {
         await api.patch(`/products/packets/${row.id}/status`, { isActive: !row.isActive });
       } else {
-        await api.patch(`/products/masters/${row.id}/status`, { isActive: !row.isActive });
+        await api.patch(`/products/master-tables/${selectedType}/${row.id}/status`, { isActive: !row.isActive });
       }
       fetchRows();
     } catch (error: any) {
@@ -2373,7 +2513,6 @@ export default function DesignMastersPage() {
     }
 
     return {
-      type: selectedType,
       status: viewInactive ? 'INACTIVE' : 'ACTIVE',
       ...(searchTerm ? { search: searchTerm } : {}),
     };
@@ -2393,9 +2532,8 @@ export default function DesignMastersPage() {
     if (!canImportMaster) return;
     try {
       const response = await api.get(
-        isPacketType ? '/products/packets/export/template' : '/products/masters/export/template',
+        isPacketType ? '/products/packets/export/template' : `/products/master-tables/${selectedType}/export/template`,
         {
-          params: isPacketType ? undefined : { type: selectedType },
           responseType: 'blob',
         },
       );
@@ -2414,7 +2552,7 @@ export default function DesignMastersPage() {
   const handleExport = async () => {
     try {
       const response = await api.get(
-        isPacketType ? '/products/packets/export' : '/products/masters/export',
+        isPacketType ? '/products/packets/export' : `/products/master-tables/${selectedType}/export`,
         {
           params: getCurrentParams(),
           responseType: 'blob',
@@ -2447,10 +2585,9 @@ export default function DesignMastersPage() {
     setImporting(true);
     try {
       const response = await api.post(
-        isPacketType ? '/products/packets/import' : '/products/masters/import',
+        isPacketType ? '/products/packets/import' : `/products/master-tables/${selectedType}/import`,
         formData,
         {
-          params: isPacketType ? undefined : { type: selectedType },
           headers: { 'Content-Type': 'multipart/form-data' },
         },
       );
@@ -2467,11 +2604,6 @@ export default function DesignMastersPage() {
         `Import completed.\nTotal Rows: ${summary.totalRows}\nCreated: ${summary.created}\nUpdated: ${summary.updated}\nFailed: ${summary.failed}${errorPreview}`,
       );
       fetchRows();
-      if (isPacketType) {
-        fetchPacketMasterOptions();
-      } else {
-        fetchMetalMasterOptions();
-      }
     } catch (error: any) {
       console.error(error);
       const message = error?.response?.data?.message;
@@ -2713,6 +2845,7 @@ export default function DesignMastersPage() {
                     <th className="app-table-head-cell">Stone</th>
                     <th className="app-table-head-cell">Shape</th>
                     <th className="app-table-head-cell">Size</th>
+                    <th className="app-table-head-cell">Cut</th>
                     <th className="app-table-head-cell">Color</th>
                     <th className="app-table-head-cell">Quality</th>
                     <th className="app-table-head-cell">Weight</th>
@@ -2724,10 +2857,10 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={13} />
+                    <TableLoadingRow colSpan={14} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={13} className="app-table-empty">
+                      <td colSpan={14} className="app-table-empty">
                         No records found.
                       </td>
                     </tr>
@@ -2737,11 +2870,12 @@ export default function DesignMastersPage() {
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.barcode || '-'}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.packetName}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.stone || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.shape || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.size || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.color || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.quality || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.stoneMaster) || row.stone || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.shapeMaster) || row.shape || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.sizeMaster) || row.size || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.cutMaster) || row.cut || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.colorMaster) || row.color || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.qualityMaster) || row.quality || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{Number(row.weight || 0).toFixed(3)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.weightUnit}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
@@ -2858,7 +2992,7 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metal) || '-'}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
@@ -2913,12 +3047,12 @@ export default function DesignMastersPage() {
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metal) || '-'}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.purityPercentage !== null && row.purityPercentage !== undefined
-                            ? Number(row.purityPercentage).toFixed(Number(row.purityPercentage) % 1 === 0 ? 0 : 2)
+                            ? String(row.purityPercentage)
                             : '-'}
                         </td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
@@ -2977,14 +3111,14 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.metalName || '-'}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.metalPurity || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metal) || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metalPurity) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.purityPercentage !== null && row.purityPercentage !== undefined
                             ? Number(row.purityPercentage).toFixed(Number(row.purityPercentage) % 1 === 0 ? 0 : 2)
                             : '-'}
                         </td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.metalColor || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metalColor) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.livePricePerGm !== null && row.livePricePerGm !== undefined ? Number(row.livePricePerGm).toFixed(2) : '-'}
                         </td>
@@ -3049,7 +3183,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.jewelryGroup) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.laborApplyMode || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {row.flatCost !== null && row.flatCost !== undefined ? Number(row.flatCost).toFixed(2) : '-'}
@@ -3127,7 +3261,7 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.jewelryGroup) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {getOverheadApplyModeLabel(row.overheadApplyMode)}
                         </td>
@@ -3200,8 +3334,8 @@ export default function DesignMastersPage() {
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{getMasterDisplayName(row)}</td>
-                        <td className="app-table-cell text-sm text-slate-700">{row.vendorEmail || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.email || row.vendorEmail || '-'}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell text-sm">
                           <span
@@ -3274,9 +3408,9 @@ export default function DesignMastersPage() {
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
                         {selectedType === 'JEWELRY_SIZE' || selectedType === 'COLLECTION' ? (
-                          <td className="app-table-cell text-sm text-slate-700">{row.jewelryGroup || '-'}</td>
+                          <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.jewelryGroup) || '-'}</td>
                         ) : null}
-                        <td className="app-table-cell text-sm text-slate-700">{getMasterDisplayName(row)}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell text-sm">
                           <span
@@ -3330,7 +3464,14 @@ export default function DesignMastersPage() {
           saveLabel={editingPacket ? 'Update' : 'Save'}
           loading={saving}
           form={packetForm}
-          masterOptions={packetMasterOptions}
+          masterOptions={{
+            packetStones: selectedPacketStoneOption ? [selectedPacketStoneOption] : [],
+            packetShapes: selectedPacketShapeOption ? [selectedPacketShapeOption] : [],
+            packetSizes: selectedPacketSizeOption ? [selectedPacketSizeOption] : [],
+            packetCuts: selectedPacketCutOption ? [selectedPacketCutOption] : [],
+            packetColors: selectedPacketColorOption ? [selectedPacketColorOption] : [],
+            packetQualities: selectedPacketQualityOption ? [selectedPacketQualityOption] : [],
+          }}
           onClose={() => {
             setShowModal(false);
             resetModalState();
@@ -3370,9 +3511,9 @@ export default function DesignMastersPage() {
           marketPricePerGm={formMarketPricePerGm}
           livePricePerGm={formLivePricePerGm}
           defaultWastage={formDefaultWastage}
-          metalNameOptions={metalMasterOptions.metalNames}
-          metalColorOptions={metalMasterOptions.metalColors}
-          metalPurityOptions={metalMasterOptions.metalPurities}
+          metalNameOptions={selectedMetalOption ? [selectedMetalOption] : []}
+          metalColorOptions={selectedMetalColorOption ? [selectedMetalColorOption] : []}
+          metalPurityOptions={selectedMetalPurityOption ? [selectedMetalPurityOption] : []}
           priceIn={formPriceIn}
           pricePerUnit={formPricePerUnit}
           dimensions={formDimensions}
@@ -3385,7 +3526,7 @@ export default function DesignMastersPage() {
           overheadApplyMode={formOverheadApplyMode}
           ratePercent={formRatePercent}
           flatAmount={formFlatAmount}
-          jewelryGroupOptions={metalMasterOptions.jewelryGroups}
+          jewelryGroupOptions={selectedJewelryGroupOption ? [selectedJewelryGroupOption] : []}
           onClose={() => {
             setShowModal(false);
             resetModalState();
@@ -3396,7 +3537,10 @@ export default function DesignMastersPage() {
           onChangeDescription={setFormDescription}
           onChangeVendorEmail={setFormVendorEmail}
           onChangeFindingNo={setFormFindingNo}
-          onChangeJewelryGroupId={setFormJewelryGroupId}
+          onChangeJewelryGroupId={(value, option) => {
+            setFormJewelryGroupId(value);
+            setSelectedJewelryGroupOption((option as MasterOption) || null);
+          }}
           onChangeMetalCaratage={setFormMetalCaratage}
           onChangeMetalName={handleMetalNameChange}
           onChangeMetalColor={handleMetalColorChange}
@@ -3417,7 +3561,7 @@ export default function DesignMastersPage() {
           onChangeRatePerGroup={setFormRatePerGroup}
           onChangeOverheadApplyMode={(value) => {
             setFormOverheadApplyMode(value);
-            if (value === 'FLAT') {
+            if (value === 'flat') {
               setFormRatePercent('');
             } else {
               setFormFlatAmount('');

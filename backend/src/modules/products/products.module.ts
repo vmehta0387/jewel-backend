@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { ProductsController } from './products.controller';
+import { MasterTablesController } from './master-tables.controller';
 import { ProductsService } from './products.service';
+import { MasterTablesService } from './master-tables.service';
 import { Design } from './entities/design.entity';
 import { DesignMetal } from './entities/design-metal.entity';
 import { DesignGemstone } from './entities/design-gemstone.entity';
@@ -19,6 +21,7 @@ import { StonePacket } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { DesignMaster } from './entities/design-master.entity';
+import { DESIGN_MASTER_TABLE_ENTITIES } from './entities/design-master-tables.entity';
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary } from './entities/design-media-library.entity';
@@ -42,6 +45,7 @@ import { PricingModule } from '../pricing/pricing.module';
       MetalPriceHistory,
       StonePacket,
       DesignMaster,
+      ...DESIGN_MASTER_TABLE_ENTITIES,
       DesignMediaLibrary,
       GlobalBasePrice,
       User,
@@ -52,8 +56,8 @@ import { PricingModule } from '../pricing/pricing.module';
     NotificationsModule,
     PricingModule,
   ],
-  controllers: [ProductsController],
-  providers: [ProductsService],
+  controllers: [ProductsController, MasterTablesController],
+  providers: [ProductsService, MasterTablesService],
   exports: [ProductsService],
 })
 export class ProductsModule {}

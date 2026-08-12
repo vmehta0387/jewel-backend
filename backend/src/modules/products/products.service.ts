@@ -100,7 +100,7 @@ interface NormalizedMetalRow {
 }
 
 interface NormalizedGemstoneRow {
-  packetId: string | null;
+  packetId: number | null;
   stone: string | null;
   shape: string | null;
   size: string | null;
@@ -775,7 +775,7 @@ export class ProductsService {
         designs.flatMap((design) =>
           (design.gemstones || [])
             .map((row) => row.packetId)
-            .filter((value): value is string => Boolean(value)),
+            .filter((value): value is number => Boolean(value)),
         ),
       ),
     );
@@ -2056,21 +2056,24 @@ export class ProductsService {
     return grouped;
   }
 
-  private async withGemstonePacketNames<T extends { packetId?: string | null }>(
+  private async withGemstonePacketNames<T extends { packetId?: string | number | null }>(
     gemstones: T[],
   ): Promise<Array<T & { packetName: string | null }>> {
     const packetRefs = Array.from(
       new Set(
         gemstones
           .map((gem) => gem.packetId)
-          .map((value) => (value || '').trim())
+          .map((value) => (value === undefined || value === null ? '' : String(value).trim()))
           .filter((value): value is string => value.length > 0),
       ),
     );
+    const packetIdRefs = packetRefs
+      .map((value) => this.optionalInt(value))
+      .filter((value): value is number => value !== null);
     const packets = packetRefs.length
       ? await this.packetRepo.find({
           where: [
-            { id: In(packetRefs) },
+            ...(packetIdRefs.length ? [{ id: In(packetIdRefs) }] : []),
             { barcode: In(packetRefs) },
             { packetName: In(packetRefs) },
           ],
@@ -2089,10 +2092,11 @@ export class ProductsService {
     return gemstones.map((gem) => ({
       ...gem,
       packetName: (() => {
-        const packetRef = (gem.packetId || '').trim();
+        const packetRef = gem.packetId === undefined || gem.packetId === null ? '' : String(gem.packetId).trim();
         if (!packetRef) return null;
+        const packetId = this.optionalInt(packetRef);
         return (
-          packetNameById.get(packetRef) ||
+          (packetId !== null ? packetNameById.get(packetId) : undefined) ||
           packetNameByBarcode.get(packetRef) ||
           packetNameByName.get(packetRef.toUpperCase()) ||
           null
@@ -3243,9 +3247,12 @@ export class ProductsService {
 
     const qb = this.packetRepo
       .createQueryBuilder('packet')
-      .orderBy('packet.packetName', 'ASC')
-      .skip(skip)
-      .take(limit);
+      .leftJoinAndSelect('packet.stoneMaster', 'stoneMaster')
+      .leftJoinAndSelect('packet.shapeMaster', 'shapeMaster')
+      .leftJoinAndSelect('packet.sizeMaster', 'sizeMaster')
+      .leftJoinAndSelect('packet.cutMaster', 'cutMaster')
+      .leftJoinAndSelect('packet.colorMaster', 'colorMaster')
+      .leftJoinAndSelect('packet.qualityMaster', 'qualityMaster');
 
     const status = query.status || 'ACTIVE';
     if (status === 'ACTIVE') {
@@ -3263,27 +3270,27 @@ export class ProductsService {
     }
 
     if (query.stone?.trim()) {
-      qb.andWhere('packet.stone LIKE :stone', { stone: `%${query.stone.trim()}%` });
+      qb.andWhere('stoneMaster.value LIKE :stone', { stone: `%${query.stone.trim()}%` });
     }
 
     if (query.shape?.trim()) {
-      qb.andWhere('packet.shape LIKE :shape', { shape: `%${query.shape.trim()}%` });
+      qb.andWhere('shapeMaster.value LIKE :shape', { shape: `%${query.shape.trim()}%` });
     }
 
     if (query.size?.trim()) {
-      qb.andWhere('packet.size LIKE :size', { size: `%${query.size.trim()}%` });
+      qb.andWhere('sizeMaster.value LIKE :size', { size: `%${query.size.trim()}%` });
     }
 
     if (query.cut?.trim()) {
-      qb.andWhere('packet.cut LIKE :cut', { cut: `%${query.cut.trim()}%` });
+      qb.andWhere('cutMaster.value LIKE :cut', { cut: `%${query.cut.trim()}%` });
     }
 
     if (query.color?.trim()) {
-      qb.andWhere('packet.color LIKE :color', { color: `%${query.color.trim()}%` });
+      qb.andWhere('colorMaster.value LIKE :color', { color: `%${query.color.trim()}%` });
     }
 
     if (query.quality?.trim()) {
-      qb.andWhere('packet.quality LIKE :quality', { quality: `%${query.quality.trim()}%` });
+      qb.andWhere('qualityMaster.value LIKE :quality', { quality: `%${query.quality.trim()}%` });
     }
 
     if (query.search?.trim()) {
@@ -3293,17 +3300,40 @@ export class ProductsService {
           sqb
             .where('packet.packetName LIKE :search', { search })
             .orWhere('packet.barcode LIKE :search', { search })
-            .orWhere('packet.stone LIKE :search', { search })
-            .orWhere('packet.shape LIKE :search', { search })
-            .orWhere('packet.size LIKE :search', { search })
-            .orWhere('packet.cut LIKE :search', { search })
-            .orWhere('packet.color LIKE :search', { search })
-            .orWhere('packet.quality LIKE :search', { search });
+            .orWhere('stoneMaster.value LIKE :search', { search })
+            .orWhere('shapeMaster.value LIKE :search', { search })
+            .orWhere('sizeMaster.value LIKE :search', { search })
+            .orWhere('cutMaster.value LIKE :search', { search })
+            .orWhere('colorMaster.value LIKE :search', { search })
+            .orWhere('qualityMaster.value LIKE :search', { search });
         }),
       );
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const total = await qb.clone().getCount();
+    const idRows = await qb
+      .clone()
+      .select('packet.id', 'id')
+      .orderBy('packet.created_at', 'DESC')
+      .addOrderBy('packet.id', 'DESC')
+      .offset(skip)
+      .limit(limit)
+      .getRawMany<{ id: number }>();
+    const ids = idRows.map((row) => Number(row.id)).filter(Boolean);
+    const data = ids.length
+      ? await this.packetRepo
+          .createQueryBuilder('packet')
+          .leftJoinAndSelect('packet.stoneMaster', 'stoneMaster')
+          .leftJoinAndSelect('packet.shapeMaster', 'shapeMaster')
+          .leftJoinAndSelect('packet.sizeMaster', 'sizeMaster')
+          .leftJoinAndSelect('packet.cutMaster', 'cutMaster')
+          .leftJoinAndSelect('packet.colorMaster', 'colorMaster')
+          .leftJoinAndSelect('packet.qualityMaster', 'qualityMaster')
+          .where('packet.id IN (:...ids)', { ids })
+          .orderBy('packet.created_at', 'DESC')
+          .addOrderBy('packet.id', 'DESC')
+          .getMany()
+      : [];
 
     return {
       data,
@@ -3429,12 +3459,12 @@ export class ProductsService {
       if (!existing.isActive) {
         existing.barcode = barcode;
         existing.stockType = this.optionalText(dto.stockType) || existing.stockType || 'COMPLETED';
-        existing.stone = this.optionalText(dto.stone);
-        existing.shape = this.optionalText(dto.shape);
-        existing.size = this.optionalText(dto.size);
-        existing.cut = this.optionalText(dto.cut);
-        existing.color = this.optionalText(dto.color);
-        existing.quality = this.optionalText(dto.quality);
+        existing.stoneId = this.optionalInt(dto.stoneId);
+        existing.shapeId = this.optionalInt(dto.shapeId);
+        existing.sizeId = this.optionalInt(dto.sizeId);
+        existing.cutId = this.optionalInt(dto.cutId);
+        existing.colorId = this.optionalInt(dto.colorId);
+        existing.qualityId = this.optionalInt(dto.qualityId);
         existing.priceIn = priceIn;
         existing.sellingPrice = sellingPrice;
         existing.weightPerPc = this.roundTo3(weightPerPc);
@@ -3451,12 +3481,12 @@ export class ProductsService {
       barcode,
       packetName,
       stockType: this.optionalText(dto.stockType) || 'COMPLETED',
-      stone: this.optionalText(dto.stone),
-      shape: this.optionalText(dto.shape),
-      size: this.optionalText(dto.size),
-      cut: this.optionalText(dto.cut),
-      color: this.optionalText(dto.color),
-      quality: this.optionalText(dto.quality),
+      stoneId: this.optionalInt(dto.stoneId),
+      shapeId: this.optionalInt(dto.shapeId),
+      sizeId: this.optionalInt(dto.sizeId),
+      cutId: this.optionalInt(dto.cutId),
+      colorId: this.optionalInt(dto.colorId),
+      qualityId: this.optionalInt(dto.qualityId),
       priceIn,
       sellingPrice,
       weightPerPc: this.roundTo3(weightPerPc),
@@ -3469,9 +3499,10 @@ export class ProductsService {
     return this.packetRepo.save(packet);
   }
 
-  async updatePacket(id: string, dto: UpdateStonePacketDto, requester: AuthUser): Promise<StonePacket> {
+  async updatePacket(id: string | number, dto: UpdateStonePacketDto, requester: AuthUser): Promise<StonePacket> {
     this.assertDesignWriteAccess(requester);
-    const packet = await this.packetRepo.findOne({ where: { id } });
+    const packetId = this.requiredPacketId(id);
+    const packet = await this.packetRepo.findOne({ where: { id: packetId } });
     if (!packet) {
       throw new NotFoundException('Packet not found');
     }
@@ -3497,12 +3528,12 @@ export class ProductsService {
     );
 
     if (dto.stockType !== undefined) packet.stockType = this.optionalText(dto.stockType);
-    if (dto.stone !== undefined) packet.stone = this.optionalText(dto.stone);
-    if (dto.shape !== undefined) packet.shape = this.optionalText(dto.shape);
-    if (dto.size !== undefined) packet.size = this.optionalText(dto.size);
-    if (dto.cut !== undefined) packet.cut = this.optionalText(dto.cut);
-    if (dto.color !== undefined) packet.color = this.optionalText(dto.color);
-    if (dto.quality !== undefined) packet.quality = this.optionalText(dto.quality);
+    if (dto.stoneId !== undefined) packet.stoneId = this.optionalInt(dto.stoneId);
+    if (dto.shapeId !== undefined) packet.shapeId = this.optionalInt(dto.shapeId);
+    if (dto.sizeId !== undefined) packet.sizeId = this.optionalInt(dto.sizeId);
+    if (dto.cutId !== undefined) packet.cutId = this.optionalInt(dto.cutId);
+    if (dto.colorId !== undefined) packet.colorId = this.optionalInt(dto.colorId);
+    if (dto.qualityId !== undefined) packet.qualityId = this.optionalInt(dto.qualityId);
     if (dto.priceIn !== undefined) packet.priceIn = this.normalizePacketPriceIn(dto.priceIn);
     if (dto.sellingPrice !== undefined) {
       packet.sellingPrice = this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice');
@@ -3534,9 +3565,10 @@ export class ProductsService {
     return savedPacket;
   }
 
-  async updatePacketStatus(id: string, isActive: boolean, requester: AuthUser): Promise<StonePacket> {
+  async updatePacketStatus(id: string | number, isActive: boolean, requester: AuthUser): Promise<StonePacket> {
     this.assertDesignWriteAccess(requester);
-    const packet = await this.packetRepo.findOne({ where: { id } });
+    const packetId = this.requiredPacketId(id);
+    const packet = await this.packetRepo.findOne({ where: { id: packetId } });
     if (!packet) {
       throw new NotFoundException('Packet not found');
     }
@@ -3603,12 +3635,12 @@ export class ProductsService {
     const rows = (result.data || []).map((packet: StonePacket) => ({
       Barcode: packet.barcode || '',
       'Packet Name': packet.packetName,
-      Stone: packet.stone || '',
-      Shape: packet.shape || '',
-      Cut: packet.cut || '',
-      Size: packet.size || '',
-      Color: packet.color || '',
-      Quality: packet.quality || '',
+      Stone: packet.stoneMaster?.value || '',
+      Shape: packet.shapeMaster?.value || '',
+      Cut: packet.cutMaster?.value || '',
+      Size: packet.sizeMaster?.value || '',
+      Color: packet.colorMaster?.value || '',
+      Quality: packet.qualityMaster?.value || '',
       'Price In': packet.priceIn,
       'Selling Price':
         packet.sellingPrice !== null && packet.sellingPrice !== undefined
@@ -3751,14 +3783,10 @@ export class ProductsService {
         );
       }
 
-      qb.orderBy('master.isActive', 'DESC');
-      if ((query.type as unknown as DesignMasterType) === DesignMasterType.JEWELRY_SIZE) {
-        qb.addOrderBy('master.jewelryGroup', 'ASC');
-      }
-      qb.addOrderBy('master.value', 'ASC');
+      qb.orderBy('master.createdAt', 'DESC');
 
       const data = await qb.getMany();
-      return { data, total: data.length };
+      return { data: data.map((row) => this.serializeDesignMasterListRow(row)), total: data.length };
     }
 
     const data = await this.designMasterRepo.find({
@@ -5157,7 +5185,7 @@ export class ProductsService {
 
   private async recalculateDesignsForDependencies(input: {
     metalCaratages?: string[];
-    packetIds?: string[];
+    packetIds?: Array<string | number>;
   }): Promise<{ updatedDesigns: number; totalDesigns: number }> {
     const metalCaratageKeys = new Set(
       (input.metalCaratages || [])
@@ -5165,7 +5193,9 @@ export class ProductsService {
         .filter(Boolean),
     );
     const packetIds = new Set(
-      (input.packetIds || []).map((value) => (value || '').trim()).filter(Boolean),
+      (input.packetIds || [])
+        .map((value) => this.optionalInt(value))
+        .filter((value): value is number => value !== null),
     );
 
     if (metalCaratageKeys.size === 0 && packetIds.size === 0) {
@@ -5240,7 +5270,7 @@ export class ProductsService {
           metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.goldColour)));
         const touchesPacketDependency =
           packetIds.size > 0 &&
-          gemstones.some((row) => row.packetId && packetIds.has((row.packetId || '').trim()));
+          gemstones.some((row) => row.packetId && packetIds.has(row.packetId));
 
         if (!touchesMetalDependency && !touchesPacketDependency) {
           continue;
@@ -5269,7 +5299,7 @@ export class ProductsService {
         }
 
         for (const gemstone of gemstones) {
-          const packetId = (gemstone.packetId || '').trim();
+          const packetId = gemstone.packetId || null;
           if (!packetId || (packetIds.size > 0 && !packetIds.has(packetId))) {
             continue;
           }
@@ -5414,7 +5444,7 @@ export class ProductsService {
       }
 
       return {
-        packetId: this.optionalText(row.packetId),
+        packetId: this.optionalInt(row.packetId),
         stone: this.optionalText(row.stone),
         shape: this.optionalText(row.shape),
         size: this.optionalText(row.size),
@@ -8101,6 +8131,11 @@ export class ProductsService {
     );
   }
 
+  private serializeDesignMasterListRow(row: DesignMaster): Record<string, unknown> {
+    const { normalizedValue: _normalizedValue, normalizedAlias: _normalizedAlias, ...publicRow } = row;
+    return publicRow;
+  }
+
   private normalizeDesignBarcode(value?: string | null): string | null {
     const normalized = String(value || '').trim().toUpperCase();
     if (!normalized) {
@@ -8163,7 +8198,7 @@ export class ProductsService {
     throw new BadRequestException('Unable to generate a unique packet barcode');
   }
 
-  private async resolveStonePacketBarcode(value?: string | null, excludePacketId?: string): Promise<string> {
+  private async resolveStonePacketBarcode(value?: string | null, excludePacketId?: number): Promise<string> {
     const normalized = this.normalizeStonePacketBarcode(value);
     if (!normalized) {
       return this.generateStonePacketBarcode();
@@ -8174,6 +8209,22 @@ export class ProductsService {
       throw new BadRequestException('Packet barcode already exists');
     }
     return normalized;
+  }
+
+  private requiredPacketId(value: string | number): number {
+    const id = this.optionalInt(value);
+    if (id === null) {
+      throw new BadRequestException('Invalid packet id');
+    }
+    return id;
+  }
+
+  private optionalInt(value: string | number | null | undefined): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
   private buildDefaultDesignName(jewelryGroup: string | null | undefined, designNo: string): string {

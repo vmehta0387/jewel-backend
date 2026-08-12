@@ -1,0 +1,2 @@
+ALTER TABLE vendor_names
+  ADD COLUMN IF NOT EXISTS email VARCHAR(255) NULL AFTER description;

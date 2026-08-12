@@ -10,8 +10,8 @@ export class DesignGemstone {
   @Column({ name: 'design_id' })
   designId: string;
 
-  @Column({ name: 'packet_id', nullable: true })
-  packetId: string | null;
+  @Column({ name: 'packet_id', type: 'int', nullable: true })
+  packetId: number | null;
 
   @Column({ nullable: true })
   stone: string | null;
