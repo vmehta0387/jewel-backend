@@ -392,9 +392,11 @@ export class CreateProductDto {
   @IsOptional()
   designNo?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  familyDesignId?: string;
+  familyDesignId?: number;
 
   @IsString()
   @IsOptional()

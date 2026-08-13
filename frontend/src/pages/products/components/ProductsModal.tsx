@@ -34,7 +34,7 @@ export default function ProductsModal({
             </svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-5 sm:p-6">
+        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/30 p-5 sm:p-6">
           {children}
         </div>
         {footer ? (

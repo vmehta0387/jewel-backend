@@ -11,10 +11,11 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 ALTER TABLE designs
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_designs_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_designs_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 ALTER TABLE designs
   ADD COLUMN jewelry_group_id INT(11) NULL AFTER branch_id,
@@ -70,16 +71,18 @@ ALTER TABLE designs
   DROP COLUMN design_status,
   DROP COLUMN tags,
   DROP COLUMN gold_colour,
-  MODIFY COLUMN jewelry_group_id INT(11) NOT NULL;
+  MODIFY COLUMN jewelry_group_id INT(11) NOT NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_metals
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN metal_caratage_id INT(11) NULL AFTER design_id_int,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_metals_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_metals_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_metals row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -90,11 +93,12 @@ SET row.design_id_int = design_master.id,
 ALTER TABLE design_metals
   DROP COLUMN design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  DROP COLUMN gold_colour;
+  DROP COLUMN gold_colour,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_gemstones
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN stone_id INT(11) NULL AFTER packet_id,
@@ -105,7 +109,8 @@ ALTER TABLE design_gemstones
   ADD COLUMN quality_id INT(11) NULL AFTER color_id,
   ADD COLUMN stone_type_id INT(11) NULL AFTER quality_id,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_gemstones_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_gemstones_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_gemstones row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -134,16 +139,18 @@ ALTER TABLE design_gemstones
   DROP COLUMN cut,
   DROP COLUMN color,
   DROP COLUMN quality,
-  DROP COLUMN stone_type;
+  DROP COLUMN stone_type,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_labors
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN labor_head_id INT(11) NULL AFTER design_id_int,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_labors_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_labors_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_labors row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -154,16 +161,18 @@ SET row.design_id_int = design_master.id,
 ALTER TABLE design_labors
   DROP COLUMN design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  DROP COLUMN labor_head;
+  DROP COLUMN labor_head,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_findings
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN finding_head_id INT(11) NULL AFTER design_id_int,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_findings_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_findings_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_findings row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -174,16 +183,18 @@ SET row.design_id_int = design_master.id,
 ALTER TABLE design_findings
   DROP COLUMN design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  DROP COLUMN finding_head;
+  DROP COLUMN finding_head,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_process_stages
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN process_stage_id INT(11) NULL AFTER design_id_int,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_process_stages_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_process_stages_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_process_stages row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -194,16 +205,18 @@ SET row.design_id_int = design_master.id,
 ALTER TABLE design_process_stages
   DROP COLUMN design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  DROP COLUMN process_stage;
+  DROP COLUMN process_stage,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_vendors
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN vendor_name_id INT(11) NULL AFTER design_id_int,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_vendors_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_vendors_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_vendors row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -214,15 +227,17 @@ SET row.design_id_int = design_master.id,
 ALTER TABLE design_vendors
   DROP COLUMN design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  DROP COLUMN supplier_name;
+  DROP COLUMN supplier_name,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_pricing_tiers
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_pricing_tiers_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_pricing_tiers_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_pricing_tiers row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -230,15 +245,17 @@ SET row.design_id_int = design_master.id;
 
 ALTER TABLE design_pricing_tiers
   DROP COLUMN design_id,
-  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL;
+  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_stl_files
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_stl_files_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_stl_files_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_stl_files row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -246,15 +263,17 @@ SET row.design_id_int = design_master.id;
 
 ALTER TABLE design_stl_files
   DROP COLUMN design_id,
-  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL;
+  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_history
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_history_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_history_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_history row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -262,16 +281,18 @@ SET row.design_id_int = design_master.id;
 
 ALTER TABLE design_history
   DROP COLUMN design_id,
-  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL;
+  CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_relevant
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id,
   ADD COLUMN related_design_id_int INT(11) NULL AFTER related_design_id,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_relevant_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_relevant_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 UPDATE design_relevant row
 LEFT JOIN designs design_master ON design_master.legacy_uuid = row.design_id
@@ -283,7 +304,8 @@ ALTER TABLE design_relevant
   DROP COLUMN design_id,
   DROP COLUMN related_design_id,
   CHANGE COLUMN design_id_int design_id INT(11) NOT NULL,
-  CHANGE COLUMN related_design_id_int related_design_id INT(11) NOT NULL;
+  CHANGE COLUMN related_design_id_int related_design_id INT(11) NOT NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE orders
   ADD COLUMN design_id_int INT(11) NULL AFTER design_id;
@@ -295,14 +317,16 @@ WHERE row.design_id IS NOT NULL;
 
 ALTER TABLE orders
   DROP COLUMN design_id,
-  CHANGE COLUMN design_id_int design_id INT(11) NULL;
+  CHANGE COLUMN design_id_int design_id INT(11) NULL,
+  ALGORITHM=INPLACE;
 
 ALTER TABLE design_media_library
   DROP PRIMARY KEY,
-  CHANGE COLUMN id legacy_uuid VARCHAR(36) NOT NULL,
+  CHANGE COLUMN id legacy_uuid VARCHAR(36) NULL DEFAULT NULL,
   ADD COLUMN id INT(11) NOT NULL AUTO_INCREMENT FIRST,
   ADD PRIMARY KEY (id),
-  ADD UNIQUE KEY ux_design_media_library_legacy_uuid (legacy_uuid);
+  ADD UNIQUE KEY ux_design_media_library_legacy_uuid (legacy_uuid),
+  ALGORITHM=INPLACE;
 
 ALTER TABLE designs
   ADD INDEX idx_designs_family_design_id (family_design_id),

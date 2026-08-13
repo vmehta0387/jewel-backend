@@ -522,10 +522,22 @@ export class ProductsService {
       globalRateMaps,
     ));
     const normalizedLabors = await this.resolveNormalizedLaborRows(this.normalizeLabors(dto.labors || []));
-    const normalizedOverheads = this.normalizeOverheads(dto.overheads || []).concat(
-      this.normalizeLegacyOverheadsFromLabors(dto.labors || []),
-    );
+    const normalizedOverheads = (
+      await this.resolveNormalizedOverheadRows(this.normalizeOverheads(dto.overheads || []))
+    ).concat(this.normalizeLegacyOverheadsFromLabors(dto.labors || []));
     const normalizedFindings = await this.resolveNormalizedFindingRows(this.normalizeFindings(dto.findings || []));
+    await this.validateDesignRelationRefs(
+      {
+        processStages: dto.processStages || [],
+        vendors: dto.vendors || [],
+        relevantDesignIds: dto.relevantDesignIds || [],
+      },
+      {
+        id: null,
+        companyId: scope.companyId,
+      },
+      requester,
+    );
     const summary = this.calculateSummary(
       normalizedMetals,
       normalizedGemstones,
@@ -2788,6 +2800,9 @@ export class ProductsService {
         'metalCaratageMaster',
         'metals',
         'metals.metalCaratageMaster',
+        'metals.metalCaratageMaster.metalMaster',
+        'metals.metalCaratageMaster.metalColorMaster',
+        'metals.metalCaratageMaster.metalPurityMaster',
         'gemstones',
         'gemstones.stoneMaster',
         'gemstones.shapeMaster',
@@ -2841,10 +2856,17 @@ export class ProductsService {
     const updatedByName = design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null;
     const resolvedImageUrls = await this.resolveGalleryUrls(design.imageUrls || []);
     const resolvedStlFileUrl = await this.resolveAssetUrl(design.stlFileUrl);
+    const gemstones = await this.withGemstonePacketNames(design.gemstones || []);
 
     return {
       ...design,
-      gemstones: await this.withGemstonePacketNames(design.gemstones || []),
+      metals: this.serializeMetalRows(design.metals || []),
+      gemstones: this.serializeGemstoneRows(gemstones),
+      labors: this.serializeLaborRows(design.labors || []),
+      overheads: this.serializeOverheadRows(design.overheads || []),
+      findings: this.serializeFindingRows(design.findings || []),
+      processStages: this.serializeProcessStageRows(design.processStages || []),
+      vendors: this.serializeVendorRows(design.vendors || []),
       imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
       imageUrls: resolvedImageUrls,
       stlFileUrl: resolvedStlFileUrl,
@@ -2893,7 +2915,7 @@ export class ProductsService {
     ));
     const normalizedOverheads =
       dto.overheads !== undefined
-        ? this.normalizeOverheads(dto.overheads).concat(this.normalizeLegacyOverheadsFromLabors(dto.labors || []))
+        ? (await this.resolveNormalizedOverheadRows(this.normalizeOverheads(dto.overheads))).concat(this.normalizeLegacyOverheadsFromLabors(dto.labors || []))
         : dto.labors !== undefined
           ? this.normalizeLegacyOverheadsFromLabors(dto.labors)
           : this.toOverheadDtos(existingRows.overheads).map((row) => ({
@@ -2907,6 +2929,15 @@ export class ProductsService {
     const normalizedFindings = await this.resolveNormalizedFindingRows(this.normalizeFindings(
       dto.findings !== undefined ? dto.findings : this.toFindingDtos(existingRows.findings),
     ));
+    await this.validateDesignRelationRefs(
+      {
+        processStages: dto.processStages,
+        vendors: dto.vendors,
+        relevantDesignIds: dto.relevantDesignIds,
+      },
+      design,
+      requester,
+    );
 
     const summary = this.calculateSummary(
       normalizedMetals,
@@ -3073,18 +3104,27 @@ export class ProductsService {
       throw new ForbiddenException('Only Super Admin can activate inactive designs.');
     }
     const design = await this.getDesignForWrite(id, requester);
+    await this.designRepo.update({ id }, { isActive, updatedBy: requester.id });
     design.isActive = isActive;
     design.updatedBy = requester.id;
-    await this.designRepo.save(design);
 
-    await this.addHistory(
-      id,
-      'STATUS_CHANGED',
-      `Design marked as ${isActive ? 'active' : 'inactive'}.`,
-      requester.id,
-    );
+    try {
+      await this.addHistory(
+        id,
+        'STATUS_CHANGED',
+        `Design marked as ${isActive ? 'active' : 'inactive'}.`,
+        requester.id,
+      );
+    } catch (error) {
+      console.error('Failed to add design status history', error);
+    }
 
-    return this.findOne(id, requester);
+    return {
+      id: design.id,
+      isActive: design.isActive,
+      updatedBy: design.updatedBy,
+      updatedAt: new Date(),
+    };
   }
 
   async remove(id: string, requester: AuthUser): Promise<{ deleted: boolean }> {
@@ -3095,7 +3135,7 @@ export class ProductsService {
     }
     design.isActive = false;
     design.updatedBy = requester.id;
-    await this.designRepo.save(design);
+    await this.designRepo.update({ id }, { isActive: false, updatedBy: requester.id });
     await this.addHistory(id, 'DISABLED', 'Design disabled.', requester.id);
     return { deleted: false };
   }
@@ -5800,7 +5840,13 @@ export class ProductsService {
       }),
     );
 
-    await this.metalRepo.save(entities);
+    await this.metalRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DesignMetal)
+      .values(entities as any[])
+      .updateEntity(false)
+      .execute();
   }
 
   private async replaceGemstoneRows(designId: string | number, rows: NormalizedGemstoneRow[]): Promise<void> {
@@ -5818,7 +5864,13 @@ export class ProductsService {
       }),
     );
 
-    await this.gemstoneRepo.save(entities);
+    await this.gemstoneRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DesignGemstone)
+      .values(entities as any[])
+      .updateEntity(false)
+      .execute();
   }
 
   private async replaceLaborRows(designId: string | number, rows: NormalizedLaborRow[]): Promise<void> {
@@ -5836,7 +5888,13 @@ export class ProductsService {
       }),
     );
 
-    await this.laborRepo.save(entities);
+    await this.laborRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DesignLabor)
+      .values(entities as any[])
+      .updateEntity(false)
+      .execute();
   }
 
   private async replaceOverheadRows(designId: string | number, rows: NormalizedOverheadRow[]): Promise<void> {
@@ -5854,7 +5912,13 @@ export class ProductsService {
       }),
     );
 
-    await this.overheadRepo.save(entities);
+    await this.overheadRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DesignOverhead)
+      .values(entities as any[])
+      .updateEntity(false)
+      .execute();
   }
 
   private async replaceFindingRows(designId: string | number, rows: NormalizedFindingRow[]): Promise<void> {
@@ -5872,16 +5936,72 @@ export class ProductsService {
       }),
     );
 
-    await this.findingRepo.save(entities);
+    await this.findingRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DesignFinding)
+      .values(entities as any[])
+      .updateEntity(false)
+      .execute();
+  }
+
+  private async validateDesignRelationRefs(
+    input: {
+      processStages?: DesignProcessStageDto[];
+      vendors?: DesignVendorDto[];
+      relevantDesignIds?: Array<string | number>;
+    },
+    design: Pick<Design, 'id' | 'companyId'> & { id: string | number | null },
+    requester: AuthUser,
+  ): Promise<void> {
+    if (input.processStages !== undefined) {
+      await Promise.all(
+        (input.processStages || []).map((row) =>
+          this.resolveMasterRef('design_stages', row.processStageId, row.processStage, 'processStage', true),
+        ),
+      );
+    }
+
+    if (input.vendors !== undefined) {
+      await Promise.all(
+        (input.vendors || []).map((row) =>
+          this.resolveMasterRef('vendor_names', row.vendorNameId, row.supplierName, 'supplierName', true),
+        ),
+      );
+    }
+
+    if (input.relevantDesignIds === undefined) {
+      return;
+    }
+
+    const selfId = design.id === null ? null : String(design.id);
+    const deduplicated = Array.from(
+      new Set((input.relevantDesignIds || []).filter((entry) => !!entry && String(entry) !== selfId)),
+    );
+
+    if (deduplicated.length === 0) {
+      return;
+    }
+
+    const relatedDesigns = await this.designRepo.find({ where: { id: In(deduplicated) } });
+    if (relatedDesigns.length !== deduplicated.length) {
+      throw new NotFoundException('One or more related designs were not found');
+    }
+
+    for (const related of relatedDesigns) {
+      this.assertReadScope(related, requester);
+      if (design.companyId && related.companyId && design.companyId !== related.companyId) {
+        throw new BadRequestException('Related designs must belong to the same company');
+      }
+    }
   }
 
   private async replaceProcessStageRows(
     designId: string | number,
     rows: DesignProcessStageDto[],
   ): Promise<void> {
-    await this.processStageRepo.delete({ designId });
-
     if (!rows || rows.length === 0) {
+      await this.processStageRepo.delete({ designId });
       return;
     }
 
@@ -5889,6 +6009,8 @@ export class ProductsService {
       const ref = await this.resolveMasterRef('design_stages', row.processStageId, row.processStage, 'processStage', true);
       return { ...row, processStageId: ref.id!, processStage: ref.value || undefined };
     }));
+
+    await this.processStageRepo.delete({ designId });
 
     const entities = resolvedRows.map((row, index) =>
       this.processStageRepo.create({
@@ -5933,9 +6055,8 @@ export class ProductsService {
   }
 
   private async replaceVendorRows(designId: string | number, rows: DesignVendorDto[]): Promise<void> {
-    await this.vendorRepo.delete({ designId });
-
     if (!rows || rows.length === 0) {
+      await this.vendorRepo.delete({ designId });
       return;
     }
 
@@ -5943,6 +6064,8 @@ export class ProductsService {
       const ref = await this.resolveMasterRef('vendor_names', row.vendorNameId, row.supplierName, 'supplierName', true);
       return { ...row, vendorNameId: ref.id!, supplierName: ref.value || undefined };
     }));
+
+    await this.vendorRepo.delete({ designId });
 
     const entities = resolvedRows.map((row, index) =>
       this.vendorRepo.create({
@@ -5984,9 +6107,8 @@ export class ProductsService {
       new Set((designIds || []).filter((entry) => !!entry && String(entry) !== String(design.id))),
     );
 
-    await this.relevantRepo.delete({ designId: design.id });
-
     if (deduplicated.length === 0) {
+      await this.relevantRepo.delete({ designId: design.id });
       return;
     }
 
@@ -6001,6 +6123,8 @@ export class ProductsService {
         throw new BadRequestException('Related designs must belong to the same company');
       }
     }
+
+    await this.relevantRepo.delete({ designId: design.id });
 
     const links = deduplicated.map((relatedDesignId) =>
       this.relevantRepo.create({
@@ -6019,15 +6143,23 @@ export class ProductsService {
     userId?: string,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.historyRepo.save(
-      this.historyRepo.create({
+    try {
+      await this.historyRepo.save(
+        this.historyRepo.create({
+          designId,
+          actionType,
+          remarks,
+          performedBy: userId || null,
+          metadata: metadata || null,
+        }),
+      );
+    } catch (error) {
+      console.warn('Design history logging failed after design save', {
         designId,
         actionType,
-        remarks,
-        performedBy: userId || null,
-        metadata: metadata || null,
-      }),
-    );
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async safeNotifyDesignImportFailed(
@@ -6217,7 +6349,7 @@ export class ProductsService {
   }
 
   private async resolveFamilyDesignId(
-    inputId: string | undefined,
+    inputId: string | number | undefined,
     designNo: string,
     scope: ScopeResult,
   ): Promise<string | number | null> {
@@ -8397,6 +8529,13 @@ export class ProductsService {
     }));
   }
 
+  private async resolveNormalizedOverheadRows(rows: NormalizedOverheadRow[]): Promise<NormalizedOverheadRow[]> {
+    return Promise.all(rows.map(async (row) => {
+      const ref = await this.resolveMasterRef('overhead_rules', row.overheadRuleId, row.overheadHead, 'overheadHead');
+      return { ...row, overheadRuleId: ref.id, overheadHead: ref.value };
+    }));
+  }
+
   private async resolveNormalizedFindingRows(rows: NormalizedFindingRow[]): Promise<NormalizedFindingRow[]> {
     return Promise.all(rows.map(async (row) => {
       const ref = await this.resolveMasterRef('finding_heads', row.findingHeadId, row.findingHead, 'findingHead');
@@ -8469,6 +8608,86 @@ export class ProductsService {
   private hydrateVendorDisplayLabels(row: DesignVendor): DesignVendor {
     row.supplierName = row.vendorNameMaster?.value || row.supplierName || '';
     return row;
+  }
+
+  private serializeMetalRows(rows: DesignMetal[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      metalCaratageId: row.metalCaratageMaster?.id ?? row.metalCaratageId ?? null,
+      metalCaratage: row.metalCaratageMaster?.value || row.metalCaratage || row.goldColour || null,
+      goldColour: row.metalCaratageMaster?.value || row.goldColour || row.metalCaratage || null,
+      metalName: row.metalCaratageMaster?.metalMaster?.value || null,
+      metalColor: row.metalCaratageMaster?.metalColorMaster?.value || null,
+      metalPurity: row.metalCaratageMaster?.metalPurityMaster?.value || null,
+      pricePerGm: row.pricePerGm,
+    }));
+  }
+
+  private serializeGemstoneRows(
+    rows: Array<DesignGemstone & { packetName?: string | null }>,
+  ): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      stoneId: row.stoneMaster?.id ?? row.stoneId ?? null,
+      stone: row.stoneMaster?.value || row.stone || null,
+      shapeId: row.shapeMaster?.id ?? row.shapeId ?? null,
+      shape: row.shapeMaster?.value || row.shape || null,
+      sizeId: row.sizeMaster?.id ?? row.sizeId ?? null,
+      size: row.sizeMaster?.value || row.size || null,
+      cutId: row.cutMaster?.id ?? row.cutId ?? null,
+      cut: row.cutMaster?.value || row.cut || null,
+      colorId: row.colorMaster?.id ?? row.colorId ?? null,
+      color: row.colorMaster?.value || row.color || null,
+      qualityId: row.qualityMaster?.id ?? row.qualityId ?? null,
+      quality: row.qualityMaster?.value || row.quality || null,
+      stoneTypeId: row.stoneTypeMaster?.id ?? row.stoneTypeId ?? null,
+      stoneType: row.stoneTypeMaster?.value || row.stoneType || null,
+      packetName: row.packetName || null,
+    }));
+  }
+
+  private serializeLaborRows(rows: DesignLabor[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      laborHeadId: row.laborHeadMaster?.id ?? row.laborHeadId ?? null,
+      laborHead: row.laborHeadMaster?.value || row.laborHead || null,
+    }));
+  }
+
+  private serializeOverheadRows(rows: DesignOverhead[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      overheadRuleId: row.overheadRuleMaster?.id ?? row.overheadRuleId ?? null,
+      overheadHead: row.overheadRuleMaster?.value || row.overheadHead || null,
+      overheadApplyMode: row.overheadApplyMode || row.overheadRuleMaster?.overheadApplyMode || null,
+      ratePercent: row.ratePercent ?? row.overheadRuleMaster?.ratePercent ?? null,
+      flatAmount: row.flatAmount ?? row.overheadRuleMaster?.flatAmount ?? null,
+    }));
+  }
+
+  private serializeFindingRows(rows: DesignFinding[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      findingHeadId: row.findingHeadMaster?.id ?? row.findingHeadId ?? null,
+      findingHead: row.findingHeadMaster?.value || row.findingHead || null,
+    }));
+  }
+
+  private serializeProcessStageRows(rows: DesignProcessStage[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      processStageId: row.processStageMaster?.id ?? row.processStageId,
+      processStage: row.processStageMaster?.value || row.processStage || '',
+    }));
+  }
+
+  private serializeVendorRows(rows: DesignVendor[]): Array<Record<string, unknown>> {
+    return rows.map((row) => ({
+      ...row,
+      vendorNameId: row.vendorNameMaster?.id ?? row.vendorNameId,
+      supplierName: row.vendorNameMaster?.value || row.supplierName || '',
+      supplierEmail: row.vendorNameMaster?.email || null,
+    }));
   }
 
   private async getGlobalRateMaps(): Promise<GlobalRateMaps> {
