@@ -5,15 +5,26 @@ import { DesignMasterType } from './entities/design-master.entity';
 import {
   DESIGN_MASTER_TYPE_TABLE_MAP,
   MasterTableEntity,
+  OverheadRuleApplyMode,
 } from './entities/design-master-tables.entity';
 import { FindMasterTableQueryDto, SaveMasterTableDto } from './dto/master-table.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY } from './constants/overhead-rule.constants';
 
 type MasterEntityTarget = EntityTarget<ObjectLiteral>;
 type SerializedMaster = Record<string, unknown> & {
   id: number;
   value: string;
   aliasName: string | null;
+};
+
+type DropdownMaster = {
+  id: number;
+  name: string;
+  value: string;
+  alias: string | null;
+  aliasName: string | null;
+  label: string;
 };
 
 const MASTER_RELATIONS: Partial<Record<DesignMasterType, string[]>> = {
@@ -116,15 +127,93 @@ export class MasterTablesService {
   }
 
   async dropdown(masterType: DesignMasterType, query: FindMasterTableQueryDto) {
-    const rows = await this.list(masterType, query);
+    const repo = this.getRepository(masterType);
+    const alias = 'master';
+    const qb = repo
+      .createQueryBuilder(alias)
+      .select([`${alias}.id`, `${alias}.value`, `${alias}.aliasName`]);
+
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      qb.addSelect([
+        `${alias}.marketPricePerOunce`,
+        `${alias}.marketPricePerGm`,
+        `${alias}.livePricePerGm`,
+        `${alias}.defaultWastagePercent`,
+      ]);
+    }
+
+    if (masterType === DesignMasterType.OVERHEAD_RULE) {
+      qb.addSelect([
+        `${alias}.jewelryGroupId`,
+        `${alias}.overheadApplyMode`,
+        `${alias}.ratePercent`,
+        `${alias}.flatAmount`,
+      ]);
+    }
+
+    if (query.status === 'ACTIVE' || (!query.status && !query.includeInactive)) {
+      qb.andWhere(`${alias}.isActive = :isActive`, { isActive: true });
+    } else if (query.status === 'INACTIVE') {
+      qb.andWhere(`${alias}.isActive = :isActive`, { isActive: false });
+    }
+    if (query.search?.trim()) {
+      qb.andWhere(`(${alias}.value LIKE :search OR ${alias}.aliasName LIKE :search)`, {
+        search: `%${query.search.trim()}%`,
+      });
+    }
+    if (query.jewelryGroupId) {
+      qb.andWhere(`${alias}.jewelryGroupId = :jewelryGroupId`, { jewelryGroupId: query.jewelryGroupId });
+    }
+    if (query.metalId) {
+      qb.andWhere(`${alias}.metalId = :metalId`, { metalId: query.metalId });
+    }
+
+    const rows = await qb.orderBy(`${alias}.value`, 'ASC').getMany();
     return rows
       .sort((a, b) => a.value.localeCompare(b.value))
-      .map((row) => ({
-        ...row,
-        id: row.id,
-        value: row.value,
-        label: row.aliasName || row.value,
-      }));
+      .map((row): DropdownMaster => {
+        const value = String((row as MasterTableEntity).value ?? '');
+        const aliasName = typeof (row as MasterTableEntity).aliasName === 'string'
+          ? (row as MasterTableEntity).aliasName
+          : null;
+
+        const option: DropdownMaster & Record<string, unknown> = {
+          id: Number((row as MasterTableEntity).id),
+          name: value,
+          value,
+          alias: aliasName,
+          aliasName,
+          label: aliasName || value,
+        };
+
+        if (masterType === DesignMasterType.METAL_CARATAGE) {
+          option.marketPricePerOunce = row.marketPricePerOunce ?? null;
+          option.marketPricePerGm = row.marketPricePerGm ?? null;
+          option.livePricePerGm = row.livePricePerGm ?? null;
+          option.defaultWastagePercent = row.defaultWastagePercent ?? null;
+        }
+
+        if (masterType === DesignMasterType.OVERHEAD_RULE) {
+          const overheadApplyMode = row.overheadApplyMode as OverheadRuleApplyMode | null | undefined;
+          const overheadApplyModeName = overheadApplyMode
+            ? OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY[overheadApplyMode] || String(overheadApplyMode)
+            : null;
+          option.jewelryGroupId = row.jewelryGroupId ?? null;
+          option.overheadApplyMode = overheadApplyMode ?? null;
+          option.overhead_apply_mode = overheadApplyMode ?? null;
+          option.overheadApplyModeKey = overheadApplyMode ?? null;
+          option.overheadApplyModeName = overheadApplyModeName;
+          option.overheadApplyModeOption = overheadApplyMode
+            ? { key: overheadApplyMode, name: overheadApplyModeName }
+            : null;
+          option.ratePercent = row.ratePercent ?? null;
+          option.rate_percent = row.ratePercent ?? null;
+          option.flatAmount = row.flatAmount ?? null;
+          option.flat_amount = row.flatAmount ?? null;
+        }
+
+        return option;
+      });
   }
 
   async get(masterType: DesignMasterType, id: number) {

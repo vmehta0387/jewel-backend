@@ -9,6 +9,7 @@ import { Design } from './entities/design.entity';
 import { DesignMetal } from './entities/design-metal.entity';
 import { DesignGemstone } from './entities/design-gemstone.entity';
 import { DesignLabor } from './entities/design-labor.entity';
+import { DesignOverhead } from './entities/design-overhead.entity';
 import { DesignFinding } from './entities/design-finding.entity';
 import { DesignProcessStage } from './entities/design-process-stage.entity';
 import { DesignPricingTier } from './entities/design-pricing-tier.entity';
@@ -35,6 +36,7 @@ import { PricingModule } from '../pricing/pricing.module';
       DesignMetal,
       DesignGemstone,
       DesignLabor,
+      DesignOverhead,
       DesignFinding,
       DesignProcessStage,
       DesignPricingTier,

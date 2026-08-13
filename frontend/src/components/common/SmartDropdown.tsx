@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../services/api';
 
@@ -111,15 +111,29 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
 
   const updateDropdownPosition = useCallback(() => {
     if (!containerRef.current) return;
+    const viewportPadding = 8;
+    const gap = 4;
+    const preferredMaxHeight = 320;
+    const minimumUsefulHeight = 140;
     const rect = containerRef.current.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - 12;
-    const spaceAbove = rect.top - 12;
-    const openAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(220, Math.min(420, openAbove ? spaceAbove : spaceBelow));
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - viewportPadding - gap);
+    const spaceAbove = Math.max(0, rect.top - viewportPadding - gap);
+    const openAbove = spaceBelow < minimumUsefulHeight && spaceAbove > spaceBelow;
+    const availableHeight = openAbove ? spaceAbove : spaceBelow;
+    const maxHeight = Math.max(minimumUsefulHeight, Math.min(preferredMaxHeight, availableHeight));
+    const measuredHeight = dropdownRef.current?.offsetHeight || 0;
+    const menuHeight = measuredHeight > 0 ? Math.min(measuredHeight, maxHeight) : maxHeight;
+    const width = Math.max(rect.width, 220);
+    const maxLeft = Math.max(viewportPadding, window.innerWidth - width - viewportPadding);
+    const left = Math.min(Math.max(viewportPadding, rect.left), maxLeft);
+    const top = openAbove
+      ? Math.max(viewportPadding, rect.top - menuHeight - gap)
+      : Math.min(rect.bottom + gap, window.innerHeight - menuHeight - viewportPadding);
+
     setDropdownStyle({
-      top: openAbove ? Math.max(12, rect.top - maxHeight - 6) : rect.bottom + 6,
-      left: rect.left,
-      width: Math.max(rect.width, 220),
+      top,
+      left,
+      width,
       maxHeight,
     });
   }, []);
@@ -175,9 +189,15 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isOpen) return;
     updateDropdownPosition();
+    const frame = window.requestAnimationFrame(updateDropdownPosition);
+    return () => window.cancelAnimationFrame(frame);
+  }, [filteredOptions.length, hasLoadedOptions, isOpen, loading, merged.showSearch, updateDropdownPosition]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     const handleReposition = () => updateDropdownPosition();
     window.addEventListener('resize', handleReposition);
     window.addEventListener('scroll', handleReposition, true);
@@ -221,21 +241,21 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     }
   };
 
-  const buttonLabel = selectedOption ? optionText(selectedOption, merged.labelKey) : merged.placeholder || 'Select...';
+  const buttonLabel = selectedOption ? optionText(selectedOption, merged.labelKey) : value || merged.placeholder || 'Select...';
   const listMaxHeight = Math.max(140, dropdownStyle.maxHeight - (merged.showSearch ? 58 : 12));
   const listMinHeight = Math.min(220, listMaxHeight);
 
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative min-w-0 ${className}`}>
       <button
         type="button"
         disabled={merged.disabled}
         onClick={openDropdown}
-        className={`flex w-full min-w-[10rem] items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
+        className={`flex h-10 w-full min-w-0 items-center justify-between rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${
           isOpen ? 'border-primary-500 ring-1 ring-primary-500' : ''
         }`}
       >
-        <span className={selectedOption ? 'truncate' : 'truncate text-slate-400'}>{buttonLabel}</span>
+        <span className={selectedOption || value ? 'truncate' : 'truncate text-slate-400'}>{buttonLabel}</span>
         <svg className={`ml-2 h-4 w-4 shrink-0 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>

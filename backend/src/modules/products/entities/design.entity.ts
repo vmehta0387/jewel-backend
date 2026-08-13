@@ -15,6 +15,7 @@ import { User } from '../../users/entities/user.entity';
 import { DesignMetal } from './design-metal.entity';
 import { DesignGemstone } from './design-gemstone.entity';
 import { DesignLabor } from './design-labor.entity';
+import { DesignOverhead } from './design-overhead.entity';
 import { DesignFinding } from './design-finding.entity';
 import { DesignProcessStage } from './design-process-stage.entity';
 import { DesignPricingTier } from './design-pricing-tier.entity';
@@ -235,6 +236,9 @@ export class Design {
 
   @OneToMany(() => DesignLabor, (labor) => labor.design)
   labors: DesignLabor[];
+
+  @OneToMany(() => DesignOverhead, (overhead) => overhead.design)
+  overheads: DesignOverhead[];
 
   @OneToMany(() => DesignFinding, (finding) => finding.design)
   findings: DesignFinding[];

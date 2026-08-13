@@ -23,6 +23,7 @@ import {
   DesignGemstoneDto,
   DesignLaborDto,
   DesignMetalDto,
+  DesignOverheadDto,
   FindDesignMastersQueryDto,
   FindDesignMediaLibraryQueryDto,
   DesignPricingTierDto,
@@ -50,6 +51,7 @@ import { DesignGemstone } from './entities/design-gemstone.entity';
 import { DesignHistory } from './entities/design-history.entity';
 import { MetalPriceHistory } from './entities/metal-price-history.entity';
 import { DesignLabor } from './entities/design-labor.entity';
+import { DesignOverhead } from './entities/design-overhead.entity';
 import { DesignMetal } from './entities/design-metal.entity';
 import { DesignPricingIncrementBy, DesignPricingTier } from './entities/design-pricing-tier.entity';
 import { DesignDurationType, DesignProcessStage } from './entities/design-process-stage.entity';
@@ -131,6 +133,15 @@ interface NormalizedLaborRow {
   laborValue: number;
 }
 
+interface NormalizedOverheadRow {
+  overheadRuleId: number | null;
+  overheadHead: string | null;
+  overheadApplyMode: string | null;
+  ratePercent: number | null;
+  flatAmount: number | null;
+  overheadValue: number;
+}
+
 interface NormalizedFindingRow {
   findingHeadId: number | null;
   findingHead: string | null;
@@ -144,6 +155,7 @@ interface SummaryBreakdown {
   metalValue: number;
   gemValue: number;
   laborValue: number;
+  overheadValue: number;
   findingValue: number;
   totalValue: number;
   grossWeight: number;
@@ -159,6 +171,24 @@ interface MasterRef {
   id: number | null;
   value: string | null;
 }
+
+interface PacketMasterSummary {
+  id: number;
+  name: string;
+  value: string;
+}
+
+type CompactPacketResponse = Omit<
+  StonePacket,
+  'stoneMaster' | 'shapeMaster' | 'sizeMaster' | 'cutMaster' | 'colorMaster' | 'qualityMaster'
+> & {
+  stoneMaster: PacketMasterSummary | null;
+  shapeMaster: PacketMasterSummary | null;
+  sizeMaster: PacketMasterSummary | null;
+  cutMaster: PacketMasterSummary | null;
+  colorMaster: PacketMasterSummary | null;
+  qualityMaster: PacketMasterSummary | null;
+};
 
 interface DesignMasterRefs {
   jewelryGroup: MasterRef;
@@ -366,6 +396,8 @@ export class ProductsService {
     private readonly gemstoneRepo: Repository<DesignGemstone>,
     @InjectRepository(DesignLabor)
     private readonly laborRepo: Repository<DesignLabor>,
+    @InjectRepository(DesignOverhead)
+    private readonly overheadRepo: Repository<DesignOverhead>,
     @InjectRepository(DesignFinding)
     private readonly findingRepo: Repository<DesignFinding>,
     @InjectRepository(DesignProcessStage)
@@ -399,6 +431,57 @@ export class ProductsService {
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
   ) {}
+
+  private compactPacketMaster(master: { id: number; value: string } | null | undefined): PacketMasterSummary | null {
+    if (!master) {
+      return null;
+    }
+
+    return {
+      id: master.id,
+      name: master.value,
+      value: master.value,
+    };
+  }
+
+  private toCompactPacketResponse(packet: StonePacket): CompactPacketResponse {
+    return {
+      ...packet,
+      stoneMaster: this.compactPacketMaster(packet.stoneMaster),
+      shapeMaster: this.compactPacketMaster(packet.shapeMaster),
+      sizeMaster: this.compactPacketMaster(packet.sizeMaster),
+      cutMaster: this.compactPacketMaster(packet.cutMaster),
+      colorMaster: this.compactPacketMaster(packet.colorMaster),
+      qualityMaster: this.compactPacketMaster(packet.qualityMaster),
+    };
+  }
+
+  private joinPacketMasters<T extends { leftJoin: (property: string, alias: string) => T }>(qb: T): T {
+    return qb
+      .leftJoin('packet.stoneMaster', 'stoneMaster')
+      .leftJoin('packet.shapeMaster', 'shapeMaster')
+      .leftJoin('packet.sizeMaster', 'sizeMaster')
+      .leftJoin('packet.cutMaster', 'cutMaster')
+      .leftJoin('packet.colorMaster', 'colorMaster')
+      .leftJoin('packet.qualityMaster', 'qualityMaster');
+  }
+
+  private selectPacketMasters<T extends { addSelect: (selection: string[]) => T }>(qb: T): T {
+    return qb.addSelect([
+      'stoneMaster.id',
+      'stoneMaster.value',
+      'shapeMaster.id',
+      'shapeMaster.value',
+      'sizeMaster.id',
+      'sizeMaster.value',
+      'cutMaster.id',
+      'cutMaster.value',
+      'colorMaster.id',
+      'colorMaster.value',
+      'qualityMaster.id',
+      'qualityMaster.value',
+    ]);
+  }
 
   async create(dto: CreateProductDto, requester: AuthUser): Promise<any> {
     this.assertDesignCreateAccess(requester);
@@ -439,11 +522,15 @@ export class ProductsService {
       globalRateMaps,
     ));
     const normalizedLabors = await this.resolveNormalizedLaborRows(this.normalizeLabors(dto.labors || []));
+    const normalizedOverheads = this.normalizeOverheads(dto.overheads || []).concat(
+      this.normalizeLegacyOverheadsFromLabors(dto.labors || []),
+    );
     const normalizedFindings = await this.resolveNormalizedFindingRows(this.normalizeFindings(dto.findings || []));
     const summary = this.calculateSummary(
       normalizedMetals,
       normalizedGemstones,
       normalizedLabors,
+      normalizedOverheads,
       normalizedFindings,
     );
 
@@ -481,7 +568,7 @@ export class ProductsService {
       remarks: this.optionalText(dto.remarks),
       metalValue: summary.metalValue,
       gemValue: summary.gemValue,
-      laborValue: summary.laborValue,
+      laborValue: summary.laborValue + summary.overheadValue,
       findingValue: summary.findingValue,
       totalValue: summary.totalValue,
       grossWeight: summary.grossWeight,
@@ -511,6 +598,7 @@ export class ProductsService {
     await this.replaceMetalRows(saved.id, normalizedMetals);
     await this.replaceGemstoneRows(saved.id, normalizedGemstones);
     await this.replaceLaborRows(saved.id, normalizedLabors);
+    await this.replaceOverheadRows(saved.id, normalizedOverheads);
     await this.replaceFindingRows(saved.id, normalizedFindings);
     await this.replaceProcessStageRows(saved.id, dto.processStages || []);
     await this.replacePricingTierRows(saved.id, dto.pricingTiers || []);
@@ -2710,6 +2798,8 @@ export class ProductsService {
         'gemstones.stoneTypeMaster',
         'labors',
         'labors.laborHeadMaster',
+        'overheads',
+        'overheads.overheadRuleMaster',
         'findings',
         'findings.findingHeadMaster',
         'processStages',
@@ -2740,6 +2830,7 @@ export class ProductsService {
     design.metals = this.sortByOrder(design.metals);
     design.gemstones = this.sortByOrder(design.gemstones);
     design.labors = this.sortByOrder(design.labors);
+    design.overheads = this.sortByOrder(design.overheads);
     design.findings = this.sortByOrder(design.findings);
     design.processStages = this.sortByOrder(design.processStages);
     design.pricingTiers = this.sortByOrder(design.pricingTiers);
@@ -2800,6 +2891,19 @@ export class ProductsService {
     const normalizedLabors = await this.resolveNormalizedLaborRows(this.normalizeLabors(
       dto.labors !== undefined ? dto.labors : this.toLaborDtos(existingRows.labors),
     ));
+    const normalizedOverheads =
+      dto.overheads !== undefined
+        ? this.normalizeOverheads(dto.overheads).concat(this.normalizeLegacyOverheadsFromLabors(dto.labors || []))
+        : dto.labors !== undefined
+          ? this.normalizeLegacyOverheadsFromLabors(dto.labors)
+          : this.toOverheadDtos(existingRows.overheads).map((row) => ({
+              overheadRuleId: this.optionalInt(row.overheadRuleId),
+              overheadHead: this.optionalText(row.overheadHead),
+              overheadApplyMode: this.optionalText(row.overheadApplyMode),
+              ratePercent: row.ratePercent ?? null,
+              flatAmount: row.flatAmount ?? null,
+              overheadValue: this.toNumber(row.overheadValue),
+            }));
     const normalizedFindings = await this.resolveNormalizedFindingRows(this.normalizeFindings(
       dto.findings !== undefined ? dto.findings : this.toFindingDtos(existingRows.findings),
     ));
@@ -2808,6 +2912,7 @@ export class ProductsService {
       normalizedMetals,
       normalizedGemstones,
       normalizedLabors,
+      normalizedOverheads,
       normalizedFindings,
     );
 
@@ -2859,7 +2964,7 @@ export class ProductsService {
     if (dto.isActive !== undefined) design.isActive = dto.isActive;
     design.metalValue = summary.metalValue;
     design.gemValue = summary.gemValue;
-    design.laborValue = summary.laborValue;
+    design.laborValue = summary.laborValue + summary.overheadValue;
     design.findingValue = summary.findingValue;
     design.totalValue = summary.totalValue;
     design.grossWeight = summary.grossWeight;
@@ -2893,6 +2998,10 @@ export class ProductsService {
 
     if (dto.labors !== undefined) {
       await this.replaceLaborRows(id, normalizedLabors);
+    }
+
+    if (dto.overheads !== undefined || dto.labors !== undefined) {
+      await this.replaceOverheadRows(id, normalizedOverheads);
     }
 
     if (dto.findings !== undefined) {
@@ -3329,13 +3438,8 @@ export class ProductsService {
     const skip = (page - 1) * limit;
 
     const qb = this.packetRepo
-      .createQueryBuilder('packet')
-      .leftJoinAndSelect('packet.stoneMaster', 'stoneMaster')
-      .leftJoinAndSelect('packet.shapeMaster', 'shapeMaster')
-      .leftJoinAndSelect('packet.sizeMaster', 'sizeMaster')
-      .leftJoinAndSelect('packet.cutMaster', 'cutMaster')
-      .leftJoinAndSelect('packet.colorMaster', 'colorMaster')
-      .leftJoinAndSelect('packet.qualityMaster', 'qualityMaster');
+      .createQueryBuilder('packet');
+    this.joinPacketMasters(qb);
 
     const status = query.status || 'ACTIVE';
     if (status === 'ACTIVE') {
@@ -3404,18 +3508,15 @@ export class ProductsService {
       .getRawMany<{ id: number }>();
     const ids = idRows.map((row) => Number(row.id)).filter(Boolean);
     const data = ids.length
-      ? await this.packetRepo
-          .createQueryBuilder('packet')
-          .leftJoinAndSelect('packet.stoneMaster', 'stoneMaster')
-          .leftJoinAndSelect('packet.shapeMaster', 'shapeMaster')
-          .leftJoinAndSelect('packet.sizeMaster', 'sizeMaster')
-          .leftJoinAndSelect('packet.cutMaster', 'cutMaster')
-          .leftJoinAndSelect('packet.colorMaster', 'colorMaster')
-          .leftJoinAndSelect('packet.qualityMaster', 'qualityMaster')
-          .where('packet.id IN (:...ids)', { ids })
-          .orderBy('packet.created_at', 'DESC')
-          .addOrderBy('packet.id', 'DESC')
-          .getMany()
+      ? (
+          await this.selectPacketMasters(
+            this.joinPacketMasters(this.packetRepo.createQueryBuilder('packet')),
+          )
+            .where('packet.id IN (:...ids)', { ids })
+            .orderBy('packet.created_at', 'DESC')
+            .addOrderBy('packet.id', 'DESC')
+            .getMany()
+        ).map((packet) => this.toCompactPacketResponse(packet))
       : [];
 
     return {
@@ -3424,6 +3525,20 @@ export class ProductsService {
       page,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async getPacket(packetId: string): Promise<any> {
+    const packet = await this.selectPacketMasters(
+      this.joinPacketMasters(this.packetRepo.createQueryBuilder('packet')),
+    )
+      .where('packet.id = :packetId', { packetId })
+      .getOne();
+
+    if (!packet) {
+      throw new NotFoundException('Packet not found');
+    }
+
+    return this.toCompactPacketResponse(packet);
   }
 
   async findMediaLibrary(query: FindDesignMediaLibraryQueryDto): Promise<any> {
@@ -5342,7 +5457,7 @@ export class ProductsService {
         where: {
           id: In(chunkIds),
         },
-        relations: ['metals', 'gemstones', 'labors', 'findings'],
+        relations: ['metals', 'gemstones', 'labors', 'overheads', 'findings'],
       });
 
       for (const design of designs) {
@@ -5466,6 +5581,14 @@ export class ProductsService {
             unitQty: this.toNumber(row.unitQty),
             laborValue: this.toNumber(row.laborValue),
           })),
+          (design.overheads || []).map((row) => ({
+            overheadRuleId: row.overheadRuleId || null,
+            overheadHead: row.overheadHead || null,
+            overheadApplyMode: row.overheadApplyMode || null,
+            ratePercent: row.ratePercent !== null && row.ratePercent !== undefined ? this.toNumber(row.ratePercent) : null,
+            flatAmount: row.flatAmount !== null && row.flatAmount !== undefined ? this.toNumber(row.flatAmount) : null,
+            overheadValue: this.toNumber(row.overheadValue),
+          })),
           (design.findings || []).map((row) => ({
             findingHeadId: row.findingHeadId || null,
             findingHead: row.findingHead || null,
@@ -5478,7 +5601,7 @@ export class ProductsService {
 
         design.metalValue = summary.metalValue;
         design.gemValue = summary.gemValue;
-        design.laborValue = summary.laborValue;
+        design.laborValue = summary.laborValue + summary.overheadValue;
         design.findingValue = summary.findingValue;
         design.totalValue = summary.totalValue;
         design.grossWeight = summary.grossWeight;
@@ -5563,7 +5686,9 @@ export class ProductsService {
   }
 
   private normalizeLabors(rows: DesignLaborDto[]): NormalizedLaborRow[] {
-    return rows.map((row) => {
+    return rows
+      .filter((row) => !this.isLegacyOverheadLaborRow(row))
+      .map((row) => {
       const laborPerUnit = this.toNumber(row.laborPerUnit);
       const unitQty = this.toNumber(row.unitQty);
       const laborValue = laborPerUnit * unitQty;
@@ -5576,6 +5701,36 @@ export class ProductsService {
         laborValue,
       };
     });
+  }
+
+  private normalizeOverheads(rows: DesignOverheadDto[]): NormalizedOverheadRow[] {
+    return rows.map((row) => ({
+      overheadRuleId: this.optionalInt(row.overheadRuleId),
+      overheadHead: this.optionalText(row.overheadHead),
+      overheadApplyMode: this.optionalText(row.overheadApplyMode),
+      ratePercent: row.ratePercent !== undefined && row.ratePercent !== null ? this.toNumber(row.ratePercent) : null,
+      flatAmount: row.flatAmount !== undefined && row.flatAmount !== null ? this.toNumber(row.flatAmount) : null,
+      overheadValue: this.toNumber(row.overheadValue),
+    }));
+  }
+
+  private normalizeLegacyOverheadsFromLabors(rows: DesignLaborDto[]): NormalizedOverheadRow[] {
+    return rows
+      .filter((row) => this.isLegacyOverheadLaborRow(row))
+      .map((row) => ({
+        overheadRuleId: null,
+        overheadHead: this.optionalText(String(row.laborHead || '').replace(/^Overhead\s*-\s*/i, '')),
+        overheadApplyMode: null,
+        ratePercent: null,
+        flatAmount: null,
+        overheadValue: row.laborValue !== undefined && row.laborValue !== null
+          ? this.toNumber(row.laborValue)
+          : this.toNumber(row.laborPerUnit) * this.toNumber(row.unitQty),
+      }));
+  }
+
+  private isLegacyOverheadLaborRow(row: Pick<DesignLaborDto, 'laborHead'>): boolean {
+    return String(row.laborHead || '').trim().toLowerCase().startsWith('overhead -');
   }
 
   private normalizeFindings(rows: DesignFindingDto[]): NormalizedFindingRow[] {
@@ -5600,16 +5755,18 @@ export class ProductsService {
     metals: NormalizedMetalRow[],
     gemstones: NormalizedGemstoneRow[],
     labors: NormalizedLaborRow[],
+    overheads: NormalizedOverheadRow[],
     findings: NormalizedFindingRow[],
   ): SummaryBreakdown {
     const metalValue = metals.reduce((sum, row) => sum + row.value, 0);
     const gemValue = gemstones.reduce((sum, row) => sum + row.amount, 0);
     const laborValue = labors.reduce((sum, row) => sum + row.laborValue, 0);
+    const overheadValue = overheads.reduce((sum, row) => sum + row.overheadValue, 0);
     const findingValue = findings.reduce((sum, row) => sum + row.findingValue, 0);
-    const totalValue = metalValue + gemValue + laborValue + findingValue;
+    const totalValue = metalValue + gemValue + laborValue + overheadValue + findingValue;
     const grossWeight = metals.reduce((sum, row) => sum + row.totalWt, 0);
 
-    return { metalValue, gemValue, laborValue, findingValue, totalValue, grossWeight };
+    return { metalValue, gemValue, laborValue, overheadValue, findingValue, totalValue, grossWeight };
   }
 
   private summarizeMetalRows(rows: Array<{ goldColour?: string | null; metalCaratage?: string | null }>): string | null {
@@ -5680,6 +5837,24 @@ export class ProductsService {
     );
 
     await this.laborRepo.save(entities);
+  }
+
+  private async replaceOverheadRows(designId: string | number, rows: NormalizedOverheadRow[]): Promise<void> {
+    await this.overheadRepo.delete({ designId });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const entities = rows.map((row, index) =>
+      this.overheadRepo.create({
+        designId,
+        sortOrder: index,
+        ...row,
+      }),
+    );
+
+    await this.overheadRepo.save(entities);
   }
 
   private async replaceFindingRows(designId: string | number, rows: NormalizedFindingRow[]): Promise<void> {
@@ -5901,9 +6076,10 @@ export class ProductsService {
     metals: DesignMetal[];
     gemstones: DesignGemstone[];
     labors: DesignLabor[];
+    overheads: DesignOverhead[];
     findings: DesignFinding[];
   }> {
-    const [metals, gemstones, labors, findings] = await Promise.all([
+    const [metals, gemstones, labors, overheads, findings] = await Promise.all([
       this.metalRepo.find({ where: { designId }, relations: ['metalCaratageMaster'], order: { sortOrder: 'ASC' } }),
       this.gemstoneRepo.find({
         where: { designId },
@@ -5911,10 +6087,11 @@ export class ProductsService {
         order: { sortOrder: 'ASC' },
       }),
       this.laborRepo.find({ where: { designId }, relations: ['laborHeadMaster'], order: { sortOrder: 'ASC' } }),
+      this.overheadRepo.find({ where: { designId }, relations: ['overheadRuleMaster'], order: { sortOrder: 'ASC' } }),
       this.findingRepo.find({ where: { designId }, relations: ['findingHeadMaster'], order: { sortOrder: 'ASC' } }),
     ]);
 
-    return { metals, gemstones, labors, findings };
+    return { metals, gemstones, labors, overheads, findings };
   }
 
   private toMetalDtos(rows: DesignMetal[]): DesignMetalDto[] {
@@ -5964,6 +6141,25 @@ export class ProductsService {
       laborPerUnit: this.toNumber(row.laborPerUnit),
       unitQty: this.toNumber(row.unitQty),
       laborValue: this.toNumber(row.laborValue),
+    }));
+  }
+
+  private toOverheadDtos(rows: DesignOverhead[]): DesignOverheadDto[] {
+    return rows.map((row) => ({
+      overheadRuleId: row.overheadRuleId || undefined,
+      overheadHead: row.overheadRuleMaster?.value || row.overheadHead || undefined,
+      overheadApplyMode: row.overheadApplyMode || row.overheadRuleMaster?.overheadApplyMode || undefined,
+      ratePercent: row.ratePercent !== null && row.ratePercent !== undefined
+        ? this.toNumber(row.ratePercent)
+        : row.overheadRuleMaster?.ratePercent !== null && row.overheadRuleMaster?.ratePercent !== undefined
+          ? this.toNumber(row.overheadRuleMaster.ratePercent)
+          : undefined,
+      flatAmount: row.flatAmount !== null && row.flatAmount !== undefined
+        ? this.toNumber(row.flatAmount)
+        : row.overheadRuleMaster?.flatAmount !== null && row.overheadRuleMaster?.flatAmount !== undefined
+          ? this.toNumber(row.overheadRuleMaster.flatAmount)
+          : undefined,
+      overheadValue: this.toNumber(row.overheadValue),
     }));
   }
 
@@ -8223,6 +8419,7 @@ export class ProductsService {
     design.metals = (design.metals || []).map((row) => this.hydrateMetalDisplayLabels(row));
     design.gemstones = (design.gemstones || []).map((row) => this.hydrateGemstoneDisplayLabels(row));
     design.labors = (design.labors || []).map((row) => this.hydrateLaborDisplayLabels(row));
+    design.overheads = (design.overheads || []).map((row) => this.hydrateOverheadDisplayLabels(row));
     design.findings = (design.findings || []).map((row) => this.hydrateFindingDisplayLabels(row));
     design.processStages = (design.processStages || []).map((row) => this.hydrateProcessStageDisplayLabels(row));
     design.vendors = (design.vendors || []).map((row) => this.hydrateVendorDisplayLabels(row));
@@ -8248,6 +8445,14 @@ export class ProductsService {
 
   private hydrateLaborDisplayLabels(row: DesignLabor): DesignLabor {
     row.laborHead = row.laborHeadMaster?.value || row.laborHead || null;
+    return row;
+  }
+
+  private hydrateOverheadDisplayLabels(row: DesignOverhead): DesignOverhead {
+    row.overheadHead = row.overheadRuleMaster?.value || row.overheadHead || null;
+    row.overheadApplyMode = row.overheadApplyMode || row.overheadRuleMaster?.overheadApplyMode || null;
+    row.ratePercent = row.ratePercent ?? row.overheadRuleMaster?.ratePercent ?? null;
+    row.flatAmount = row.flatAmount ?? row.overheadRuleMaster?.flatAmount ?? null;
     return row;
   }
 

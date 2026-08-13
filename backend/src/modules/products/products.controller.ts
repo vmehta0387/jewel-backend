@@ -231,6 +231,13 @@ export class ProductsController {
     return this.productsService.createPacket(dto, req.user);
   }
 
+  @Get('packets/:id')
+  @TaskPermissions()
+  @ActionPermissions()
+  getPacket(@Param('id') id: string) {
+    return this.productsService.getPacket(id);
+  }
+
   @Post('gallery-files')
   @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 50 * 1024 * 1024 } }))
   uploadGalleryFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {

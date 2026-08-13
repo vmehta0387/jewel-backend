@@ -1,7 +1,6 @@
 ﻿import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import Button from '../../components/common/Button';
-import SearchableSelect from '../../components/common/SearchableSelect';
+import SmartDropdown, { SmartDropdownOption } from '../../components/common/SmartDropdown';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
@@ -10,6 +9,11 @@ import TableLoadingRow from '../../components/common/TableLoadingRow';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
+import DesignFormModal from './components/DesignFormModal';
+import DesignHistoryModal from './components/DesignHistoryModal';
+import DesignViewModal from './components/DesignViewModal';
+import Modal from './components/ProductsModal';
+import VersionBuilderModal from './components/VersionBuilderModal';
 
 type ModalType = 'info' | 'relevant' | 'process' | 'history' | 'pricing' | 'vendor' | null;
 
@@ -20,6 +24,9 @@ type DesignMasterType =
   | 'TAG'
   | 'DESIGN_STATUS'
   | 'STAGE'
+  | 'METAL_NAME'
+  | 'METAL_COLOR'
+  | 'METAL_PURITY'
   | 'METAL_CARATAGE'
   | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
@@ -58,10 +65,30 @@ interface MasterOption {
   ratePerStone?: number;
   ratePerGram?: number;
   ratePerGroup?: number;
-  overheadApplyMode?: 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT';
+  overheadApplyMode?: string;
+  overheadApplyModeName?: string;
+  overheadApplyModeKey?: string;
+  overhead_apply_mode?: string;
   ratePercent?: number;
+  rate_percent?: number;
   flatAmount?: number;
+  flat_amount?: number;
 }
+
+const toSmartDropdownOptions = (
+  options: MasterOption[],
+  getLabel: (option: MasterOption) => string = (option) => option.value,
+): SmartDropdownOption[] => options.map((option) => ({ ...option, label: getLabel(option) }));
+
+const getMasterRelationValue = (value: unknown): string => {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    return String(source.value ?? source.label ?? source.name ?? source.id ?? '');
+  }
+  return '';
+};
 
 interface DesignRow {
   id: string;
@@ -958,9 +985,31 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   };
 };
 const formatMoney = (value: number): string => `USD ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const normalizeOverheadApplyMode = (value: unknown): string => {
+  const normalized = String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (!normalized) return '';
+  if (normalized === 'flat') return 'FLAT';
+  if (normalized === 'per_of_materials' || normalized === 'percent_materials' || normalized === 'materials') {
+    return 'PERCENT_MATERIALS';
+  }
+  if (normalized === 'percent_bom_subtotal' || normalized === 'bom_subtotal' || normalized === 'bom') {
+    return 'PERCENT_BOM_SUBTOTAL';
+  }
+  return String(value ?? '').trim();
+};
+const getOverheadApplyModeLabel = (rule: MasterOption | null): string => {
+  if (!rule) return '-';
+  if (rule.overheadApplyModeName) return rule.overheadApplyModeName;
+  const mode = normalizeOverheadApplyMode(rule.overheadApplyMode ?? rule.overheadApplyModeKey ?? rule.overhead_apply_mode);
+  if (mode === 'FLAT') return 'Flat';
+  if (mode === 'PERCENT_BOM_SUBTOTAL') return '% of BOM';
+  if (mode === 'PERCENT_MATERIALS') return '% of Materials';
+  return mode || '-';
+};
 const getOverheadRuleConfiguredDisplay = (rule: MasterOption | null): string => {
   if (!rule) return '-';
-  if (rule.overheadApplyMode === 'FLAT') {
+  const mode = normalizeOverheadApplyMode(rule.overheadApplyMode ?? rule.overheadApplyModeKey ?? rule.overhead_apply_mode);
+  if (mode === 'FLAT') {
     return formatMoney(Math.max(0, rule.flatAmount || 0));
   }
   return `${Math.max(0, rule.ratePercent || 0).toFixed(2)}%`;
@@ -1307,8 +1356,40 @@ const emptyMasterOptions = {
   packetStones: [] as MasterOption[],
   packetShapes: [] as MasterOption[],
   packetSizes: [] as MasterOption[],
+  packetCuts: [] as MasterOption[],
   packetColors: [] as MasterOption[],
   packetQualities: [] as MasterOption[],
+};
+
+type MasterOptionsState = typeof emptyMasterOptions;
+
+const masterOptionsKeyByType: Record<DesignMasterType, keyof MasterOptionsState> = {
+  JEWELRY_GROUP: 'jewelryGroups',
+  COLLECTION: 'collections',
+  JEWELRY_SIZE: 'jewelrySizes',
+  TAG: 'tags',
+  DESIGN_STATUS: 'designStatuses',
+  STAGE: 'stages',
+  METAL_NAME: 'metalNames',
+  METAL_COLOR: 'metalColors',
+  METAL_PURITY: 'metalPurities',
+  METAL_CARATAGE: 'metalCaratages',
+  GOLD_COLOUR: 'goldColours',
+  DIAMOND_TYPE: 'diamondTypes',
+  DIAMOND_SPREAD: 'diamondSpreads',
+  DIAMOND_WEIGHT: 'diamondWeights',
+  DIAMOND_QUALITY: 'diamondQualities',
+  VENDOR_NAME: 'vendorNames',
+  LABOR_HEAD: 'laborHeads',
+  LABOR_RULE: 'laborRules',
+  OVERHEAD_RULE: 'overheadRules',
+  FINDING_HEAD: 'findingHeads',
+  PACKET_STONE: 'packetStones',
+  PACKET_SHAPE: 'packetShapes',
+  PACKET_SIZE: 'packetSizes',
+  PACKET_CUT: 'packetCuts',
+  PACKET_COLOR: 'packetColors',
+  PACKET_QUALITY: 'packetQualities',
 };
 
 const masterTypeLabelMap: Record<DesignMasterType, string> = {
@@ -1318,6 +1399,9 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   TAG: 'Tag',
   DESIGN_STATUS: 'Design Status',
   STAGE: 'Stage',
+  METAL_NAME: 'Metal Name',
+  METAL_COLOR: 'Metal Color',
+  METAL_PURITY: 'Metal Purity',
   METAL_CARATAGE: 'Metal',
   GOLD_COLOUR: 'Metal',
   DIAMOND_TYPE: 'Diamond Type',
@@ -1338,7 +1422,10 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
 };
 
 const inlineMasterAddButtonClass =
-  'inline-flex h-9 min-w-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-[#d9ccbc] bg-[#fbf8f3] px-2 text-sm font-semibold leading-none text-[#8f6a2c] transition-colors hover:border-[#cdb58d] hover:bg-[#f6ecda] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e8d3ad] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex h-10 min-w-10 shrink-0 items-center justify-center rounded-lg border border-[#d9ccbc] bg-[#fbf8f3] px-2 text-sm font-semibold leading-none text-[#8f6a2c] transition-colors hover:border-[#cdb58d] hover:bg-[#f6ecda] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e8d3ad] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60';
+const inlineMasterControlGroupClass = 'flex min-w-0 flex-nowrap items-stretch';
+const inlineMasterDropdownClass = 'min-w-0 flex-1 [&>button]:rounded-r-none [&>button]:border-r-0';
+const inlineMasterJoinedAddButtonClass = `${inlineMasterAddButtonClass} rounded-l-none border-l-0`;
 const lockedFieldSurfaceClass =
   '[&_input:read-only]:!bg-[#c9d5e0] [&_input:read-only]:!text-slate-700 [&_input:disabled]:!bg-[#c9d5e0] [&_input:disabled]:!text-slate-700 [&_input:disabled]:!opacity-100 [&_select:disabled]:!bg-[#c9d5e0] [&_select:disabled]:!text-slate-700 [&_select:disabled]:!opacity-100';
 const FINDING_FEATURE_ENABLED = false;
@@ -1745,51 +1832,6 @@ function MediaPreview({
   return <img src={url} alt={alt} className={className} />;
 }
 
-function Modal({
-  title,
-  onClose,
-  children,
-  size = 'max-w-6xl',
-  zIndexClass = 'z-[100]',
-  footer,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  size?: string;
-  zIndexClass?: string;
-  footer?: React.ReactNode;
-}) {
-  return createPortal(
-    <div className={`fixed inset-0 ${zIndexClass} flex items-start justify-center overflow-y-auto bg-slate-900/60 p-4 backdrop-blur-sm transition-all duration-300 sm:p-6`}>
-      <div className={`relative my-auto flex max-h-[calc(100dvh-2rem)] w-full ${size} flex-col overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]`}>
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/95 px-6 py-4 backdrop-blur-md">
-          <h2 className="text-[1.15rem] font-bold tracking-tight text-slate-800">{title}</h2>
-          <button
-            type="button"
-            className="group flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/50 text-slate-500 transition-all hover:bg-slate-200 hover:text-slate-900"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <svg className="h-4 w-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto bg-slate-50/30 p-5 sm:p-6">
-          {children}
-        </div>
-        {footer ? (
-          <div className="shrink-0 border-t border-slate-200 bg-slate-50/95 px-5 py-3 shadow-[0_-8px_16px_rgba(15,23,42,0.08)] backdrop-blur sm:px-6">
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 export default function ProductsPage() {
   const {
     showAlert: showAppAlert,
@@ -1915,7 +1957,6 @@ export default function ProductsPage() {
   const [creatingMasterType, setCreatingMasterType] = useState<DesignMasterType | null>(null);
   const [tagPicker, setTagPicker] = useState('');
   const [packetOptions, setPacketOptions] = useState<PacketOption[]>([]);
-  const [packetLoading, setPacketLoading] = useState(false);
   const [showPacketMasterModal, setShowPacketMasterModal] = useState(false);
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
@@ -2047,6 +2088,13 @@ export default function ProductsPage() {
     );
     return sanitizeStructuredToken(match?.aliasName || form.jewelryGroup).slice(0, 5);
   }, [form.jewelryGroup, masterOptions.jewelryGroups]);
+  const selectedJewelryGroupMasterId = useMemo(
+    () =>
+      masterOptions.jewelryGroups.find(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+      )?.id || '',
+    [form.jewelryGroup, masterOptions.jewelryGroups],
+  );
   const structuredCoverageCode = useMemo(
     () => resolveCoverageCode(form.diamondSpread, form.coverageCustom),
     [form.coverageCustom, form.diamondSpread],
@@ -2125,18 +2173,25 @@ export default function ProductsPage() {
     if (!form.jewelryGroup.trim()) {
       return [];
     }
-    const normalizedCategory = form.jewelryGroup.trim().toLowerCase();
+    const normalizedCategory = normalizeLookupKey(form.jewelryGroup);
     return masterOptions.jewelrySizes.filter(
-      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+      (option) => normalizeLookupKey(option.jewelryGroup) === normalizedCategory,
     );
   }, [form.jewelryGroup, masterOptions.jewelrySizes]);
   const singleDesignOverheadRules = useMemo(() => {
     const categoryKey = normalizeLookupKey(form.jewelryGroup);
+    const categoryId = selectedJewelryGroupMasterId;
     return masterOptions.overheadRules.filter((rule) => {
       const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
-      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+      const ruleCategoryId = String(rule.jewelryGroupId || '');
+      return (
+        !categoryKey ||
+        (categoryId && ruleCategoryId && ruleCategoryId === categoryId) ||
+        !ruleCategory ||
+        ruleCategory === categoryKey
+      );
     });
-  }, [form.jewelryGroup, masterOptions.overheadRules]);
+  }, [form.jewelryGroup, masterOptions.overheadRules, selectedJewelryGroupMasterId]);
 
   useEffect(() => {
     if (editingId || sourceDesignNo) {
@@ -2181,11 +2236,18 @@ export default function ProductsPage() {
     if (!filters.jewelryGroup.trim()) {
       return masterOptions.jewelrySizes;
     }
-    const normalizedCategory = filters.jewelryGroup.trim().toLowerCase();
+    const normalizedCategory = normalizeLookupKey(filters.jewelryGroup);
     return masterOptions.jewelrySizes.filter(
-      (option) => (option.jewelryGroup || '').trim().toLowerCase() === normalizedCategory,
+      (option) => normalizeLookupKey(option.jewelryGroup) === normalizedCategory,
     );
   }, [filters.jewelryGroup, masterOptions.jewelrySizes]);
+  const selectedFilterJewelryGroupMasterId = useMemo(
+    () =>
+      masterOptions.jewelryGroups.find(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(filters.jewelryGroup),
+      )?.id || '',
+    [filters.jewelryGroup, masterOptions.jewelryGroups],
+  );
   const detailStlUrl = useMemo(
     () => (detailInfo?.stlFileUrl ? resolvePublicAssetUrl(detailInfo.stlFileUrl) : ''),
     [detailInfo],
@@ -2556,7 +2618,8 @@ export default function ProductsPage() {
     })();
   };
 
-  const handleJewelryGroupChange = (jewelryGroup: string) => {
+  const handleJewelryGroupChange = (jewelryGroup: string, option?: SmartDropdownOption | null) => {
+    mergeMasterOption('JEWELRY_GROUP', option);
     const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
       (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
     );
@@ -2765,58 +2828,84 @@ export default function ProductsPage() {
     }
   };
 
-  const fetchMasterOptions = async () => {
-    setMastersLoading(true);
-    try {
-      const response = await api.get('/products/lookup/masters');
-      setMasterOptions({
-        jewelryGroups: response.data?.jewelryGroups || [],
-        collections: response.data?.collections || [],
-        jewelrySizes: response.data?.jewelrySizes || [],
-        tags: response.data?.tags || [],
-        designStatuses: response.data?.designStatuses || [],
-        stages: response.data?.stages || [],
-        metalNames: response.data?.metalNames || [],
-        metalColors: response.data?.metalColors || [],
-        metalPurities: response.data?.metalPurities || [],
-        metalCaratages: response.data?.metalCaratages || [],
-        goldColours: response.data?.goldColours || [],
-        diamondTypes: response.data?.diamondTypes || [],
-        diamondSpreads: response.data?.diamondSpreads || [],
-        diamondWeights: response.data?.diamondWeights || [],
-        diamondQualities: response.data?.diamondQualities || [],
-        vendorNames: response.data?.vendorNames || [],
-        laborHeads: response.data?.laborHeads || [],
-        laborRules: response.data?.laborRules || [],
-        overheadRules: response.data?.overheadRules || [],
-        findingHeads: response.data?.findingHeads || [],
-        packetStones: response.data?.packetStones || [],
-        packetShapes: response.data?.packetShapes || [],
-        packetSizes: response.data?.packetSizes || [],
-        packetColors: response.data?.packetColors || [],
-        packetQualities: response.data?.packetQualities || [],
-      });
-    } catch {
-      setMasterOptions(emptyMasterOptions);
-    } finally {
-      setMastersLoading(false);
-    }
+  const normalizeMasterOptionRows = (rows: unknown): MasterOption[] =>
+    (Array.isArray(rows) ? rows : []).map((row: any) => ({
+      ...row,
+      id: String(row?.id || row?.value || ''),
+      value: String(row?.value || ''),
+      aliasName: row?.aliasName ?? row?.label,
+      jewelryGroup: getMasterRelationValue(row?.jewelryGroup ?? row?.jewelryGroupMaster),
+      jewelryGroupId: String(row?.jewelryGroupId ?? ''),
+      metalName: getMasterRelationValue(row?.metalName ?? row?.metalMaster),
+      metalColor: getMasterRelationValue(row?.metalColor ?? row?.metalColorMaster),
+      metalPurity: getMasterRelationValue(row?.metalPurity ?? row?.metalPurityMaster),
+      overheadApplyMode: normalizeOverheadApplyMode(row?.overheadApplyMode ?? row?.overheadApplyModeKey ?? row?.overhead_apply_mode),
+      overheadApplyModeName: row?.overheadApplyModeName,
+      overheadApplyModeKey: row?.overheadApplyModeKey ?? row?.overheadApplyMode ?? row?.overhead_apply_mode,
+      ratePercent: parseNumericValue(row?.ratePercent ?? row?.rate_percent),
+      flatAmount: parseNumericValue(row?.flatAmount ?? row?.flat_amount),
+    }));
+
+  const mergeMasterOption = (masterType: DesignMasterType, option?: SmartDropdownOption | null) => {
+    if (!option) return;
+    const key = masterOptionsKeyByType[masterType];
+    const normalizedOption: MasterOption = {
+      ...(option as any),
+      id: String(option.id || option.value || ''),
+      value: String(option.value || ''),
+      aliasName: option.aliasName as string | undefined,
+      jewelryGroup: getMasterRelationValue(option.jewelryGroup ?? option.jewelryGroupMaster),
+      jewelryGroupId: String(option.jewelryGroupId ?? ''),
+      metalName: getMasterRelationValue(option.metalName ?? option.metalMaster),
+      metalColor: getMasterRelationValue(option.metalColor ?? option.metalColorMaster),
+      metalPurity: getMasterRelationValue(option.metalPurity ?? option.metalPurityMaster),
+      overheadApplyMode: normalizeOverheadApplyMode(option.overheadApplyMode ?? option.overheadApplyModeKey ?? option.overhead_apply_mode),
+      overheadApplyModeName: option.overheadApplyModeName as string | undefined,
+      overheadApplyModeKey: option.overheadApplyModeKey as string | undefined,
+      ratePercent: parseNumericValue((option.ratePercent ?? option.rate_percent) as string | number | null | undefined),
+      flatAmount: parseNumericValue((option.flatAmount ?? option.flat_amount) as string | number | null | undefined),
+    };
+    if (!normalizedOption.value) return;
+    setMasterOptions((prev) => {
+      const current = prev[key];
+      const exists = current.some(
+        (row) =>
+          String(row.id) === String(normalizedOption.id) ||
+          normalizeLookupKey(row.value) === normalizeLookupKey(normalizedOption.value),
+      );
+      return exists
+        ? {
+            ...prev,
+            [key]: current.map((row) =>
+              String(row.id) === String(normalizedOption.id) ||
+              normalizeLookupKey(row.value) === normalizeLookupKey(normalizedOption.value)
+                ? { ...row, ...normalizedOption }
+                : row,
+            ),
+          }
+        : { ...prev, [key]: [...current, normalizedOption] };
+    });
   };
 
-  const fetchPacketOptions = async () => {
-    setPacketLoading(true);
+  const fetchMasterOptions = async (masterType: DesignMasterType, extraParams?: Record<string, unknown>) => {
+    setMastersLoading(true);
     try {
-      const response = await api.get('/products/packets', {
+      const response = await api.get(`/products/master-tables/${masterType}/dropdown`, {
         params: {
           status: 'ACTIVE',
-          limit: 200,
+          ...(extraParams || {}),
         },
       });
-      setPacketOptions(response.data?.data || []);
+      const rows = normalizeMasterOptionRows(response.data);
+      const key = masterOptionsKeyByType[masterType];
+      setMasterOptions((prev) => ({ ...prev, [key]: rows }));
+      return rows;
     } catch {
-      setPacketOptions([]);
+      const key = masterOptionsKeyByType[masterType];
+      setMasterOptions((prev) => ({ ...prev, [key]: [] }));
+      return [];
     } finally {
-      setPacketLoading(false);
+      setMastersLoading(false);
     }
   };
 
@@ -2999,8 +3088,40 @@ export default function ProductsPage() {
     }
   };
 
-  const applyPacketToGemRow = (rowId: string, packetId: string) => {
-    const packet = packetOptions.find((entry) => entry.id === packetId);
+  const normalizePacketOption = (option: SmartDropdownOption): PacketOption => ({
+    ...(option as any),
+    id: String(option.id || option.value || ''),
+    barcode: (option.barcode as string | null | undefined) ?? null,
+    packetName: String(option.packetName || option.label || option.value || ''),
+    stockType: (option.stockType as string | null | undefined) ?? null,
+    stone: getMasterRelationValue(option.stone ?? option.stoneMaster) || null,
+    shape: getMasterRelationValue(option.shape ?? option.shapeMaster) || null,
+    size: getMasterRelationValue(option.size ?? option.sizeMaster) || null,
+    cut: getMasterRelationValue(option.cut ?? option.cutMaster) || null,
+    color: getMasterRelationValue(option.color ?? option.colorMaster) || null,
+    quality: getMasterRelationValue(option.quality ?? option.qualityMaster) || null,
+    priceIn: ((option.priceIn as PacketOption['priceIn'] | undefined) || 'WT'),
+    sellingPrice: Number(option.sellingPrice || 0),
+    weightPerPc: Number(option.weightPerPc || 0),
+    pieces: Number(option.pieces || 0),
+    weight: Number(option.weight || 0),
+    weightUnit: ((option.weightUnit as PacketOption['weightUnit'] | undefined) || 'CTS'),
+    isActive: option.isActive !== false,
+  });
+
+  const mergePacketOption = (option?: SmartDropdownOption | null) => {
+    if (!option) return null;
+    const packet = normalizePacketOption(option);
+    if (!packet.id) return null;
+    setPacketOptions((prev) => {
+      const exists = prev.some((entry) => entry.id === packet.id);
+      return exists ? prev.map((entry) => (entry.id === packet.id ? { ...entry, ...packet } : entry)) : [...prev, packet];
+    });
+    return packet;
+  };
+
+  const applyPacketToGemRow = (rowId: string, packetId: string, selectedPacket?: SmartDropdownOption | null) => {
+    const packet = selectedPacket ? mergePacketOption(selectedPacket) : packetOptions.find((entry) => entry.id === packetId);
     setGemRows((prev) => {
       if (packet) {
         const packetAlreadyUsed = prev.some((row) => row.id !== rowId && row.packetId === packet.id);
@@ -3058,6 +3179,28 @@ export default function ProductsPage() {
         };
       });
     });
+  };
+
+  const handlePacketSelectionChange = async (
+    rowId: string,
+    packetId: string,
+    selectedPacket?: SmartDropdownOption | null,
+  ) => {
+    if (!packetId) {
+      applyPacketToGemRow(rowId, '');
+      return;
+    }
+
+    try {
+      const response = await api.get(`/products/packets/${packetId}`);
+      applyPacketToGemRow(rowId, packetId, response.data);
+    } catch (error: any) {
+      if (selectedPacket) {
+        applyPacketToGemRow(rowId, packetId, selectedPacket);
+        return;
+      }
+      showAppAlert(error?.response?.data?.message || 'Unable to load packet details.');
+    }
   };
 
   const buildPacketSearchOptions = (rowId: string) =>
@@ -3361,7 +3504,7 @@ export default function ProductsPage() {
       });
 
       const masterValue = response.data?.value || value;
-      await fetchMasterOptions();
+      await fetchMasterOptions(inlineMasterType);
 
       if (inlineMasterCreatedHandlerRef.current) {
         inlineMasterCreatedHandlerRef.current(masterValue, response.data);
@@ -3440,14 +3583,16 @@ export default function ProductsPage() {
     setPacketSaving(true);
     try {
       const response = await api.post('/products/packets', payload);
-      await fetchPacketOptions();
       setShowPacketMasterModal(false);
       setPacketForm(defaultPacketForm);
       setPacketNameManuallyEdited(false);
 
       const createdId = response.data?.id;
+      if (createdId) {
+        mergePacketOption(response.data);
+      }
       if (createdId && gemRows[0]) {
-        applyPacketToGemRow(gemRows[0].id, createdId);
+        applyPacketToGemRow(gemRows[0].id, createdId, response.data);
       }
     } catch (error: any) {
       showAppAlert(error?.response?.data?.message || 'Unable to save packet.');
@@ -3457,9 +3602,27 @@ export default function ProductsPage() {
   };
 
   useEffect(() => {
-    fetchMasterOptions();
-    fetchPacketOptions();
-  }, []);
+    if (!showInlineMasterModal || !inlineMasterType) return;
+
+    if (inlineMasterType === 'COLLECTION' || inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'OVERHEAD_RULE') {
+      void fetchMasterOptions('JEWELRY_GROUP');
+    }
+    if (inlineMasterType === 'METAL_CARATAGE') {
+      void fetchMasterOptions('METAL_NAME');
+      void fetchMasterOptions('METAL_COLOR');
+      void fetchMasterOptions('METAL_PURITY');
+    }
+  }, [showInlineMasterModal, inlineMasterType]);
+
+  useEffect(() => {
+    if (!showPacketMasterModal) return;
+
+    void fetchMasterOptions('PACKET_STONE');
+    void fetchMasterOptions('PACKET_SHAPE');
+    void fetchMasterOptions('PACKET_SIZE');
+    void fetchMasterOptions('PACKET_COLOR');
+    void fetchMasterOptions('PACKET_QUALITY');
+  }, [showPacketMasterModal]);
 
   useEffect(() => {
     fetchDesignRows();
@@ -3864,7 +4027,7 @@ export default function ProductsPage() {
     const filteredSizeOptions =
       masterOptions.jewelrySizes
         .filter((option) => {
-          const optionGroup = (option.jewelryGroup || '').trim().toLowerCase();
+          const optionGroup = normalizeLookupKey(option.jewelryGroup);
           return !normalizedGroup || optionGroup === normalizedGroup;
         })
         .map((option) => option.value) || [];
@@ -4338,36 +4501,36 @@ export default function ProductsPage() {
           })
           .filter((gem) => gem.pcs > 0 || gem.wtInCts > 0);
 
-        const laborRowsPayload = [
-          ...versionBuilderLaborRows
-            .filter((laborRow) => laborRow.laborHead.trim() || parseNum(laborRow.laborPerUnit) > 0 || parseNum(laborRow.unitQty) > 0)
-            .map((laborRow) => ({
-              laborHead: laborRow.laborHead.trim() || undefined,
-              laborPerUnit: parseNum(laborRow.laborPerUnit),
-              unitQty: parseNum(laborRow.unitQty),
-              laborValue: getLaborValue(laborRow),
-            })),
-          ...versionBuilderOverheadRows
-            .map((overheadRow) => {
-              const rule = getVersionBuilderOverheadRuleForRow(overheadRow);
-              const label = overheadRow.overheadHead.trim() || rule?.value || '';
-              if (!label) return null;
-              const mode = rule?.overheadApplyMode || '';
-              const ratePercent = Math.max(0, rule?.ratePercent || 0);
-              const flatAmount = Math.max(0, rule?.flatAmount || 0);
-              const value =
-                mode === 'FLAT'
-                  ? flatAmount
-                  : ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100;
-              return {
-                laborHead: `Overhead - ${label}`,
-                laborPerUnit: value,
-                unitQty: 1,
-                laborValue: value,
-              };
-            })
-            .filter(Boolean),
-        ].filter(Boolean);
+        const laborRowsPayload = versionBuilderLaborRows
+          .filter((laborRow) => laborRow.laborHead.trim() || parseNum(laborRow.laborPerUnit) > 0 || parseNum(laborRow.unitQty) > 0)
+          .map((laborRow) => ({
+            laborHead: laborRow.laborHead.trim() || undefined,
+            laborPerUnit: parseNum(laborRow.laborPerUnit),
+            unitQty: parseNum(laborRow.unitQty),
+            laborValue: getLaborValue(laborRow),
+          }));
+        const overheadRowsPayload = versionBuilderOverheadRows
+          .map((overheadRow) => {
+            const rule = getVersionBuilderOverheadRuleForRow(overheadRow);
+            const label = overheadRow.overheadHead.trim() || rule?.value || '';
+            if (!label) return null;
+            const mode = normalizeOverheadApplyMode(rule?.overheadApplyMode ?? rule?.overheadApplyModeKey ?? rule?.overhead_apply_mode);
+            const ratePercent = Math.max(0, rule?.ratePercent || 0);
+            const flatAmount = Math.max(0, rule?.flatAmount || 0);
+            const value =
+              mode === 'FLAT'
+                ? flatAmount
+                : ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100;
+            return {
+              overheadRuleId: rule?.id ? Number(rule.id) : undefined,
+              overheadHead: label,
+              overheadApplyMode: rule?.overheadApplyModeKey || rule?.overhead_apply_mode || rule?.overheadApplyMode || undefined,
+              ratePercent,
+              flatAmount,
+              overheadValue: value,
+            };
+          })
+          .filter(Boolean);
 
         const payload = {
           designNo: row.designNo,
@@ -4411,6 +4574,7 @@ export default function ProductsPage() {
           ],
           gemstones,
           labors: laborRowsPayload,
+          overheads: overheadRowsPayload,
           findings: [],
           processStages: (Array.isArray(detail?.processStages) ? detail.processStages : [])
             .filter((item: any) => String(item?.processStage || '').trim())
@@ -4612,6 +4776,23 @@ export default function ProductsPage() {
       syncVersionBuilderGemFieldToSizeChart(nextRow, field);
     }
   };
+
+  const masterDropdownConfig = (
+    masterType: DesignMasterType,
+    placeholder: string,
+    options: SmartDropdownOption[] = [],
+    extraParams?: Record<string, unknown>,
+  ) => ({
+    apiSubPath: `/products/master-tables/${masterType}/dropdown`,
+    options,
+    extraParams: {
+      status: 'ACTIVE',
+      ...(extraParams || {}),
+    },
+    valueKey: 'value',
+    labelKey: 'label',
+    placeholder,
+  });
 
   const removeVersionBuilderGemRow = (rowId: string) => {
     setVersionBuilderGemRows((prev) => {
@@ -4980,16 +5161,26 @@ export default function ProductsPage() {
 
   const versionBuilderCategoryRuleFiltered = useMemo(() => {
     const categoryKey = normalizeLookupKey(versionBuilderBaseDesign?.jewelryGroup);
+    const categoryId =
+      masterOptions.jewelryGroups.find(
+        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(versionBuilderBaseDesign?.jewelryGroup),
+      )?.id || '';
     const laborRules = masterOptions.laborRules.filter((rule) => {
       const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
       return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
     });
     const overheadRules = masterOptions.overheadRules.filter((rule) => {
       const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
-      return !categoryKey || !ruleCategory || ruleCategory === categoryKey;
+      const ruleCategoryId = String(rule.jewelryGroupId || '');
+      return (
+        !categoryKey ||
+        (categoryId && ruleCategoryId && ruleCategoryId === categoryId) ||
+        !ruleCategory ||
+        ruleCategory === categoryKey
+      );
     });
     return { laborRules, overheadRules };
-  }, [masterOptions.laborRules, masterOptions.overheadRules, versionBuilderBaseDesign]);
+  }, [masterOptions.jewelryGroups, masterOptions.laborRules, masterOptions.overheadRules, versionBuilderBaseDesign]);
 
   const buildVersionBuilderVariantSku = useCallback(
     (selection: VersionBuilderBomSelection, versionLabel: string) => {
@@ -5110,7 +5301,7 @@ export default function ProductsPage() {
       .map((row) => {
         const rule = getVersionBuilderOverheadRuleForRow(row);
         if (!rule) return null;
-        const mode = rule.overheadApplyMode || '';
+        const mode = normalizeOverheadApplyMode(rule.overheadApplyMode ?? rule.overheadApplyModeKey ?? rule.overhead_apply_mode);
         const ratePercent = Math.max(0, rule.ratePercent || 0);
         const flatAmount = Math.max(0, rule.flatAmount || 0);
         const cost = mode === 'FLAT' ? flatAmount : (bomSubtotal * ratePercent) / 100;
@@ -5755,7 +5946,7 @@ const createDefaultVendorRow = (): VendorRow => ({
   const getOverheadRowValue = (row: OverheadRow): number => {
     const rule = getOverheadRuleForRow(row);
     if (!rule) return 0;
-    const mode = rule.overheadApplyMode || '';
+    const mode = normalizeOverheadApplyMode(rule.overheadApplyMode ?? rule.overheadApplyModeKey ?? rule.overhead_apply_mode);
     const ratePercent = Math.max(0, rule.ratePercent || 0);
     const flatAmount = Math.max(0, rule.flatAmount || 0);
     if (mode === 'FLAT') return flatAmount;
@@ -5902,6 +6093,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       const metals = Array.isArray(detail.metals) ? detail.metals : [];
       const gemstones = Array.isArray(detail.gemstones) ? detail.gemstones : [];
       const labors = Array.isArray(detail.labors) ? detail.labors : [];
+      const overheads = Array.isArray(detail.overheads) ? detail.overheads : [];
       const visibleLabors = labors.filter(
         (item: any) =>
           !String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
@@ -6013,18 +6205,39 @@ const createDefaultVendorRow = (): VendorRow => ({
               laborValue: '',
             }],
       );
+      const overheadRuleCategoryId =
+        masterOptions.jewelryGroups.find(
+          (option) => normalizeLookupKey(option.value) === normalizeLookupKey(baseForm.jewelryGroup),
+        )?.id || '';
+      const loadedOverheadRules = await fetchMasterOptions(
+        'OVERHEAD_RULE',
+        overheadRuleCategoryId ? { jewelryGroupId: overheadRuleCategoryId } : undefined,
+      );
+      const overheadRuleOptions = loadedOverheadRules.length > 0 ? loadedOverheadRules : masterOptions.overheadRules;
       setOverheadRows(
-        labors
-          .filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'))
+        (overheads.length > 0
+          ? overheads
+          : labors.filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -')))
           .map((item: any) => {
-            const overheadLabel = String(item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
-            const matchedOverheadRule = masterOptions.overheadRules.find(
-              (rule) => normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
+            const overheadLabel = String(item?.overheadHead || item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
+            const matchedOverheadRule = overheadRuleOptions.find(
+              (rule) =>
+                String(rule.id) === String(item?.overheadRuleId || '') ||
+                normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
             );
+            const ruleSnapshot = matchedOverheadRule || {
+              id: String(item?.overheadRuleId || `current-${overheadLabel}`),
+              value: overheadLabel,
+              overheadApplyMode: normalizeOverheadApplyMode(item?.overheadApplyMode),
+              overheadApplyModeName: item?.overheadApplyModeName,
+              ratePercent: parseNumericValue(item?.ratePercent),
+              flatAmount: parseNumericValue(item?.flatAmount),
+            };
             return {
               id: item.id || makeId(),
               overheadHead: overheadLabel,
               ruleId: matchedOverheadRule?.id || '',
+              ruleSnapshot,
             };
           }),
       );
@@ -6344,17 +6557,19 @@ const createDefaultVendorRow = (): VendorRow => ({
       ijewelModelId: form.ijewelModelId.trim(),
       ijewelBaseName: form.ijewelBaseName.trim(),
     };
-    const overheadLaborPayload = overheadRows
+    const overheadPayload = overheadRows
       .map((row) => {
         const rule = getOverheadRuleForRow(row);
         const label = row.overheadHead.trim() || rule?.value || '';
         const value = getOverheadRowValue(row);
         if (!label) return null;
         return {
-          laborHead: `Overhead - ${label}`,
-          laborPerUnit: value,
-          unitQty: 1,
-          laborValue: value,
+          overheadRuleId: rule?.id ? Number(rule.id) : undefined,
+          overheadHead: label,
+          overheadApplyMode: rule?.overheadApplyModeKey || rule?.overhead_apply_mode || rule?.overheadApplyMode || undefined,
+          ratePercent: Math.max(0, rule?.ratePercent || 0),
+          flatAmount: Math.max(0, rule?.flatAmount || 0),
+          overheadValue: value,
         };
       })
       .filter(Boolean);
@@ -6385,15 +6600,13 @@ const createDefaultVendorRow = (): VendorRow => ({
         pricePerCt: parseNum(row.pricePerCt),
         amount: getGemValue(row),
       })),
-      labors: [
-        ...laborRows.map((row) => ({
+      labors: laborRows.map((row) => ({
           laborHead: row.laborHead.trim() || undefined,
           laborPerUnit: parseNum(row.laborPerUnit),
           unitQty: parseNum(row.unitQty),
           laborValue: getLaborValue(row),
         })),
-        ...overheadLaborPayload,
-      ],
+      overheads: overheadPayload,
       findings: FINDING_FEATURE_ENABLED
         ? findingRows.map((row) => ({
             findingHead: row.findingHead.trim() || undefined,
@@ -7288,75 +7501,96 @@ const createDefaultVendorRow = (): VendorRow => ({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Category</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.jewelryGroup}
-                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelryGroup: val }))}
-                  options={[
-                    { value: '', label: 'All Categories' },
-                    ...masterOptions.jewelryGroups.map(o => ({ value: o.value, label: o.value }))
-                  ]}
-                  placeholder="All Categories"
+                  onChange={(val, option) => {
+                    mergeMasterOption('JEWELRY_GROUP', option);
+                    setFilters((prev) => ({ ...prev, jewelryGroup: val }));
+                  }}
+                  config={masterDropdownConfig(
+                    'JEWELRY_GROUP',
+                    'All Categories',
+                    toSmartDropdownOptions(masterOptions.jewelryGroups),
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Sub Category</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.collection}
-                  onChange={(val) => setFilters((prev) => ({ ...prev, collection: val }))}
-                  options={[
-                    { value: '', label: 'All Sub Categories' },
-                    ...filteredSubCategoryFilterOptions.map(o => ({ value: o.value, label: o.value }))
-                  ]}
-                  placeholder="All Sub Categories"
+                  onChange={(val, option) => {
+                    mergeMasterOption('COLLECTION', option);
+                    setFilters((prev) => ({ ...prev, collection: val }));
+                  }}
+                  config={masterDropdownConfig(
+                    'COLLECTION',
+                    'All Sub Categories',
+                    toSmartDropdownOptions(filteredSubCategoryFilterOptions),
+                    selectedFilterJewelryGroupMasterId ? { jewelryGroupId: selectedFilterJewelryGroupMasterId } : undefined,
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Jewelry Size</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.jewelrySize}
-                  onChange={(val) => setFilters((prev) => ({ ...prev, jewelrySize: val }))}
-                  options={[
-                    { value: '', label: 'All Sizes' },
-                    ...filteredJewelrySizeFilterOptions.map(o => ({ value: o.value, label: o.value }))
-                  ]}
-                  placeholder="All Sizes"
+                  onChange={(val, option) => {
+                    mergeMasterOption('JEWELRY_SIZE', option);
+                    setFilters((prev) => ({ ...prev, jewelrySize: val }));
+                  }}
+                  config={masterDropdownConfig(
+                    'JEWELRY_SIZE',
+                    'All Sizes',
+                    toSmartDropdownOptions(filteredJewelrySizeFilterOptions),
+                    selectedFilterJewelryGroupMasterId ? { jewelryGroupId: selectedFilterJewelryGroupMasterId } : undefined,
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Metal Info</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.goldColour}
-                  onChange={(val) => setFilters((prev) => ({ ...prev, goldColour: val }))}
-                  options={[
-                    { value: '', label: 'All Metals' },
-                    ...masterOptions.metalCaratages.map(o => ({ value: o.value, label: o.aliasName || o.value }))
-                  ]}
-                  placeholder="All Metals"
+                  onChange={(val, option) => {
+                    mergeMasterOption('METAL_CARATAGE', option);
+                    setFilters((prev) => ({ ...prev, goldColour: val }));
+                  }}
+                  config={masterDropdownConfig(
+                    'METAL_CARATAGE',
+                    'All Metals',
+                    toSmartDropdownOptions(masterOptions.metalCaratages, (option) => option.aliasName || option.value),
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Diamond Shape</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.diamondShape}
-                  onChange={(val) => setFilters((prev) => ({ ...prev, diamondShape: val }))}
-                  options={[
-                    { value: '', label: 'All Shapes' },
-                    ...masterOptions.packetShapes.map(o => ({ value: o.value, label: o.value }))
-                  ]}
-                  placeholder="All Shapes"
+                  onChange={(val, option) => {
+                    mergeMasterOption('PACKET_SHAPE', option);
+                    setFilters((prev) => ({ ...prev, diamondShape: val }));
+                  }}
+                  config={masterDropdownConfig(
+                    'PACKET_SHAPE',
+                    'All Shapes',
+                    toSmartDropdownOptions(masterOptions.packetShapes),
+                  )}
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Status</label>
-                <SearchableSelect
+                <SmartDropdown
                   value={filters.status}
                   onChange={(val) => setFilters((prev) => ({ ...prev, status: val }))}
-                  options={[
-                    { value: '', label: 'All Statuses' },
-                    { value: 'Active', label: 'Active' },
-                    { value: 'Inactive', label: 'Inactive' }
-                  ]}
-                  placeholder="All Statuses"
+                  config={{
+                    options: [
+                      { value: 'Active', label: 'Active' },
+                      { value: 'Inactive', label: 'Inactive' },
+                    ],
+                    valueKey: 'value',
+                    labelKey: 'label',
+                    placeholder: 'All Statuses',
+                    showSearch: false,
+                  }}
                 />
               </div>
             </div>
@@ -7889,9 +8123,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       ) : null}
 
       {showVersionBuilderModal && versionBuilderBaseDesign ? (
-        <Modal
+        <VersionBuilderModal
           title={`VERSION BUILDER (${getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo})`}
-          size="max-w-6xl"
           onClose={confirmCloseVersionBuilderModal}
           footer={versionBuilderFooter}
         >
@@ -8934,14 +9167,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                     <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
                       <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c]">Overhead Information</div>
                       <div className="overflow-x-auto scrollbar-top">
-                        <table className="min-w-full text-sm">
+                        <table className="min-w-[680px] text-sm">
                           <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                             <tr>
-                              <th className="px-2 py-2">##</th>
-                              <th className="px-2 py-2">Overhead</th>
-                              <th className="px-2 py-2">Mode</th>
-                              <th className="px-2 py-2">Configured</th>
-                              <th className="px-2 py-2">Action</th>
+                              <th className="w-14 px-3 py-2">##</th>
+                              <th className="w-[290px] px-3 py-2">Overhead</th>
+                              <th className="w-[130px] px-3 py-2">Mode</th>
+                              <th className="w-[130px] px-3 py-2">Configured</th>
+                              <th className="w-[110px] px-3 py-2">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-200">
@@ -8954,21 +9187,14 @@ const createDefaultVendorRow = (): VendorRow => ({
                             ) : (
                               versionBuilderOverheadRows.map((item, idx) => {
                                 const selectedRule = getVersionBuilderOverheadRuleForRow(item);
-                                const modeLabel =
-                                  selectedRule?.overheadApplyMode === 'FLAT'
-                                    ? 'Flat'
-                                    : selectedRule?.overheadApplyMode === 'PERCENT_BOM_SUBTOTAL'
-                                      ? '% of BOM'
-                                      : selectedRule?.overheadApplyMode === 'PERCENT_MATERIALS'
-                                        ? '% of Materials'
-                                        : '-';
+                                const modeLabel = getOverheadApplyModeLabel(selectedRule);
                                 return (
                                   <tr key={item.id}>
-                                    <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
-                                    <td className="px-2 py-2">
+                                    <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                    <td className="px-3 py-2">
                                       <div className="flex items-center gap-2">
                                         <select
-                                          className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                          className="w-full min-w-[14rem] rounded border border-gray-300 px-2 py-1"
                                           value={item.ruleId}
                                           onChange={(event) => {
                                             const selectedRuleOption = versionBuilderCategoryRuleFiltered.overheadRules.find((rule) => rule.id === event.target.value);
@@ -9022,9 +9248,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         </button>
                                       </div>
                                     </td>
-                                    <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
-                                    <td className="px-2 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
-                                    <td className="px-2 py-2">
+                                    <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
+                                    <td className="px-3 py-2">
                                       <button
                                         type="button"
                                         className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
@@ -9523,11 +9749,11 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
 
           </div>
-        </Modal>
+        </VersionBuilderModal>
       ) : null}
 
       {showAddModal && (
-        <Modal title={editingId ? "EDIT DESIGN" : "ADD NEW DESIGN"} size="max-w-7xl" onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>
+        <DesignFormModal editingId={editingId} onClose={() => { setShowGalleryPicker(false); setShowStlViewerModal(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>
           <div className={`space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal ${lockedFieldSurfaceClass}`}>
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
@@ -9585,25 +9811,23 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Category *</label>
-                    <div className="flex gap-2">
-                      <select
-                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
-                          editingId ? 'bg-slate-50 text-slate-500' : ''
-                        }`}
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.jewelryGroup}
-                        onChange={(event) => handleJewelryGroupChange(event.target.value)}
-                        disabled={Boolean(editingId)}
-                      >
-                        <option value="">Select Category</option>
-                        {masterOptions.jewelryGroups.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={handleJewelryGroupChange}
+                        config={{
+                          ...masterDropdownConfig(
+                            'JEWELRY_GROUP',
+                            'Select Category',
+                            toSmartDropdownOptions(masterOptions.jewelryGroups),
+                          ),
+                          disabled: Boolean(editingId),
+                        }}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={Boolean(editingId) || creatingMasterType === 'JEWELRY_GROUP'}
                         onClick={() => addMasterFromDesign('JEWELRY_GROUP')}
                       >
@@ -9613,25 +9837,27 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Sub Category</label>
-                    <div className="flex gap-2">
-                      <select
-                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
-                          editingId ? 'bg-slate-50 text-slate-500' : ''
-                        }`}
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.collection}
-                        onChange={(event) => setForm((prev) => ({ ...prev, collection: event.target.value }))}
-                        disabled={Boolean(editingId) || !form.jewelryGroup}
-                      >
-                        <option value="">Select Sub Category</option>
-                        {filteredSubCategoryOptions.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value, option) => {
+                          mergeMasterOption('COLLECTION', option);
+                          setForm((prev) => ({ ...prev, collection: value }));
+                        }}
+                        config={{
+                          ...masterDropdownConfig(
+                            'COLLECTION',
+                            'Select Sub Category',
+                            toSmartDropdownOptions(filteredSubCategoryOptions),
+                            selectedJewelryGroupMasterId ? { jewelryGroupId: selectedJewelryGroupMasterId } : undefined,
+                          ),
+                          disabled: Boolean(editingId) || !form.jewelryGroup,
+                        }}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={Boolean(editingId) || creatingMasterType === 'COLLECTION'}
                         onClick={() => addMasterFromDesign('COLLECTION')}
                       >
@@ -9641,49 +9867,47 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Coverage</label>
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <SmartDropdown
                       value={form.diamondSpread}
-                      onChange={(event) =>
+                      onChange={(value, option) => {
+                        mergeMasterOption('DIAMOND_SPREAD', option);
                         setForm((prev) => ({
                           ...prev,
-                          diamondSpread: event.target.value,
-                          coverageCustom: event.target.value === 'Custom' ? prev.coverageCustom : '',
-                        }))
-                      }
-                    >
-                      <option value="">Select Coverage</option>
-                      {masterOptions.diamondSpreads.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.aliasName || option.value}
-                        </option>
-                      ))}
-                    </select>
+                          diamondSpread: value,
+                          coverageCustom: value === 'Custom' ? prev.coverageCustom : '',
+                        }));
+                      }}
+                      config={masterDropdownConfig(
+                        'DIAMOND_SPREAD',
+                        'Select Coverage',
+                        toSmartDropdownOptions(masterOptions.diamondSpreads, (option) => option.aliasName || option.value),
+                      )}
+                    />
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Dia Quality</label>
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <SmartDropdown
                       value={form.diamondQuality}
-                      onChange={(event) =>
+                      onChange={(value, option) => {
+                        mergeMasterOption('DIAMOND_QUALITY', option);
                         setForm((prev) => ({
                           ...prev,
-                          diamondQuality: event.target.value,
-                          diamondQualityCustom: event.target.value === 'Custom' ? prev.diamondQualityCustom : '',
-                        }))
-                      }
-                    >
-                      <option value="">Select Dia Quality</option>
-                      {!masterOptions.diamondQualities.some((option) => option.value === form.diamondQuality) &&
-                      form.diamondQuality ? (
-                        <option value={form.diamondQuality}>{form.diamondQuality}</option>
-                      ) : null}
-                      {masterOptions.diamondQualities.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.aliasName || option.value}
-                        </option>
-                      ))}
-                    </select>
+                          diamondQuality: value,
+                          diamondQualityCustom: value === 'Custom' ? prev.diamondQualityCustom : '',
+                        }));
+                      }}
+                      config={masterDropdownConfig(
+                        'DIAMOND_QUALITY',
+                        'Select Dia Quality',
+                        [
+                          ...(!masterOptions.diamondQualities.some((option) => option.value === form.diamondQuality) &&
+                          form.diamondQuality
+                            ? [{ id: `current-${form.diamondQuality}`, value: form.diamondQuality, label: form.diamondQuality }]
+                            : []),
+                          ...toSmartDropdownOptions(masterOptions.diamondQualities, (option) => option.aliasName || option.value),
+                        ],
+                      )}
+                    />
                   </div>
                   {form.diamondSpread === 'Custom' ? (
                     <div className="xl:col-span-3">
@@ -9709,43 +9933,49 @@ const createDefaultVendorRow = (): VendorRow => ({
                   ) : null}
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Size</label>
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <SmartDropdown
                       value={form.jewelrySize}
-                      onChange={(event) => setForm((prev) => ({ ...prev, jewelrySize: event.target.value }))}
-                      disabled={!form.jewelryGroup}
-                    >
-                      <option value="">Select Size</option>
-                      {!filteredJewelrySizeOptions.some(
-                        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelrySize),
-                      ) && form.jewelrySize ? (
-                        <option value={form.jewelrySize}>{form.jewelrySize}</option>
-                      ) : null}
-                      {filteredJewelrySizeOptions.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value, option) => {
+                        mergeMasterOption('JEWELRY_SIZE', option);
+                        setForm((prev) => ({ ...prev, jewelrySize: value }));
+                      }}
+                      config={{
+                        ...masterDropdownConfig(
+                          'JEWELRY_SIZE',
+                          'Select Size',
+                          [
+                          ...(!filteredJewelrySizeOptions.some(
+                            (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelrySize),
+                          ) && form.jewelrySize
+                            ? [{ id: `current-${form.jewelrySize}`, value: form.jewelrySize, label: form.jewelrySize }]
+                            : []),
+                          ...toSmartDropdownOptions(filteredJewelrySizeOptions),
+                          ],
+                          selectedJewelryGroupMasterId ? { jewelryGroupId: selectedJewelryGroupMasterId } : undefined,
+                        ),
+                        disabled: !form.jewelryGroup,
+                      }}
+                    />
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Status</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.designStatus}
-                        onChange={(event) => setForm((prev) => ({ ...prev, designStatus: event.target.value }))}
-                      >
-                        <option value="">Select Design Status</option>
-                        {masterOptions.designStatuses.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value, option) => {
+                          mergeMasterOption('DESIGN_STATUS', option);
+                          setForm((prev) => ({ ...prev, designStatus: value }));
+                        }}
+                        config={masterDropdownConfig(
+                          'DESIGN_STATUS',
+                          'Select Design Status',
+                          toSmartDropdownOptions(masterOptions.designStatuses),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DESIGN_STATUS'}
                         onClick={() => addMasterFromDesign('DESIGN_STATUS')}
                       >
@@ -9756,22 +9986,23 @@ const createDefaultVendorRow = (): VendorRow => ({
 
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Type</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.diamondType}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondType: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Type</option>
-                        {masterOptions.diamondTypes.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value, option) => {
+                          mergeMasterOption('DIAMOND_TYPE', option);
+                          setForm((prev) => ({ ...prev, diamondType: value }));
+                        }}
+                        config={masterDropdownConfig(
+                          'DIAMOND_TYPE',
+                          'Select Diamond Type',
+                          toSmartDropdownOptions(masterOptions.diamondTypes),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DIAMOND_TYPE'}
                         onClick={() => addMasterFromDesign('DIAMOND_TYPE')}
                       >
@@ -9781,22 +10012,23 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Wt (Optional)</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.diamondWeight}
-                        onChange={(event) => setForm((prev) => ({ ...prev, diamondWeight: event.target.value }))}
-                      >
-                        <option value="">Select Diamond Wt</option>
-                        {masterOptions.diamondWeights.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value, option) => {
+                          mergeMasterOption('DIAMOND_WEIGHT', option);
+                          setForm((prev) => ({ ...prev, diamondWeight: value }));
+                        }}
+                        config={masterDropdownConfig(
+                          'DIAMOND_WEIGHT',
+                          'Select Diamond Wt',
+                          toSmartDropdownOptions(masterOptions.diamondWeights),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DIAMOND_WEIGHT'}
                         onClick={() => addMasterFromDesign('DIAMOND_WEIGHT')}
                       >
@@ -9806,22 +10038,23 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Stage</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={form.stage}
-                        onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value }))}
-                      >
-                        <option value="">Select Stage</option>
-                        {masterOptions.stages.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value, option) => {
+                          mergeMasterOption('STAGE', option);
+                          setForm((prev) => ({ ...prev, stage: value }));
+                        }}
+                        config={masterDropdownConfig(
+                          'STAGE',
+                          'Select Stage',
+                          toSmartDropdownOptions(masterOptions.stages),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'STAGE'}
                         onClick={() => addMasterFromDesign('STAGE')}
                       >
@@ -9850,47 +10083,50 @@ const createDefaultVendorRow = (): VendorRow => ({
 
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <SmartDropdown
                       value={vendorRows[0]?.stockType || 'Production'}
-                      onChange={(event) => {
-                        const value = event.target.value;
+                      onChange={(value) => {
                         setVendorRows((prev) => {
                           const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
                           const [first, ...rest] = base;
                           return [{ ...first, stockType: value }, ...rest];
                         });
                       }}
-                    >
-                      <option value="Production">Production</option>
-                      <option value="Purchase">Purchase</option>
-                    </select>
+                      config={{
+                        options: [
+                          { id: 'Production', value: 'Production', label: 'Production' },
+                          { id: 'Purchase', value: 'Purchase', label: 'Purchase' },
+                        ],
+                        valueKey: 'value',
+                        labelKey: 'label',
+                        placeholder: 'Select Stock Type',
+                        showSearch: false,
+                      }}
+                    />
                   </div>
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Vendor Name</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={vendorRows[0]?.supplier || ''}
-                        onChange={(event) => {
-                          const value = event.target.value;
+                        onChange={(value, option) => {
+                          mergeMasterOption('VENDOR_NAME', option);
                           setVendorRows((prev) => {
                             const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
                             const [first, ...rest] = base;
                             return [{ ...first, supplier: value }, ...rest];
                           });
                         }}
-                      >
-                        <option value="">Select Vendor Name</option>
-                        {masterOptions.vendorNames.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        config={masterDropdownConfig(
+                          'VENDOR_NAME',
+                          'Select Vendor Name',
+                          toSmartDropdownOptions(masterOptions.vendorNames),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'VENDOR_NAME'}
                         onClick={() => addMasterFromDesign('VENDOR_NAME')}
                       >
@@ -9917,27 +10153,25 @@ const createDefaultVendorRow = (): VendorRow => ({
 
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Tags</label>
-                    <div className="flex gap-2">
-                      <select
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                    <div className={inlineMasterControlGroupClass}>
+                      <SmartDropdown
+                        className={inlineMasterDropdownClass}
                         value={tagPicker}
-                        onChange={(event) => {
-                          const selected = event.target.value;
+                        onChange={(selected, option) => {
+                          mergeMasterOption('TAG', option);
                           if (!selected) return;
                           addTag(selected);
                           setTagPicker('');
                         }}
-                      >
-                        <option value="">Select Tag</option>
-                        {masterOptions.tags.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.value}
-                          </option>
-                        ))}
-                      </select>
+                        config={masterDropdownConfig(
+                          'TAG',
+                          'Select Tag',
+                          toSmartDropdownOptions(masterOptions.tags),
+                        )}
+                      />
                       <button
                         type="button"
-                        className={inlineMasterAddButtonClass}
+                        className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'TAG'}
                         onClick={() => addMasterFromDesign('TAG')}
                       >
@@ -10236,53 +10470,60 @@ const createDefaultVendorRow = (): VendorRow => ({
                         {metalRows.map((item) => (
                           <tr key={item.id}>
                             <td className="px-2 py-2">
-                              <div className="flex items-center gap-2">
-                                <select
-                                  className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                              <div className={inlineMasterControlGroupClass}>
+                                <SmartDropdown
+                                  className={`${inlineMasterDropdownClass} min-w-[10.5rem]`}
                                   value={item.goldColour}
-                                  onChange={(event) => updateMetalRow(item.id, 'goldColour', event.target.value)}
-                                >
-                                  <option value="">Select Metal</option>
-                                  {!(
-                                    (masterOptions.metalCaratages.length > 0
-                                      ? masterOptions.metalCaratages
-                                      : masterOptions.goldColours
-                                    ).some((option) => option.value === item.goldColour)
-                                  ) && item.goldColour ? (
-                                    <option value={item.goldColour}>
-                                      {getMetalCaratageDisplay(
-                                        item.goldColour,
-                                        masterOptions.metalCaratages.length > 0 ? masterOptions.metalCaratages : masterOptions.goldColours,
-                                      ) || item.goldColour}
-                                    </option>
-                                  ) : null}
-                                  {(masterOptions.metalCaratages.length > 0
-                                    ? masterOptions.metalCaratages
-                                    : masterOptions.goldColours
-                                  ).map((option) => {
-                                    const optionKey = normalizeLookupKey(option.value);
-                                    const isUsedInOtherRow =
-                                      optionKey.length > 0 &&
-                                      metalRows.some(
-                                        (row) =>
-                                          row.id !== item.id &&
-                                          normalizeLookupKey(row.goldColour) === optionKey,
-                                      );
-                                    return (
-                                      <option
-                                        key={option.id}
-                                        value={option.value}
-                                        disabled={isUsedInOtherRow}
-                                      >
-                                        {option.aliasName || option.value}
-                                        {isUsedInOtherRow ? ' (Used)' : ''}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
+                                  onChange={(value, option) => {
+                                    mergeMasterOption('METAL_CARATAGE', option);
+                                    updateMetalRow(item.id, 'goldColour', value);
+                                  }}
+                                  config={masterDropdownConfig(
+                                    'METAL_CARATAGE',
+                                    'Select Metal',
+                                    [
+                                      ...(!(
+                                        (masterOptions.metalCaratages.length > 0
+                                          ? masterOptions.metalCaratages
+                                          : masterOptions.goldColours
+                                        ).some((option) => option.value === item.goldColour)
+                                      ) && item.goldColour
+                                        ? [{
+                                            id: `current-${item.goldColour}`,
+                                            value: item.goldColour,
+                                            label:
+                                              getMetalCaratageDisplay(
+                                                item.goldColour,
+                                                masterOptions.metalCaratages.length > 0
+                                                  ? masterOptions.metalCaratages
+                                                  : masterOptions.goldColours,
+                                              ) || item.goldColour,
+                                          }]
+                                        : []),
+                                      ...(masterOptions.metalCaratages.length > 0
+                                        ? masterOptions.metalCaratages
+                                        : masterOptions.goldColours
+                                      ).map((option) => {
+                                        const optionKey = normalizeLookupKey(option.value);
+                                        const isUsedInOtherRow =
+                                          optionKey.length > 0 &&
+                                          metalRows.some(
+                                            (row) =>
+                                              row.id !== item.id &&
+                                              normalizeLookupKey(row.goldColour) === optionKey,
+                                          );
+                                        return {
+                                          ...option,
+                                          label: `${option.aliasName || option.value}${isUsedInOtherRow ? ' (Used)' : ''}`,
+                                          disabled: isUsedInOtherRow,
+                                        };
+                                      }),
+                                    ],
+                                  )}
+                                />
                                 <button
                                   type="button"
-                                  className={inlineMasterAddButtonClass}
+                                  className={inlineMasterJoinedAddButtonClass}
                                   disabled={creatingMasterType === 'METAL_CARATAGE'}
                                   onClick={() =>
                                     addMasterFromDesign('METAL_CARATAGE', (masterValue) =>
@@ -10362,7 +10603,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <div className="rounded-xl border border-[#e4d8c9] shadow-sm overflow-visible">
                   <div className="flex items-center justify-between border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">
                     <span>Gemstone Information</span>
-                    {packetLoading ? <span className="text-xs font-medium text-cyan-700">Loading packets...</span> : null}
                   </div>
                   <div className="overflow-x-auto overflow-y-visible scrollbar-top">
                     <table className="w-full min-w-[920px] text-sm">
@@ -10382,17 +10622,27 @@ const createDefaultVendorRow = (): VendorRow => ({
                         {gemRows.map((item) => (
                           <tr key={item.id}>
                             <td className="px-2 py-2">
-                              <div className="flex items-center gap-2">
-                                <SearchableSelect
-                                  className="w-52"
+                              <div className={inlineMasterControlGroupClass}>
+                                <SmartDropdown
+                                  className={`${inlineMasterDropdownClass} w-52`}
                                   value={item.packetId}
-                                  onChange={(value) => applyPacketToGemRow(item.id, value)}
-                                  options={buildPacketSearchOptions(item.id)}
-                                  placeholder="Select Packet"
+                                  onChange={(value, option) => void handlePacketSelectionChange(item.id, value, option)}
+                                  config={{
+                                    apiSubPath: '/products/packets',
+                                    options: buildPacketSearchOptions(item.id),
+                                    extraParams: {
+                                      status: 'ACTIVE',
+                                      limit: 200,
+                                    },
+                                    responsePath: 'data',
+                                    valueKey: 'value',
+                                    labelKey: 'packetName',
+                                    placeholder: 'Select Packet',
+                                  }}
                                 />
                                 <button
                                   type="button"
-                                  className={inlineMasterAddButtonClass}
+                                  className={inlineMasterJoinedAddButtonClass}
                                   onClick={() => {
                                     setPacketForm(defaultPacketForm);
                                     setPacketNameManuallyEdited(false);
@@ -10464,41 +10714,44 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md">
                   <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Labor Information</div>
                   <div className="overflow-x-auto scrollbar-top">
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-[760px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
-                          <th className="px-2 py-2">##</th>
-                          <th className="px-2 py-2">Labor Head</th>
-                          <th className="px-2 py-2">Labor/Unit</th>
-                          <th className="px-2 py-2">Unit/Qty</th>
-                          <th className="px-2 py-2">Labor Value</th>
-                          <th className="px-2 py-2">Action</th>
+                          <th className="w-14 px-3 py-2">##</th>
+                          <th className="w-[290px] px-3 py-2">Labor Head</th>
+                          <th className="w-[150px] px-3 py-2">Labor/Unit</th>
+                          <th className="w-[120px] px-3 py-2">Unit/Qty</th>
+                          <th className="w-[150px] px-3 py-2">Labor Value</th>
+                          <th className="w-[110px] px-3 py-2">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
                         {laborRows.map((item, idx) => (
                           <tr key={item.id}>
-                            <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
-                            <td className="px-2 py-2">
-                              <div className="flex items-center gap-2">
-                                <select
-                                  className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                            <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                            <td className="px-3 py-2">
+                              <div className={inlineMasterControlGroupClass}>
+                                <SmartDropdown
+                                  className={`${inlineMasterDropdownClass} min-w-[14rem]`}
                                   value={item.laborHead}
-                                  onChange={(event) => updateLaborRow(item.id, 'laborHead', event.target.value)}
-                                >
-                                  <option value="">Select Labor Head</option>
-                                  {!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead ? (
-                                    <option value={item.laborHead}>{item.laborHead}</option>
-                                  ) : null}
-                                  {masterOptions.laborHeads.map((option) => (
-                                    <option key={option.id} value={option.value}>
-                                      {option.value}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onChange={(value, option) => {
+                                    mergeMasterOption('LABOR_HEAD', option);
+                                    updateLaborRow(item.id, 'laborHead', value);
+                                  }}
+                                  config={masterDropdownConfig(
+                                    'LABOR_HEAD',
+                                    'Select Labor Head',
+                                    [
+                                      ...(!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead
+                                        ? [{ id: `current-${item.laborHead}`, value: item.laborHead, label: item.laborHead }]
+                                        : []),
+                                      ...toSmartDropdownOptions(masterOptions.laborHeads),
+                                    ],
+                                  )}
+                                />
                                 <button
                                   type="button"
-                                  className={inlineMasterAddButtonClass}
+                                  className={inlineMasterJoinedAddButtonClass}
                                   disabled={creatingMasterType === 'LABOR_HEAD'}
                                   onClick={() =>
                                     addMasterFromDesign('LABOR_HEAD', (masterValue) => updateLaborRow(item.id, 'laborHead', masterValue))
@@ -10508,22 +10761,22 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 </button>
                               </div>
                             </td>
-                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price Per Quantity" /></td>
-                            <td className="px-2 py-2"><input className="w-full rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
-                            <td className="px-2 py-2">
+                            <td className="px-3 py-2"><input className="w-32 rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price Per Quantity" /></td>
+                            <td className="px-3 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
+                            <td className="px-3 py-2">
                               <input
-                                className="w-full cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
+                                className="w-32 cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
                                 value={getLaborValue(item).toFixed(2)}
                                 readOnly
                                 tabIndex={-1}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
                         ))}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                          <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
-                          <td className="px-2 py-2">{costTotals.labor.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right" colSpan={4}>Total</td>
+                          <td className="px-3 py-2">{costTotals.labor.toFixed(2)}</td>
                           <td className="px-2 py-2"></td>
                         </tr>
                       </tbody>
@@ -10555,25 +10808,28 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <tr key={item.id}>
                               <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
                               <td className="px-2 py-2">
-                                <div className="flex items-center gap-2">
-                                  <select
-                                    className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                <div className={inlineMasterControlGroupClass}>
+                                  <SmartDropdown
+                                    className={`${inlineMasterDropdownClass} min-w-[10.5rem]`}
                                     value={item.findingHead}
-                                    onChange={(event) => updateFindingRow(item.id, 'findingHead', event.target.value)}
-                                  >
-                                    <option value="">Select Finding Head</option>
-                                    {!masterOptions.findingHeads.some((option) => option.value === item.findingHead) && item.findingHead ? (
-                                      <option value={item.findingHead}>{item.findingHead}</option>
-                                    ) : null}
-                                    {masterOptions.findingHeads.map((option) => (
-                                      <option key={option.id} value={option.value}>
-                                        {option.value}
-                                      </option>
-                                    ))}
-                                  </select>
+                                    onChange={(value, option) => {
+                                      mergeMasterOption('FINDING_HEAD', option);
+                                      updateFindingRow(item.id, 'findingHead', value);
+                                    }}
+                                    config={masterDropdownConfig(
+                                      'FINDING_HEAD',
+                                      'Select Finding Head',
+                                      [
+                                        ...(!masterOptions.findingHeads.some((option) => option.value === item.findingHead) && item.findingHead
+                                          ? [{ id: `current-${item.findingHead}`, value: item.findingHead, label: item.findingHead }]
+                                          : []),
+                                        ...toSmartDropdownOptions(masterOptions.findingHeads),
+                                      ],
+                                    )}
+                                  />
                                   <button
                                     type="button"
-                                    className={inlineMasterAddButtonClass}
+                                    className={inlineMasterJoinedAddButtonClass}
                                     disabled={creatingMasterType === 'FINDING_HEAD'}
                                     onClick={() =>
                                       addMasterFromDesign('FINDING_HEAD', (masterValue) => updateFindingRow(item.id, 'findingHead', masterValue))
@@ -10609,15 +10865,15 @@ const createDefaultVendorRow = (): VendorRow => ({
                 <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5 transition-all hover:shadow-md">
                   <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c] backdrop-blur-sm">Overhead Information</div>
                   <div className="overflow-x-auto scrollbar-top">
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-[780px] text-sm">
                       <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                         <tr>
-                          <th className="px-2 py-2">##</th>
-                          <th className="px-2 py-2">Overhead</th>
-                          <th className="px-2 py-2">Mode</th>
-                          <th className="px-2 py-2">Configured</th>
-                          <th className="px-2 py-2">Overhead Value</th>
-                          <th className="px-2 py-2">Action</th>
+                          <th className="w-14 px-3 py-2">##</th>
+                          <th className="w-[290px] px-3 py-2">Overhead</th>
+                          <th className="w-[130px] px-3 py-2">Mode</th>
+                          <th className="w-[130px] px-3 py-2">Configured</th>
+                          <th className="w-[150px] px-3 py-2">Overhead Value</th>
+                          <th className="w-[110px] px-3 py-2">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -10630,30 +10886,26 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ) : (
                           overheadRows.map((item, idx) => {
                             const selectedRule = getOverheadRuleForRow(item);
-                            const modeLabel =
-                              selectedRule?.overheadApplyMode === 'FLAT'
-                                ? 'Flat'
-                                : selectedRule?.overheadApplyMode === 'PERCENT_BOM_SUBTOTAL'
-                                  ? '% of BOM'
-                                  : selectedRule?.overheadApplyMode === 'PERCENT_MATERIALS'
-                                    ? '% of Materials'
-                                    : '-';
+                            const modeLabel = getOverheadApplyModeLabel(selectedRule);
                             return (
                               <tr key={item.id}>
-                                <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
-                                <td className="px-2 py-2">
-                                  <div className="flex items-center gap-2">
-                                    <select
-                                      className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                <td className="px-3 py-2">
+                                  <div className={inlineMasterControlGroupClass}>
+                                    <SmartDropdown
+                                      className={`${inlineMasterDropdownClass} min-w-[14rem]`}
                                       value={item.ruleId}
-                                      onChange={(event) => {
-                                        const selectedRuleOption = singleDesignOverheadRules.find((rule) => rule.id === event.target.value);
+                                      onChange={(value, option) => {
+                                        mergeMasterOption('OVERHEAD_RULE', option);
+                                        const selectedRuleOption =
+                                          (option ? normalizeMasterOptionRows([option])[0] : null) ||
+                                          singleDesignOverheadRules.find((rule) => rule.id === value);
                                         setOverheadRows((prev) =>
                                           prev.map((row) =>
                                             row.id === item.id
                                               ? {
                                                   ...row,
-                                                  ruleId: event.target.value,
+                                                  ruleId: value,
                                                   overheadHead: selectedRuleOption?.value || '',
                                                   ruleSnapshot: selectedRuleOption || null,
                                                 }
@@ -10661,21 +10913,31 @@ const createDefaultVendorRow = (): VendorRow => ({
                                           ),
                                         );
                                       }}
-                                    >
-                                      <option value="">Select Overhead</option>
-                                      {item.ruleSnapshot &&
-                                      !singleDesignOverheadRules.some((option) => option.id === item.ruleSnapshot?.id) ? (
-                                        <option value={item.ruleSnapshot.id}>{item.ruleSnapshot.value}</option>
-                                      ) : null}
-                                      {singleDesignOverheadRules.map((option) => (
-                                        <option key={option.id} value={option.id}>
-                                          {option.value}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      config={{
+                                        ...masterDropdownConfig(
+                                          'OVERHEAD_RULE',
+                                          'Select Overhead',
+                                          [
+                                          ...(item.ruleSnapshot &&
+                                          !singleDesignOverheadRules.some((option) => option.id === item.ruleSnapshot?.id)
+                                            ? [{
+                                                ...item.ruleSnapshot,
+                                                label: item.ruleSnapshot.value,
+                                              }]
+                                            : []),
+                                          ...singleDesignOverheadRules.map((option) => ({
+                                            ...option,
+                                            label: option.value,
+                                          })),
+                                          ],
+                                          selectedJewelryGroupMasterId ? { jewelryGroupId: selectedJewelryGroupMasterId } : undefined,
+                                        ),
+                                        valueKey: 'id',
+                                      }}
+                                    />
                                     <button
                                       type="button"
-                                      className={inlineMasterAddButtonClass}
+                                      className={inlineMasterJoinedAddButtonClass}
                                       disabled={creatingMasterType === 'OVERHEAD_RULE'}
                                       onClick={() =>
                                         addMasterFromDesign('OVERHEAD_RULE', (masterValue, createdMaster) =>
@@ -10698,17 +10960,17 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     </button>
                                   </div>
                                 </td>
-                                <td className="px-2 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
-                                <td className="px-2 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
-                                <td className="px-2 py-2">
+                                <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
+                                <td className="px-3 py-2">
                                   <input
-                                    className="w-full cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
+                                    className="w-32 cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
                                     value={getOverheadRowValue(item).toFixed(2)}
                                     readOnly
                                     tabIndex={-1}
                                   />
                                 </td>
-                                <td className="px-2 py-2">
+                                <td className="px-3 py-2">
                                   <button
                                     type="button"
                                     className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
@@ -10722,8 +10984,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                           })
                         )}
                         <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                          <td className="px-2 py-2 text-right" colSpan={3}>Total</td>
-                          <td className="px-2 py-2">{costTotals.overhead.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right" colSpan={4}>Total</td>
+                          <td className="px-3 py-2">{costTotals.overhead.toFixed(2)}</td>
                           <td className="px-2 py-2"></td>
                         </tr>
                       </tbody>
@@ -10749,7 +11011,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>Close</Button>
             </div>
           </div>
-        </Modal>
+        </DesignFormModal>
       )}
 
       {showAddModal && showGalleryPicker && (
@@ -11573,7 +11835,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {modal === 'info' && detailInfo && (
-        <Modal title={`DESIGN DETAILS (${infoModalTitleDesign?.designNo || ''})`} onClose={() => { setShowStlViewerModal(false); setModal(null); }} size="max-w-7xl">
+        <DesignViewModal designNo={infoModalTitleDesign?.designNo || ''} onClose={() => { setShowStlViewerModal(false); setModal(null); }}>
           <div className="space-y-4">
             {detailDesignError ? (
               <p className="text-sm text-red-600">{detailDesignError}</p>
@@ -11963,7 +12225,7 @@ const createDefaultVendorRow = (): VendorRow => ({
               </>
             ) : null}
           </div>
-        </Modal>
+        </DesignViewModal>
       )}
 
       {modal === 'relevant' && selected && (
@@ -12111,42 +12373,13 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {modal === 'history' && selected && (
-        <Modal title={`ACTIONS HISTORY (${selected.designNo})`} onClose={() => setModal(null)} size="max-w-4xl">
-          <div className="overflow-x-auto scrollbar-top rounded border border-gray-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-100 text-left text-xs uppercase text-gray-600"><tr><th className="px-3 py-2">#</th><th className="px-3 py-2">Remarks</th><th className="px-3 py-2">User</th><th className="px-3 py-2">Date Time</th></tr></thead>
-              <tbody>
-                {historyLoading ? (
-                  <TableLoadingRow colSpan={4} label="Loading history..." />
-                ) : historyError ? (
-                  <tr className="border-t border-gray-200">
-                    <td className="px-3 py-4 text-center text-sm text-red-600" colSpan={4}>
-                      {historyError}
-                    </td>
-                  </tr>
-                ) : historyRows.length === 0 ? (
-                  <tr className="border-t border-gray-200">
-                    <td className="px-3 py-4 text-center text-sm text-gray-500" colSpan={4}>
-                      No history entries found.
-                    </td>
-                  </tr>
-                ) : (
-                  historyRows.map((row, idx) => (
-                    <tr key={row.id || `${row.actionType}-${idx}`} className="border-t border-gray-200">
-                      <td className="px-3 py-2">{idx + 1}</td>
-                      <td className="px-3 py-2">
-                        {row.actionType ? `${row.actionType}: ` : ''}
-                        {row.remarks || '-'}
-                      </td>
-                      <td className="px-3 py-2">{row.user || 'System'}</td>
-                      <td className="px-3 py-2">{row.dateTime || '-'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Modal>
+        <DesignHistoryModal
+          designNo={selected.designNo}
+          loading={historyLoading}
+          error={historyError}
+          rows={historyRows}
+          onClose={() => setModal(null)}
+        />
       )}
 
       {modal === 'pricing' && selected && (

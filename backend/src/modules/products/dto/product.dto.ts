@@ -226,6 +226,40 @@ export class DesignLaborDto {
   laborValue?: number;
 }
 
+export class DesignOverheadDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  overheadRuleId?: number;
+
+  @IsString()
+  @IsOptional()
+  overheadHead?: string;
+
+  @IsString()
+  @IsOptional()
+  overheadApplyMode?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  ratePercent?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  flatAmount?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  overheadValue?: number;
+}
+
 export class DesignFindingDto {
   @Type(() => Number)
   @IsInt()
@@ -540,6 +574,12 @@ export class CreateProductDto {
 
   @IsArray()
   @ValidateNested({ each: true })
+  @Type(() => DesignOverheadDto)
+  @IsOptional()
+  overheads?: DesignOverheadDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
   @Type(() => DesignFindingDto)
   @IsOptional()
   findings?: DesignFindingDto[];
@@ -790,6 +830,12 @@ export class UpdateProductDto {
   @Type(() => DesignLaborDto)
   @IsOptional()
   labors?: DesignLaborDto[];
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DesignOverheadDto)
+  @IsOptional()
+  overheads?: DesignOverheadDto[];
 
   @IsArray()
   @ValidateNested({ each: true })
