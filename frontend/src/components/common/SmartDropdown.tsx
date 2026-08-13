@@ -61,6 +61,28 @@ function optionText(option: SmartDropdownOption, key?: string): string {
   return String(value ?? option.label ?? option.name ?? option.value ?? option.id ?? '');
 }
 
+function optionIdentity(option: SmartDropdownOption, key?: string): string {
+  const configuredValue = key ? option[key] : undefined;
+  return String(configuredValue ?? option.value ?? option.id ?? option.label ?? option.name ?? '');
+}
+
+function optionMatchesValue(option: SmartDropdownOption, value: string, key?: string): boolean {
+  const selectedValue = String(value ?? '');
+  if (!selectedValue) {
+    return false;
+  }
+
+  const candidates = [
+    key ? option[key] : undefined,
+    option.value,
+    option.id,
+    option.label,
+    option.name,
+  ];
+
+  return candidates.some((candidate) => String(candidate ?? '') === selectedValue);
+}
+
 export default function SmartDropdown({ value, onChange, config, className = '' }: SmartDropdownProps) {
   const merged = useMemo(() => ({ ...defaultConfig, ...config }), [config]);
   const isApiMode = Boolean(merged.apiSubPath);
@@ -88,11 +110,11 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     }
     const byValue = new Map<string, SmartDropdownOption>();
     for (const option of [...normalizedLocalOptions, ...apiOptions]) {
-      byValue.set(optionText(option, merged.valueKey), option);
+      byValue.set(optionIdentity(option, merged.valueKey), option);
     }
     return Array.from(byValue.values());
   }, [apiOptions, isApiMode, merged.valueKey, normalizedLocalOptions]);
-  const selectedOption = allOptions.find((option) => optionText(option, merged.valueKey) === value);
+  const selectedOption = allOptions.find((option) => optionMatchesValue(option, value, merged.valueKey));
 
   const filteredOptions = useMemo(() => {
     if (isApiMode && merged.serverSearch) {
@@ -228,7 +250,7 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
   };
 
   const selectOption = (option: SmartDropdownOption | null) => {
-    onChange(option ? optionText(option, merged.valueKey) : '', option);
+    onChange(option ? optionIdentity(option, merged.valueKey) : '', option);
     setIsOpen(false);
   };
 
