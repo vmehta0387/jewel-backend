@@ -11,7 +11,8 @@ import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
 import { DesignLabor } from '../products/entities/design-labor.entity';
 import { DesignFinding } from '../products/entities/design-finding.entity';
-import { DesignMaster } from '../products/entities/design-master.entity';
+import { DESIGN_MASTER_TABLE_ENTITIES } from '../products/entities/design-master-tables.entity';
+import { MasterTablesService } from '../products/master-tables.service';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
@@ -29,7 +30,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       DesignGemstone,
       DesignLabor,
       DesignFinding,
-      DesignMaster,
+      ...DESIGN_MASTER_TABLE_ENTITIES,
       Company,
       Branch,
       CompanyPricingSlab,
@@ -40,7 +41,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [PricingController, CompanyAdminPricingController],
-  providers: [PricingService],
+  providers: [PricingService, MasterTablesService],
   exports: [PricingService],
 })
 export class PricingModule {}

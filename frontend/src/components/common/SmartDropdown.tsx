@@ -40,7 +40,6 @@ interface SmartDropdownProps {
 const defaultConfig = {
   showSearch: true,
   searchParam: 'search',
-  serverSearch: true,
   pageParam: 'page',
   limitParam: 'limit',
   limit: 20,
@@ -84,7 +83,14 @@ function optionMatchesValue(option: SmartDropdownOption, value: string, key?: st
 }
 
 export default function SmartDropdown({ value, onChange, config, className = '' }: SmartDropdownProps) {
-  const merged = useMemo(() => ({ ...defaultConfig, ...config }), [config]);
+  const merged = useMemo(
+    () => ({
+      ...defaultConfig,
+      ...config,
+      serverSearch: config.serverSearch ?? Boolean(config.apiSubPath),
+    }),
+    [config],
+  );
   const isApiMode = Boolean(merged.apiSubPath);
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');

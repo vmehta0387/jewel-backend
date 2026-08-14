@@ -24,6 +24,11 @@ import { FindMasterTableQueryDto, MasterTableTypeParamDto, SaveMasterTableDto } 
 export class MasterTablesController {
   constructor(private readonly masterTablesService: MasterTablesService) {}
 
+  @Get('METAL_NAME/get_live_price')
+  getMetalLivePrice() {
+    return this.masterTablesService.getMetalLivePrice();
+  }
+
   @Get(':masterType/dropdown')
   dropdown(@Param() params: MasterTableTypeParamDto, @Query() query: FindMasterTableQueryDto) {
     return this.masterTablesService.dropdown(params.masterType, query);

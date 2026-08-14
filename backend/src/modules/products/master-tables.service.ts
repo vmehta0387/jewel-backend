@@ -10,6 +10,7 @@ import {
 import { FindMasterTableQueryDto, SaveMasterTableDto } from './dto/master-table.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY } from './constants/overhead-rule.constants';
+import { METAL_MASTER_IDS } from './constants/metal-master.constants';
 
 type MasterEntityTarget = EntityTarget<ObjectLiteral>;
 type SerializedMaster = Record<string, unknown> & {
@@ -133,8 +134,43 @@ export class MasterTablesService {
       .createQueryBuilder(alias)
       .select([`${alias}.id`, `${alias}.value`, `${alias}.aliasName`]);
 
-    if (masterType === DesignMasterType.METAL_CARATAGE) {
+    if (masterType === DesignMasterType.COLLECTION || masterType === DesignMasterType.JEWELRY_SIZE) {
+      qb.leftJoin(`${alias}.jewelryGroupMaster`, 'jewelryGroupMaster');
+      qb.addSelect([`${alias}.jewelryGroupId`, 'jewelryGroupMaster.id', 'jewelryGroupMaster.value', 'jewelryGroupMaster.aliasName']);
+    }
+
+    if (masterType === DesignMasterType.METAL_COLOR || masterType === DesignMasterType.METAL_PURITY) {
+      qb.leftJoin(`${alias}.metalMaster`, 'metalMaster');
+      qb.addSelect([`${alias}.metalId`, 'metalMaster.id', 'metalMaster.value', 'metalMaster.aliasName']);
+    }
+
+    if (masterType === DesignMasterType.METAL_NAME) {
       qb.addSelect([
+        `${alias}.marketPricePerOunce`,
+        `${alias}.marketPricePerGm`,
+        `${alias}.livePricePerGm`,
+      ]);
+    }
+
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      qb.leftJoin(`${alias}.metalMaster`, 'metalMaster');
+      qb.leftJoin(`${alias}.metalColorMaster`, 'metalColorMaster');
+      qb.leftJoin(`${alias}.metalPurityMaster`, 'metalPurityMaster');
+      qb.addSelect([
+        `${alias}.metalId`,
+        `${alias}.metalColorId`,
+        `${alias}.metalPurityId`,
+        'metalMaster.id',
+        'metalMaster.value',
+        'metalMaster.aliasName',
+        'metalColorMaster.id',
+        'metalColorMaster.value',
+        'metalColorMaster.aliasName',
+        'metalPurityMaster.id',
+        'metalPurityMaster.value',
+        'metalPurityMaster.aliasName',
+        'metalPurityMaster.purityPercentage',
+        `${alias}.purityPercentage`,
         `${alias}.marketPricePerOunce`,
         `${alias}.marketPricePerGm`,
         `${alias}.livePricePerGm`,
@@ -143,8 +179,12 @@ export class MasterTablesService {
     }
 
     if (masterType === DesignMasterType.OVERHEAD_RULE) {
+      qb.leftJoin(`${alias}.jewelryGroupMaster`, 'jewelryGroupMaster');
       qb.addSelect([
         `${alias}.jewelryGroupId`,
+        'jewelryGroupMaster.id',
+        'jewelryGroupMaster.value',
+        'jewelryGroupMaster.aliasName',
         `${alias}.overheadApplyMode`,
         `${alias}.ratePercent`,
         `${alias}.flatAmount`,
@@ -187,10 +227,33 @@ export class MasterTablesService {
         };
 
         if (masterType === DesignMasterType.METAL_CARATAGE) {
+          option.metalId = row.metalId ?? null;
+          option.metalColorId = row.metalColorId ?? null;
+          option.metalPurityId = row.metalPurityId ?? null;
+          option.metalName = this.serializeJoined(row.metalMaster)?.value ?? null;
+          option.metalColor = this.serializeJoined(row.metalColorMaster)?.value ?? null;
+          option.metalPurity = this.serializeJoined(row.metalPurityMaster)?.value ?? null;
+          option.purityPercentage = row.purityPercentage ?? this.serializeJoined(row.metalPurityMaster)?.purityPercentage ?? null;
           option.marketPricePerOunce = row.marketPricePerOunce ?? null;
           option.marketPricePerGm = row.marketPricePerGm ?? null;
           option.livePricePerGm = row.livePricePerGm ?? null;
           option.defaultWastagePercent = row.defaultWastagePercent ?? null;
+        }
+
+        if (masterType === DesignMasterType.METAL_NAME) {
+          option.marketPricePerOunce = row.marketPricePerOunce ?? null;
+          option.marketPricePerGm = row.marketPricePerGm ?? null;
+          option.livePricePerGm = row.livePricePerGm ?? null;
+        }
+
+        if (masterType === DesignMasterType.COLLECTION || masterType === DesignMasterType.JEWELRY_SIZE) {
+          option.jewelryGroupId = row.jewelryGroupId ?? null;
+          option.jewelryGroup = this.serializeJoined(row.jewelryGroupMaster)?.value ?? null;
+        }
+
+        if (masterType === DesignMasterType.METAL_COLOR || masterType === DesignMasterType.METAL_PURITY) {
+          option.metalId = row.metalId ?? null;
+          option.metalName = this.serializeJoined(row.metalMaster)?.value ?? null;
         }
 
         if (masterType === DesignMasterType.OVERHEAD_RULE) {
@@ -199,6 +262,7 @@ export class MasterTablesService {
             ? OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY[overheadApplyMode] || String(overheadApplyMode)
             : null;
           option.jewelryGroupId = row.jewelryGroupId ?? null;
+          option.jewelryGroup = this.serializeJoined(row.jewelryGroupMaster)?.value ?? null;
           option.overheadApplyMode = overheadApplyMode ?? null;
           option.overhead_apply_mode = overheadApplyMode ?? null;
           option.overheadApplyModeKey = overheadApplyMode ?? null;
@@ -214,6 +278,23 @@ export class MasterTablesService {
 
         return option;
       });
+  }
+
+  async getMetalLivePrice() {
+    const repo = this.getRepository(DesignMasterType.METAL_NAME);
+    const rows = await repo
+      .createQueryBuilder('master')
+      .where('master.id IN (:...ids)', {
+        ids: [METAL_MASTER_IDS.GOLD, METAL_MASTER_IDS.PLATINUM],
+      })
+      .getMany();
+
+    const byId = new Map(rows.map((row) => [Number(row.id), this.serializeMetalLivePrice(row)]));
+
+    return {
+      gold: byId.get(METAL_MASTER_IDS.GOLD) || null,
+      platinum: byId.get(METAL_MASTER_IDS.PLATINUM) || null,
+    };
   }
 
   async get(masterType: DesignMasterType, id: number) {
@@ -711,6 +792,18 @@ export class MasterTablesService {
       metal: this.serializeJoined(metalMaster),
       metalColor: this.serializeJoined(metalColorMaster),
       metalPurity: this.serializeJoined(metalPurityMaster),
+    };
+  }
+
+  private serializeMetalLivePrice(row: ObjectLiteral) {
+    return {
+      id: Number(row.id),
+      value: String(row.value ?? ''),
+      aliasName: typeof row.aliasName === 'string' ? row.aliasName : null,
+      marketPricePerOunce: row.marketPricePerOunce ?? null,
+      marketPricePerGm: row.marketPricePerGm ?? null,
+      livePricePerGm: row.livePricePerGm ?? null,
+      updatedAt: row.updatedAt ?? null,
     };
   }
 

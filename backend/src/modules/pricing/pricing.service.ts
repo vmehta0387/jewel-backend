@@ -17,7 +17,8 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Design } from '../products/entities/design.entity';
 import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
-import { DesignMaster, DesignMasterType } from '../products/entities/design-master.entity';
+import { DesignMasterType } from '../products/entities/design-master.entity';
+import { MasterTablesService } from '../products/master-tables.service';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
@@ -61,8 +62,6 @@ export class PricingService {
     private readonly metalRepo: Repository<DesignMetal>,
     @InjectRepository(DesignGemstone)
     private readonly gemstoneRepo: Repository<DesignGemstone>,
-    @InjectRepository(DesignMaster)
-    private readonly designMasterRepo: Repository<DesignMaster>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(Branch)
@@ -74,6 +73,7 @@ export class PricingService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
+    private readonly masterTablesService: MasterTablesService,
   ) {}
 
   async getCompanyAdminPricingSettings(requester: AuthUser) {
@@ -246,13 +246,8 @@ export class PricingService {
   ): Promise<{ data: string[] }> {
     const masterTypes = this.resolveReferenceMasterTypes(query.category);
 
-    const [masters, configuredRates, currentRate] = await Promise.all([
-      this.designMasterRepo
-        .createQueryBuilder('master')
-        .where('master.masterType IN (:...masterTypes)', { masterTypes })
-        .andWhere('master.isActive = :isActive', { isActive: true })
-        .orderBy('master.value', 'ASC')
-        .getMany(),
+    const [masterGroups, configuredRates, currentRate] = await Promise.all([
+      Promise.all(masterTypes.map((masterType) => this.masterTablesService.list(masterType, { status: 'ACTIVE' }))),
       this.globalBasePriceRepo.find({
         where: { category: query.category },
         select: ['id', 'referenceValue'],
@@ -263,6 +258,7 @@ export class PricingService {
           })
         : Promise.resolve(null),
     ]);
+    const masters = masterGroups.flat().sort((a, b) => String(a.value || '').localeCompare(String(b.value || '')));
 
     const excludedReferenceValues = new Set(
       configuredRates

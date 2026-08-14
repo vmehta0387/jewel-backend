@@ -3,11 +3,12 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
+import SmartDropdown, { SmartDropdownOption } from '../../components/common/SmartDropdown';
 import api from '../../services/api';
 import { getStoredUser, hasActionPermission, hasAnyActionPermission } from '../../utils/auth';
 
 interface MetalMasterRow {
-  id: string;
+  id: string | number;
   value: string;
   aliasName?: string | null;
   description?: string | null;
@@ -17,8 +18,13 @@ interface MetalMasterRow {
   updatedAt?: string;
 }
 
+const DASHBOARD_METAL_MASTER_IDS = {
+  GOLD: '1',
+  PLATINUM: '2',
+} as const;
+
 interface PacketRow {
-  id: string;
+  id: string | number;
   packetName: string;
   stone?: string | null;
   shape?: string | null;
@@ -346,9 +352,9 @@ export default function DashboardPage() {
   const [metals, setMetals] = useState<MetalMasterRow[]>([]);
   const [goldMaster, setGoldMaster] = useState<MetalMasterRow | null>(null);
   const [platMaster, setPlatMaster] = useState<MetalMasterRow | null>(null);
+  const [selectedMetal, setSelectedMetal] = useState<MetalMasterRow | null>(null);
 
   const [metalModalOpen, setMetalModalOpen] = useState(false);
-  const [metalLoading, setMetalLoading] = useState(false);
   const [metalSaving, setMetalSaving] = useState(false);
   const [metalError, setMetalError] = useState<string | null>(null);
 
@@ -359,8 +365,6 @@ export default function DashboardPage() {
   const [packetSearchModalOpen, setPacketSearchModalOpen] = useState(false);
   const [packetSearchQuery, setPacketSearchQuery] = useState('');
   const [packetsLoaded, setPacketsLoaded] = useState(false);
-  const [packetDropdownFilter, setPacketDropdownFilter] = useState('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
@@ -397,8 +401,17 @@ export default function DashboardPage() {
   const [orderTrends, setOrderTrends] = useState<{ date: string; orders: number; sales: number }[]>([]);
 
   const selectedPacket = useMemo(
-    () => packetRows.find((row) => row.id === selectedPacketId) ?? null,
+    () => packetRows.find((row) => String(row.id) === selectedPacketId) ?? null,
     [packetRows, selectedPacketId],
+  );
+  const packetDropdownOptions = useMemo<SmartDropdownOption[]>(
+    () =>
+      packetRows.map((packet) => ({
+        ...packet,
+        value: packet.id,
+        label: packet.packetName,
+      })),
+    [packetRows],
   );
   const changedPacketPriceRows = useMemo(
     () =>
@@ -409,6 +422,36 @@ export default function DashboardPage() {
       }),
     [packetRows, packetDraftPrices],
   );
+
+  const applyDashboardMetals = (gold: MetalMasterRow | null, platinum: MetalMasterRow | null) => {
+    setGoldMaster(gold);
+    setPlatMaster(platinum);
+    setMetals((prev) => {
+      const byId = new Map(prev.map((metal) => [String(metal.id), metal]));
+      if (gold) {
+        byId.set(String(gold.id), gold);
+      }
+      if (platinum) {
+        byId.set(String(platinum.id), platinum);
+      }
+      return Array.from(byId.values());
+    });
+  };
+
+  const fetchMetalLivePrices = async () => {
+    if (!canViewGoldPrice) return;
+    setMetalError(null);
+    try {
+      const response = await api.get('/products/master-tables/METAL_NAME/get_live_price');
+      applyDashboardMetals(response.data?.gold || null, response.data?.platinum || null);
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Unable to load live metal prices.';
+      setMetalError(message);
+    }
+  };
 
   const openOrdersView = (view: 'received-today' | 'due-today' | 'sales-this-week' | 'last-7-days' | 'active') => {
     if (view === 'sales-this-week') {
@@ -424,45 +467,8 @@ export default function DashboardPage() {
     navigate(`/orders?view=${view}`);
   };
 
-
-
-  const fetchMetals = async () => {
-    if (!canViewGoldPrice) return;
-    setMetalLoading(true);
-    setMetalError(null);
-    try {
-      const response = await api.get('/products/lookup/masters', {
-        params: { type: 'METAL_NAME', status: 'ALL' },
-      });
-
-      const rows = Array.isArray(response.data?.data) ? response.data.data : [];
-      setMetals(rows);
-
-      const gold =
-        rows.find((row: MetalMasterRow) => row.value?.trim().toLowerCase() === 'gold') ||
-        rows.find((row: MetalMasterRow) => row.aliasName?.trim().toLowerCase() === 'gold') ||
-        null;
-      
-      const plat =
-        rows.find((row: MetalMasterRow) => row.value?.trim().toLowerCase() === 'platinum') ||
-        rows.find((row: MetalMasterRow) => row.aliasName?.trim().toLowerCase() === 'pt') ||
-        null;
-
-      if (gold) setGoldMaster(gold);
-      if (plat) setPlatMaster(plat);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        'Unable to load metal masters.';
-      setMetalError(message);
-    } finally {
-      setMetalLoading(false);
-    }
-  };
-
   useEffect(() => {
-    const selected = metals.find((m) => m.id === selectedMetalId);
+    const selected = selectedMetal || metals.find((m) => String(m.id) === selectedMetalId);
     if (selected) {
       setPriceOunce(
         selected.marketPricePerOunce !== null && selected.marketPricePerOunce !== undefined
@@ -484,7 +490,7 @@ export default function DashboardPage() {
       setPriceGm('');
       setLivePriceGm('');
     }
-  }, [selectedMetalId, metals]);
+  }, [selectedMetalId, selectedMetal, metals]);
 
   const fetchCompaniesCount = async (): Promise<number> => {
     const response = await api.get('/companies/lookup', {
@@ -616,8 +622,8 @@ export default function DashboardPage() {
         return;
       }
 
-      const activeSelection = rows.find((row: PacketRow) => row.id === selectedPacketId) || rows[0];
-      setSelectedPacketId(activeSelection.id);
+      const activeSelection = rows.find((row: PacketRow) => String(row.id) === selectedPacketId) || rows[0];
+      setSelectedPacketId(String(activeSelection.id));
       setSelectedPacketPrice(
         activeSelection.sellingPrice !== null && activeSelection.sellingPrice !== undefined
           ? String(activeSelection.sellingPrice)
@@ -647,7 +653,7 @@ export default function DashboardPage() {
     didLoadStatsRef.current = true;
     void loadStats();
     if (canViewGoldPrice) {
-      void fetchMetals();
+      void fetchMetalLivePrices();
     }
   }, [canViewGoldPrice]);
 
@@ -691,14 +697,17 @@ export default function DashboardPage() {
     }
   };
 
-  const openMetalModal = (defaultId?: string) => {
+  const openMetalModal = (defaultId?: string | number, defaultMetal?: MetalMasterRow | null) => {
     if (!canUpdateGoldPrice) return;
     setMetalError(null);
     setMetalModalOpen(true);
+    setSelectedMetal(defaultMetal || null);
     if (defaultId) {
-      setSelectedMetalId(defaultId);
+      setSelectedMetalId(String(defaultId));
     } else if (metals.length > 0) {
-      setSelectedMetalId(metals[0].id);
+      setSelectedMetalId(String(metals[0].id));
+    } else {
+      setSelectedMetalId('');
     }
   };
 
@@ -724,12 +733,12 @@ export default function DashboardPage() {
     setMetalSaving(true);
     setMetalError(null);
     try {
-      const selected = metals.find((m) => m.id === selectedMetalId);
+      const selected = selectedMetal || metals.find((m) => String(m.id) === selectedMetalId);
       if (!selected) {
         throw new Error('Selected metal not found.');
       }
 
-      await api.put(`/products/masters/${selectedMetalId}`, {
+      await api.patch(`/products/master-tables/METAL_NAME/${selectedMetalId}`, {
         value: selected.value,
         aliasName: selected.aliasName || selected.value,
         description: selected.description || null,
@@ -738,7 +747,20 @@ export default function DashboardPage() {
         livePricePerGm: livePricePerGm ?? marketPricePerGm,
       });
 
-      await fetchMetals();
+      const updatedMetal = {
+        ...selected,
+        marketPricePerOunce,
+        marketPricePerGm,
+        livePricePerGm: livePricePerGm ?? marketPricePerGm,
+      };
+      setSelectedMetal(updatedMetal);
+      setMetals((prev) => prev.map((metal) => (String(metal.id) === selectedMetalId ? updatedMetal : metal)));
+      if (String(updatedMetal.id) === DASHBOARD_METAL_MASTER_IDS.GOLD) {
+        setGoldMaster(updatedMetal);
+      }
+      if (String(updatedMetal.id) === DASHBOARD_METAL_MASTER_IDS.PLATINUM) {
+        setPlatMaster(updatedMetal);
+      }
       setMetalModalOpen(false);
     } catch (error: any) {
       const message =
@@ -777,7 +799,6 @@ export default function DashboardPage() {
       await fetchPackets();
       setSelectedPacketId('');
       setSelectedPacketPrice('');
-      setPacketDropdownFilter('');
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -815,7 +836,7 @@ export default function DashboardPage() {
       );
       await fetchPackets();
       if (selectedPacketId) {
-        const nextSelected = packetRows.find((row) => row.id === selectedPacketId);
+        const nextSelected = packetRows.find((row) => String(row.id) === selectedPacketId);
         const nextDraft = nextSelected ? packetDraftPrices[nextSelected.id] : '';
         setSelectedPacketPrice(nextDraft || selectedPacketPrice);
       }
@@ -1120,8 +1141,13 @@ export default function DashboardPage() {
                   {formatTimestamp(goldMaster?.updatedAt)}
                 </p>
                 {canUpdateGoldPrice && (
-                  <Button type="button" size="sm" onClick={() => openMetalModal(goldMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                    {metalLoading ? 'Loading...' : 'Update Gold Price'}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openMetalModal(goldMaster?.id || DASHBOARD_METAL_MASTER_IDS.GOLD, goldMaster)}
+                    className="shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    Update Gold Price
                   </Button>
                 )}
               </div>
@@ -1176,8 +1202,13 @@ export default function DashboardPage() {
                   {formatTimestamp(platMaster?.updatedAt)}
                 </p>
                 {canUpdateGoldPrice && (
-                  <Button type="button" size="sm" onClick={() => openMetalModal(platMaster?.id)} disabled={metalLoading} className="shadow-sm hover:shadow-md transition-shadow">
-                    {metalLoading ? 'Loading...' : 'Update Platinum Price'}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openMetalModal(platMaster?.id || DASHBOARD_METAL_MASTER_IDS.PLATINUM, platMaster)}
+                    className="shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    Update Platinum Price
                   </Button>
                 )}
               </div>
@@ -1205,88 +1236,51 @@ export default function DashboardPage() {
 
                 {/* Custom Searchable Dropdown selector and advanced search */}
                 <div className="flex items-center gap-2 relative">
-                  <div className="flex-1 relative">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await ensurePacketsLoaded();
-                        setDropdownOpen(!dropdownOpen);
+                  <div
+                    className="flex-1 min-w-0 [&>button]:h-9 [&>button]:rounded-xl [&>button]:py-1.5 [&>button]:text-xs"
+                  >
+                    <SmartDropdown
+                      value={selectedPacketId}
+                      onChange={(value, option) => {
+                        setSelectedPacketId(value);
+                        if (!value) {
+                          setSelectedPacketPrice('');
+                          return;
+                        }
+                        const packet = option as PacketRow | null | undefined;
+                        if (packet?.id) {
+                          setPacketRows((prev) => {
+                            const exists = prev.some((row) => String(row.id) === String(packet.id));
+                            return exists
+                              ? prev.map((row) => (String(row.id) === String(packet.id) ? packet : row))
+                              : [packet, ...prev];
+                          });
+                          const packetPrice = packet.sellingPrice !== null && packet.sellingPrice !== undefined
+                            ? String(packet.sellingPrice)
+                            : '';
+                          setPacketDraftPrices((prev) => ({
+                            ...prev,
+                            [packet.id]: packetPrice,
+                          }));
+                          setSelectedPacketPrice(packetPrice);
+                        }
                       }}
-                      className="w-full flex items-center justify-between rounded-xl border border-slate-300 px-3 py-2 text-xs bg-white text-slate-700 hover:border-slate-400 focus:border-indigo-500 focus:outline-none transition-colors"
-                    >
-                      <span className="truncate font-medium">
-                        {selectedPacket ? selectedPacket.packetName : 'Select Packet'}
-                      </span>
-                      <span className="text-slate-400 text-[10px] ml-1">▼</span>
-                    </button>
-
-                    {dropdownOpen && (
-                      <>
-                        {/* Backdrop overlay to close when clicking outside */}
-                        <div className="fixed inset-0 z-30" onClick={() => setDropdownOpen(false)} />
-                        
-                        {/* Dropdown Options Popup with embedded search bar */}
-                        <div className="absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-40 overflow-hidden flex flex-col max-h-64">
-                          <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-1.5">
-                            <span className="text-[10px]">🔍</span>
-                            <input
-                              type="text"
-                              className="flex-1 text-xs bg-transparent focus:outline-none placeholder-slate-400"
-                              placeholder="Search packets..."
-                              value={packetDropdownFilter}
-                              onChange={(e) => setPacketDropdownFilter(e.target.value)}
-                              autoFocus
-                            />
-                            {packetDropdownFilter && (
-                              <button
-                                type="button"
-                                onClick={() => setPacketDropdownFilter('')}
-                                className="text-slate-400 hover:text-slate-600 text-[10px]"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                          
-                          <div className="overflow-y-auto divide-y divide-slate-100 max-h-48">
-                            {packetRows
-                              .filter((p) =>
-                                p.packetName.toLowerCase().includes(packetDropdownFilter.toLowerCase())
-                              )
-                              .map((packet) => (
-                                <button
-                                  key={packet.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedPacketId(packet.id);
-                                    setDropdownOpen(false);
-                                    setPacketDropdownFilter('');
-                                  }}
-                                  className={`w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 hover:text-indigo-600 transition-colors font-medium flex items-center justify-between ${
-                                    packet.id === selectedPacketId ? 'bg-indigo-50 text-indigo-600' : 'text-slate-700'
-                                  }`}
-                                >
-                                  <span className="truncate">{packet.packetName}</span>
-                                  {packet.stone && (
-                                    <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-2">
-                                      {packet.stone}
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            {packetRows.filter((p) =>
-                              p.packetName.toLowerCase().includes(packetDropdownFilter.toLowerCase())
-                            ).length === 0 && (
-                              <div className="px-3 py-4 text-xs text-slate-400 italic text-center">
-                                No matching packets found.
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    )}
+                      config={{
+                        apiSubPath: '/products/packets',
+                        options: packetDropdownOptions,
+                        extraParams: { status: 'ALL' },
+                        responsePath: 'data',
+                        valueKey: 'id',
+                        labelKey: 'packetName',
+                        placeholder: 'Select Packet',
+                        clearLabel: 'Clear Packet',
+                        showSearch: true,
+                        pagination: true,
+                        limit: 20,
+                      }}
+                      className="w-full"
+                    />
                   </div>
-
                   <button
                     type="button"
                     onClick={async () => {
@@ -1389,7 +1383,7 @@ export default function DashboardPage() {
       <ActionModal
         open={metalModalOpen}
         title="Update Metal Prices"
-        description="Select a metal master to update its live pricing variables and view update history."
+        description="Update the live pricing variables for the selected metal."
         onClose={() => setMetalModalOpen(false)}
       >
         <form onSubmit={handleMetalSubmit} className="space-y-5">
@@ -1397,20 +1391,10 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Select Metal*</label>
-              <select
-                className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                value={selectedMetalId}
-                onChange={(event) => setSelectedMetalId(event.target.value)}
-                required
-              >
-                <option value="">Select Metal</option>
-                {metals.map((metal) => (
-                  <option key={metal.id} value={metal.id}>
-                    {metal.value}
-                  </option>
-                ))}
-              </select>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Metal</label>
+              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                {(selectedMetal || metals.find((metal) => String(metal.id) === selectedMetalId))?.value || 'Selected metal'}
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Market Price/Ounce*</label>
@@ -1459,7 +1443,7 @@ export default function DashboardPage() {
 
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
             {canUpdateGoldPrice && (
-              <Button type="submit" size="sm" disabled={metalSaving || metalLoading}>
+              <Button type="submit" size="sm" disabled={metalSaving}>
                 {metalSaving ? 'Saving...' : 'Save'}
               </Button>
             )}
@@ -1556,7 +1540,7 @@ export default function DashboardPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedPacketId(packet.id);
+                              setSelectedPacketId(String(packet.id));
                               setSelectedPacketPrice(packetDraftPrices[packet.id] ?? '');
                               setPacketSearchModalOpen(false);
                             }}

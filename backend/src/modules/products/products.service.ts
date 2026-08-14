@@ -74,6 +74,7 @@ import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-lib
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { PricingService } from '../pricing/pricing.service';
+import { MasterTablesService } from './master-tables.service';
 
 interface ScopeResult {
   companyId: string | null;
@@ -430,6 +431,7 @@ export class ProductsService {
     private readonly userRepo: Repository<User>,
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
+    private readonly masterTablesService: MasterTablesService,
   ) {}
 
   private compactPacketMaster(master: { id: number; value: string } | null | undefined): PacketMasterSummary | null {
@@ -3993,44 +3995,15 @@ export class ProductsService {
   }
 
   async findMasters(query: FindDesignMastersQueryDto): Promise<any> {
+    const status = query.status || (query.type ? 'ALL' : 'ACTIVE');
+
     if (query.type) {
-      if ((query.type as unknown as DesignMasterType) === DesignMasterType.FINDING_HEAD) {
-        return { data: [], total: 0 };
-      }
-
-      const status = query.status || 'ALL';
-      const qb = this.designMasterRepo
-        .createQueryBuilder('master')
-        .where('master.masterType = :type', { type: query.type });
-
-      if (status === 'ACTIVE') {
-        qb.andWhere('master.isActive = :isActive', { isActive: true });
-      } else if (status === 'INACTIVE') {
-        qb.andWhere('master.isActive = :isActive', { isActive: false });
-      }
-
-      if (query.search?.trim()) {
-        qb.andWhere(
-          new Brackets((where) => {
-            where
-              .where('master.value LIKE :search', { search: `%${query.search.trim()}%` })
-              .orWhere('master.aliasName LIKE :search', { search: `%${query.search.trim()}%` })
-              .orWhere('master.description LIKE :search', { search: `%${query.search.trim()}%` })
-              .orWhere('master.jewelryGroup LIKE :search', { search: `%${query.search.trim()}%` });
-          }),
-        );
-      }
-
-      qb.orderBy('master.createdAt', 'DESC');
-
-      const data = await qb.getMany();
-      return { data: data.map((row) => this.serializeDesignMasterListRow(row)), total: data.length };
+      const rows = await this.masterTablesService.list(query.type as unknown as DesignMasterType, {
+        search: query.search,
+        status,
+      });
+      return { data: rows.map((row) => this.serializeMasterTableCompatRow(row)), total: rows.length };
     }
-
-    const data = await this.designMasterRepo.find({
-      where: { isActive: true },
-      order: { value: 'ASC' },
-    });
 
     const grouped = {
       jewelryGroups: [] as Array<{ id: string; value: string }>,
@@ -4104,154 +4077,136 @@ export class ProductsService {
       packetQualities: [] as Array<{ id: string; value: string }>,
     };
 
-    for (const entry of data) {
-      const option = { id: entry.id, value: entry.value, aliasName: entry.aliasName || undefined };
-      if (entry.masterType === DesignMasterType.JEWELRY_GROUP) {
-        grouped.jewelryGroups.push(option);
-      } else if (entry.masterType === DesignMasterType.COLLECTION) {
-        grouped.collections.push({
-          ...option,
-          jewelryGroupId: entry.jewelryGroupId || undefined,
-          jewelryGroup: entry.jewelryGroup || undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.JEWELRY_SIZE) {
-        grouped.jewelrySizes.push({
-          ...option,
-          jewelryGroupId: entry.jewelryGroupId || undefined,
-          jewelryGroup: entry.jewelryGroup || undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.TAG) {
-        grouped.tags.push(option);
-      } else if (entry.masterType === DesignMasterType.DESIGN_STATUS) {
-        grouped.designStatuses.push(option);
-      } else if (entry.masterType === DesignMasterType.STAGE) {
-        grouped.stages.push(option);
-      } else if (entry.masterType === DesignMasterType.METAL_NAME) {
-        grouped.metalNames.push({
-          ...option,
-          marketPricePerOunce:
-            entry.marketPricePerOunce !== null && entry.marketPricePerOunce !== undefined
-              ? this.toNumber(entry.marketPricePerOunce)
-              : undefined,
-          marketPricePerGm:
-            entry.marketPricePerGm !== null && entry.marketPricePerGm !== undefined
-              ? this.toNumber(entry.marketPricePerGm)
-              : undefined,
-          livePricePerGm:
-            entry.livePricePerGm !== null && entry.livePricePerGm !== undefined
-              ? this.toNumber(entry.livePricePerGm)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.METAL_COLOR) {
-        grouped.metalColors.push({
-          ...option,
-          metalName: entry.metalName || undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.METAL_PURITY) {
-        grouped.metalPurities.push({
-          ...option,
-          metalName: entry.metalName || undefined,
-          purityPercentage:
-            entry.purityPercentage !== null && entry.purityPercentage !== undefined
-              ? this.toNumber(entry.purityPercentage)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.METAL_CARATAGE) {
-        grouped.metalCaratages.push({
-          ...option,
-          metalName: entry.metalName || undefined,
-          metalColor: entry.metalColor || undefined,
-          metalPurity: entry.metalPurity || undefined,
-          purityPercentage:
-            entry.purityPercentage !== null && entry.purityPercentage !== undefined
-              ? this.toNumber(entry.purityPercentage)
-              : undefined,
-          defaultWastagePercent:
-            entry.defaultWastagePercent !== null && entry.defaultWastagePercent !== undefined
-              ? this.toNumber(entry.defaultWastagePercent)
-              : undefined,
-          livePricePerGm:
-            entry.livePricePerGm !== null && entry.livePricePerGm !== undefined
-              ? this.toNumber(entry.livePricePerGm)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.GOLD_COLOUR) {
-        grouped.goldColours.push({
-          ...option,
-          wastagePercent:
-            entry.pricePerUnit !== null && entry.pricePerUnit !== undefined
-              ? this.toNumber(entry.pricePerUnit)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.DIAMOND_TYPE) {
-        grouped.diamondTypes.push(option);
-      } else if (entry.masterType === DesignMasterType.DIAMOND_SPREAD) {
-        grouped.diamondSpreads.push(option);
-      } else if (entry.masterType === DesignMasterType.DIAMOND_WEIGHT) {
-        grouped.diamondWeights.push(option);
-      } else if (entry.masterType === DesignMasterType.DIAMOND_QUALITY) {
-        grouped.diamondQualities.push(option);
-      } else if (entry.masterType === DesignMasterType.VENDOR_NAME) {
-        grouped.vendorNames.push(option);
-      } else if (entry.masterType === DesignMasterType.LABOR_HEAD) {
-        grouped.laborHeads.push(option);
-      } else if (entry.masterType === DesignMasterType.LABOR_RULE) {
-        grouped.laborRules.push({
-          ...option,
-          jewelryGroupId: entry.jewelryGroupId || undefined,
-          jewelryGroup: entry.jewelryGroup || undefined,
-          laborApplyMode: entry.laborApplyMode || undefined,
-          flatCost:
-            entry.flatCost !== null && entry.flatCost !== undefined
-              ? this.toNumber(entry.flatCost)
-              : undefined,
-          ratePerStone:
-            entry.ratePerStone !== null && entry.ratePerStone !== undefined
-              ? this.toNumber(entry.ratePerStone)
-              : undefined,
-          ratePerGram:
-            entry.ratePerGram !== null && entry.ratePerGram !== undefined
-              ? this.toNumber(entry.ratePerGram)
-              : undefined,
-          ratePerGroup:
-            entry.ratePerGroup !== null && entry.ratePerGroup !== undefined
-              ? this.toNumber(entry.ratePerGroup)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.OVERHEAD_RULE) {
-        grouped.overheadRules.push({
-          ...option,
-          jewelryGroupId: entry.jewelryGroupId || undefined,
-          jewelryGroup: entry.jewelryGroup || undefined,
-          overheadApplyMode: entry.overheadApplyMode || undefined,
-          ratePercent:
-            entry.ratePercent !== null && entry.ratePercent !== undefined
-              ? this.toNumber(entry.ratePercent)
-              : undefined,
-          flatAmount:
-            entry.flatAmount !== null && entry.flatAmount !== undefined
-              ? this.toNumber(entry.flatAmount)
-              : undefined,
-        });
-      } else if (entry.masterType === DesignMasterType.PACKET_STONE) {
-        grouped.packetStones.push(option);
-      } else if (entry.masterType === DesignMasterType.PACKET_SHAPE) {
-        grouped.packetShapes.push(option);
-      } else if (entry.masterType === DesignMasterType.PACKET_SIZE) {
-        grouped.packetSizes.push(option);
-      } else if (entry.masterType === DesignMasterType.PACKET_CUT) {
-        grouped.packetCuts.push(option);
-      } else if (entry.masterType === DesignMasterType.PACKET_COLOR) {
-        grouped.packetColors.push(option);
-      } else if (entry.masterType === DesignMasterType.PACKET_QUALITY) {
-        grouped.packetQualities.push(option);
-      }
+    const groupedMasterTypes: Array<[DesignMasterType, keyof typeof grouped]> = [
+      [DesignMasterType.JEWELRY_GROUP, 'jewelryGroups'],
+      [DesignMasterType.COLLECTION, 'collections'],
+      [DesignMasterType.JEWELRY_SIZE, 'jewelrySizes'],
+      [DesignMasterType.TAG, 'tags'],
+      [DesignMasterType.DESIGN_STATUS, 'designStatuses'],
+      [DesignMasterType.STAGE, 'stages'],
+      [DesignMasterType.METAL_NAME, 'metalNames'],
+      [DesignMasterType.METAL_COLOR, 'metalColors'],
+      [DesignMasterType.METAL_PURITY, 'metalPurities'],
+      [DesignMasterType.METAL_CARATAGE, 'metalCaratages'],
+      [DesignMasterType.GOLD_COLOUR, 'goldColours'],
+      [DesignMasterType.DIAMOND_TYPE, 'diamondTypes'],
+      [DesignMasterType.DIAMOND_SPREAD, 'diamondSpreads'],
+      [DesignMasterType.DIAMOND_WEIGHT, 'diamondWeights'],
+      [DesignMasterType.DIAMOND_QUALITY, 'diamondQualities'],
+      [DesignMasterType.VENDOR_NAME, 'vendorNames'],
+      [DesignMasterType.LABOR_HEAD, 'laborHeads'],
+      [DesignMasterType.LABOR_RULE, 'laborRules'],
+      [DesignMasterType.OVERHEAD_RULE, 'overheadRules'],
+      [DesignMasterType.FINDING_HEAD, 'findingHeads'],
+      [DesignMasterType.PACKET_STONE, 'packetStones'],
+      [DesignMasterType.PACKET_SHAPE, 'packetShapes'],
+      [DesignMasterType.PACKET_SIZE, 'packetSizes'],
+      [DesignMasterType.PACKET_CUT, 'packetCuts'],
+      [DesignMasterType.PACKET_COLOR, 'packetColors'],
+      [DesignMasterType.PACKET_QUALITY, 'packetQualities'],
+    ];
+
+    for (const [masterType, key] of groupedMasterTypes) {
+      const rows = await this.masterTablesService.list(masterType, { status });
+      (grouped[key] as any[]).push(...rows.map((row) => this.serializeMasterTableCompatRow(row)));
+      (grouped[key] as any[]).sort((a, b) => String(a.value || '').localeCompare(String(b.value || '')));
     }
 
     return grouped;
   }
 
+  private serializeMasterTableCompatRow(row: Record<string, any>): Record<string, any> {
+    const relationValue = (value: unknown): string | undefined => {
+      if (!value || typeof value !== 'object') return undefined;
+      const relation = value as { value?: unknown; name?: unknown };
+      return String(relation.value ?? relation.name ?? '').trim() || undefined;
+    };
+    const numberOrUndefined = (value: unknown): number | undefined =>
+      value !== null && value !== undefined ? this.toNumber(value as string | number) : undefined;
+
+    return {
+      ...row,
+      id: String(row.id),
+      value: String(row.value ?? ''),
+      aliasName: row.aliasName || undefined,
+      jewelryGroupId: row.jewelryGroupId !== null && row.jewelryGroupId !== undefined ? String(row.jewelryGroupId) : undefined,
+      jewelryGroup: relationValue(row.jewelryGroup) || row.jewelryGroupName || row.jewelryGroup || undefined,
+      metalName: relationValue(row.metal) || row.metalName || undefined,
+      metalColor: relationValue(row.metalColor) || row.metalColorName || undefined,
+      metalPurity: relationValue(row.metalPurity) || row.metalPurityName || undefined,
+      marketPricePerOunce: numberOrUndefined(row.marketPricePerOunce),
+      marketPricePerGm: numberOrUndefined(row.marketPricePerGm),
+      livePricePerGm: numberOrUndefined(row.livePricePerGm),
+      purityPercentage: numberOrUndefined(row.purityPercentage),
+      defaultWastagePercent: numberOrUndefined(row.defaultWastagePercent),
+      wastagePercent: numberOrUndefined(row.defaultWastagePercent),
+      flatCost: numberOrUndefined(row.flatCost),
+      ratePerStone: numberOrUndefined(row.ratePerStone),
+      ratePerGram: numberOrUndefined(row.ratePerGram),
+      ratePerGroup: numberOrUndefined(row.ratePerGroup),
+      ratePercent: numberOrUndefined(row.ratePercent),
+      flatAmount: numberOrUndefined(row.flatAmount),
+      pricePerUnit: numberOrUndefined(row.pricePerUnit),
+      weightPerUnit: numberOrUndefined(row.weightPerUnit),
+    };
+  }
+
+  private async toMasterTablePayload(dto: CreateDesignMasterDto | UpdateDesignMasterDto): Promise<Record<string, unknown>> {
+    const masterType = (dto as CreateDesignMasterDto).masterType as unknown as DesignMasterType | undefined;
+    const payload: Record<string, unknown> = {
+      value: dto.value,
+      aliasName: dto.aliasName,
+      description: dto.description,
+      jewelryGroupId: dto.jewelryGroupId,
+      email: dto.vendorEmail,
+      findingNo: dto.findingNo,
+      metalCaratage: dto.metalCaratage,
+      priceIn: dto.priceIn,
+      pricePerUnit: dto.pricePerUnit,
+      dimensions: dto.dimensions,
+      weightPerUnit: dto.weightPerUnit,
+      purityPercentage: dto.purityPercentage,
+      marketPricePerOunce: dto.marketPricePerOunce,
+      marketPricePerGm: dto.marketPricePerGm,
+      livePricePerGm: dto.livePricePerGm,
+      defaultWastagePercent: dto.defaultWastagePercent,
+      laborApplyMode: dto.laborApplyMode,
+      flatCost: dto.flatCost,
+      ratePerStone: dto.ratePerStone,
+      ratePerGram: dto.ratePerGram,
+      ratePerGroup: dto.ratePerGroup,
+      overheadApplyMode:
+        dto.overheadApplyMode === 'FLAT'
+          ? 'flat'
+          : dto.overheadApplyMode
+            ? 'per_of_materials'
+            : undefined,
+      ratePercent: dto.ratePercent,
+      flatAmount: dto.flatAmount,
+    };
+
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      const [metal, metalColor, metalPurity] = await Promise.all([
+        this.resolveMasterRef('metal_names', undefined, dto.metalName, 'metalName', true),
+        this.resolveMasterRef('metal_colors', undefined, dto.metalColor, 'metalColor', true),
+        this.resolveMasterRef('metal_purities', undefined, dto.metalPurity, 'metalPurity', true),
+      ]);
+      payload.metalId = metal.id;
+      payload.metalColorId = metalColor.id;
+      payload.metalPurityId = metalPurity.id;
+    }
+
+    return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+  }
+
   async exportMasterTemplate(
+    query: FindDesignMastersQueryDto,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const type = this.requireMasterType(query);
+    return this.masterTablesService.exportTemplate(type);
+  }
+
+  private async exportLegacyMasterTemplate(
     query: FindDesignMastersQueryDto,
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const type = this.requireMasterType(query);
@@ -4276,6 +4231,16 @@ export class ProductsService {
     query: FindDesignMastersQueryDto,
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const type = this.requireMasterType(query);
+    return this.masterTablesService.exportRows(type, {
+      search: query.search,
+      status: query.status || 'ALL',
+    });
+  }
+
+  private async exportLegacyMasters(
+    query: FindDesignMastersQueryDto,
+  ): Promise<{ buffer: Buffer; fileName: string }> {
+    const type = this.requireMasterType(query);
     const result = await this.findMasters({
       ...query,
       status: query.status || 'ALL',
@@ -4291,6 +4256,22 @@ export class ProductsService {
   }
 
   async importMasters(
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    query: FindDesignMastersQueryDto,
+    requester: AuthUser,
+  ): Promise<{
+    totalRows: number;
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> {
+    this.assertDesignWriteAccess(requester);
+    const type = this.requireMasterType(query);
+    return this.masterTablesService.importRows(type, file, requester);
+  }
+
+  private async importLegacyMasters(
     file: { buffer?: Buffer; originalname?: string } | undefined,
     query: FindDesignMastersQueryDto,
     requester: AuthUser,
@@ -4398,6 +4379,13 @@ export class ProductsService {
   }
 
   async createMaster(dto: CreateDesignMasterDto, requester: AuthUser): Promise<DesignMaster> {
+    this.assertDesignWriteAccess(requester);
+    const masterType = dto.masterType as unknown as DesignMasterType;
+    const payload = await this.toMasterTablePayload(dto);
+    return this.masterTablesService.create(masterType, payload as any, requester) as unknown as Promise<DesignMaster>;
+  }
+
+  private async createLegacyMaster(dto: CreateDesignMasterDto, requester: AuthUser): Promise<DesignMaster> {
     this.assertDesignWriteAccess(requester);
     const value = this.normalizeMasterValue(dto.value);
     const aliasName = this.normalizeMasterAlias(dto.aliasName, value);
@@ -5082,7 +5070,7 @@ export class ProductsService {
       },
     });
 
-    if (existing && existing.id !== excludeId) {
+    if (existing && Number(existing.id) !== Number(excludeId)) {
       throw new BadRequestException('Design no and version already exist for this company');
     }
   }

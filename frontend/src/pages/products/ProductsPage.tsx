@@ -90,6 +90,16 @@ const getMasterRelationValue = (value: unknown): string => {
   return '';
 };
 
+const masterOptionMatchesValue = (option: MasterOption, value: string | null | undefined): boolean => {
+  const lookup = normalizeLookupKey(value);
+  if (!lookup) return false;
+  return (
+    normalizeLookupKey(option.value) === lookup ||
+    normalizeLookupKey(option.aliasName || '') === lookup ||
+    normalizeLookupKey(option.id) === lookup
+  );
+};
+
 interface DesignRow {
   id: string;
   designNo: string;
@@ -2092,14 +2102,14 @@ export default function ProductsPage() {
   );
   const structuredCategoryCode = useMemo(() => {
     const match = masterOptions.jewelryGroups.find(
-      (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+      (option) => masterOptionMatchesValue(option, form.jewelryGroup),
     );
     return sanitizeStructuredToken(match?.aliasName || form.jewelryGroup).slice(0, 5);
   }, [form.jewelryGroup, masterOptions.jewelryGroups]);
   const selectedJewelryGroupMasterId = useMemo(
     () =>
       masterOptions.jewelryGroups.find(
-        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+        (option) => masterOptionMatchesValue(option, form.jewelryGroup),
       )?.id || '',
     [form.jewelryGroup, masterOptions.jewelryGroups],
   );
@@ -2117,7 +2127,7 @@ export default function ProductsPage() {
     }
     const categoryAlias =
       masterOptions.jewelryGroups.find(
-        (option) => normalizeLookupKey(option.value) === normalizeLookupKey(form.jewelryGroup),
+        (option) => masterOptionMatchesValue(option, form.jewelryGroup),
       )?.aliasName || '';
     return getNextStructuredDesignSerial(form.jewelryGroup, rows, categoryAlias);
   }, [form.jewelryGroup, masterOptions.jewelryGroups, rows, structuredSerialOverride]);
@@ -2173,19 +2183,25 @@ export default function ProductsPage() {
       return [];
     }
     const normalizedCategory = normalizeLookupKey(form.jewelryGroup);
+    const categoryId = selectedJewelryGroupMasterId;
     return masterOptions.collections.filter(
-      (option) => normalizeLookupKey(option.jewelryGroup || '') === normalizedCategory,
+      (option) =>
+        (categoryId && String(option.jewelryGroupId || '') === categoryId) ||
+        normalizeLookupKey(option.jewelryGroup || '') === normalizedCategory,
     );
-  }, [form.jewelryGroup, masterOptions.collections]);
+  }, [form.jewelryGroup, masterOptions.collections, selectedJewelryGroupMasterId]);
   const filteredJewelrySizeOptions = useMemo(() => {
     if (!form.jewelryGroup.trim()) {
       return [];
     }
     const normalizedCategory = normalizeLookupKey(form.jewelryGroup);
+    const categoryId = selectedJewelryGroupMasterId;
     return masterOptions.jewelrySizes.filter(
-      (option) => normalizeLookupKey(option.jewelryGroup) === normalizedCategory,
+      (option) =>
+        (categoryId && String(option.jewelryGroupId || '') === categoryId) ||
+        normalizeLookupKey(option.jewelryGroup) === normalizedCategory,
     );
-  }, [form.jewelryGroup, masterOptions.jewelrySizes]);
+  }, [form.jewelryGroup, masterOptions.jewelrySizes, selectedJewelryGroupMasterId]);
   const singleDesignOverheadRules = useMemo(() => {
     const categoryKey = normalizeLookupKey(form.jewelryGroup);
     const categoryId = selectedJewelryGroupMasterId;
@@ -2555,14 +2571,7 @@ export default function ProductsPage() {
     options: MasterOption[],
     value: string | null | undefined,
   ): MasterOption | undefined => {
-    const lookup = normalizeLookupKey(value);
-    if (!lookup) return undefined;
-    return options.find(
-      (option) =>
-        normalizeLookupKey(option.value) === lookup ||
-        normalizeLookupKey(option.aliasName || '') === lookup ||
-        normalizeLookupKey(option.id) === lookup,
-    );
+    return options.find((option) => masterOptionMatchesValue(option, value));
   };
 
   const getMasterIdByValue = (
@@ -3432,7 +3441,7 @@ export default function ProductsPage() {
     const defaultWastagePayload =
       inlineMasterType === 'GOLD_COLOUR'
         ? {
-            pricePerUnit:
+            defaultWastagePercent:
               inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
           }
         : null;
@@ -3445,7 +3454,7 @@ export default function ProductsPage() {
     const overheadRulePayload =
       inlineMasterType === 'OVERHEAD_RULE'
         ? {
-            overheadApplyMode: inlineOverheadApplyMode,
+            overheadApplyMode: inlineOverheadApplyMode === 'FLAT' ? 'flat' : 'per_of_materials',
             ratePercent:
               inlineOverheadApplyMode !== 'FLAT' && inlineRatePercent.trim().length > 0
                 ? parseNum(inlineRatePercent)
@@ -3459,9 +3468,9 @@ export default function ProductsPage() {
     const metalCaratagePayload =
       inlineMasterType === 'METAL_CARATAGE'
         ? {
-            metalName: inlineMetalName.trim(),
-            metalColor: inlineMetalColor.trim(),
-            metalPurity: inlineMetalPurity.trim(),
+            metalId: getMasterIdByValue(masterOptions.metalNames, inlineMetalName),
+            metalColorId: getMasterIdByValue(inlineMetalColorOptions, inlineMetalColor),
+            metalPurityId: getMasterIdByValue(inlineMetalPurityOptions, inlineMetalPurity),
             purityPercentage:
               inlineSelectedPurityOption?.purityPercentage !== undefined &&
               inlineSelectedPurityOption?.purityPercentage !== null
@@ -3478,7 +3487,7 @@ export default function ProductsPage() {
     const vendorPayload =
       inlineMasterType === 'VENDOR_NAME'
         ? {
-            vendorEmail: inlineVendorEmail.trim() || null,
+            email: inlineVendorEmail.trim() || null,
           }
         : null;
     const descriptionPayload = inlineMasterType === 'FINDING_HEAD' ? null : inlineMasterDescription.trim() || null;
@@ -3495,9 +3504,9 @@ export default function ProductsPage() {
     }
     if (inlineMasterType === 'METAL_CARATAGE') {
       if (
-        !metalCaratagePayload?.metalName ||
-        !metalCaratagePayload?.metalColor ||
-        !metalCaratagePayload?.metalPurity
+        !metalCaratagePayload?.metalId ||
+        !metalCaratagePayload?.metalColorId ||
+        !metalCaratagePayload?.metalPurityId
       ) {
         showAppAlert('Metal Name, Metal Color, and Metal Purity are required.');
         return;
@@ -3523,8 +3532,7 @@ export default function ProductsPage() {
 
     setCreatingMasterType(inlineMasterType);
     try {
-      const response = await api.post('/products/masters', {
-        masterType: inlineMasterType,
+      const response = await api.post(`/products/master-tables/${inlineMasterType}`, {
         value,
         aliasName,
         description: descriptionPayload,
@@ -3737,7 +3745,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (!form.collection.trim()) return;
-    const exists = filteredSubCategoryOptions.some((option) => option.value === form.collection);
+    const exists = filteredSubCategoryOptions.some((option) => masterOptionMatchesValue(option, form.collection));
     if (!exists) {
       setForm((prev) => ({ ...prev, collection: '' }));
     }
@@ -3745,7 +3753,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     if (!form.jewelrySize.trim()) return;
-    const exists = filteredJewelrySizeOptions.some((option) => option.value === form.jewelrySize);
+    const exists = filteredJewelrySizeOptions.some((option) => masterOptionMatchesValue(option, form.jewelrySize));
     if (!exists) {
       setForm((prev) => ({ ...prev, jewelrySize: '' }));
     }
@@ -6099,6 +6107,15 @@ const createDefaultVendorRow = (): VendorRow => ({
       return String(value);
     };
     const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+    const resolveMasterValue = (options: MasterOption[], ...values: unknown[]): string => {
+      for (const value of values) {
+        const relationValue = getMasterRelationValue(value);
+        if (!relationValue.trim()) continue;
+        const match = findMasterOptionByValue(options, relationValue);
+        return match?.value || relationValue;
+      }
+      return '';
+    };
     const resolvePacketForGem = (gem: any): string => {
       const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
       if (direct) return direct;
@@ -6143,19 +6160,19 @@ const createDefaultVendorRow = (): VendorRow => ({
         designNo: detail.designNo || row.designNo,
         designName: detail.designName || row.designName || detail.designNo || row.designNo,
         version: normalizeVersionInput(detail.version || row.version || 'V1'),
-        jewelryGroup: detail.jewelryGroup || row.jewelryGroup,
-        collection: detail.collection || row.collection,
-        stage: detail.stage || row.stage || '',
-        diamondType: detail.diamondType || '',
-        diamondSpread: detail.diamondSpread || '',
+        jewelryGroup: resolveMasterValue(masterOptions.jewelryGroups, detail.jewelryGroup, detail.jewelryGroupMaster, detail.jewelryGroupId, row.jewelryGroup),
+        collection: resolveMasterValue(masterOptions.collections, detail.collection, detail.collectionMaster, detail.collectionId, row.collection),
+        stage: resolveMasterValue(masterOptions.stages, detail.stage, detail.stageMaster, detail.stageId, row.stage),
+        diamondType: resolveMasterValue(masterOptions.diamondTypes, detail.diamondType, detail.diamondTypeMaster, detail.diamondTypeId),
+        diamondSpread: resolveMasterValue(masterOptions.diamondSpreads, detail.diamondSpread, detail.diamondSpreadMaster, detail.diamondSpreadId),
         coverageCustom: '',
-        diamondWeight: detail.diamondWeight || '',
-        diamondQuality: detail.diamondQuality || '',
+        diamondWeight: resolveMasterValue(masterOptions.diamondWeights, detail.diamondWeight, detail.diamondWeightMaster, detail.diamondWeightId),
+        diamondQuality: resolveMasterValue(masterOptions.diamondQualities, detail.diamondQuality, detail.diamondQualityMaster, detail.diamondQualityId),
         diamondQualityCustom: '',
-        jewelrySize: detail.jewelrySize || row.jewelrySize || '',
+        jewelrySize: resolveMasterValue(masterOptions.jewelrySizes, detail.jewelrySize, detail.jewelrySizeMaster, detail.jewelrySizeId, row.jewelrySize),
         otherWeight: asInput(detail.otherWeight),
         tags: tags.join(', '),
-        designStatus: detail.designStatus || row.status || '',
+        designStatus: resolveMasterValue(masterOptions.designStatuses, detail.designStatus, detail.designStatusMaster, detail.designStatusId, row.status),
         drawerLocation: detail.drawerLocation || '',
         designDescription: detail.designDescription || '',
         remarks: detail.remarks || row.remarks || '',
@@ -6168,7 +6185,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       setMetalRows(
         metals.length > 0
           ? metals.map((item: any) => {
-              const metalCaratage = item.metalCaratage || item.goldColour || '';
+              const metalCaratage = resolveMasterValue(masterOptions.metalCaratages, item.metalCaratage, item.goldColour, item.metalCaratageMaster, item.metalCaratageId);
               const masterRate = getMetalRate(metalCaratage);
               const savedPricePerGm = asInput(item.pricePerGm);
               return {
@@ -6191,13 +6208,13 @@ const createDefaultVendorRow = (): VendorRow => ({
           ? gemstones.map((item: any) => ({
               id: item.id || makeId(),
               packetId: resolvePacketForGem(item),
-              stone: item.stone || '',
-              shape: item.shape || '',
-              size: item.size || '',
-              cut: item.cut || '',
-              color: item.color || '',
-              quality: item.quality || '',
-              settingType: item.stoneType || '',
+              stone: resolveMasterValue(masterOptions.packetStones, item.stone, item.stoneMaster, item.stoneId),
+              shape: resolveMasterValue(masterOptions.packetShapes, item.shape, item.shapeMaster, item.shapeId),
+              size: resolveMasterValue(masterOptions.packetSizes, item.size, item.sizeMaster, item.sizeId),
+              cut: resolveMasterValue(masterOptions.packetCuts, item.cut, item.cutMaster, item.cutId),
+              color: resolveMasterValue(masterOptions.packetColors, item.color, item.colorMaster, item.colorId),
+              quality: resolveMasterValue(masterOptions.packetQualities, item.quality, item.qualityMaster, item.qualityId),
+              settingType: resolveMasterValue(masterOptions.diamondTypes, item.stoneType, item.stoneTypeMaster, item.stoneTypeId),
               wtPerPcs: asInput(item.wtPerPcs),
               pcs: asInput(item.pcs),
               wtInCts: asInput(item.wtInCts),
@@ -6226,7 +6243,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         visibleLabors.length > 0
           ? visibleLabors.map((item: any) => ({
               id: item.id || makeId(),
-              laborHead: item.laborHead || '',
+              laborHead: resolveMasterValue(masterOptions.laborHeads, item.laborHead, item.laborHeadMaster, item.laborHeadId),
               laborPerUnit: asInput(item.laborPerUnit),
               unitQty: asInput(item.unitQty),
               laborValue: asInput(item.laborValue),
@@ -6280,7 +6297,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         FINDING_FEATURE_ENABLED
           ? findings.map((item: any) => ({
               id: item.id || makeId(),
-              findingHead: item.findingHead || '',
+              findingHead: resolveMasterValue(masterOptions.findingHeads, item.findingHead, item.findingHeadMaster, item.findingHeadId),
               pricePerUnit: asInput(item.pricePerUnit),
               units: asInput(item.units),
               totalWeight: asInput(item.totalWeight),
@@ -6316,7 +6333,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         vendors.length > 0
           ? vendors.map((item: any) => ({
               id: item.id || makeId(),
-              supplier: item.supplierName || '',
+              supplier: resolveMasterValue(masterOptions.vendorNames, item.supplierName, item.vendorName, item.vendorNameMaster, item.vendorNameId),
               stockType: item.stockType || '',
               supplierStyleNo: item.supplierStyleNo || '',
             }))
