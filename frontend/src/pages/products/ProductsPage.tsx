@@ -568,6 +568,18 @@ interface DesignHistoryRow {
 }
 
 const makeId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const createDefaultLaborRow = (): LaborRow => ({
+  id: makeId(),
+  laborHead: '',
+  laborPerUnit: '',
+  unitQty: '',
+  laborValue: '',
+});
+const createDefaultOverheadRow = (): OverheadRow => ({
+  id: makeId(),
+  overheadHead: '',
+  ruleId: '',
+});
 const parseNum = (value: string): number => {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
@@ -1957,18 +1969,12 @@ export default function ProductsPage() {
     pricePerCt: '100',
     amount: '',
   }]);
-  const [laborRows, setLaborRows] = useState<LaborRow[]>([{
-    id: makeId(),
-    laborHead: '',
-    laborPerUnit: '',
-    unitQty: '',
-    laborValue: '',
-  }]);
-  const [overheadRows, setOverheadRows] = useState<OverheadRow[]>([]);
+  const [laborRows, setLaborRows] = useState<LaborRow[]>([createDefaultLaborRow()]);
+  const [overheadRows, setOverheadRows] = useState<OverheadRow[]>([createDefaultOverheadRow()]);
   const [findingRows, setFindingRows] = useState<FindingRow[]>([]);
   const [processRows, setProcessRows] = useState<ProcessRow[]>([]);
   const [pricingRows, setPricingRows] = useState<PricingRow[]>([{ id: makeId(), title: 'Retail Tier', qty: '10', rate: '1745.45' }]);
-  const [vendorRows, setVendorRows] = useState<VendorRow[]>([{ id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }]);
+  const [vendorRows, setVendorRows] = useState<VendorRow[]>([{ id: makeId(), supplier: '', stockType: '', supplierStyleNo: '' }]);
   const [relevantSelection, setRelevantSelection] = useState<string[]>([]);
   const [masterOptions, setMasterOptions] = useState(emptyMasterOptions);
   const [mastersLoading, setMastersLoading] = useState(false);
@@ -3234,7 +3240,7 @@ export default function ProductsPage() {
     }
 
     try {
-      const response = await api.get(`/products/packets/${packetId}`);
+      const response = await api.get(`/products/master-tables/PACKET/${packetId}`);
       applyPacketToGemRow(rowId, packetId, response.data);
     } catch (error: any) {
       if (selectedPacket) {
@@ -3623,7 +3629,7 @@ export default function ProductsPage() {
 
     setPacketSaving(true);
     try {
-      const response = await api.post('/products/packets', payload);
+      const response = await api.post('/products/master-tables/PACKET', payload);
       setShowPacketMasterModal(false);
       setPacketForm(defaultPacketForm);
       setPacketNameManuallyEdited(false);
@@ -5945,7 +5951,31 @@ export default function ProductsPage() {
   };
 
   function getLaborValue(row: LaborRow): number {
-    return parseNum(row.unitQty) * parseNum(row.laborPerUnit);
+    const laborPerUnit = parseNum(row.laborPerUnit);
+    const unitQty = parseNum(row.unitQty);
+    const computed = laborPerUnit * unitQty;
+    return computed > 0 ? computed : parseNum(row.laborValue);
+  }
+
+  function getLaborPayloadValues(row: LaborRow) {
+    const laborPerUnit = parseNum(row.laborPerUnit);
+    const unitQty = parseNum(row.unitQty);
+    const laborValue = getLaborValue(row);
+
+    if (laborPerUnit > 0 && unitQty > 0) {
+      return { laborPerUnit, unitQty, laborValue };
+    }
+    if (laborValue > 0 && laborPerUnit > 0) {
+      return { laborPerUnit, unitQty: laborValue / laborPerUnit, laborValue };
+    }
+    if (laborValue > 0 && unitQty > 0) {
+      return { laborPerUnit: laborValue / unitQty, unitQty, laborValue };
+    }
+    if (laborValue > 0) {
+      return { laborPerUnit: laborValue, unitQty: 1, laborValue };
+    }
+
+    return { laborPerUnit, unitQty, laborValue };
   }
 
   function getFindingValue(row: FindingRow): number {
@@ -5957,7 +5987,7 @@ export default function ProductsPage() {
 const createDefaultVendorRow = (): VendorRow => ({
   id: makeId(),
   supplier: '',
-  stockType: 'Production',
+  stockType: '',
   supplierStyleNo: '',
 });
 
@@ -6071,14 +6101,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       pricePerCt: '',
       amount: '',
     }]);
-    setLaborRows([{
-      id: makeId(),
-      laborHead: '',
-      laborPerUnit: '',
-      unitQty: '',
-      laborValue: '',
-    }]);
-    setOverheadRows([]);
+    setLaborRows([createDefaultLaborRow()]);
+    setOverheadRows([createDefaultOverheadRow()]);
     setFindingRows([]);
     setProcessRows([]);
     setVendorRows([createDefaultVendorRow()]);
@@ -6248,36 +6272,20 @@ const createDefaultVendorRow = (): VendorRow => ({
               unitQty: asInput(item.unitQty),
               laborValue: asInput(item.laborValue),
             }))
-          : [{
-              id: makeId(),
-              laborHead: '',
-              laborPerUnit: '',
-              unitQty: '',
-              laborValue: '',
-            }],
+          : [createDefaultLaborRow()],
       );
-      const overheadRuleCategoryId =
-        masterOptions.jewelryGroups.find(
-          (option) => normalizeLookupKey(option.value) === normalizeLookupKey(baseForm.jewelryGroup),
-        )?.id || '';
-      const loadedOverheadRules = await fetchMasterOptions(
-        'OVERHEAD_RULE',
-        overheadRuleCategoryId ? { jewelryGroupId: overheadRuleCategoryId } : undefined,
-      );
-      const overheadRuleOptions = loadedOverheadRules.length > 0 ? loadedOverheadRules : masterOptions.overheadRules;
-      setOverheadRows(
-        (overheads.length > 0
+      const loadedOverheadRows = (overheads.length > 0
           ? overheads
           : labors.filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -')))
           .map((item: any) => {
             const overheadLabel = String(item?.overheadHead || item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
-            const matchedOverheadRule = overheadRuleOptions.find(
+            const matchedOverheadRule = masterOptions.overheadRules.find(
               (rule) =>
                 String(rule.id) === String(item?.overheadRuleId || '') ||
                 normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
             );
             const ruleSnapshot = matchedOverheadRule || {
-              id: String(item?.overheadRuleId || `current-${overheadLabel}`),
+              id: String(item?.overheadRuleId || `current-${overheadLabel || makeId()}`),
               value: overheadLabel,
               overheadApplyMode: normalizeOverheadApplyMode(item?.overheadApplyMode),
               overheadApplyModeName: item?.overheadApplyModeName,
@@ -6287,11 +6295,11 @@ const createDefaultVendorRow = (): VendorRow => ({
             return {
               id: item.id || makeId(),
               overheadHead: overheadLabel,
-              ruleId: matchedOverheadRule?.id || '',
+              ruleId: matchedOverheadRule?.id || ruleSnapshot.id,
               ruleSnapshot,
             };
-          }),
-      );
+          });
+      setOverheadRows(loadedOverheadRows.length > 0 ? loadedOverheadRows : [createDefaultOverheadRow()]);
 
       setFindingRows(
         FINDING_FEATURE_ENABLED
@@ -6406,6 +6414,8 @@ const createDefaultVendorRow = (): VendorRow => ({
       setStlItem(null);
       setStlRemoved(false);
       setProcessRows([]);
+      setLaborRows([createDefaultLaborRow()]);
+      setOverheadRows([createDefaultOverheadRow()]);
       setVendorRows([createDefaultVendorRow()]);
       setShowGalleryPicker(false);
       setShowAddModal(true);
@@ -6585,6 +6595,41 @@ const createDefaultVendorRow = (): VendorRow => ({
       usedPacketIds.add(packetKey);
     }
 
+    const activeLaborRows: LaborRow[] = [];
+    for (let index = 0; index < laborRows.length; index += 1) {
+      const row = laborRows[index];
+      const hasLaborHead = row.laborHead.trim().length > 0;
+      const laborPerUnit = parseNum(row.laborPerUnit);
+      const unitQty = parseNum(row.unitQty);
+      const laborValue = getLaborValue(row);
+      const hasMeaningfulLaborValue = laborPerUnit > 0 || unitQty > 0 || laborValue > 0;
+      const hasCompleteRateQty = laborPerUnit > 0 && unitQty > 0;
+
+      if (!hasLaborHead && hasMeaningfulLaborValue) {
+        showAppAlert(`Please select Labor Head in Labor row ${index + 1}, or clear that row.`);
+        return;
+      }
+      if (laborPerUnit < 0) {
+        showAppAlert(`Labor/Unit cannot be negative in Labor row ${index + 1}.`);
+        return;
+      }
+      if (unitQty < 0) {
+        showAppAlert(`Unit/Qty cannot be negative in Labor row ${index + 1}.`);
+        return;
+      }
+      if (laborValue < 0) {
+        showAppAlert(`Labor Value cannot be negative in Labor row ${index + 1}.`);
+        return;
+      }
+      if (hasLaborHead) {
+        if (!hasCompleteRateQty && laborValue <= 0) {
+          showAppAlert(`Please enter Labor Value or Labor/Unit and Unit/Qty in Labor row ${index + 1}.`);
+          return;
+        }
+        activeLaborRows.push(row);
+      }
+    }
+
     const firstMetalMaster = findMasterOptionByValue(
       masterOptions.metalCaratages,
       metalRows.find((row) => row.goldColour.trim())?.goldColour,
@@ -6631,8 +6676,8 @@ const createDefaultVendorRow = (): VendorRow => ({
         const label = row.overheadHead.trim() || rule?.value || '';
         const value = getOverheadRowValue(row);
         if (!label) return null;
-        return {
-          overheadRuleId: rule?.id ? Number(rule.id) : undefined,
+          return {
+          overheadRuleId: toOptionalMasterId(rule?.id),
           overheadHead: label,
           overheadApplyMode: rule?.overheadApplyModeKey || rule?.overhead_apply_mode || rule?.overheadApplyMode || undefined,
           ratePercent: Math.max(0, rule?.ratePercent || 0),
@@ -6682,13 +6727,16 @@ const createDefaultVendorRow = (): VendorRow => ({
           amount: getGemValue(row),
         };
       }),
-      labors: laborRows.map((row) => ({
+      labors: activeLaborRows.map((row) => {
+        const laborPayloadValues = getLaborPayloadValues(row);
+        return {
           laborHeadId: getMasterIdByValue(masterOptions.laborHeads, row.laborHead),
           laborHead: row.laborHead.trim() || undefined,
-          laborPerUnit: parseNum(row.laborPerUnit),
-          unitQty: parseNum(row.unitQty),
-          laborValue: getLaborValue(row),
-        })),
+          laborPerUnit: laborPayloadValues.laborPerUnit,
+          unitQty: laborPayloadValues.unitQty,
+          laborValue: laborPayloadValues.laborValue,
+        };
+      }),
       overheads: overheadPayload,
       findings: FINDING_FEATURE_ENABLED
         ? findingRows.map((row) => ({
@@ -7350,6 +7398,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     filteredJewelrySizeOptions,
     filteredSubCategoryOptions,
     findingRows,
+    formatMoney,
     form,
     galleryItems,
     galleryUploadInputRef,
@@ -11016,7 +11065,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: 'Production', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
+            <div className="flex justify-between"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setVendorRows((prev) => [...prev, { id: makeId(), supplier: '', stockType: '', supplierStyleNo: '' }])}>+ Add New Line</button><Button type="button" onClick={() => setModal(null)}>Save</Button></div>
           </div>
         </Modal>
       )}

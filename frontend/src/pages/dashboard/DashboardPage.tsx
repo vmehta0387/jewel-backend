@@ -600,7 +600,7 @@ export default function DashboardPage() {
     if (!canViewPacketPrice) return;
     setPacketError(null);
     try {
-      const response = await api.get('/products/packets', {
+      const response = await api.get('/products/master-tables/PACKET', {
         params: { status: 'ALL', page: 1, limit: 200 },
       });
 
@@ -793,7 +793,7 @@ export default function DashboardPage() {
     setPacketSaving(true);
     setPacketError(null);
     try {
-      await api.put(`/products/packets/${selectedPacket.id}`, {
+      await api.put(`/products/master-tables/PACKET/${selectedPacket.id}`, {
         sellingPrice,
       });
       await fetchPackets();
@@ -829,7 +829,7 @@ export default function DashboardPage() {
     try {
       await Promise.all(
         updates.map(({ row, sellingPrice }) =>
-          api.put(`/products/packets/${row.id}`, {
+          api.put(`/products/master-tables/PACKET/${row.id}`, {
             sellingPrice,
           }),
         ),
@@ -1266,7 +1266,7 @@ export default function DashboardPage() {
                         }
                       }}
                       config={{
-                        apiSubPath: '/products/packets',
+                        apiSubPath: '/products/master-tables/PACKET',
                         options: packetDropdownOptions,
                         extraParams: { status: 'ALL' },
                         responsePath: 'data',

@@ -30,6 +30,7 @@ type DesignMasterType =
   | 'LABOR_RULE'
   | 'OVERHEAD_RULE'
   | 'FINDING_HEAD'
+  | 'PACKET'
   | 'PACKET_STONE'
   | 'PACKET_SHAPE'
   | 'PACKET_SIZE'
@@ -37,7 +38,7 @@ type DesignMasterType =
   | 'PACKET_COLOR'
   | 'PACKET_QUALITY';
 
-type MasterCategoryType = DesignMasterType | 'STONE_PACKET';
+type MasterCategoryType = DesignMasterType;
 type FindingPriceIn = 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES';
 type LaborApplyMode = 'FLAT' | 'PER_STONE' | 'PER_GRAM' | 'PER_GROUP';
 type OverheadApplyMode = 'per_of_materials' | 'flat';
@@ -324,7 +325,7 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
     hint: 'Stone quality options',
   },
   {
-    value: 'STONE_PACKET',
+    value: 'PACKET',
     label: 'Stone Packet',
     icon: 'PK',
     accentClass: 'bg-violet-50 text-violet-700 ring-violet-200',
@@ -400,7 +401,7 @@ function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
     );
   }
 
-  if (type === 'PACKET_STONE' || type === 'PACKET_SHAPE' || type === 'PACKET_SIZE' || type === 'PACKET_CUT' || type === 'PACKET_COLOR' || type === 'PACKET_QUALITY' || type === 'STONE_PACKET') {
+  if (type === 'PACKET' || type === 'PACKET_STONE' || type === 'PACKET_SHAPE' || type === 'PACKET_SIZE' || type === 'PACKET_CUT' || type === 'PACKET_COLOR' || type === 'PACKET_QUALITY') {
     return (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z" />
@@ -1722,7 +1723,7 @@ export default function DesignMastersPage() {
   const [selectedPacketQualityOption, setSelectedPacketQualityOption] = useState<MasterOption | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
-  const isPacketType = selectedType === 'STONE_PACKET';
+  const isPacketType = selectedType === 'PACKET';
 
   const selectedConfig = useMemo(
     () => MASTER_TYPE_CONFIGS.find((config) => config.value === selectedType) || MASTER_TYPE_CONFIGS[0],
@@ -1747,7 +1748,7 @@ export default function DesignMastersPage() {
       'PACKET_CUT',
       'PACKET_COLOR',
       'PACKET_QUALITY',
-      'STONE_PACKET',
+      'PACKET',
     ]);
 
     return [
@@ -1931,7 +1932,7 @@ export default function DesignMastersPage() {
     setLoading(true);
     try {
       if (isPacketType) {
-        const response = await api.get('/products/packets', {
+        const response = await api.get('/products/master-tables/PACKET', {
           params: {
             status: viewInactive ? 'INACTIVE' : 'ACTIVE',
             search: searchTerm || undefined,
@@ -2230,9 +2231,9 @@ export default function DesignMastersPage() {
       setSaving(true);
       try {
         if (editingPacket) {
-          await api.put(`/products/packets/${editingPacket.id}`, payload);
+          await api.put(`/products/master-tables/PACKET/${editingPacket.id}`, payload);
         } else {
-          await api.post('/products/packets', payload);
+          await api.post('/products/master-tables/PACKET', payload);
         }
         setShowModal(false);
         resetModalState();
@@ -2489,7 +2490,7 @@ export default function DesignMastersPage() {
     if (!canUpdateMasterStatus) return;
     try {
       if (isPacketType) {
-        await api.patch(`/products/packets/${row.id}/status`, { isActive: !row.isActive });
+        await api.patch(`/products/master-tables/PACKET/${row.id}/status`, { isActive: !row.isActive });
       } else {
         await api.patch(`/products/master-tables/${selectedType}/${row.id}/status`, { isActive: !row.isActive });
       }
@@ -2537,7 +2538,7 @@ export default function DesignMastersPage() {
     if (!canImportMaster) return;
     try {
       const response = await api.get(
-        isPacketType ? '/products/packets/export/template' : `/products/master-tables/${selectedType}/export/template`,
+        isPacketType ? '/products/master-tables/PACKET/export/template' : `/products/master-tables/${selectedType}/export/template`,
         {
           responseType: 'blob',
         },
@@ -2557,7 +2558,7 @@ export default function DesignMastersPage() {
   const handleExport = async () => {
     try {
       const response = await api.get(
-        isPacketType ? '/products/packets/export' : `/products/master-tables/${selectedType}/export`,
+        isPacketType ? '/products/master-tables/PACKET/export' : `/products/master-tables/${selectedType}/export`,
         {
           params: getCurrentParams(),
           responseType: 'blob',
@@ -2590,7 +2591,7 @@ export default function DesignMastersPage() {
     setImporting(true);
     try {
       const response = await api.post(
-        isPacketType ? '/products/packets/import' : `/products/master-tables/${selectedType}/import`,
+        isPacketType ? '/products/master-tables/PACKET/import' : `/products/master-tables/${selectedType}/import`,
         formData,
         {
           headers: { 'Content-Type': 'multipart/form-data' },

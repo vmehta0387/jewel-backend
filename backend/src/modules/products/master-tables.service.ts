@@ -11,6 +11,7 @@ import { FindMasterTableQueryDto, FindOneMasterTableDto, SaveMasterTableDto } fr
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY } from './constants/overhead-rule.constants';
 import { METAL_MASTER_IDS } from './constants/metal-master.constants';
+import { StonePacket, StonePacketPriceIn, StoneWeightUnit } from './entities/stone-packet.entity';
 
 type MasterEntityTarget = EntityTarget<ObjectLiteral>;
 type SerializedMaster = Record<string, unknown> & {
@@ -97,7 +98,11 @@ const UNIQUE_SCOPE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> 
 export class MasterTablesService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async list(masterType: DesignMasterType, query: FindMasterTableQueryDto) {
+  async list(masterType: DesignMasterType, query: FindMasterTableQueryDto): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.listPackets(query);
+    }
+
     const repo = this.getRepository(masterType);
     const alias = 'master';
     const qb = repo.createQueryBuilder(alias);
@@ -127,7 +132,11 @@ export class MasterTablesService {
     return rows.map((row) => this.serialize(row));
   }
 
-  async dropdown(masterType: DesignMasterType, query: FindMasterTableQueryDto) {
+  async dropdown(masterType: DesignMasterType, query: FindMasterTableQueryDto): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.listPackets(query);
+    }
+
     const repo = this.getRepository(masterType);
     const alias = 'master';
     const qb = repo
@@ -305,7 +314,11 @@ export class MasterTablesService {
     };
   }
 
-  async get(masterType: DesignMasterType, id: number) {
+  async get(masterType: DesignMasterType, id: number): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.getPacket(id);
+    }
+
     const repo = this.getRepository(masterType);
     const row = await repo.findOne({
       where: { id } as any,
@@ -317,7 +330,12 @@ export class MasterTablesService {
     return this.serialize(row);
   }
 
-  async findOne(masterType: DesignMasterType, payload: FindOneMasterTableDto): Promise<SerializedMaster | null> {
+  async findOne(masterType: DesignMasterType, payload: FindOneMasterTableDto): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      const id = this.toOptionalInt(payload.id);
+      return id ? this.getPacket(id) : null;
+    }
+
     const repo = this.getRepository(masterType);
     const alias = 'master';
     const qb = repo.createQueryBuilder(alias);
@@ -382,7 +400,11 @@ export class MasterTablesService {
     return row ? this.serialize(row) : null;
   }
 
-  async create(masterType: DesignMasterType, dto: SaveMasterTableDto, requester: AuthUser) {
+  async create(masterType: DesignMasterType, dto: SaveMasterTableDto, requester: AuthUser): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.createPacket(dto);
+    }
+
     const repo = this.getRepository(masterType);
     const data = this.pickWritable(masterType, dto);
     await this.validateBeforeSave(masterType, data);
@@ -394,7 +416,11 @@ export class MasterTablesService {
     return this.get(masterType, (saved as any).id);
   }
 
-  async update(masterType: DesignMasterType, id: number, dto: Partial<SaveMasterTableDto>, requester: AuthUser) {
+  async update(masterType: DesignMasterType, id: number, dto: Partial<SaveMasterTableDto>, requester: AuthUser): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.updatePacket(id, dto);
+    }
+
     const repo = this.getRepository(masterType);
     const row = await repo.findOne({ where: { id } as any });
     if (!row) {
@@ -411,7 +437,11 @@ export class MasterTablesService {
     return this.get(masterType, id);
   }
 
-  async setActive(masterType: DesignMasterType, id: number, isActive: boolean, requester: AuthUser) {
+  async setActive(masterType: DesignMasterType, id: number, isActive: boolean, requester: AuthUser): Promise<any> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.updatePacketStatus(id, isActive);
+    }
+
     const repo = this.getRepository(masterType);
     const row = await repo.findOne({ where: { id } as any });
     if (!row) {
@@ -424,6 +454,10 @@ export class MasterTablesService {
   }
 
   async exportTemplate(masterType: DesignMasterType): Promise<{ buffer: Buffer; fileName: string }> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.exportPacketTemplate();
+    }
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       workbook,
@@ -439,6 +473,10 @@ export class MasterTablesService {
   }
 
   async exportRows(masterType: DesignMasterType, query: FindMasterTableQueryDto): Promise<{ buffer: Buffer; fileName: string }> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.exportPackets(query);
+    }
+
     const rows = await this.list(masterType, { ...query, status: query.status || 'ALL' });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
@@ -457,6 +495,10 @@ export class MasterTablesService {
     file: { buffer?: Buffer; originalname?: string } | undefined,
     requester: AuthUser,
   ): Promise<{ totalRows: number; created: number; updated: number; failed: number; errors: string[] }> {
+    if (masterType === DesignMasterType.PACKET) {
+      return this.importPackets(file);
+    }
+
     if (!file?.buffer) {
       throw new BadRequestException('Import file is required');
     }
@@ -499,12 +541,473 @@ export class MasterTablesService {
     return { totalRows: rows.length, created, updated, failed: errors.length, errors };
   }
 
+  private async listPackets(query: FindMasterTableQueryDto) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+    const qb = this.packetQuery();
+    const status = query.status || 'ACTIVE';
+
+    if (status === 'ACTIVE') {
+      qb.where('packet.isActive = :isActive', { isActive: true });
+    } else if (status === 'INACTIVE') {
+      qb.where('packet.isActive = :isActive', { isActive: false });
+    }
+
+    if (query.stockType?.trim()) {
+      qb.andWhere('packet.stockType LIKE :stockType', { stockType: `%${query.stockType.trim()}%` });
+    }
+    if (query.barcode?.trim()) {
+      qb.andWhere('packet.barcode LIKE :barcode', { barcode: `%${query.barcode.trim()}%` });
+    }
+    if (query.stone?.trim()) {
+      qb.andWhere('stoneMaster.value LIKE :stone', { stone: `%${query.stone.trim()}%` });
+    }
+    if (query.shape?.trim()) {
+      qb.andWhere('shapeMaster.value LIKE :shape', { shape: `%${query.shape.trim()}%` });
+    }
+    if (query.size?.trim()) {
+      qb.andWhere('sizeMaster.value LIKE :size', { size: `%${query.size.trim()}%` });
+    }
+    if (query.cut?.trim()) {
+      qb.andWhere('cutMaster.value LIKE :cut', { cut: `%${query.cut.trim()}%` });
+    }
+    if (query.color?.trim()) {
+      qb.andWhere('colorMaster.value LIKE :color', { color: `%${query.color.trim()}%` });
+    }
+    if (query.quality?.trim()) {
+      qb.andWhere('qualityMaster.value LIKE :quality', { quality: `%${query.quality.trim()}%` });
+    }
+    if (query.search?.trim()) {
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where('packet.packetName LIKE :search', { search })
+            .orWhere('packet.barcode LIKE :search', { search })
+            .orWhere('stoneMaster.value LIKE :search', { search })
+            .orWhere('shapeMaster.value LIKE :search', { search })
+            .orWhere('sizeMaster.value LIKE :search', { search })
+            .orWhere('cutMaster.value LIKE :search', { search })
+            .orWhere('colorMaster.value LIKE :search', { search })
+            .orWhere('qualityMaster.value LIKE :search', { search });
+        }),
+      );
+    }
+
+    const total = await qb.clone().getCount();
+    const data = await qb
+      .orderBy('packet.createdAt', 'DESC')
+      .addOrderBy('packet.id', 'DESC')
+      .offset(skip)
+      .limit(limit)
+      .getMany();
+
+    return {
+      data: data.map((packet) => this.serializePacket(packet)),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  private async getPacket(id: number) {
+    const packet = await this.packetQuery()
+      .where('packet.id = :id', { id })
+      .getOne();
+    if (!packet) {
+      throw new NotFoundException('Packet not found');
+    }
+    return this.serializePacket(packet);
+  }
+
+  private async createPacket(dto: Partial<SaveMasterTableDto>) {
+    const packetName = this.normalizePacketName(dto.packetName);
+    const packetRepo = this.getPacketRepository();
+    const existing = await packetRepo.findOne({ where: { packetName } });
+    if (existing?.isActive) {
+      throw new ConflictException('Packet name already exists');
+    }
+
+    const pieces = this.resolvePacketPieces(dto.pieces, 1);
+    const weightPerPc = this.resolvePacketWeightPerPc({
+      weightPerPc: dto.weightPerPc,
+      weight: dto.weight,
+      pieces,
+    });
+    const barcode = await this.resolveStonePacketBarcode(dto.barcode, existing?.id);
+    const packet = existing || packetRepo.create();
+
+    Object.assign(packet, {
+      barcode,
+      packetName,
+      stockType: this.optionalString(dto.stockType) || 'COMPLETED',
+      stoneId: await this.resolvePacketMasterId(DesignMasterType.PACKET_STONE, dto.stoneId, dto.stone, 'stone'),
+      shapeId: await this.resolvePacketMasterId(DesignMasterType.PACKET_SHAPE, dto.shapeId, dto.shape, 'shape'),
+      sizeId: await this.resolvePacketMasterId(DesignMasterType.PACKET_SIZE, dto.sizeId, dto.size, 'size'),
+      cutId: await this.resolvePacketMasterId(DesignMasterType.PACKET_CUT, dto.cutId, dto.cut, 'cut'),
+      colorId: await this.resolvePacketMasterId(DesignMasterType.PACKET_COLOR, dto.colorId, dto.color, 'color'),
+      qualityId: await this.resolvePacketMasterId(DesignMasterType.PACKET_QUALITY, dto.qualityId, dto.quality, 'quality'),
+      priceIn: this.normalizePacketPriceIn(dto.priceIn),
+      sellingPrice: this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice'),
+      weightPerPc: this.roundTo3(weightPerPc),
+      pieces,
+      weight: this.roundTo3(weightPerPc * pieces),
+      weightUnit: this.normalizePacketWeightUnit(dto.weightUnit),
+      isActive: true,
+    });
+
+    const saved = await packetRepo.save(packet);
+    return this.getPacket(saved.id);
+  }
+
+  private async updatePacket(id: number, dto: Partial<SaveMasterTableDto>) {
+    const packetRepo = this.getPacketRepository();
+    const packet = await packetRepo.findOne({ where: { id } });
+    if (!packet) {
+      throw new NotFoundException('Packet not found');
+    }
+
+    if (dto.packetName !== undefined) {
+      const packetName = this.normalizePacketName(dto.packetName);
+      if (packetName !== packet.packetName) {
+        const duplicate = await packetRepo.findOne({ where: { packetName } });
+        if (duplicate && duplicate.id !== packet.id) {
+          throw new ConflictException('Packet name already exists');
+        }
+      }
+      packet.packetName = packetName;
+    }
+    if (dto.barcode !== undefined) packet.barcode = await this.resolveStonePacketBarcode(dto.barcode, packet.id);
+    if (dto.stockType !== undefined) packet.stockType = this.optionalString(dto.stockType);
+    if (dto.stoneId !== undefined || dto.stone !== undefined) packet.stoneId = await this.resolvePacketMasterId(DesignMasterType.PACKET_STONE, dto.stoneId, dto.stone, 'stone');
+    if (dto.shapeId !== undefined || dto.shape !== undefined) packet.shapeId = await this.resolvePacketMasterId(DesignMasterType.PACKET_SHAPE, dto.shapeId, dto.shape, 'shape');
+    if (dto.sizeId !== undefined || dto.size !== undefined) packet.sizeId = await this.resolvePacketMasterId(DesignMasterType.PACKET_SIZE, dto.sizeId, dto.size, 'size');
+    if (dto.cutId !== undefined || dto.cut !== undefined) packet.cutId = await this.resolvePacketMasterId(DesignMasterType.PACKET_CUT, dto.cutId, dto.cut, 'cut');
+    if (dto.colorId !== undefined || dto.color !== undefined) packet.colorId = await this.resolvePacketMasterId(DesignMasterType.PACKET_COLOR, dto.colorId, dto.color, 'color');
+    if (dto.qualityId !== undefined || dto.quality !== undefined) packet.qualityId = await this.resolvePacketMasterId(DesignMasterType.PACKET_QUALITY, dto.qualityId, dto.quality, 'quality');
+    if (dto.priceIn !== undefined) packet.priceIn = this.normalizePacketPriceIn(dto.priceIn);
+    if (dto.sellingPrice !== undefined) packet.sellingPrice = this.optionalNonNegativeNumber(dto.sellingPrice, 'sellingPrice');
+    if (dto.weightUnit !== undefined) packet.weightUnit = this.normalizePacketWeightUnit(dto.weightUnit);
+
+    const nextPieces = this.resolvePacketPieces(dto.pieces !== undefined ? dto.pieces : packet.pieces, packet.pieces || 1);
+    if (dto.weight !== undefined || dto.weightPerPc !== undefined || dto.pieces !== undefined) {
+      const nextWeightPerPc = this.resolvePacketWeightPerPc({
+        weightPerPc: dto.weightPerPc,
+        weight: dto.weight,
+        pieces: nextPieces,
+        fallbackWeightPerPc: packet.weightPerPc,
+        fallbackWeight: packet.weight,
+      });
+      packet.weightPerPc = this.roundTo3(nextWeightPerPc);
+      packet.weight = this.roundTo3(nextWeightPerPc * nextPieces);
+    }
+    packet.pieces = nextPieces;
+
+    const saved = await packetRepo.save(packet);
+    return this.getPacket(saved.id);
+  }
+
+  private async updatePacketStatus(id: number, isActive: boolean) {
+    const packetRepo = this.getPacketRepository();
+    const packet = await packetRepo.findOne({ where: { id } });
+    if (!packet) {
+      throw new NotFoundException('Packet not found');
+    }
+    packet.isActive = isActive;
+    const saved = await packetRepo.save(packet);
+    return this.getPacket(saved.id);
+  }
+
+  private async exportPacketTemplate(): Promise<{ buffer: Buffer; fileName: string }> {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet([this.buildPacketTemplateRow()], { header: this.packetImportHeaders() }),
+      'Packets',
+    );
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: 'stone-packets-import-template.xlsx',
+    };
+  }
+
+  private async exportPackets(query: FindMasterTableQueryDto): Promise<{ buffer: Buffer; fileName: string }> {
+    const result = await this.listPackets({ ...query, status: query.status || 'ALL', page: 1, limit: 5000 });
+    const workbook = XLSX.utils.book_new();
+    const rows = result.data.map((packet: Record<string, any>) => ({
+      Barcode: packet.barcode || '',
+      'Packet Name': packet.packetName,
+      Stone: packet.stoneMaster?.value || '',
+      Shape: packet.shapeMaster?.value || '',
+      Cut: packet.cutMaster?.value || '',
+      Size: packet.sizeMaster?.value || '',
+      Color: packet.colorMaster?.value || '',
+      Quality: packet.qualityMaster?.value || '',
+      'Price In': packet.priceIn,
+      'Selling Price': packet.sellingPrice ?? '',
+      'Weight Per Pc': packet.weightPerPc ?? '',
+      Pieces: packet.pieces,
+      Weight: packet.weight,
+      'Weight Unit': packet.weightUnit,
+      Status: packet.isActive ? 'ACTIVE' : 'INACTIVE',
+    }));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Packets');
+    return {
+      buffer: this.workbookToBuffer(workbook),
+      fileName: `stone-packets-export-${new Date().toISOString().slice(0, 10)}.xlsx`,
+    };
+  }
+
+  private async importPackets(file: { buffer?: Buffer; originalname?: string } | undefined) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Import file is required');
+    }
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) {
+      throw new BadRequestException('Import workbook has no sheets');
+    }
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' });
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const line = index + 2;
+      try {
+        const payload = this.packetPayloadFromImportRow(rows[index]);
+        const existing = await this.getPacketRepository().findOne({ where: { packetName: payload.packetName } });
+        const saved = existing ? await this.updatePacket(existing.id, payload) : await this.createPacket(payload);
+        existing ? updated += 1 : created += 1;
+        const isActive = this.parseBoolean(this.readCell(rows[index], 'Status'), true);
+        if (Boolean((saved as any).isActive) !== isActive) {
+          await this.updatePacketStatus((saved as any).id, isActive);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Row ${line}: ${message}`);
+      }
+    }
+
+    return { totalRows: rows.length, created, updated, failed: errors.length, errors };
+  }
+
   private getRepository(masterType: DesignMasterType): Repository<ObjectLiteral> {
     const entity = DESIGN_MASTER_TYPE_TABLE_MAP[masterType] as MasterEntityTarget | undefined;
     if (!entity) {
       throw new BadRequestException(`Unsupported master type: ${masterType}`);
     }
     return this.dataSource.getRepository(entity);
+  }
+
+  private getPacketRepository(): Repository<StonePacket> {
+    return this.dataSource.getRepository(StonePacket);
+  }
+
+  private packetQuery() {
+    return this.getPacketRepository()
+      .createQueryBuilder('packet')
+      .leftJoinAndSelect('packet.stoneMaster', 'stoneMaster')
+      .leftJoinAndSelect('packet.shapeMaster', 'shapeMaster')
+      .leftJoinAndSelect('packet.sizeMaster', 'sizeMaster')
+      .leftJoinAndSelect('packet.cutMaster', 'cutMaster')
+      .leftJoinAndSelect('packet.colorMaster', 'colorMaster')
+      .leftJoinAndSelect('packet.qualityMaster', 'qualityMaster');
+  }
+
+  private serializePacket(packet: StonePacket) {
+    return {
+      ...packet,
+      stoneMaster: this.serializePacketMaster(packet.stoneMaster),
+      shapeMaster: this.serializePacketMaster(packet.shapeMaster),
+      sizeMaster: this.serializePacketMaster(packet.sizeMaster),
+      cutMaster: this.serializePacketMaster(packet.cutMaster),
+      colorMaster: this.serializePacketMaster(packet.colorMaster),
+      qualityMaster: this.serializePacketMaster(packet.qualityMaster),
+    };
+  }
+
+  private serializePacketMaster(master: { id: number; value: string } | null | undefined) {
+    if (!master) {
+      return null;
+    }
+    return {
+      id: master.id,
+      name: master.value,
+      value: master.value,
+    };
+  }
+
+  private async resolvePacketMasterId(
+    masterType: DesignMasterType,
+    id: unknown,
+    value: unknown,
+    field: string,
+  ): Promise<number | null> {
+    const explicitId = this.toOptionalInt(id);
+    if (explicitId) {
+      await this.assertRelatedMasterExists(masterType, explicitId, `${field}Id`);
+      return explicitId;
+    }
+
+    const resolved = await this.resolveIdByValue(masterType, value);
+    if (!resolved) {
+      throw new BadRequestException(`${field} is required`);
+    }
+    return resolved;
+  }
+
+  private normalizePacketName(value: unknown): string {
+    const normalized = this.optionalString(value);
+    if (!normalized) {
+      throw new BadRequestException('packetName is required');
+    }
+    return normalized;
+  }
+
+  private normalizePacketPriceIn(value: unknown): StonePacketPriceIn {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized === StonePacketPriceIn.PCS ? StonePacketPriceIn.PCS : StonePacketPriceIn.WT;
+  }
+
+  private normalizePacketWeightUnit(value: unknown): StoneWeightUnit {
+    const normalized = String(value || '').trim().toUpperCase();
+    return normalized === StoneWeightUnit.GMS || normalized === 'GRAM' ? StoneWeightUnit.GMS : StoneWeightUnit.CTS;
+  }
+
+  private normalizeStonePacketBarcode(value: unknown): string | null {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+      return null;
+    }
+    if (!/^\d+$/.test(normalized)) {
+      throw new BadRequestException('Packet barcode must contain digits only');
+    }
+    return normalized;
+  }
+
+  private async resolveStonePacketBarcode(value: unknown, excludePacketId?: number): Promise<string | null> {
+    const normalized = this.normalizeStonePacketBarcode(value);
+    if (!normalized) {
+      return this.generateStonePacketBarcode();
+    }
+
+    const existing = await this.getPacketRepository().findOne({ where: { barcode: normalized } });
+    if (existing && existing.id !== excludePacketId) {
+      throw new ConflictException('Packet barcode already exists');
+    }
+    return normalized;
+  }
+
+  private async generateStonePacketBarcode(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = `${Date.now()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+      const existing = await this.getPacketRepository().findOne({ where: { barcode: candidate } });
+      if (!existing) {
+        return candidate;
+      }
+    }
+    throw new BadRequestException('Unable to generate a unique packet barcode');
+  }
+
+  private resolvePacketPieces(value: unknown, fallback = 1): number {
+    const parsed = value === undefined || value === null || value === '' ? Number(fallback) : Number(value);
+    return Math.max(1, Math.trunc(Number.isFinite(parsed) ? parsed : fallback));
+  }
+
+  private resolvePacketWeightPerPc(input: {
+    weightPerPc?: unknown;
+    weight?: unknown;
+    pieces: number;
+    fallbackWeightPerPc?: unknown;
+    fallbackWeight?: unknown;
+  }): number {
+    const explicitWeightPerPc = this.optionalNonNegativeNumber(input.weightPerPc, 'weightPerPc');
+    if (explicitWeightPerPc !== null) {
+      if (explicitWeightPerPc <= 0) {
+        throw new BadRequestException('weightPerPc must be greater than 0');
+      }
+      return explicitWeightPerPc;
+    }
+
+    const explicitWeight = this.optionalNonNegativeNumber(input.weight, 'weight');
+    if (explicitWeight !== null) {
+      if (explicitWeight <= 0) {
+        throw new BadRequestException('weight must be greater than 0');
+      }
+      return explicitWeight / Math.max(1, input.pieces);
+    }
+
+    const fallbackWeightPerPc = this.toOptionalNumber(input.fallbackWeightPerPc);
+    if (fallbackWeightPerPc !== null && fallbackWeightPerPc > 0) {
+      return fallbackWeightPerPc;
+    }
+
+    const fallbackWeight = this.toOptionalNumber(input.fallbackWeight);
+    if (fallbackWeight !== null && fallbackWeight > 0) {
+      return fallbackWeight / Math.max(1, input.pieces);
+    }
+
+    throw new BadRequestException('weightPerPc must be greater than 0');
+  }
+
+  private optionalNonNegativeNumber(value: unknown, field: string): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new BadRequestException(`${field} must be a valid non-negative number`);
+    }
+    return parsed;
+  }
+
+  private roundTo3(value: number): number {
+    return Math.round((value + Number.EPSILON) * 1000) / 1000;
+  }
+
+  private packetImportHeaders(): string[] {
+    return Object.keys(this.buildPacketTemplateRow());
+  }
+
+  private buildPacketTemplateRow() {
+    return {
+      Barcode: '100000000001',
+      'Packet Name': 'LD-ROU-400-DF-VV',
+      Stone: '',
+      Shape: '',
+      Cut: '',
+      Size: '',
+      Color: '',
+      Quality: '',
+      'Price In': 'WT',
+      'Selling Price': 500,
+      'Weight Per Pc': 0.24,
+      Pieces: 1,
+      Weight: 0.24,
+      'Weight Unit': 'CTS',
+      Status: 'ACTIVE',
+    };
+  }
+
+  private packetPayloadFromImportRow(row: Record<string, unknown>): Partial<SaveMasterTableDto> {
+    return {
+      barcode: this.readCell(row, 'Barcode') || undefined,
+      packetName: this.readCell(row, 'Packet Name') || this.readCell(row, 'packetName'),
+      stone: this.readCell(row, 'Stone') || undefined,
+      shape: this.readCell(row, 'Shape') || undefined,
+      cut: this.readCell(row, 'Cut') || undefined,
+      size: this.readCell(row, 'Size') || undefined,
+      color: this.readCell(row, 'Color') || undefined,
+      quality: this.readCell(row, 'Quality') || undefined,
+      priceIn: (this.readCell(row, 'Price In') || 'WT') as 'WT' | 'PCS',
+      sellingPrice: this.toOptionalNumber(this.readCell(row, 'Selling Price')) ?? undefined,
+      weightPerPc: this.toOptionalNumber(this.readCell(row, 'Weight Per Pc')) ?? undefined,
+      pieces: this.toOptionalNumber(this.readCell(row, 'Pieces')) ?? 1,
+      weight: this.toOptionalNumber(this.readCell(row, 'Weight')) ?? undefined,
+      weightUnit: (this.readCell(row, 'Weight Unit') || 'CTS') as 'CTS' | 'GMS',
+    };
   }
 
   private getImportHeaders(masterType: DesignMasterType): string[] {

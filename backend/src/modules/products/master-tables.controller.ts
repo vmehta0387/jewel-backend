@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   StreamableFile,
@@ -92,6 +93,7 @@ export class MasterTablesController {
   }
 
   @Patch(':masterType/:id')
+  @Put(':masterType/:id')
   update(
     @Param() params: MasterTableTypeParamDto,
     @Param('id', ParseIntPipe) id: number,

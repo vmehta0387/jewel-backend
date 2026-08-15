@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import Button from '../../../components/common/Button';
 import SmartDropdown from '../../../components/common/SmartDropdown';
 import ProductsModal from './ProductsModal';
@@ -29,6 +30,7 @@ interface DesignFormModalScope {
   filteredJewelrySizeOptions: any[];
   filteredSubCategoryOptions: any[];
   findingRows: any[];
+  formatMoney: (value: number) => string;
   form: any;
   galleryItems: any[];
   galleryUploadInputRef: { current: any };
@@ -116,6 +118,29 @@ interface DesignFormModalProps {
 }
 
 export default function DesignFormModal({ editingId, showAddModal, onClose, scope }: DesignFormModalProps) {
+  const modalContentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+
+    const handle = window.setTimeout(() => {
+      const candidates = Array.from(
+        modalContentRef.current?.querySelectorAll<HTMLElement>('input, select, textarea, button') || [],
+      );
+      const firstEditable = candidates.find((element) => {
+        const field = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement;
+        const isDisabled = field.disabled || element.getAttribute('aria-disabled') === 'true';
+        const isReadOnly = 'readOnly' in field && field.readOnly;
+        const isSkipped = element.tabIndex < 0 || element.getAttribute('data-autofocus-skip') === 'true';
+        const isVisible = element.offsetParent !== null || element.getClientRects().length > 0;
+        return !isDisabled && !isReadOnly && !isSkipped && isVisible;
+      });
+      firstEditable?.focus({ preventScroll: true });
+    }, 0);
+
+    return () => window.clearTimeout(handle);
+  }, [showAddModal, editingId]);
+
   if (!showAddModal) return null;
 
   const {
@@ -135,6 +160,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     filteredJewelrySizeOptions,
     filteredSubCategoryOptions,
     findingRows,
+    formatMoney,
     form,
     galleryItems,
     galleryUploadInputRef,
@@ -213,6 +239,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     updateMetalRow,
     vendorRows,
   } = scope;
+  const skipTabFocusProps = { tabIndex: -1, 'data-autofocus-skip': 'true' };
 
   return (
     <ProductsModal
@@ -230,7 +257,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
         </div>
       }
     >
-          <div className={`space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal ${lockedFieldSurfaceClass}`}>
+          <div ref={modalContentRef} className={`space-y-6 [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[0.13em] [&_label]:text-[#6f6358] [&_input]:h-10 [&_input]:rounded-lg [&_input]:border-[#d9ccbc] [&_input]:bg-white [&_input]:px-3 [&_input]:text-[13px] [&_input]:leading-5 [&_input]:text-[#2b241d] [&_input]:placeholder:text-[#9a8f83] [&_input]:shadow-none [&_input]:focus:border-[#bf944d] [&_input]:focus:ring-2 [&_input]:focus:ring-[#f0dfc2] [&_select]:h-10 [&_select]:rounded-lg [&_select]:border-[#d9ccbc] [&_select]:bg-white [&_select]:px-3 [&_select]:pr-8 [&_select]:text-[13px] [&_select]:leading-5 [&_select]:text-[#2b241d] [&_select]:shadow-none [&_select]:focus:border-[#bf944d] [&_select]:focus:ring-2 [&_select]:focus:ring-[#f0dfc2] [&_textarea]:rounded-lg [&_textarea]:border-[#d9ccbc] [&_textarea]:bg-white [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-[13px] [&_textarea]:leading-5 [&_textarea]:text-[#2b241d] [&_textarea]:placeholder:text-[#9a8f83] [&_textarea]:shadow-none [&_textarea]:focus:border-[#bf944d] [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-[#f0dfc2] [&_th]:normal-case [&_th]:tracking-normal ${lockedFieldSurfaceClass}`}>
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
               <p className="font-semibold text-red-600">*Required fields</p>
               <p className="font-semibold text-slate-700">Version: {getVersionDisplayValue(form.version || 'V1')}</p>
@@ -303,6 +330,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={Boolean(editingId) || creatingMasterType === 'JEWELRY_GROUP'}
                         onClick={() => addMasterFromDesign('JEWELRY_GROUP')}
@@ -333,6 +361,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={Boolean(editingId) || creatingMasterType === 'COLLECTION'}
                         onClick={() => addMasterFromDesign('COLLECTION')}
@@ -451,6 +480,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DESIGN_STATUS'}
                         onClick={() => addMasterFromDesign('DESIGN_STATUS')}
@@ -478,6 +508,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DIAMOND_TYPE'}
                         onClick={() => addMasterFromDesign('DIAMOND_TYPE')}
@@ -504,6 +535,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'DIAMOND_WEIGHT'}
                         onClick={() => addMasterFromDesign('DIAMOND_WEIGHT')}
@@ -530,6 +562,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'STAGE'}
                         onClick={() => addMasterFromDesign('STAGE')}
@@ -560,7 +593,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   <div className="xl:col-span-4">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Production / Purchase</label>
                     <SmartDropdown
-                      value={vendorRows[0]?.stockType || 'Production'}
+                      value={vendorRows[0]?.stockType || ''}
                       onChange={(value) => {
                         setVendorRows((prev) => {
                           const base = prev.length > 0 ? prev : [createDefaultVendorRow()];
@@ -602,6 +635,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'VENDOR_NAME'}
                         onClick={() => addMasterFromDesign('VENDOR_NAME')}
@@ -647,6 +681,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       />
                       <button
                         type="button"
+                        {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
                         disabled={creatingMasterType === 'TAG'}
                         onClick={() => addMasterFromDesign('TAG')}
@@ -893,11 +928,11 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                     </div>
                     <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                       <span>Labor Value</span>
-                      <span className="font-semibold text-slate-900">{costTotals.labor.toFixed(2)}</span>
+                      <span className="font-semibold text-slate-900">{formatMoney(costTotals.labor)}</span>
                     </div>
                     <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                       <span>Overhead Value</span>
-                      <span className="font-semibold text-slate-900">{costTotals.overhead.toFixed(2)}</span>
+                      <span className="font-semibold text-slate-900">{formatMoney(costTotals.overhead)}</span>
                     </div>
                     {FINDING_FEATURE_ENABLED ? (
                       <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
@@ -999,6 +1034,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                 />
                                 <button
                                   type="button"
+                                  {...skipTabFocusProps}
                                   className={inlineMasterJoinedAddButtonClass}
                                   disabled={creatingMasterType === 'METAL_CARATAGE'}
                                   onClick={() =>
@@ -1104,7 +1140,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                   value={item.packetId}
                                   onChange={(value, option) => void handlePacketSelectionChange(item.id, value, option)}
                                   config={{
-                                    apiSubPath: '/products/packets',
+                                    apiSubPath: '/products/master-tables/PACKET',
                                     options: buildPacketSearchOptions(item.id),
                                     extraParams: {
                                       status: 'ACTIVE',
@@ -1118,6 +1154,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                 />
                                 <button
                                   type="button"
+                                  {...skipTabFocusProps}
                                   className={inlineMasterJoinedAddButtonClass}
                                   onClick={() => {
                                     setPacketForm(defaultPacketForm);
@@ -1195,68 +1232,80 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                         <tr>
                           <th className="w-14 px-3 py-2">##</th>
                           <th className="w-[290px] px-3 py-2">Labor Head</th>
-                          <th className="w-[150px] px-3 py-2">Labor/Unit</th>
+                          <th className="w-[150px] px-3 py-2">Labor/Unit (USD)</th>
                           <th className="w-[120px] px-3 py-2">Unit/Qty</th>
-                          <th className="w-[150px] px-3 py-2">Labor Value</th>
+                          <th className="w-[150px] px-3 py-2">Labor Value (USD)</th>
                           <th className="w-[110px] px-3 py-2">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {laborRows.map((item, idx) => (
-                          <tr key={item.id}>
-                            <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
-                            <td className="px-3 py-2">
-                              <div className={inlineMasterControlGroupClass}>
-                                <SmartDropdown
-                                  className={`${inlineMasterDropdownClass} min-w-[14rem]`}
-                                  value={item.laborHead}
-                                  onChange={(value, option) => {
-                                    mergeMasterOption('LABOR_HEAD', option);
-                                    updateLaborRow(item.id, 'laborHead', value);
-                                  }}
-                                  config={masterDropdownConfig(
-                                    'LABOR_HEAD',
-                                    'Select Labor Head',
-                                    [
-                                      ...(!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead
-                                        ? [{ id: `current-${item.laborHead}`, value: item.laborHead, label: item.laborHead }]
-                                        : []),
-                                      ...toSmartDropdownOptions(masterOptions.laborHeads),
-                                    ],
-                                  )}
-                                />
-                                <button
-                                  type="button"
-                                  className={inlineMasterJoinedAddButtonClass}
-                                  disabled={creatingMasterType === 'LABOR_HEAD'}
-                                  onClick={() =>
-                                    addMasterFromDesign('LABOR_HEAD', (masterValue) => updateLaborRow(item.id, 'laborHead', masterValue))
-                                  }
-                                >
-                                  +
-                                </button>
-                              </div>
-                            </td>
-                            <td className="px-3 py-2"><input className="w-32 rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price Per Quantity" /></td>
-                            <td className="px-3 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
-                            <td className="px-3 py-2">
-                              <input
-                                className="w-32 cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
-                                value={getLaborValue(item).toFixed(2)}
-                                readOnly
-                                tabIndex={-1}
-                              />
-                            </td>
-                            <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
-                          </tr>
-                        ))}
-                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                          <td className="px-3 py-2 text-right" colSpan={4}>Total</td>
-                          <td className="px-3 py-2">{costTotals.labor.toFixed(2)}</td>
-                          <td className="px-2 py-2"></td>
-                        </tr>
+                        {laborRows.map((item, idx) => {
+                          const isLaborAutoCalculated = Number.parseFloat(item.laborPerUnit) > 0 && Number.parseFloat(item.unitQty) > 0;
+                          return (
+                              <tr key={item.id}>
+                                <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
+                                <td className="px-3 py-2">
+                                  <div className={inlineMasterControlGroupClass}>
+                                    <SmartDropdown
+                                      className={`${inlineMasterDropdownClass} min-w-[14rem]`}
+                                      value={item.laborHead}
+                                      onChange={(value, option) => {
+                                        mergeMasterOption('LABOR_HEAD', option);
+                                        updateLaborRow(item.id, 'laborHead', value);
+                                      }}
+                                      config={masterDropdownConfig(
+                                        'LABOR_HEAD',
+                                        'Select Labor Head',
+                                        [
+                                          ...(!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead
+                                            ? [{ id: `current-${item.laborHead}`, value: item.laborHead, label: item.laborHead }]
+                                            : []),
+                                          ...toSmartDropdownOptions(masterOptions.laborHeads),
+                                        ],
+                                      )}
+                                    />
+                                    <button
+                                      type="button"
+                                      {...skipTabFocusProps}
+                                      className={inlineMasterJoinedAddButtonClass}
+                                      disabled={creatingMasterType === 'LABOR_HEAD'}
+                                      onClick={() =>
+                                        addMasterFromDesign('LABOR_HEAD', (masterValue) => updateLaborRow(item.id, 'laborHead', masterValue))
+                                      }
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2"><input className="w-32 rounded border border-gray-300 px-2 py-1" value={item.laborPerUnit} onChange={(event) => updateLaborRow(item.id, 'laborPerUnit', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="Price Per Quantity" /></td>
+                                <td className="px-3 py-2"><input className="w-24 rounded border border-gray-300 px-2 py-1" value={item.unitQty} onChange={(event) => updateLaborRow(item.id, 'unitQty', event.target.value)} onFocus={handleNumericFieldFocus} onMouseUp={handleNumericFieldMouseUp} placeholder="0" /></td>
+                                <td className="px-3 py-2">
+                                  <input
+                                    className={`w-32 rounded border border-gray-300 px-2 py-1 ${
+                                      isLaborAutoCalculated ? 'cursor-not-allowed bg-[#c9d5e0] text-gray-700' : ''
+                                    }`}
+                                    value={isLaborAutoCalculated ? getLaborValue(item).toFixed(2) : item.laborValue}
+                                    readOnly={isLaborAutoCalculated}
+                                    tabIndex={isLaborAutoCalculated ? -1 : undefined}
+                                    onChange={(event) => updateLaborRow(item.id, 'laborValue', event.target.value)}
+                                    onFocus={handleNumericFieldFocus}
+                                    onMouseUp={handleNumericFieldMouseUp}
+                                    placeholder="0.00"
+                                  />
+                                </td>
+                                <td className="px-3 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setLaborRows((prev) => {
+                                  const next = prev.filter((row) => row.id !== item.id);
+                                  return next.length > 0 ? next : [{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }];
+                                })}>Remove</button></td>
+                              </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex items-center justify-end gap-4 border-t border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                    <span>Total</span>
+                    <span className="min-w-[8rem] text-right">{formatMoney(costTotals.labor)}</span>
                   </div>
                   <div className="flex justify-end border-t border-rose-200 bg-white px-3 py-2">
                     <button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-slate-200/80 bg-white px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-slate-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" onClick={() => setLaborRows((prev) => [...prev, { id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }])}>+ Add Line</button>
@@ -1305,6 +1354,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                   />
                                   <button
                                     type="button"
+                                    {...skipTabFocusProps}
                                     className={inlineMasterJoinedAddButtonClass}
                                     disabled={creatingMasterType === 'FINDING_HEAD'}
                                     onClick={() =>
@@ -1348,7 +1398,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           <th className="w-[290px] px-3 py-2">Overhead</th>
                           <th className="w-[130px] px-3 py-2">Mode</th>
                           <th className="w-[130px] px-3 py-2">Configured</th>
-                          <th className="w-[150px] px-3 py-2">Overhead Value</th>
+                          <th className="w-[150px] px-3 py-2">Overhead Value (USD)</th>
                           <th className="w-[110px] px-3 py-2">Action</th>
                         </tr>
                       </thead>
@@ -1362,7 +1412,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                         ) : (
                           overheadRows.map((item, idx) => {
                             const selectedRule = getOverheadRuleForRow(item);
-                            const modeLabel = getOverheadApplyModeLabel(selectedRule);
+                            const modeLabel = selectedRule ? getOverheadApplyModeLabel(selectedRule) : '';
                             return (
                               <tr key={item.id}>
                                 <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
@@ -1413,6 +1463,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                     />
                                     <button
                                       type="button"
+                                      {...skipTabFocusProps}
                                       className={inlineMasterJoinedAddButtonClass}
                                       disabled={creatingMasterType === 'OVERHEAD_RULE'}
                                       onClick={() =>
@@ -1437,11 +1488,11 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                   </div>
                                 </td>
                                 <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{modeLabel}</td>
-                                <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{getOverheadRuleConfiguredDisplay(selectedRule)}</td>
+                                <td className="whitespace-nowrap px-3 py-2 text-xs font-medium text-slate-600">{selectedRule ? getOverheadRuleConfiguredDisplay(selectedRule) : ''}</td>
                                 <td className="px-3 py-2">
                                   <input
                                     className="w-32 cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
-                                    value={getOverheadRowValue(item).toFixed(2)}
+                                    value={selectedRule ? getOverheadRowValue(item).toFixed(2) : ''}
                                     readOnly
                                     tabIndex={-1}
                                   />
@@ -1450,7 +1501,10 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                   <button
                                     type="button"
                                     className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40"
-                                    onClick={() => setOverheadRows((prev) => prev.filter((row) => row.id !== item.id))}
+                                    onClick={() => setOverheadRows((prev) => {
+                                      const next = prev.filter((row) => row.id !== item.id);
+                                      return next.length > 0 ? next : [{ id: makeId(), overheadHead: '', ruleId: '' }];
+                                    })}
                                   >
                                     Remove
                                   </button>
@@ -1459,13 +1513,12 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                             );
                           })
                         )}
-                        <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
-                          <td className="px-3 py-2 text-right" colSpan={4}>Total</td>
-                          <td className="px-3 py-2">{costTotals.overhead.toFixed(2)}</td>
-                          <td className="px-2 py-2"></td>
-                        </tr>
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex items-center justify-end gap-4 border-t border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                    <span>Total</span>
+                    <span className="min-w-[8rem] text-right">{formatMoney(costTotals.overhead)}</span>
                   </div>
                   <div className="flex justify-end border-t border-amber-200 bg-white px-3 py-2">
                     <button

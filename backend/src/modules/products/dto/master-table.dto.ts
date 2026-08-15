@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   DesignMasterType,
@@ -37,6 +37,51 @@ export class FindMasterTableQueryDto {
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
+
+  @IsOptional()
+  @IsString()
+  stockType?: string;
+
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
+  @IsOptional()
+  @IsString()
+  stone?: string;
+
+  @IsOptional()
+  @IsString()
+  shape?: string;
+
+  @IsOptional()
+  @IsString()
+  size?: string;
+
+  @IsOptional()
+  @IsString()
+  cut?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  quality?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5000)
+  limit?: number;
 }
 
 export class FindOneMasterTableDto {
@@ -101,8 +146,9 @@ export class FindOneMasterTableDto {
 }
 
 export class SaveMasterTableDto {
+  @IsOptional()
   @IsString()
-  value: string;
+  value?: string;
 
   @IsOptional()
   @IsString()
@@ -153,8 +199,8 @@ export class SaveMasterTableDto {
   metalCaratage?: string;
 
   @IsOptional()
-  @IsEnum(FindingPriceIn)
-  priceIn?: FindingPriceIn;
+  @IsIn([...Object.values(FindingPriceIn), 'WT', 'PCS'])
+  priceIn?: FindingPriceIn | 'WT' | 'PCS';
 
   @IsOptional()
   @Type(() => Number)
@@ -232,4 +278,100 @@ export class SaveMasterTableDto {
   @Type(() => Number)
   @IsNumber()
   flatAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
+  @IsOptional()
+  @IsString()
+  packetName?: string;
+
+  @IsOptional()
+  @IsString()
+  stockType?: string;
+
+  @IsOptional()
+  @IsString()
+  stone?: string;
+
+  @IsOptional()
+  @IsString()
+  shape?: string;
+
+  @IsOptional()
+  @IsString()
+  size?: string;
+
+  @IsOptional()
+  @IsString()
+  cut?: string;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  quality?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  stoneId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  shapeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sizeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  cutId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  colorId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  qualityId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  sellingPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  weightPerPc?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  pieces?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  weight?: number;
+
+  @IsOptional()
+  @IsIn(['CTS', 'GMS'])
+  weightUnit?: 'CTS' | 'GMS';
 }

@@ -765,7 +765,7 @@ export default function OrdersPage() {
 
   const loadPackets = async (): Promise<Record<string, string>> => {
     if (Object.keys(packetLookup).length) return packetLookup;
-    const response = await api.get('/products/packets', { params: { page: 1, limit: 200, status: 'ACTIVE' } });
+    const response = await api.get('/products/master-tables/PACKET', { params: { page: 1, limit: 200, status: 'ACTIVE' } });
     const packets = response.data?.data || [];
     const mapped: Record<string, string> = {};
     packets.forEach((packet: any) => {
