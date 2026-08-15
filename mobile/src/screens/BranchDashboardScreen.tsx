@@ -405,20 +405,30 @@ const BranchDashboardScreen = () => {
     loadDashboard();
   }, [loadDashboard, refreshing, statsLoading]);
 
-  const handleChangePhoto = useCallback(async () => {
+  const handlePickPhoto = useCallback(async (source: 'camera' | 'library') => {
     if (!token) return;
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow photo library access to upload a profile photo.');
+        Alert.alert(
+          'Permission needed',
+          source === 'camera'
+            ? 'Please allow camera access to take a profile photo.'
+            : 'Please allow photo library access to upload a profile photo.',
+        );
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const options = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [1, 1] as [number, number],
         quality: 0.8,
-      });
+      };
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
       setUploadingPhoto(true);
@@ -435,6 +445,14 @@ const BranchDashboardScreen = () => {
       setUploadingPhoto(false);
     }
   }, [token, refresh]);
+
+  const handleChangePhoto = useCallback(() => {
+    Alert.alert('Update Profile Photo', 'Choose a photo source.', [
+      { text: 'Take Photo', onPress: () => void handlePickPhoto('camera') },
+      { text: 'Choose from Library', onPress: () => void handlePickPhoto('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [handlePickPhoto]);
 
   const repName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'Sales Rep';
   const companyBranch = [user?.companyName, user?.branchName].filter(Boolean).join(' - ') || 'No branch assigned';

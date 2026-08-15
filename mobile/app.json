@@ -2,7 +2,7 @@
   "expo": {
     "name": "BLITZ NYC",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,13 +14,12 @@
       "imageHeight": 180
     },
     "ios": {
+      "version": "1.0.1",
       "supportsTablet": true,
-      "bundleIdentifier": "com.clariondiamonds.blitznyc",
-      "infoPlist": {
-        "NSFaceIDUsageDescription": "Use Face ID to securely sign in."
-      }
+      "bundleIdentifier": "com.clariondiamonds.blitznyc"
     },
     "android": {
+      "version": "1.0.1",
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "READ_EXTERNAL_STORAGE",
@@ -44,6 +43,14 @@
       }
     },
     "plugins": [
+      "./plugins/with-ios-privacy-permissions",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to take a photo for your profile picture.",
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to update your profile picture."
+        }
+      ],
       [
         "expo-splash-screen",
         {

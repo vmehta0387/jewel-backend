@@ -135,21 +135,30 @@ const UserProfileScreen = () => {
     return securityForm.password.trim().length > 0;
   }, [securityForm]);
 
-  // Profile Photo Upload Handler
-  const handlePickPhoto = async () => {
+  const handlePickPhoto = async (source: 'camera' | 'library') => {
     if (!token) return;
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Permission needed', 'Please allow photo library access to upload a profile photo.');
+        Alert.alert(
+          'Permission needed',
+          source === 'camera'
+            ? 'Please allow camera access to take a profile photo.'
+            : 'Please allow photo library access to upload a profile photo.',
+        );
         return;
       }
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const options = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [1, 1] as [number, number],
         quality: 0.8,
-      });
+      };
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
 
@@ -166,6 +175,14 @@ const UserProfileScreen = () => {
     } finally {
       setUploadingPhoto(false);
     }
+  };
+
+  const handleChangePhoto = () => {
+    Alert.alert('Update Profile Photo', 'Choose a photo source.', [
+      { text: 'Take Photo', onPress: () => void handlePickPhoto('camera') },
+      { text: 'Choose from Library', onPress: () => void handlePickPhoto('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   // Profile Photo Remove Handler
@@ -315,7 +332,7 @@ const UserProfileScreen = () => {
           </View>
 
           <View style={styles.avatarControls}>
-            <TouchableOpacity style={styles.controlBtn} onPress={handlePickPhoto} disabled={uploadingPhoto}>
+            <TouchableOpacity style={styles.controlBtn} onPress={handleChangePhoto} disabled={uploadingPhoto}>
               <Ionicons name="attach-outline" size={16} color="#FFFFFF" />
             </TouchableOpacity>
 
