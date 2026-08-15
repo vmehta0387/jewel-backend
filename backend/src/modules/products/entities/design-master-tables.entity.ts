@@ -9,11 +9,54 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import {
-  DesignMasterType,
-  FindingPriceIn,
-  LaborApplyMode,
-} from './design-master.entity';
+export enum DesignMasterType {
+  JEWELRY_GROUP = 'JEWELRY_GROUP',
+  COLLECTION = 'COLLECTION',
+  JEWELRY_SIZE = 'JEWELRY_SIZE',
+  TAG = 'TAG',
+  DESIGN_STATUS = 'DESIGN_STATUS',
+  STAGE = 'STAGE',
+  METAL_NAME = 'METAL_NAME',
+  METAL_COLOR = 'METAL_COLOR',
+  METAL_PURITY = 'METAL_PURITY',
+  METAL_CARATAGE = 'METAL_CARATAGE',
+  GOLD_COLOUR = 'GOLD_COLOUR',
+  DIAMOND_TYPE = 'DIAMOND_TYPE',
+  DIAMOND_SPREAD = 'DIAMOND_SPREAD',
+  DIAMOND_WEIGHT = 'DIAMOND_WEIGHT',
+  DIAMOND_QUALITY = 'DIAMOND_QUALITY',
+  VENDOR_NAME = 'VENDOR_NAME',
+  LABOR_HEAD = 'LABOR_HEAD',
+  LABOR_RULE = 'LABOR_RULE',
+  OVERHEAD_RULE = 'OVERHEAD_RULE',
+  FINDING_HEAD = 'FINDING_HEAD',
+  PACKET_STONE = 'PACKET_STONE',
+  PACKET_SHAPE = 'PACKET_SHAPE',
+  PACKET_SIZE = 'PACKET_SIZE',
+  PACKET_CUT = 'PACKET_CUT',
+  PACKET_COLOR = 'PACKET_COLOR',
+  PACKET_QUALITY = 'PACKET_QUALITY',
+}
+
+export enum FindingPriceIn {
+  PIECES = 'PIECES',
+  GRAM = 'GRAM',
+  PAIR = 'PAIR',
+  INCHES = 'INCHES',
+}
+
+export enum LaborApplyMode {
+  FLAT = 'FLAT',
+  PER_STONE = 'PER_STONE',
+  PER_GRAM = 'PER_GRAM',
+  PER_GROUP = 'PER_GROUP',
+}
+
+export enum OverheadApplyMode {
+  PERCENT_MATERIALS = 'PERCENT_MATERIALS',
+  PERCENT_BOM_SUBTOTAL = 'PERCENT_BOM_SUBTOTAL',
+  FLAT = 'FLAT',
+}
 
 export enum OverheadRuleApplyMode {
   PER_OF_MATERIALS = 'per_of_materials',

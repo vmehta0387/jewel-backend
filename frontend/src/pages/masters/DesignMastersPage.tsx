@@ -2034,6 +2034,11 @@ export default function DesignMastersPage() {
     setFormMetalName(optionId(row.metalId) || masterRefId(row.metal) || '');
     setFormMetalColor(optionId(row.metalColorId) || masterRefId(row.metalColor) || '');
     setFormMetalPurity(optionId(row.metalPurityId) || masterRefId(row.metalPurity) || '');
+    const resolvedRowPurityPercentage =
+      row.purityPercentage ??
+      (row.metalPurity && typeof row.metalPurity === 'object'
+        ? row.metalPurity.purityPercentage
+        : null);
     setSelectedMetalOption(
       masterRefOption(row.metalId, row.metal, {
         marketPricePerOunce: row.marketPricePerOunce,
@@ -2049,12 +2054,12 @@ export default function DesignMastersPage() {
     setSelectedMetalPurityOption(
       masterRefOption(row.metalPurityId, row.metalPurity, {
         metalId: row.metalId || masterRefId(row.metal) || undefined,
-        purityPercentage: row.purityPercentage,
+        purityPercentage: resolvedRowPurityPercentage,
       }),
     );
     setFormPurityPercentage(
-      row.purityPercentage !== null && row.purityPercentage !== undefined
-        ? String(row.purityPercentage)
+      resolvedRowPurityPercentage !== null && resolvedRowPurityPercentage !== undefined
+        ? String(resolvedRowPurityPercentage)
         : '',
     );
     setFormMarketPricePerOunce(

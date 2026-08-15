@@ -1,7 +1,11 @@
 import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DesignMasterType, FindingPriceIn, LaborApplyMode } from '../entities/design-master.entity';
-import { OverheadRuleApplyMode } from '../entities/design-master-tables.entity';
+import {
+  DesignMasterType,
+  FindingPriceIn,
+  LaborApplyMode,
+  OverheadRuleApplyMode,
+} from '../entities/design-master-tables.entity';
 
 export class MasterTableTypeParamDto {
   @IsEnum(DesignMasterType)
@@ -29,6 +33,67 @@ export class FindMasterTableQueryDto {
   @Type(() => Boolean)
   @IsBoolean()
   includeInactive?: boolean;
+
+  @IsOptional()
+  @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
+  status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
+}
+
+export class FindOneMasterTableDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  id?: number;
+
+  @IsOptional()
+  @IsString()
+  value?: string;
+
+  @IsOptional()
+  @IsString()
+  aliasName?: string;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  jewelryGroupId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  metalId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  metalColorId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  metalPurityId?: number;
+
+  @IsOptional()
+  @IsString()
+  findingNo?: string;
+
+  @IsOptional()
+  @IsEnum(OverheadRuleApplyMode)
+  overheadApplyMode?: OverheadRuleApplyMode;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isActive?: boolean;
 
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])

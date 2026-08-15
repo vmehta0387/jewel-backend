@@ -8,7 +8,6 @@ import {
   PrimaryColumn,
 } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { DesignMaster } from './design-master.entity';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('metal_price_history')
@@ -30,10 +29,6 @@ export class MetalPriceHistory {
 
   @Column({ name: 'changed_by', nullable: true })
   changedBy: string | null;
-
-  @ManyToOne(() => DesignMaster, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'master_id' })
-  master: DesignMaster;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'changed_by' })

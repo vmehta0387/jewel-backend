@@ -17,7 +17,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Design } from '../products/entities/design.entity';
 import { DesignMetal } from '../products/entities/design-metal.entity';
 import { DesignGemstone } from '../products/entities/design-gemstone.entity';
-import { DesignMasterType } from '../products/entities/design-master.entity';
+import { DesignMasterType } from '../products/entities/design-master-tables.entity';
 import { MasterTablesService } from '../products/master-tables.service';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { Company } from '../companies/entities/company.entity';

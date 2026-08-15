@@ -1,13 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
+import { Brackets, DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import * as XLSX from 'xlsx';
-import { DesignMasterType } from './entities/design-master.entity';
 import {
+  DesignMasterType,
   DESIGN_MASTER_TYPE_TABLE_MAP,
   MasterTableEntity,
   OverheadRuleApplyMode,
 } from './entities/design-master-tables.entity';
-import { FindMasterTableQueryDto, SaveMasterTableDto } from './dto/master-table.dto';
+import { FindMasterTableQueryDto, FindOneMasterTableDto, SaveMasterTableDto } from './dto/master-table.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { OVERHEAD_RULE_APPLY_MODE_NAME_BY_KEY } from './constants/overhead-rule.constants';
 import { METAL_MASTER_IDS } from './constants/metal-master.constants';
@@ -144,6 +144,10 @@ export class MasterTablesService {
       qb.addSelect([`${alias}.metalId`, 'metalMaster.id', 'metalMaster.value', 'metalMaster.aliasName']);
     }
 
+    if (masterType === DesignMasterType.METAL_PURITY) {
+      qb.addSelect([`${alias}.purityPercentage`]);
+    }
+
     if (masterType === DesignMasterType.METAL_NAME) {
       qb.addSelect([
         `${alias}.marketPricePerOunce`,
@@ -256,6 +260,10 @@ export class MasterTablesService {
           option.metalName = this.serializeJoined(row.metalMaster)?.value ?? null;
         }
 
+        if (masterType === DesignMasterType.METAL_PURITY) {
+          option.purityPercentage = row.purityPercentage ?? null;
+        }
+
         if (masterType === DesignMasterType.OVERHEAD_RULE) {
           const overheadApplyMode = row.overheadApplyMode as OverheadRuleApplyMode | null | undefined;
           const overheadApplyModeName = overheadApplyMode
@@ -307,6 +315,71 @@ export class MasterTablesService {
       throw new NotFoundException('Master record not found');
     }
     return this.serialize(row);
+  }
+
+  async findOne(masterType: DesignMasterType, payload: FindOneMasterTableDto): Promise<SerializedMaster | null> {
+    const repo = this.getRepository(masterType);
+    const alias = 'master';
+    const qb = repo.createQueryBuilder(alias);
+    const hasCondition = [
+      payload.id,
+      payload.value,
+      payload.aliasName,
+      payload.search,
+      payload.jewelryGroupId,
+      payload.metalId,
+      payload.metalColorId,
+      payload.metalPurityId,
+      payload.findingNo,
+      payload.overheadApplyMode,
+    ].some((value) => value !== undefined && value !== null && value !== '');
+
+    if (!hasCondition) {
+      throw new BadRequestException('At least one find condition is required');
+    }
+
+    for (const relation of MASTER_RELATIONS[masterType] || []) {
+      qb.leftJoinAndSelect(`${alias}.${relation}`, relation);
+    }
+
+    const id = this.toOptionalInt(payload.id);
+    if (id) {
+      qb.andWhere(`${alias}.id = :id`, { id });
+    }
+
+    const lookupText = this.optionalString(payload.value)
+      || this.optionalString(payload.aliasName)
+      || this.optionalString(payload.search);
+    if (lookupText) {
+      const normalized = lookupText.toLowerCase();
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where(`${alias}.normalizedValue = :normalized`, { normalized })
+            .orWhere(`${alias}.normalizedAlias = :normalized`, { normalized })
+            .orWhere(`${alias}.value = :lookupText`, { lookupText })
+            .orWhere(`${alias}.aliasName = :lookupText`, { lookupText });
+        }),
+      );
+    }
+
+    this.applyFindOneFilter(qb, alias, 'jewelryGroupId', payload.jewelryGroupId);
+    this.applyFindOneFilter(qb, alias, 'metalId', payload.metalId);
+    this.applyFindOneFilter(qb, alias, 'metalColorId', payload.metalColorId);
+    this.applyFindOneFilter(qb, alias, 'metalPurityId', payload.metalPurityId);
+    this.applyFindOneFilter(qb, alias, 'findingNo', payload.findingNo);
+    this.applyFindOneFilter(qb, alias, 'overheadApplyMode', payload.overheadApplyMode);
+
+    if (payload.status === 'ACTIVE') {
+      qb.andWhere(`${alias}.isActive = :isActive`, { isActive: true });
+    } else if (payload.status === 'INACTIVE') {
+      qb.andWhere(`${alias}.isActive = :isActive`, { isActive: false });
+    } else if (payload.isActive !== undefined && payload.status !== 'ALL') {
+      qb.andWhere(`${alias}.isActive = :isActive`, { isActive: payload.isActive });
+    }
+
+    const row = await qb.orderBy(`${alias}.id`, 'ASC').getOne();
+    return row ? this.serialize(row) : null;
   }
 
   async create(masterType: DesignMasterType, dto: SaveMasterTableDto, requester: AuthUser) {
@@ -762,6 +835,30 @@ export class MasterTablesService {
       return trimmed.length > 0 ? trimmed : null;
     }
     return value;
+  }
+
+  private applyFindOneFilter(
+    qb: ReturnType<Repository<ObjectLiteral>['createQueryBuilder']>,
+    alias: string,
+    field: string,
+    value: unknown,
+  ): void {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+
+    if (field.endsWith('Id')) {
+      const id = this.toOptionalInt(value);
+      if (id) {
+        qb.andWhere(`${alias}.${field} = :${field}`, { [field]: id });
+      }
+      return;
+    }
+
+    const text = this.optionalString(value);
+    if (text) {
+      qb.andWhere(`${alias}.${field} = :${field}`, { [field]: text });
+    }
   }
 
   private optionalString(value: unknown): string | null {

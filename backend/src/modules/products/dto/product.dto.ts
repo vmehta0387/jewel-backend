@@ -1338,117 +1338,6 @@ export class CreateStonePacketDto {
   weightUnit?: 'CTS' | 'GMS';
 }
 
-export class UpdateStonePacketDto {
-  @IsString()
-  @IsOptional()
-  barcode?: string;
-
-  @IsString()
-  @IsOptional()
-  packetName?: string;
-
-  @IsString()
-  @IsOptional()
-  stockType?: string;
-
-  @IsString()
-  @IsOptional()
-  stone?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  stoneId?: number;
-
-  @IsString()
-  @IsOptional()
-  shape?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  shapeId?: number;
-
-  @IsString()
-  @IsOptional()
-  size?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  sizeId?: number;
-
-  @IsString()
-  @IsOptional()
-  cut?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  cutId?: number;
-
-  @IsString()
-  @IsOptional()
-  color?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  colorId?: number;
-
-  @IsString()
-  @IsOptional()
-  quality?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  qualityId?: number;
-
-  @IsIn(['WT', 'PCS'])
-  @IsOptional()
-  priceIn?: 'WT' | 'PCS';
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  sellingPrice?: number;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0.000001)
-  @IsOptional()
-  weightPerPc?: number;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  pieces?: number;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0.000001)
-  @IsOptional()
-  weight?: number;
-
-  @IsIn(['CTS', 'GMS'])
-  @IsOptional()
-  weightUnit?: 'CTS' | 'GMS';
-}
-
-export class UpdateStonePacketStatusDto {
-  @Type(() => Boolean)
-  @IsBoolean()
-  isActive: boolean;
-}
 
 export enum DesignMasterType {
   JEWELRY_GROUP = 'JEWELRY_GROUP',
@@ -1513,143 +1402,143 @@ export class FindDesignMastersQueryDto {
   search?: string;
 }
 
-export class CreateDesignMasterDto {
-  @IsEnum(DesignMasterType)
-  masterType: DesignMasterType;
+// export class CreateDesignMasterDto {
+//   @IsEnum(DesignMasterType)
+//   masterType: DesignMasterType;
 
-  @IsString()
-  value: string;
+//   @IsString()
+//   value: string;
 
-  @IsString()
-  @IsOptional()
-  aliasName?: string;
+//   @IsString()
+//   @IsOptional()
+//   aliasName?: string;
 
-  @IsString()
-  @IsOptional()
-  jewelryGroupId?: string;
+//   @IsString()
+//   @IsOptional()
+//   jewelryGroupId?: string;
 
-  @IsString()
-  @IsOptional()
-  description?: string;
+//   @IsString()
+//   @IsOptional()
+//   description?: string;
 
-  @IsString()
-  @IsOptional()
-  vendorEmail?: string;
+//   @IsString()
+//   @IsOptional()
+//   vendorEmail?: string;
 
-  @IsString()
-  @IsOptional()
-  findingNo?: string;
+//   @IsString()
+//   @IsOptional()
+//   findingNo?: string;
 
-  @IsString()
-  @IsOptional()
-  metalCaratage?: string;
+//   @IsString()
+//   @IsOptional()
+//   metalCaratage?: string;
 
-  @IsEnum(FindingPriceIn)
-  @IsOptional()
-  priceIn?: FindingPriceIn;
+//   @IsEnum(FindingPriceIn)
+//   @IsOptional()
+//   priceIn?: FindingPriceIn;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  pricePerUnit?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   pricePerUnit?: number;
 
-  @IsString()
-  @IsOptional()
-  dimensions?: string;
+//   @IsString()
+//   @IsOptional()
+//   dimensions?: string;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  weightPerUnit?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   weightPerUnit?: number;
 
-  @IsString()
-  @IsOptional()
-  metalName?: string;
+//   @IsString()
+//   @IsOptional()
+//   metalName?: string;
 
-  @IsString()
-  @IsOptional()
-  metalColor?: string;
+//   @IsString()
+//   @IsOptional()
+//   metalColor?: string;
 
-  @IsString()
-  @IsOptional()
-  metalPurity?: string;
+//   @IsString()
+//   @IsOptional()
+//   metalPurity?: string;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  purityPercentage?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   purityPercentage?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  marketPricePerOunce?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   marketPricePerOunce?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  marketPricePerGm?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   marketPricePerGm?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  livePricePerGm?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   livePricePerGm?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  defaultWastagePercent?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   defaultWastagePercent?: number;
 
-  @IsEnum(LaborApplyMode)
-  @IsOptional()
-  laborApplyMode?: LaborApplyMode;
+//   @IsEnum(LaborApplyMode)
+//   @IsOptional()
+//   laborApplyMode?: LaborApplyMode;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  flatCost?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   flatCost?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  ratePerStone?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   ratePerStone?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  ratePerGram?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   ratePerGram?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  ratePerGroup?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   ratePerGroup?: number;
 
-  @IsEnum(OverheadApplyMode)
-  @IsOptional()
-  overheadApplyMode?: OverheadApplyMode;
+//   @IsEnum(OverheadApplyMode)
+//   @IsOptional()
+//   overheadApplyMode?: OverheadApplyMode;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  ratePercent?: number;
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   ratePercent?: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  @IsOptional()
-  flatAmount?: number;
-}
+//   @Type(() => Number)
+//   @IsNumber()
+//   @Min(0)
+//   @IsOptional()
+//   flatAmount?: number;
+// }
 
 export class UpdateDesignMasterDto {
   @IsString()

@@ -21,7 +21,6 @@ import { MetalPriceHistory } from './entities/metal-price-history.entity';
 import { StonePacket } from './entities/stone-packet.entity';
 import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
-import { DesignMaster } from './entities/design-master.entity';
 import { DESIGN_MASTER_TABLE_ENTITIES } from './entities/design-master-tables.entity';
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
@@ -46,7 +45,6 @@ import { PricingModule } from '../pricing/pricing.module';
       DesignHistory,
       MetalPriceHistory,
       StonePacket,
-      DesignMaster,
       ...DESIGN_MASTER_TABLE_ENTITIES,
       DesignMediaLibrary,
       GlobalBasePrice,

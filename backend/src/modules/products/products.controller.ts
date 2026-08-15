@@ -17,12 +17,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
-  CreateStonePacketDto,
-  CreateDesignMasterDto,
   GetNextDesignNoQueryDto,
   GetNextDesignVersionQueryDto,
-  FindPacketsQueryDto,
-  FindDesignMastersQueryDto,
   FindDesignMediaLibraryQueryDto,
   FindMobileCatalogProductsQueryDto,
   FindMobileTrendingProductsQueryDto,
@@ -35,10 +31,6 @@ import {
   CreateProductDto,
   UpdateProductDto,
   UpdateProductStatusDto,
-  UpdateDesignMasterDto,
-  UpdateDesignMasterStatusDto,
-  UpdateStonePacketDto,
-  UpdateStonePacketStatusDto,
   UploadStlFileDto,
 } from './dto/product.dto';
 import { ProductsService } from './products.service';
@@ -55,28 +47,8 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 @TaskPermissions(TaskPermission.DESIGN_ENTRIES)
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService) { }
 
-  @Post()
-  create(@Body() dto: CreateProductDto, @Request() req: { user: AuthUser }) {
-    return this.productsService.create(dto, req.user);
-  }
-
-  @Get()
-  @TaskPermissions()
-  findAll(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
-    return this.productsService.findAll(query, req.user);
-  }
-
-  @Get('dashboard-summary')
-  @TaskPermissions()
-  @ActionPermissions()
-  getDashboardSummary(
-    @Query() query: FindProductsQueryDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.getDashboardSummary(query, req.user);
-  }
 
   @Get('mobile/trending')
   @TaskPermissions()
@@ -98,19 +70,6 @@ export class ProductsController {
     return this.productsService.findMobileCatalog(query, req.user);
   }
 
-  @Get('mobile/masters')
-  @TaskPermissions()
-  @ActionPermissions()
-  findMobileMasters(@Query() query: FindDesignMastersQueryDto) {
-    return this.productsService.findMasters(query);
-  }
-
-  @Get('lookup/masters')
-  @TaskPermissions()
-  @ActionPermissions()
-  findLookupMasters(@Query() query: FindDesignMastersQueryDto) {
-    return this.productsService.findMasters(query);
-  }
 
   @Get('mobile/category-counts')
   @TaskPermissions()
@@ -143,6 +102,17 @@ export class ProductsController {
   ) {
     return this.productsService.resolveMobileConfigurator(id, query, req.user);
   }
+
+  @Get('dashboard-summary')
+  @TaskPermissions()
+  @ActionPermissions()
+  getDashboardSummary(
+    @Query() query: FindProductsQueryDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.getDashboardSummary(query, req.user);
+  }
+
 
   @Get('export/template')
   async exportDesignTemplate() {
@@ -180,148 +150,6 @@ export class ProductsController {
     return this.productsService.importDesigns(file, req.user);
   }
 
-  @Get('packets')
-  @TaskPermissions()
-  @ActionPermissions()
-  findPackets(@Query() query: FindPacketsQueryDto) {
-    return this.productsService.findPackets(query);
-  }
-
-  @Get('media-library')
-  @TaskPermissions()
-  @ActionPermissions()
-  findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
-    return this.productsService.findMediaLibrary(query);
-  }
-
-  @Delete('media-library/:id')
-  removeMediaLibraryItem(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    return this.productsService.removeMediaLibraryItem(id, req.user);
-  }
-
-  @Get('packets/export/template')
-  async exportPacketTemplate() {
-    const file = await this.productsService.exportPacketTemplate();
-    return new StreamableFile(file.buffer, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="${file.fileName}"`,
-    });
-  }
-
-  @Get('packets/export')
-  async exportPackets(@Query() query: FindPacketsQueryDto) {
-    const file = await this.productsService.exportPackets(query);
-    return new StreamableFile(file.buffer, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="${file.fileName}"`,
-    });
-  }
-
-  @Post('packets/import')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
-  importPackets(
-    @UploadedFile() file: { buffer?: Buffer; originalname?: string },
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.importPackets(file, req.user);
-  }
-
-  @Post('packets')
-  createPacket(@Body() dto: CreateStonePacketDto, @Request() req: { user: AuthUser }) {
-    return this.productsService.createPacket(dto, req.user);
-  }
-
-  @Get('packets/:id')
-  @TaskPermissions()
-  @ActionPermissions()
-  getPacket(@Param('id') id: string) {
-    return this.productsService.getPacket(id);
-  }
-
-  @Post('gallery-files')
-  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 50 * 1024 * 1024 } }))
-  uploadGalleryFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
-    return this.productsService.uploadGalleryFiles(files || [], req);
-  }
-
-  @Post('stl-files/upload')
-  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: 100 * 1024 * 1024 } }))
-  uploadStlFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
-    return this.productsService.uploadStlFiles(files || [], req);
-  }
-
-  @Get(':id/stl-file')
-  async getStlFile(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    const file = await this.productsService.getStlFileContent(id, req.user);
-    return new StreamableFile(file.buffer, {
-      type: 'model/stl',
-      disposition: `inline; filename="${file.fileName}"`,
-    });
-  }
-
-  @Put('packets/:id')
-  @TaskPermissions()
-  @AnyActionPermissions('master.edit', 'dashboard.price_activity.packet_price.update')
-  updatePacket(
-    @Param('id') id: string,
-    @Body() dto: UpdateStonePacketDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.updatePacket(id, dto, req.user);
-  }
-
-  @Patch('packets/:id/status')
-  @TaskPermissions()
-  @ActionPermissions('master.status_update')
-  updatePacketStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateStonePacketStatusDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.updatePacketStatus(id, dto.isActive, req.user);
-  }
-
-  @Get('masters')
-  @TaskPermissions()
-  @AnyActionPermissions(
-    'master.view',
-    'dashboard.price_activity.view',
-    'dashboard.price_activity.gold_price.view',
-  )
-  findMasters(@Query() query: FindDesignMastersQueryDto) {
-    return this.productsService.findMasters(query);
-  }
-
-  @Get('masters/export/template')
-  @ActionPermissions('master.import')
-  async exportMasterTemplate(@Query() query: FindDesignMastersQueryDto) {
-    const file = await this.productsService.exportMasterTemplate(query);
-    return new StreamableFile(file.buffer, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="${file.fileName}"`,
-    });
-  }
-
-  @Get('masters/export')
-  @ActionPermissions('master.view')
-  async exportMasters(@Query() query: FindDesignMastersQueryDto) {
-    const file = await this.productsService.exportMasters(query);
-    return new StreamableFile(file.buffer, {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="${file.fileName}"`,
-    });
-  }
-
-  @Post('masters/import')
-  @ActionPermissions('master.import')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
-  importMasters(
-    @UploadedFile() file: { buffer?: Buffer; originalname?: string },
-    @Query() query: FindDesignMastersQueryDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.importMasters(file, query, req.user);
-  }
 
   @Get('global-base-prices')
   @TaskPermissions()
@@ -350,40 +178,6 @@ export class ProductsController {
     return this.productsService.getNextDesignVersion(query, req.user);
   }
 
-  @Post('masters')
-  @ActionPermissions('master.create')
-  createMaster(@Body() dto: CreateDesignMasterDto, @Request() req: { user: AuthUser }) {
-    return this.productsService.createMaster(dto, req.user);
-  }
-
-  @Put('masters/:id')
-  @TaskPermissions()
-  @AnyActionPermissions('master.edit', 'dashboard.price_activity.gold_price.update')
-  updateMaster(
-    @Param('id') id: string,
-    @Body() dto: UpdateDesignMasterDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.updateMaster(id, dto, req.user);
-  }
-
-  @Patch('masters/:id/status')
-  @ActionPermissions('master.status_update')
-  updateMasterStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateDesignMasterStatusDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.updateMasterStatus(id, dto.isActive, req.user);
-  }
-
-  @Get('masters/:id/price-history')
-  @TaskPermissions()
-  @ActionPermissions()
-  getMetalPriceHistory(@Param('id') id: string) {
-    return this.productsService.getMetalPriceHistory(id);
-  }
-
   @Get(':id/history')
   @TaskPermissions()
   @ActionPermissions()
@@ -391,11 +185,22 @@ export class ProductsController {
     return this.productsService.getHistory(id, req.user);
   }
 
+  @Get()
+  @TaskPermissions()
+  findAll(@Query() query: FindProductsQueryDto, @Request() req: { user: AuthUser }) {
+    return this.productsService.findAll(query, req.user);
+  }
+
   @Get(':id')
   @TaskPermissions()
   @ActionPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
     return this.productsService.findOne(id, req.user);
+  }
+
+  @Post()
+  create(@Body() dto: CreateProductDto, @Request() req: { user: AuthUser }) {
+    return this.productsService.create(dto, req.user);
   }
 
   @Put(':id')
@@ -414,6 +219,48 @@ export class ProductsController {
     @Request() req: { user: AuthUser },
   ) {
     return this.productsService.updateStatus(id, dto.isActive, req.user);
+  }
+
+  @Get('media-library')
+  @TaskPermissions()
+  @ActionPermissions()
+  findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
+    return this.productsService.findMediaLibrary(query);
+  }
+
+  @Delete('media-library/:id')
+  removeMediaLibraryItem(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    return this.productsService.removeMediaLibraryItem(id, req.user);
+  }
+
+  @Post('gallery-files')
+  @UseInterceptors(FilesInterceptor('files', 20, { limits: { fileSize: 50 * 1024 * 1024 } }))
+  uploadGalleryFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
+    return this.productsService.uploadGalleryFiles(files || [], req);
+  }
+
+  @Get(':id/stl-file')
+  async getStlFile(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+    const file = await this.productsService.getStlFileContent(id, req.user);
+    return new StreamableFile(file.buffer, {
+      type: 'model/stl',
+      disposition: `inline; filename="${file.fileName}"`,
+    });
+  }
+
+  @Post('stl-files/upload')
+  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: 100 * 1024 * 1024 } }))
+  uploadStlFiles(@UploadedFiles() files: any[], @Request() req: { user: AuthUser }) {
+    return this.productsService.uploadStlFiles(files || [], req);
+  }
+
+  @Post(':id/stl-files')
+  uploadStlFile(
+    @Param('id') id: string,
+    @Body() dto: UploadStlFileDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.productsService.uploadStlFile(id, dto, req.user);
   }
 
   @Post(':id/primary')
@@ -455,15 +302,6 @@ export class ProductsController {
     @Request() req: { user: AuthUser },
   ) {
     return this.productsService.replaceVendors(id, dto.vendors, req.user);
-  }
-
-  @Post(':id/stl-files')
-  uploadStlFile(
-    @Param('id') id: string,
-    @Body() dto: UploadStlFileDto,
-    @Request() req: { user: AuthUser },
-  ) {
-    return this.productsService.uploadStlFile(id, dto, req.user);
   }
 
   @Delete(':id')
