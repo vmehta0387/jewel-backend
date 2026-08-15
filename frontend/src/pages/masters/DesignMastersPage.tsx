@@ -583,7 +583,7 @@ function masterRefValue(ref?: JoinedMasterRef | string | null): string {
   if (typeof ref === 'string') {
     return ref;
   }
-  return ref.value || ref.name || '';
+  return ref.value || ref.name || ref.aliasName || ref.label || '';
 }
 
 function masterRefId(ref?: JoinedMasterRef | string | null): string {
@@ -661,7 +661,7 @@ function buildPacketNameFromForm(
 }
 
 function getMetalPurityDisplay(option: MasterOption): string {
-  return (option.value || option.aliasName || '').trim();
+  return (option.aliasName || option.label || option.value || '').trim();
 }
 
 function buildMetalCaratageName(metalName: string, metalPurity: string, metalColor: string, purityOption?: MasterOption | null): string {
@@ -1846,7 +1846,7 @@ export default function DesignMastersPage() {
       selectedMetal?.marketPricePerGm !== undefined && selectedMetal.marketPricePerGm !== null
         ? selectedMetal.marketPricePerGm
         : 0;
-    const shouldAutoFillLivePrice = !editingRow || formLivePricePerGm.trim().length === 0;
+    const shouldAutoFillLivePrice = formLivePricePerGm.trim().length === 0;
     if (basePricePerGm > 0 && purityPercent > 0 && shouldAutoFillLivePrice) {
       const computed = ((basePricePerGm * purityPercent) / 100).toFixed(2);
       if (computed !== formLivePricePerGm) {
@@ -1865,7 +1865,7 @@ export default function DesignMastersPage() {
       if (computedValue !== formValue) {
         setFormValue(computedValue);
       }
-      if (computedValue !== formAliasName) {
+      if (!editingRow && formAliasName.trim().length === 0 && computedValue !== formAliasName) {
         setFormAliasName(computedValue);
       }
     }
@@ -1893,6 +1893,7 @@ export default function DesignMastersPage() {
     setSelectedMetalColorOption(null);
     setSelectedMetalPurityOption(null);
     if (selectedType === 'METAL_CARATAGE') {
+      setFormLivePricePerGm('');
       setMetalCaratageCombinationChanged(true);
     }
   }, [selectedType]);
@@ -2040,11 +2041,12 @@ export default function DesignMastersPage() {
       (row.metalPurity && typeof row.metalPurity === 'object'
         ? row.metalPurity.purityPercentage
         : null);
+    const rowMetalRef = row.metal && typeof row.metal === 'object' ? row.metal : null;
     setSelectedMetalOption(
       masterRefOption(row.metalId, row.metal, {
-        marketPricePerOunce: row.marketPricePerOunce,
-        marketPricePerGm: row.marketPricePerGm,
-        livePricePerGm: row.livePricePerGm,
+        marketPricePerOunce: row.marketPricePerOunce ?? rowMetalRef?.marketPricePerOunce,
+        marketPricePerGm: row.marketPricePerGm ?? rowMetalRef?.marketPricePerGm,
+        livePricePerGm: rowMetalRef?.livePricePerGm ?? row.livePricePerGm,
       }),
     );
     setSelectedMetalColorOption(
