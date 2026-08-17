@@ -42,10 +42,6 @@ export class DesignMetalDto {
 
   @IsString()
   @IsOptional()
-  goldColour?: string;
-
-  @IsString()
-  @IsOptional()
   metalCaratage?: string;
 
   @Type(() => Number)
@@ -209,6 +205,16 @@ export class DesignLaborDto {
   @IsString()
   @IsOptional()
   laborHead?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  laborRuleId?: number;
+
+  @IsString()
+  @IsOptional()
+  laborRule?: string;
 
   @Type(() => Number)
   @IsNumber()
@@ -515,6 +521,13 @@ export class CreateProductDto {
   @IsOptional()
   tags?: string[];
 
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @IsOptional()
+  tagIds?: number[];
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -774,6 +787,13 @@ export class UpdateProductDto {
   @IsOptional()
   tags?: string[];
 
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @IsOptional()
+  tagIds?: number[];
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -1010,7 +1030,7 @@ export class FindProductsQueryDto {
 
   @IsString()
   @IsOptional()
-  goldColour?: string;
+  metalCaratage?: string;
 
   @IsString()
   @IsOptional()
@@ -1350,7 +1370,6 @@ export enum DesignMasterType {
   METAL_COLOR = 'METAL_COLOR',
   METAL_PURITY = 'METAL_PURITY',
   METAL_CARATAGE = 'METAL_CARATAGE',
-  GOLD_COLOUR = 'GOLD_COLOUR',
   DIAMOND_TYPE = 'DIAMOND_TYPE',
   DIAMOND_SPREAD = 'DIAMOND_SPREAD',
   DIAMOND_WEIGHT = 'DIAMOND_WEIGHT',

@@ -83,7 +83,7 @@ interface DesignOption {
   jewelryGroup?: string | null;
   collection?: string | null;
   jewelrySize?: string | null;
-  goldColour?: string | null;
+  metalCaratage?: string | null;
   designStatus?: string | null;
   stoneInfo?: string | null;
   isPrimary?: boolean;
@@ -94,7 +94,7 @@ interface DesignOption {
 interface DesignMetal {
   id?: string;
   metalCaratage?: string | null;
-  goldColour?: string | null;
+  metalColor?: string | null;
   netWt?: number | null;
   wastagePercent?: number | null;
   wastageWt?: number | null;
@@ -134,7 +134,7 @@ interface DesignDetail {
   diamondSpread?: string | null;
   diamondWeight?: string | null;
   diamondQuality?: string | null;
-  goldColour?: string | null;
+  metalCaratage?: string | null;
   displayPrice?: number | null;
   totalValue?: number | null;
   metals?: DesignMetal[];
@@ -1623,7 +1623,7 @@ export default function OrdersPage() {
           jewelryGroup: designDetail.jewelryGroup,
           collection: designDetail.collection,
           jewelrySize: designDetail.jewelrySize,
-          goldColour: designDetail.goldColour,
+          metalCaratage: designDetail.metalCaratage,
           designStatus: designDetail.designStatus,
           stoneInfo: designDetail.stoneInfo,
         });
@@ -1638,7 +1638,7 @@ export default function OrdersPage() {
             option.jewelryGroup,
             option.collection,
             option.jewelrySize,
-            option.goldColour,
+            option.metalCaratage,
             option.designStatus,
             option.stoneInfo,
           ]
@@ -1649,7 +1649,7 @@ export default function OrdersPage() {
           if (search && !haystack.includes(search)) return false;
           if (designFilters.jewelryGroup && option.jewelryGroup !== designFilters.jewelryGroup) return false;
           if (designFilters.collection && option.collection !== designFilters.collection) return false;
-          if (designFilters.metal && option.goldColour !== designFilters.metal) return false;
+          if (designFilters.metal && option.metalCaratage !== designFilters.metal) return false;
           if (designFilters.jewelrySize && option.jewelrySize !== designFilters.jewelrySize) return false;
           if (designFilters.designStatus && option.designStatus !== designFilters.designStatus) return false;
           return true;
@@ -1674,7 +1674,7 @@ export default function OrdersPage() {
           .filter((option) => !designFilters.jewelryGroup || option.jewelryGroup === designFilters.jewelryGroup)
           .map((option) => option.collection),
       ),
-      metals: uniqueSorted(designOptions.map((option) => option.goldColour)),
+      metals: uniqueSorted(designOptions.map((option) => option.metalCaratage)),
       jewelrySizes: uniqueSorted(designOptions.map((option) => option.jewelrySize)),
       designStatuses: uniqueSorted(designOptions.map((option) => option.designStatus)),
     };
@@ -1790,7 +1790,7 @@ export default function OrdersPage() {
     const metalRows = metals.length
       ? metals.map((metal) => `
           <tr>
-            <td>${metal.metalCaratage || metal.goldColour || '-'}</td>
+            <td>${metal.metalCaratage || '-'}</td>
             <td>${formatWeight(metal.netWt)}</td>
             <td>${formatWeight(metal.totalWt)}</td>
             <td>${Number(metal.value || 0).toFixed(2)}</td>
@@ -3338,7 +3338,7 @@ export default function OrdersPage() {
                             <td className="px-3 py-3 text-sm font-semibold text-slate-700">{design.barcode || '-'}</td>
                             <td className="px-3 py-3 text-sm text-slate-700">{design.jewelryGroup || '-'}</td>
                             <td className="px-3 py-3 text-sm text-slate-700">{design.jewelrySize || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-slate-700">{design.goldColour || '-'}</td>
+                            <td className="px-3 py-3 text-sm text-slate-700">{design.metalCaratage || '-'}</td>
                             <td className="px-3 py-3 text-sm text-slate-700">{design.collection || '-'}</td>
                             <td className="px-3 py-3 text-sm text-slate-700">{design.stoneInfo || '-'}</td>
                             <td className="px-3 py-3 text-sm font-semibold text-slate-700">{design.designStatus || '-'}</td>
@@ -3527,7 +3527,7 @@ export default function OrdersPage() {
             <div className="flex min-h-[54px] flex-wrap items-center gap-2 bg-white px-4 py-3">
               {viewDesign?.metals?.length ? (
                 viewDesign.metals.map((metal, index) => {
-                  const label = metal.metalCaratage || metal.goldColour || '-';
+                  const label = metal.metalCaratage || '-';
                   return (
                     <span key={metal.id || `${label}-${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                       {label}

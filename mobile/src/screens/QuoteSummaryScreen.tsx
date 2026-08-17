@@ -231,7 +231,7 @@ const selectionFromDesign = (design?: Design | null): QuoteSummaryPayload['selec
   if (!design) return {};
   return sanitizeSelection({
     shape: compact(design.gemstones?.[0]?.stone || design.gemstones?.[0]?.stoneType) || undefined,
-    metalColor: compact(design.metals?.[0]?.metalCaratage || design.metals?.[0]?.goldColour || design.goldColour) || undefined,
+    metalColor: compact(design.metals?.[0]?.metalCaratage || design.metals?.[0]?.metalCaratage || design.metalCaratage) || undefined,
     style: compact(design.diamondSpread) || undefined,
     weight: compact(design.diamondWeight) || undefined,
     quality: compact(design.diamondQuality) || undefined,

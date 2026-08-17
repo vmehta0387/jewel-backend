@@ -255,9 +255,9 @@ const MediaVideo = ({
 const getMetalOptionsFromDesign = (design: Design) => {
   const metals = design.metals || [];
   if (metals.length) {
-    return splitMetalOptions(metals.map((metal) => metal.metalCaratage || metal.goldColour));
+    return splitMetalOptions(metals.map((metal) => metal.metalCaratage || metal.metalCaratage));
   }
-  return splitMetalOptions([design.goldColour]);
+  return splitMetalOptions([design.metalCaratage]);
 };
 
 const getVersionAttributes = (design: Design) => ({

@@ -52,8 +52,8 @@ const getDisplayPrice = (design: Design, role?: string) =>
 const getDesignMeta = (design: Design) => {
   const sizeLabel = design.jewelrySize ? `Size ${design.jewelrySize}` : 'Size N/A';
   const toneLabel =
-    design.goldColour ||
-    design.metals?.find((metal) => metal.goldColour)?.goldColour ||
+    design.metalCaratage ||
+    design.metals?.find((metal) => metal.metalCaratage)?.metalCaratage ||
     design.metals?.find((metal) => metal.metalCaratage)?.metalCaratage ||
     design.version;
 
@@ -67,13 +67,13 @@ const getSearchableFields = (design: Design) =>
     design.jewelryGroup,
     design.collection,
     design.jewelrySize,
-    design.goldColour,
+    design.metalCaratage,
     design.diamondType,
     design.diamondSpread,
     design.diamondQuality,
     design.version,
     ...(design.gemstones?.flatMap((gem) => [gem.stone, gem.shape, gem.size, gem.color, gem.quality]) || []),
-    ...(design.metals?.flatMap((metal) => [metal.goldColour, metal.metalCaratage]) || []),
+    ...(design.metals?.flatMap((metal) => [metal.metalCaratage, metal.metalCaratage]) || []),
   ]
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
@@ -175,8 +175,8 @@ const getDesignDiamondTypes = (design: Design) =>
 // when older cached JS still references this function.
 const getDesignMetals = (design: Design) =>
   uniqueNonEmpty([
-    design.goldColour,
-    ...(design.metals || []).flatMap((metal) => [metal.goldColour, metal.metalCaratage]),
+    design.metalCaratage,
+    ...(design.metals || []).flatMap((metal) => [metal.metalCaratage, metal.metalCaratage]),
   ]);
 
 const PRESET_CATEGORY_TITLES: Record<string, string> = {

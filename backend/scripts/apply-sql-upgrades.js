@@ -49,6 +49,7 @@ function resolveSqlFiles(args) {
     path.resolve(repoRoot, 'DATABASE_STONE_PACKETS_INT_ID_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_MASTER_TABLE_COLUMNS_UPGRADE.sql'),
+    path.resolve(repoRoot, 'DATABASE_MASTER_ID_RELATION_GAPS_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_VENDOR_NAMES_EMAIL_UPGRADE.sql'),
     path.resolve(repoRoot, 'DATABASE_DESIGN_BARCODE_UPGRADE.sql'),
     path.resolve(backendRoot, 'DESIGN_LEGACY_UUID_DROP_CLEANUP.sql'),

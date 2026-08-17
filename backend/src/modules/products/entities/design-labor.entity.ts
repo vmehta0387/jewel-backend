@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
-import { LaborHeadMaster } from './design-master-tables.entity';
+import { LaborHeadMaster, LaborRuleMaster } from './design-master-tables.entity';
 
 @Entity('design_labors')
 export class DesignLabor {
@@ -12,6 +12,9 @@ export class DesignLabor {
 
   @Column({ name: 'labor_head_id', type: 'int', nullable: true })
   laborHeadId: number | null;
+
+  @Column({ name: 'labor_rule_id', type: 'int', nullable: true })
+  laborRuleId: number | null;
 
   laborHead?: string | null;
 
@@ -34,6 +37,10 @@ export class DesignLabor {
   @ManyToOne(() => LaborHeadMaster, { nullable: true })
   @JoinColumn({ name: 'labor_head_id' })
   laborHeadMaster: LaborHeadMaster | null;
+
+  @ManyToOne(() => LaborRuleMaster, { nullable: true })
+  @JoinColumn({ name: 'labor_rule_id' })
+  laborRuleMaster: LaborRuleMaster | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

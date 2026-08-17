@@ -42,6 +42,7 @@ import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { Design } from './entities/design.entity';
 import { DesignFinding } from './entities/design-finding.entity';
 import { DesignGemstone } from './entities/design-gemstone.entity';
+import { DesignTag } from './entities/design-tag.entity';
 import { DesignHistory } from './entities/design-history.entity';
 import { MetalPriceHistory } from './entities/metal-price-history.entity';
 import { DesignLabor } from './entities/design-labor.entity';
@@ -82,7 +83,6 @@ type MobileConfiguratorKey =
 interface NormalizedMetalRow {
   metalCaratageId: number | null;
   metalCaratage: string | null;
-  goldColour: string | null;
   netWt: number;
   wastagePercent: number;
   wastageWt: number;
@@ -118,6 +118,8 @@ interface NormalizedGemstoneRow {
 interface NormalizedLaborRow {
   laborHeadId: number | null;
   laborHead: string | null;
+  laborRuleId: number | null;
+  laborRule: string | null;
   laborPerUnit: number;
   unitQty: number;
   laborValue: number;
@@ -196,7 +198,6 @@ interface DesignMasterRefs {
   diamondWeight: MasterRef;
   diamondQuality: MasterRef;
   designStatus: MasterRef;
-  tags: MasterRef;
   metalCaratage: MasterRef;
 }
 
@@ -277,7 +278,6 @@ interface DesignMetalImportRow {
   designNo: string;
   version?: string;
   metalCaratage?: string;
-  goldColour?: string;
   netWt?: string | number;
   wastagePercent?: string | number;
   wastageWt?: string | number;
@@ -390,6 +390,8 @@ export class ProductsService {
     private readonly metalRepo: Repository<DesignMetal>,
     @InjectRepository(DesignGemstone)
     private readonly gemstoneRepo: Repository<DesignGemstone>,
+    @InjectRepository(DesignTag)
+    private readonly designTagRepo: Repository<DesignTag>,
     @InjectRepository(DesignLabor)
     private readonly laborRepo: Repository<DesignLabor>,
     @InjectRepository(DesignOverhead)
@@ -566,7 +568,6 @@ export class ProductsService {
       diamondWeightId: designMasterRefs.diamondWeight.id,
       diamondQualityId: designMasterRefs.diamondQuality.id,
       designStatusId: designMasterRefs.designStatus.id,
-      tagsId: designMasterRefs.tags.id,
       metalCaratageId: designMasterRefs.metalCaratage.id,
       stoneInfo: this.summarizeGemstoneRows(normalizedGemstones),
       drawerLocation: this.optionalText(dto.drawerLocation),
@@ -604,6 +605,7 @@ export class ProductsService {
 
     await this.replaceMetalRows(saved.id, normalizedMetals);
     await this.replaceGemstoneRows(saved.id, normalizedGemstones);
+    await this.replaceDesignTags(saved.id, await this.resolveDesignTagIds(dto));
     await this.replaceLaborRows(saved.id, normalizedLabors);
     await this.replaceOverheadRows(saved.id, normalizedOverheads);
     await this.replaceFindingRows(saved.id, normalizedFindings);
@@ -646,8 +648,7 @@ export class ProductsService {
       'Design No',
       'Version',
       'Sort Order',
-      'Metal',
-      'Gold Colour',
+      'Metal Caratage',
       'Net Wt',
       'Wastage %',
       'Wastage Wt',
@@ -724,8 +725,7 @@ export class ProductsService {
         'Design No': 'RING-0001',
         Version: 'V1',
         'Sort Order': 1,
-        Metal: '18-Rose-Gold',
-        'Gold Colour': 'Rose',
+        'Metal Caratage': '18-Rose-Gold',
         'Net Wt': 5,
         'Wastage %': 10,
         'Wastage Wt': 0.5,
@@ -737,8 +737,7 @@ export class ProductsService {
         'Design No': 'RING-0001',
         Version: 'V2',
         'Sort Order': 1,
-        Metal: '14-Rose-Gold',
-        'Gold Colour': 'Rose',
+        'Metal Caratage': '14-Rose-Gold',
         'Net Wt': 4.7,
         'Wastage %': 9,
         'Wastage Wt': '',
@@ -949,8 +948,7 @@ export class ProductsService {
             'Design No': design.designNo,
             Version: design.version,
             'Sort Order': index + 1,
-            Metal: row.goldColour || '',
-            'Gold Colour': row.goldColour || '',
+            'Metal Caratage': row.metalCaratage || '',
             'Net Wt': this.toNumber(row.netWt),
             'Wastage %': this.toNumber(row.wastagePercent),
             'Wastage Wt': this.toNumber(row.wastageWt),
@@ -1288,7 +1286,8 @@ export class ProductsService {
       .leftJoinAndSelect('design.diamondWeightMaster', 'diamondWeightMaster')
       .leftJoinAndSelect('design.diamondQualityMaster', 'diamondQualityMaster')
       .leftJoinAndSelect('design.designStatusMaster', 'designStatusMaster')
-      .leftJoinAndSelect('design.tagsMaster', 'tagsMaster')
+      .leftJoinAndSelect('design.designTags', 'designTags')
+      .leftJoinAndSelect('designTags.tagMaster', 'tagMaster')
       .leftJoinAndSelect('design.metalCaratageMaster', 'metalCaratageMaster')
       .addSelect(
         `(SELECT GROUP_CONCAT(NULLIF(TRIM(mcm.value), '') ORDER BY dm.sort_order SEPARATOR ', ')
@@ -1298,8 +1297,16 @@ export class ProductsService {
         'metalInfo',
       )
       .addSelect(
-        `(SELECT GROUP_CONCAT(COALESCE(NULLIF(TRIM(ps.value), ''), NULLIF(TRIM(dt.value), '')) ORDER BY dg.sort_order SEPARATOR ', ')
+        `(SELECT GROUP_CONCAT(
+            COALESCE(
+              NULLIF(TRIM(sp.packet_name), ''),
+              NULLIF(TRIM(ps.value), ''),
+              NULLIF(TRIM(dt.value), '')
+            )
+            ORDER BY dg.sort_order SEPARATOR ', '
+          )
           FROM design_gemstones dg
+          LEFT JOIN stone_packets sp ON sp.id = dg.packet_id
           LEFT JOIN packet_stones ps ON ps.id = dg.stone_id
           LEFT JOIN diamond_types dt ON dt.id = dg.stone_type_id
           WHERE dg.design_id = design.id)`,
@@ -1352,7 +1359,7 @@ export class ProductsService {
             .orWhere('diamondWeightMaster.value LIKE :search', { search })
             .orWhere('diamondQualityMaster.value LIKE :search', { search })
             .orWhere('designStatusMaster.value LIKE :search', { search })
-            .orWhere('tagsMaster.value LIKE :search', { search })
+            .orWhere('tagMaster.value LIKE :search', { search })
             .orWhere('metalCaratageMaster.value LIKE :search', { search })
             .orWhere('design.stoneInfo LIKE :search', { search })
             .orWhere(
@@ -1368,14 +1375,19 @@ export class ProductsService {
               `EXISTS (
                 SELECT 1
                 FROM design_gemstones dg_search
+                LEFT JOIN stone_packets sp_search ON sp_search.id = dg_search.packet_id
                 LEFT JOIN packet_stones ps_search ON ps_search.id = dg_search.stone_id
                 LEFT JOIN diamond_types dt_search ON dt_search.id = dg_search.stone_type_id
                 WHERE dg_search.design_id = design.id
-                  AND (ps_search.value LIKE :search OR dt_search.value LIKE :search)
+                  AND (
+                    sp_search.packet_name LIKE :search
+                    OR ps_search.value LIKE :search
+                    OR dt_search.value LIKE :search
+                  )
               )`,
               { search },
             )
-            .orWhere('tagsMaster.value LIKE :search', { search });
+            .orWhere('tagMaster.value LIKE :search', { search });
         }),
       );
     }
@@ -1409,7 +1421,7 @@ export class ProductsService {
     }
 
     if (query.tags?.trim()) {
-      qb.andWhere('tagsMaster.value LIKE :tags', { tags: `%${query.tags.trim()}%` });
+      qb.andWhere('tagMaster.value LIKE :tags', { tags: `%${query.tags.trim()}%` });
     }
 
     if (query.stage?.trim()) {
@@ -1422,15 +1434,15 @@ export class ProductsService {
       });
     }
 
-    if (query.goldColour?.trim()) {
+    if (query.metalCaratage?.trim()) {
       qb.andWhere(
-        `(metalCaratageMaster.value LIKE :goldColour OR EXISTS (
+        `(metalCaratageMaster.value LIKE :metalCaratage OR EXISTS (
           SELECT 1
           FROM design_metals dm
           LEFT JOIN metal_caratages mcm_filter ON mcm_filter.id = dm.metal_caratage_id
-          WHERE dm.design_id = design.id AND mcm_filter.value LIKE :goldColour
+          WHERE dm.design_id = design.id AND mcm_filter.value LIKE :metalCaratage
         ))`,
-        { goldColour: `%${query.goldColour.trim()}%` },
+        { metalCaratage: `%${query.metalCaratage.trim()}%` },
       );
     }
 
@@ -1511,61 +1523,20 @@ export class ProductsService {
         versionCount: Math.max(1, Math.trunc(this.toNumber(row.versionCount))),
       });
     });
-    const designIds = data.map((design) => design.id);
-    const [metals, gemstones] = designIds.length
-      ? await Promise.all([
-          this.metalRepo.find({
-            where: { designId: In(designIds) },
-            relations: ['metalCaratageMaster'],
-            order: { sortOrder: 'ASC' },
-          }),
-          this.gemstoneRepo.find({
-            where: { designId: In(designIds) },
-            relations: ['stoneMaster', 'shapeMaster', 'sizeMaster', 'cutMaster', 'colorMaster', 'qualityMaster', 'stoneTypeMaster'],
-            order: { sortOrder: 'ASC' },
-          }),
-        ])
-      : [[], []];
-    const metalsByDesign = new Map<string, DesignMetal[]>();
-    for (const metal of metals) {
-      const designKey = String(metal.designId);
-      const group = metalsByDesign.get(designKey) || [];
-      group.push(metal);
-      metalsByDesign.set(designKey, group);
-    }
-    const gemstonesWithPacketNames = await this.withGemstonePacketNames(gemstones);
-    const gemstonesByDesign = new Map<string, Array<DesignGemstone & { packetName: string | null }>>();
-    for (const gemstone of gemstonesWithPacketNames) {
-      const designKey = String(gemstone.designId);
-      const group = gemstonesByDesign.get(designKey) || [];
-      group.push(gemstone);
-      gemstonesByDesign.set(designKey, group);
-    }
-
     if (query.summaryOnly) {
       const updatedByMap = await this.resolveUserNames(
         data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
       );
       const summaryData = await Promise.all(
         data.map(async (design) => {
-          this.hydrateDesignDisplayLabels(design);
           const designKey = String(design.id);
           const listSummary = listSummariesByDesign.get(designKey);
-          const designMetals = metalsByDesign.get(designKey) || [];
-          const designGemstones = gemstonesByDesign.get(designKey) || [];
-          return {
-            ...design,
-            goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
-            stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
-            versionCount: listSummary?.versionCount || 1,
-            metals: designMetals,
-            gemstones: designGemstones,
-            imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-            imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
-            stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
-            ...(await this.resolveDesignVisiblePrices(design, requester)),
-            updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
-          };
+          return this.toCompactDesignListRow(
+            design,
+            listSummary,
+            requester,
+            design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+          );
         }),
       );
 
@@ -1582,24 +1553,14 @@ export class ProductsService {
     );
     const enrichedData = await Promise.all(
       data.map(async (design) => {
-        this.hydrateDesignDisplayLabels(design);
         const designKey = String(design.id);
         const listSummary = listSummariesByDesign.get(designKey);
-        const designMetals = metalsByDesign.get(designKey) || [];
-        const designGemstones = gemstonesByDesign.get(designKey) || [];
-        return {
-          ...design,
-          goldColour: listSummary?.metalInfo || this.summarizeMetalRows(designMetals) || design.goldColour,
-          stoneInfo: listSummary?.stoneInfo || this.summarizeGemstoneRows(designGemstones) || design.stoneInfo,
-          versionCount: listSummary?.versionCount || 1,
-          metals: designMetals,
-          gemstones: designGemstones,
-          imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-          imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
-          stlFileUrl: await this.resolveAssetUrl(design.stlFileUrl),
-          ...(await this.resolveDesignVisiblePrices(design, requester)),
-          updatedByName: design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
-        };
+        return this.toCompactDesignListRow(
+          design,
+          listSummary,
+          requester,
+          design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+        );
       }),
     );
 
@@ -1608,6 +1569,49 @@ export class ProductsService {
       total,
       page,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /** Compact payload for table/dropdown lists. Full nested children belong to findOne(). */
+  private async toCompactDesignListRow(
+    design: Design,
+    summary: { metalInfo: string | null; stoneInfo: string | null; versionCount: number } | undefined,
+    requester: AuthUser,
+    updatedByName: string | null,
+  ): Promise<Record<string, unknown>> {
+    this.hydrateDesignDisplayLabels(design);
+
+    return {
+      id: design.id,
+      designNo: design.designNo,
+      barcode: design.barcode,
+      familyDesignId: design.familyDesignId,
+      designName: design.designName,
+      version: design.version,
+      jewelryGroup: design.jewelryGroup,
+      jewelrySize: design.jewelrySize,
+      collection: design.collection,
+      stage: design.stage,
+      diamondSpread: design.diamondSpread,
+      diamondType: design.diamondType,
+      diamondWeight: design.diamondWeight,
+      diamondQuality: design.diamondQuality,
+      designStatus: design.designStatus,
+      tags: Array.isArray(design.tags) ? design.tags : [],
+      metalCaratage: summary?.metalInfo || design.metalCaratage || null,
+      stoneInfo: summary?.stoneInfo || design.stoneInfo || null,
+      totalValue: design.totalValue,
+      imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+      imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+      ijewelModelId: design.ijewelModelId,
+      ijewelBaseName: design.ijewelBaseName,
+      isActive: design.isActive,
+      isPrimary: design.isPrimary,
+      versionCount: summary?.versionCount || 1,
+      createdAt: design.createdAt,
+      updatedAt: design.updatedAt,
+      updatedByName,
+      ...(await this.resolveDesignVisiblePrices(design, requester)),
     };
   }
 
@@ -1722,7 +1726,7 @@ export class ProductsService {
       diamondType: string | null;
       diamondWeight: string | null;
       diamondQuality: string | null;
-      goldColour: string | null;
+      metalCaratage: string | null;
       totalValue: number;
       displayPrice?: number;
       imageUrls: string[];
@@ -1749,7 +1753,6 @@ export class ProductsService {
         'design.diamondType',
         'design.diamondWeight',
         'design.diamondQuality',
-        'design.goldColour',
         'design.totalValue',
         'design.imageUrls',
         'design.isPrimary',
@@ -1847,7 +1850,7 @@ export class ProductsService {
         diamondType: design.diamondType,
         diamondWeight: design.diamondWeight,
         diamondQuality: design.diamondQuality,
-        goldColour: design.goldColour,
+        metalCaratage: design.metalCaratage,
         totalValue: Number(design.totalValue || 0),
         displayPrice: design.displayPrice,
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
@@ -2142,7 +2145,6 @@ export class ProductsService {
         'design.diamondType',
         'design.diamondWeight',
         'design.diamondQuality',
-        'design.goldColour',
         'design.stoneInfo',
         'design.designDescription',
         'design.remarks',
@@ -2287,7 +2289,7 @@ export class ProductsService {
       diamondType: this.resolveMobileConfiguratorDiamondType(design),
       diamondWeight: design.diamondWeight,
       diamondQuality: design.diamondQuality,
-      goldColour: design.goldColour,
+      metalCaratage: design.metalCaratage,
       tags: Array.isArray(design.tags) ? design.tags : [],
       designDescription: design.designDescription,
       remarks: design.remarks,
@@ -2303,8 +2305,8 @@ export class ProductsService {
       ),
       totalStoneWeight: this.resolveTotalStoneWeight(design),
       metals: (design.metals || []).map((metal) => ({
-        metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.goldColour),
-        goldColour: metal.goldColour,
+        metalCaratage: this.mobileConfiguratorDisplayValue('metalCaratage', metal.metalCaratage),
+        metalColor: metal.metalColor || null,
         netWt: Number(metal.netWt || 0),
         totalWt: Number(metal.totalWt || 0),
         value: Number(metal.value || 0),
@@ -2530,7 +2532,7 @@ export class ProductsService {
   private getUsedMetalCaratageCandidates(design: Design): string[] {
     const candidates = new Set<string>();
     for (const metal of design.metals || []) {
-      const value = this.mobileConfiguratorText(metal.goldColour || (metal as any).metalCaratage);
+      const value = this.mobileConfiguratorText(metal.metalCaratage || (metal as any).metalCaratage);
       if (value) {
         value.split(',').forEach((item) => {
           const trimmed = item.trim();
@@ -2539,7 +2541,7 @@ export class ProductsService {
       }
     }
     if (!candidates.size) {
-      const fallback = this.mobileConfiguratorText(design.goldColour);
+      const fallback = this.mobileConfiguratorText(design.metalCaratage);
       if (fallback) {
         fallback.split(',').forEach((item) => {
           const trimmed = item.trim();
@@ -2696,7 +2698,6 @@ export class ProductsService {
         'design.jewelryGroup',
         'design.collection',
         'design.jewelrySize',
-        'design.goldColour',
         'design.designStatus',
         'design.stoneInfo',
         'design.isPrimary',
@@ -2728,7 +2729,13 @@ export class ProductsService {
             .orWhere('design.collection LIKE :search', { search })
             .orWhere('design.jewelrySize LIKE :search', { search })
             .orWhere('design.designStatus LIKE :search', { search })
-            .orWhere('design.goldColour LIKE :search', { search })
+            .orWhere(
+              `EXISTS (
+                SELECT 1 FROM design_metals dm
+                INNER JOIN metal_caratages mcm ON mcm.id = dm.metal_caratage_id
+                WHERE dm.design_id = design.id AND mcm.value LIKE :search
+              )`,
+            )
             .orWhere('design.stoneInfo LIKE :search', { search });
         }),
       );
@@ -2760,10 +2767,15 @@ export class ProductsService {
       });
     }
 
-    if (query.goldColour?.trim()) {
-      qb.andWhere('design.goldColour LIKE :goldColour', {
-        goldColour: `%${query.goldColour.trim()}%`,
-      });
+    if (query.metalCaratage?.trim()) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM design_metals dm
+          INNER JOIN metal_caratages mcm ON mcm.id = dm.metal_caratage_id
+          WHERE dm.design_id = design.id AND mcm.value LIKE :metalCaratage
+        )`,
+        { metalCaratage: `%${query.metalCaratage.trim()}%` },
+      );
     }
 
     const [data, total] = await qb.getManyAndCount();
@@ -2791,7 +2803,8 @@ export class ProductsService {
         'diamondWeightMaster',
         'diamondQualityMaster',
         'designStatusMaster',
-        'tagsMaster',
+        'designTags',
+        'designTags.tagMaster',
         'metalCaratageMaster',
         'metals',
         'metals.metalCaratageMaster',
@@ -2799,6 +2812,13 @@ export class ProductsService {
         'metals.metalCaratageMaster.metalColorMaster',
         'metals.metalCaratageMaster.metalPurityMaster',
         'gemstones',
+        'gemstones.packet',
+        'gemstones.packet.stoneMaster',
+        'gemstones.packet.shapeMaster',
+        'gemstones.packet.sizeMaster',
+        'gemstones.packet.cutMaster',
+        'gemstones.packet.colorMaster',
+        'gemstones.packet.qualityMaster',
         'gemstones.stoneMaster',
         'gemstones.shapeMaster',
         'gemstones.sizeMaster',
@@ -2808,6 +2828,7 @@ export class ProductsService {
         'gemstones.stoneTypeMaster',
         'labors',
         'labors.laborHeadMaster',
+        'labors.laborRuleMaster',
         'overheads',
         'overheads.overheadRuleMaster',
         'findings',
@@ -2966,7 +2987,6 @@ export class ProductsService {
     design.diamondWeightId = designMasterRefs.diamondWeight.id;
     design.diamondQualityId = designMasterRefs.diamondQuality.id;
     design.designStatusId = designMasterRefs.designStatus.id;
-    design.tagsId = designMasterRefs.tags.id;
     design.metalCaratageId = designMasterRefs.metalCaratage.id;
     design.stoneInfo = this.summarizeGemstoneRows(normalizedGemstones);
     if (dto.drawerLocation !== undefined) design.drawerLocation = this.optionalText(dto.drawerLocation);
@@ -3020,6 +3040,10 @@ export class ProductsService {
 
     if (dto.gemstones !== undefined) {
       await this.replaceGemstoneRows(id, normalizedGemstones);
+    }
+
+    if (dto.tags !== undefined || dto.tagIds !== undefined || dto.tagsId !== undefined) {
+      await this.replaceDesignTags(id, await this.resolveDesignTagIds(dto));
     }
 
     if (dto.labors !== undefined) {
@@ -3908,7 +3932,7 @@ export class ProductsService {
         );
       }
 
-      const metalCaratage = this.optionalText(row.metalCaratage) || this.optionalText(row.goldColour);
+      const metalCaratage = this.optionalText(row.metalCaratage);
       if (!metalCaratage) {
         throw new BadRequestException(
           `Metal is required for Metal row ${rowNo}`,
@@ -3956,7 +3980,6 @@ export class ProductsService {
       return {
         metalCaratageId: this.optionalInt(row.metalCaratageId),
         metalCaratage,
-        goldColour: metalCaratage,
         netWt,
         wastagePercent,
         wastageWt,
@@ -4058,7 +4081,7 @@ export class ProductsService {
     try {
       await this.metalPriceHistoryRepo.save(
         this.metalPriceHistoryRepo.create({
-          masterId: String(master.id),
+          metalNameId: master.id,
           marketPricePerOunce: this.toNumber(master.marketPricePerOunce) || 0,
           marketPricePerGm: this.toNumber(master.marketPricePerGm) || 0,
           livePricePerGm: this.toNumber(master.livePricePerGm) || 0,
@@ -4149,7 +4172,7 @@ export class ProductsService {
       const metals = await this.metalRepo.find({
         select: ['designId'],
         where: {
-          goldColour: In(Array.from(metalCaratageKeys)),
+          metalCaratage: In(Array.from(metalCaratageKeys)),
         },
       });
       for (const m of metals) {
@@ -4194,7 +4217,7 @@ export class ProductsService {
 
         const touchesMetalDependency =
           metalCaratageKeys.size > 0 &&
-          metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.goldColour)));
+          metals.some((row) => metalCaratageKeys.has(this.normalizeLookupKey(row.metalCaratage)));
         const touchesPacketDependency =
           packetIds.size > 0 &&
           gemstones.some((row) => row.packetId && packetIds.has(row.packetId));
@@ -4207,7 +4230,7 @@ export class ProductsService {
         let gemstonesChanged = false;
 
         for (const metal of metals) {
-          const lookup = this.normalizeLookupKey(metal.goldColour);
+          const lookup = this.normalizeLookupKey(metal.metalCaratage);
           if (!lookup || (metalCaratageKeys.size > 0 && !metalCaratageKeys.has(lookup))) {
             continue;
           }
@@ -4270,8 +4293,7 @@ export class ProductsService {
         const summary = this.calculateSummary(
           metals.map((row) => ({
             metalCaratageId: row.metalCaratageId || null,
-            metalCaratage: row.goldColour || null,
-            goldColour: row.goldColour || null,
+            metalCaratage: row.metalCaratage || null,
             netWt: this.toNumber(row.netWt),
             wastagePercent: this.toNumber(row.wastagePercent),
             wastageWt: this.toNumber(row.wastageWt),
@@ -4305,6 +4327,8 @@ export class ProductsService {
           (design.labors || []).map((row) => ({
             laborHeadId: row.laborHeadId || null,
             laborHead: row.laborHead || null,
+            laborRuleId: row.laborRuleId || null,
+            laborRule: row.laborRuleMaster?.value || null,
             laborPerUnit: this.toNumber(row.laborPerUnit),
             unitQty: this.toNumber(row.unitQty),
             laborValue: this.toNumber(row.laborValue),
@@ -4334,7 +4358,7 @@ export class ProductsService {
         design.totalValue = summary.totalValue;
         design.grossWeight = summary.grossWeight;
         design.livePrice = summary.totalValue;
-        design.goldColour = this.summarizeMetalRows(metals);
+        design.metalCaratage = this.summarizeMetalRows(metals);
         design.stoneInfo = this.summarizeGemstoneRows(gemstones);
 
         await this.designRepo.save(design);
@@ -4424,6 +4448,8 @@ export class ProductsService {
       return {
         laborHeadId: this.optionalInt(row.laborHeadId),
         laborHead: this.optionalText(row.laborHead),
+        laborRuleId: this.optionalInt(row.laborRuleId),
+        laborRule: this.optionalText(row.laborRule),
         laborPerUnit,
         unitQty,
         laborValue,
@@ -4497,9 +4523,9 @@ export class ProductsService {
     return { metalValue, gemValue, laborValue, overheadValue, findingValue, totalValue, grossWeight };
   }
 
-  private summarizeMetalRows(rows: Array<{ goldColour?: string | null; metalCaratage?: string | null }>): string | null {
+  private summarizeMetalRows(rows: Array<{ metalCaratage?: string | null }>): string | null {
     const values = rows
-      .map((row) => this.optionalText(row.metalCaratage) || this.optionalText(row.goldColour))
+      .map((row) => this.optionalText(row.metalCaratage))
       .filter((value): value is string => Boolean(value));
 
     return values.length > 0 ? Array.from(new Set(values)).join(', ') : null;
@@ -4559,6 +4585,14 @@ export class ProductsService {
       .values(entities as any[])
       .updateEntity(false)
       .execute();
+  }
+
+  private async replaceDesignTags(designId: string | number, tagIds: number[]): Promise<void> {
+    await this.designTagRepo.delete({ designId: Number(designId) });
+    if (!tagIds.length) return;
+    await this.designTagRepo.save(
+      tagIds.map((tagId) => this.designTagRepo.create({ designId: Number(designId), tagId })),
+    );
   }
 
   private async replaceLaborRows(designId: string | number, rows: NormalizedLaborRow[]): Promise<void> {
@@ -4906,7 +4940,11 @@ export class ProductsService {
         relations: ['stoneMaster', 'shapeMaster', 'sizeMaster', 'cutMaster', 'colorMaster', 'qualityMaster', 'stoneTypeMaster'],
         order: { sortOrder: 'ASC' },
       }),
-      this.laborRepo.find({ where: { designId }, relations: ['laborHeadMaster'], order: { sortOrder: 'ASC' } }),
+      this.laborRepo.find({
+        where: { designId },
+        relations: ['laborHeadMaster', 'laborRuleMaster'],
+        order: { sortOrder: 'ASC' },
+      }),
       this.overheadRepo.find({ where: { designId }, relations: ['overheadRuleMaster'], order: { sortOrder: 'ASC' } }),
       this.findingRepo.find({ where: { designId }, relations: ['findingHeadMaster'], order: { sortOrder: 'ASC' } }),
     ]);
@@ -4917,8 +4955,7 @@ export class ProductsService {
   private toMetalDtos(rows: DesignMetal[]): DesignMetalDto[] {
     return rows.map((row) => ({
       metalCaratageId: row.metalCaratageId || undefined,
-      goldColour: row.metalCaratageMaster?.value || row.goldColour || undefined,
-      metalCaratage: row.metalCaratageMaster?.value || row.metalCaratage || row.goldColour || undefined,
+      metalCaratage: row.metalCaratageMaster?.value || row.metalCaratage || undefined,
       netWt: this.toNumber(row.netWt),
       wastagePercent: this.toNumber(row.wastagePercent),
       wastageWt: this.toNumber(row.wastageWt),
@@ -4958,6 +4995,8 @@ export class ProductsService {
     return rows.map((row) => ({
       laborHeadId: row.laborHeadId || undefined,
       laborHead: row.laborHeadMaster?.value || row.laborHead || undefined,
+      laborRuleId: row.laborRuleId || undefined,
+      laborRule: row.laborRuleMaster?.value || undefined,
       laborPerUnit: this.toNumber(row.laborPerUnit),
       unitQty: this.toNumber(row.unitQty),
       laborValue: this.toNumber(row.laborValue),
@@ -5229,8 +5268,7 @@ export class ProductsService {
     return {
       designNo: this.getImportCell(row, 'Design No', 'designNo'),
       version: this.getImportCell(row, 'Version', 'version'),
-      metalCaratage: this.getImportCell(row, 'Metal', 'metalCaratage', 'Metal Caratage'),
-      goldColour: this.getImportCell(row, 'Gold Colour', 'goldColour'),
+      metalCaratage: this.getImportCell(row, 'Metal Caratage', 'metalCaratage', 'Metal'),
       netWt: this.getImportCell(row, 'Net Wt', 'netWt'),
       wastagePercent: this.getImportCell(row, 'Wastage %', 'wastagePercent'),
       wastageWt: this.getImportCell(row, 'Wastage Wt', 'wastageWt'),
@@ -5421,7 +5459,6 @@ export class ProductsService {
   private toImportedMetalDto(row: DesignMetalImportRow): DesignMetalDto {
     return {
       metalCaratage: row.metalCaratage?.trim() || undefined,
-      goldColour: row.goldColour?.trim() || undefined,
       netWt: this.optionalNonNegativeNumber(row.netWt, 'netWt') ?? undefined,
       wastagePercent: this.optionalNonNegativeNumber(row.wastagePercent, 'wastagePercent') ?? undefined,
       wastageWt: this.optionalNonNegativeNumber(row.wastageWt, 'wastageWt') ?? undefined,
@@ -6098,7 +6135,6 @@ export class ProductsService {
       diamondWeight: await this.resolveMasterRef('diamond_weights', dto.diamondWeightId ?? existing?.diamondWeightId, dto.diamondWeight ?? existing?.diamondWeight, 'diamondWeight'),
       diamondQuality: await this.resolveMasterRef('diamond_qualities', dto.diamondQualityId ?? existing?.diamondQualityId, dto.diamondQuality ?? existing?.diamondQuality, 'diamondQuality'),
       designStatus: await this.resolveMasterRef('design_statuses', dto.designStatusId ?? existing?.designStatusId, dto.designStatus ?? existing?.designStatus, 'designStatus'),
-      tags: await this.resolveMasterRef('tags', dto.tagsId ?? existing?.tagsId, Array.isArray(dto.tags) ? dto.tags[0] : undefined, 'tags'),
       metalCaratage: await this.resolveMasterRef(
         'metal_caratages',
         dto.metalCaratageId ?? existing?.metalCaratageId,
@@ -6108,10 +6144,20 @@ export class ProductsService {
     };
   }
 
+  private async resolveDesignTagIds(dto: CreateProductDto | UpdateProductDto): Promise<number[]> {
+    const requestedIds = dto.tagIds ?? (dto.tagsId ? [dto.tagsId] : []);
+    const requestedValues = dto.tags ?? [];
+    const resolved = await Promise.all([
+      ...requestedIds.map((id) => this.resolveMasterRef('tags', id, undefined, 'tag', true)),
+      ...requestedValues.map((value) => this.resolveMasterRef('tags', undefined, value, 'tag', true)),
+    ]);
+    return Array.from(new Set(resolved.map((tag) => tag.id).filter((id): id is number => id !== null)));
+  }
+
   private async resolveNormalizedMetalRows(rows: NormalizedMetalRow[]): Promise<NormalizedMetalRow[]> {
     return Promise.all(rows.map(async (row) => {
       const ref = await this.resolveMasterRef('metal_caratages', row.metalCaratageId, row.metalCaratage, 'metalCaratage', true);
-      return { ...row, metalCaratageId: ref.id, metalCaratage: ref.value, goldColour: ref.value };
+      return { ...row, metalCaratageId: ref.id, metalCaratage: ref.value };
     }));
   }
 
@@ -6152,8 +6198,17 @@ export class ProductsService {
 
   private async resolveNormalizedLaborRows(rows: NormalizedLaborRow[]): Promise<NormalizedLaborRow[]> {
     return Promise.all(rows.map(async (row) => {
-      const ref = await this.resolveMasterRef('labor_heads', row.laborHeadId, row.laborHead, 'laborHead');
-      return { ...row, laborHeadId: ref.id, laborHead: ref.value };
+      const [head, rule] = await Promise.all([
+        this.resolveMasterRef('labor_heads', row.laborHeadId, row.laborHead, 'laborHead'),
+        this.resolveMasterRef('labor_rules', row.laborRuleId, row.laborRule, 'laborRule'),
+      ]);
+      return {
+        ...row,
+        laborHeadId: head.id,
+        laborHead: head.value,
+        laborRuleId: rule.id,
+        laborRule: rule.value,
+      };
     }));
   }
 
@@ -6181,8 +6236,11 @@ export class ProductsService {
     design.diamondWeight = design.diamondWeightMaster?.value || design.diamondWeight || null;
     design.diamondQuality = design.diamondQualityMaster?.value || design.diamondQuality || null;
     design.designStatus = design.designStatusMaster?.value || design.designStatus || null;
-    design.tags = design.tagsMaster?.value ? [design.tagsMaster.value] : design.tags || null;
-    design.goldColour = design.metalCaratageMaster?.value || design.goldColour || null;
+    design.tags = (design.designTags || [])
+      .map((designTag) => designTag.tagMaster?.value)
+      .filter((value): value is string => Boolean(value));
+    design.metalCaratage = design.metalCaratageMaster?.value || design.metalCaratage || null;
+    design.metalColor = design.metalCaratageMaster?.metalColorMaster?.value || null;
     design.metals = (design.metals || []).map((row) => this.hydrateMetalDisplayLabels(row));
     design.gemstones = (design.gemstones || []).map((row) => this.hydrateGemstoneDisplayLabels(row));
     design.labors = (design.labors || []).map((row) => this.hydrateLaborDisplayLabels(row));
@@ -6194,8 +6252,8 @@ export class ProductsService {
   }
 
   private hydrateMetalDisplayLabels(row: DesignMetal): DesignMetal {
-    row.metalCaratage = row.metalCaratageMaster?.value || row.metalCaratage || row.goldColour || null;
-    row.goldColour = row.metalCaratage;
+    row.metalCaratage = row.metalCaratageMaster?.value || row.metalCaratage || null;
+    row.metalColor = row.metalCaratageMaster?.metalColorMaster?.value || null;
     return row;
   }
 
@@ -6242,8 +6300,7 @@ export class ProductsService {
     return rows.map((row) => ({
       ...row,
       metalCaratageId: row.metalCaratageMaster?.id ?? row.metalCaratageId ?? null,
-      metalCaratage: row.metalCaratageMaster?.value || row.metalCaratage || row.goldColour || null,
-      goldColour: row.metalCaratageMaster?.value || row.goldColour || row.metalCaratage || null,
+      metalCaratage: row.metalCaratageMaster?.value || row.metalCaratage || null,
       metalName: row.metalCaratageMaster?.metalMaster?.value || null,
       metalColor: row.metalCaratageMaster?.metalColorMaster?.value || null,
       metalPurity: row.metalCaratageMaster?.metalPurityMaster?.value || null,
@@ -6270,7 +6327,8 @@ export class ProductsService {
       quality: row.qualityMaster?.value || row.quality || null,
       stoneTypeId: row.stoneTypeMaster?.id ?? row.stoneTypeId ?? null,
       stoneType: row.stoneTypeMaster?.value || row.stoneType || null,
-      packetName: row.packetName || null,
+      packet: row.packet ? this.toCompactPacketResponse(row.packet) : null,
+      packetName: row.packet?.packetName || row.packetName || null,
     }));
   }
 
@@ -6279,6 +6337,8 @@ export class ProductsService {
       ...row,
       laborHeadId: row.laborHeadMaster?.id ?? row.laborHeadId ?? null,
       laborHead: row.laborHeadMaster?.value || row.laborHead || null,
+      laborRuleId: row.laborRuleMaster?.id ?? row.laborRuleId ?? null,
+      laborRule: row.laborRuleMaster?.value || null,
     }));
   }
 

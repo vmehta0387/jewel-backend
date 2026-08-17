@@ -1,6 +1,12 @@
 -- Post-migration cleanup for old design UUID bridge columns.
 -- Runtime entities use integer IDs and no longer read or write legacy_uuid.
 
+-- stone_packets is converted to its integer primary key before this cleanup runs.
+SET @table_name := 'stone_packets';
+SET @column_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @table_name AND COLUMN_NAME = 'legacy_uuid');
+SET @sql := IF(@column_exists > 0, 'ALTER TABLE `stone_packets` DROP COLUMN `legacy_uuid`', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 SET @table_name := 'designs';
 SET @column_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @table_name AND COLUMN_NAME = 'legacy_uuid');
 SET @index_exists := (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @table_name AND INDEX_NAME = 'ux_designs_legacy_uuid');

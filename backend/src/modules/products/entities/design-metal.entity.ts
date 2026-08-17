@@ -13,8 +13,8 @@ export class DesignMetal {
   @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
   metalCaratageId: number | null;
 
-  goldColour?: string | null;
   metalCaratage?: string | null;
+  metalColor?: string | null;
 
   @Column({ name: 'net_wt', type: 'decimal', precision: 12, scale: 3, default: 0.0 })
   netWt: number;

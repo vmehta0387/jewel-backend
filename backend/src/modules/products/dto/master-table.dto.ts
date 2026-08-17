@@ -128,6 +128,12 @@ export class FindOneMasterTableDto {
   metalPurityId?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  metalCaratageId?: number;
+
+  @IsOptional()
   @IsString()
   findingNo?: string;
 
@@ -185,6 +191,12 @@ export class SaveMasterTableDto {
   @IsInt()
   @Min(1)
   metalPurityId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  metalCaratageId?: number;
 
   @IsOptional()
   @IsString()

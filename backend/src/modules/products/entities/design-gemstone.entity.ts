@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Design } from './design.entity';
+import { StonePacket } from './stone-packet.entity';
 import {
   DiamondTypeMaster,
   PacketColorMaster,
@@ -71,6 +72,10 @@ export class DesignGemstone {
   @ManyToOne(() => Design, (design) => design.gemstones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })
   design: Design;
+
+  @ManyToOne(() => StonePacket, { nullable: true })
+  @JoinColumn({ name: 'packet_id' })
+  packet: StonePacket | null;
 
   @ManyToOne(() => PacketStoneMaster, { nullable: true })
   @JoinColumn({ name: 'stone_id' })

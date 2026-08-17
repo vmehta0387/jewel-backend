@@ -450,7 +450,7 @@ export class PricingService {
 
     const maps = this.buildGlobalRateMaps(activeRates);
     const designs = await this.designRepo.find({
-      relations: ['metals', 'gemstones', 'labors', 'findings'],
+      relations: ['metals', 'metals.metalCaratageMaster', 'gemstones', 'labors', 'findings'],
     });
 
     let updatedDesigns = 0;
@@ -463,7 +463,7 @@ export class PricingService {
       let gemstonesChanged = false;
 
       for (const metal of metals) {
-        const key = this.normalizeLookup(metal.goldColour);
+        const key = this.normalizeLookup(metal.metalCaratageMaster?.value || metal.metalCaratage);
         if (!key) continue;
 
         const rate = maps.metalRates.get(key);
@@ -538,7 +538,7 @@ export class PricingService {
       design.totalValue = totalValue;
       design.grossWeight = grossWeight;
       design.livePrice = totalValue;
-      design.goldColour = metals[0]?.goldColour || design.goldColour || null;
+      design.metalCaratage = metals[0]?.metalCaratageMaster?.value || metals[0]?.metalCaratage || design.metalCaratage || null;
       design.stoneInfo = gemstones[0]?.stone || design.stoneInfo || null;
 
       await this.designRepo.save(design);
@@ -769,7 +769,7 @@ export class PricingService {
 
   private resolveReferenceMasterTypes(category: GlobalBasePriceCategory): DesignMasterType[] {
     if (category === GlobalBasePriceCategory.METAL) {
-      return [DesignMasterType.METAL_CARATAGE, DesignMasterType.GOLD_COLOUR];
+      return [DesignMasterType.METAL_CARATAGE];
     }
     return [DesignMasterType.DIAMOND_TYPE];
   }

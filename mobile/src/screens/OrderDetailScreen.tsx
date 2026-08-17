@@ -211,10 +211,10 @@ const OrderDetailScreen = () => {
     return (
       parsedSelection.metalColor ||
       primaryMetal?.metalCaratage ||
-      primaryMetal?.goldColour ||
-      designDetails?.goldColour
+      primaryMetal?.metalCaratage ||
+      designDetails?.metalCaratage
     );
-  }, [designDetails?.goldColour, designDetails?.metals, parsedSelection.metalColor]);
+  }, [designDetails?.metalCaratage, designDetails?.metals, parsedSelection.metalColor]);
 
   useFocusEffect(
     useCallback(() => {

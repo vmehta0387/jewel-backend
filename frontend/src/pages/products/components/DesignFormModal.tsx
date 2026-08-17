@@ -920,11 +920,11 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   <div className="space-y-2 text-sm text-slate-700">
                     <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                       <span>Metal Value</span>
-                      <span className="font-semibold text-slate-900">{costTotals.metal.toFixed(2)}</span>
+                      <span className="font-semibold text-slate-900">{formatMoney(costTotals.metal)}</span>
                     </div>
                     <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                       <span>Stone Value</span>
-                      <span className="font-semibold text-slate-900">{costTotals.gem.toFixed(2)}</span>
+                      <span className="font-semibold text-slate-900">{formatMoney(costTotals.gem)}</span>
                     </div>
                     <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                       <span>Labor Value</span>
@@ -937,7 +937,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                     {FINDING_FEATURE_ENABLED ? (
                       <div className="flex items-center justify-between rounded-md bg-white px-2.5 py-1.5">
                         <span>Finding Value</span>
-                        <span className="font-semibold text-slate-900">{costTotals.finding.toFixed(2)}</span>
+                        <span className="font-semibold text-slate-900">{formatMoney(costTotals.finding)}</span>
                       </div>
                     ) : null}
                   </div>
@@ -945,7 +945,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   <div className="mt-3 rounded-lg border border-[#d8c5a4] bg-[#f8f2e8] px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-slate-700">Total Value</span>
-                      <span className="text-base font-bold text-slate-900">{costTotals.total.toFixed(2)}</span>
+                      <span className="text-base font-bold text-slate-900">{formatMoney(costTotals.total)}</span>
                     </div>
                   </div>
 
@@ -984,44 +984,36 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                               <div className={inlineMasterControlGroupClass}>
                                 <SmartDropdown
                                   className={`${inlineMasterDropdownClass} min-w-[10.5rem]`}
-                                  value={item.goldColour}
+                                  value={item.metalCaratage}
                                   onChange={(value, option) => {
                                     mergeMasterOption('METAL_CARATAGE', option);
-                                    updateMetalRow(item.id, 'goldColour', value);
+                                    updateMetalRow(item.id, 'metalCaratage', value);
                                   }}
                                   config={masterDropdownConfig(
                                     'METAL_CARATAGE',
                                     'Select Metal',
                                     [
                                       ...(!(
-                                        (masterOptions.metalCaratages.length > 0
-                                          ? masterOptions.metalCaratages
-                                          : masterOptions.goldColours
-                                        ).some((option) => option.value === item.goldColour)
-                                      ) && item.goldColour
+                                        masterOptions.metalCaratages.some((option) => option.value === item.metalCaratage)
+                                      ) && item.metalCaratage
                                         ? [{
-                                            id: `current-${item.goldColour}`,
-                                            value: item.goldColour,
+                                            id: `current-${item.metalCaratage}`,
+                                            value: item.metalCaratage,
                                             label:
                                               getMetalCaratageDisplay(
-                                                item.goldColour,
-                                                masterOptions.metalCaratages.length > 0
-                                                  ? masterOptions.metalCaratages
-                                                  : masterOptions.goldColours,
-                                              ) || item.goldColour,
+                                                item.metalCaratage,
+                                                masterOptions.metalCaratages,
+                                              ) || item.metalCaratage,
                                           }]
                                         : []),
-                                      ...(masterOptions.metalCaratages.length > 0
-                                        ? masterOptions.metalCaratages
-                                        : masterOptions.goldColours
-                                      ).map((option) => {
+                                      ...masterOptions.metalCaratages.map((option) => {
                                         const optionKey = normalizeLookupKey(option.value);
                                         const isUsedInOtherRow =
                                           optionKey.length > 0 &&
                                           metalRows.some(
                                             (row) =>
                                               row.id !== item.id &&
-                                              normalizeLookupKey(row.goldColour) === optionKey,
+                                              normalizeLookupKey(row.metalCaratage) === optionKey,
                                           );
                                         return {
                                           ...option,
@@ -1039,7 +1031,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                   disabled={creatingMasterType === 'METAL_CARATAGE'}
                                   onClick={() =>
                                     addMasterFromDesign('METAL_CARATAGE', (masterValue) =>
-                                      updateMetalRow(item.id, 'goldColour', masterValue),
+                                      updateMetalRow(item.id, 'metalCaratage', masterValue),
                                     )
                                   }
                                   title="Add Metal"
@@ -1095,7 +1087,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
                           <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
                           <td className="px-2 py-2"></td>
-                          <td className="px-2 py-2">{costTotals.metal.toFixed(2)}</td>
+                          <td className="px-2 py-2">{formatMoney(costTotals.metal)}</td>
                           <td className="px-2 py-2"></td>
                         </tr>
                       </tbody>
@@ -1147,7 +1139,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                       limit: 200,
                                     },
                                     responsePath: 'data',
-                                    valueKey: 'value',
+                                    valueKey: 'id',
                                     labelKey: 'packetName',
                                     placeholder: 'Select Packet',
                                   }}
@@ -1209,7 +1201,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + parseNum(row.pcs), 0).toFixed(0)}</td>
                           <td className="px-2 py-2">{gemRows.reduce((sum, row) => sum + getGemWeight(row), 0).toFixed(3)}</td>
                           <td className="px-2 py-2"></td>
-                          <td className="px-2 py-2">{costTotals.gem.toFixed(2)}</td>
+                          <td className="px-2 py-2">{formatMoney(costTotals.gem)}</td>
                           <td className="px-2 py-2"></td>
                         </tr>
                       </tbody>
@@ -1374,7 +1366,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           ))}
                           <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
                             <td className="px-2 py-2 text-right" colSpan={5}>Total</td>
-                            <td className="px-2 py-2">{costTotals.finding.toFixed(2)}</td>
+                            <td className="px-2 py-2">{formatMoney(costTotals.finding)}</td>
                             <td className="px-2 py-2"></td>
                           </tr>
                         </tbody>

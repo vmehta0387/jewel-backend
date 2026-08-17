@@ -158,7 +158,7 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
               return {
                 designNo: d.designNo,
                 category: d.jewelryGroup,
-                goldType: d.goldColour,
+                goldType: d.metalCaratage,
                 diamondType: d.diamondType,
                 priceInfo: priceRow?.finalPrice ? `USD ${priceRow.finalPrice}` : 'No pricing tier found',
               };
@@ -219,12 +219,12 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
           stage: design.stage,
           diamondSpread: design.diamondSpread,
           diamondType: design.diamondType,
-          goldColour: design.goldColour,
+          metalCaratage: design.metalCaratage,
           tags: design.tags,
           imageUrls: design.imageUrls || [],
           metals: (design.metals || []).map((metal: any) => ({
             metalCaratage: metal.metalCaratage,
-            goldColour: metal.goldColour,
+            metalColor: metal.metalColor,
             netWt: metal.netWt,
             wastagePercent: metal.wastagePercent,
             wastageWt: metal.wastageWt,

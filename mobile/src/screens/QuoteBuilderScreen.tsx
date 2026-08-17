@@ -179,7 +179,7 @@ const buildSelectionSummaryPlain = (selection: VersionFilters) =>
 const getVersionAttributes = (design: Design) => ({
   shapes: splitStoneOptions(design.gemstones?.map((gem) => gem.stone || gem.stoneType) || []),
   styles: uniqueValues([design.diamondSpread]),
-  metalColors: splitMetalOptions([...(design.metals?.map((metal) => metal.metalCaratage || metal.goldColour) || []), design.goldColour]),
+  metalColors: splitMetalOptions([...(design.metals?.map((metal) => metal.metalCaratage || metal.metalCaratage) || []), design.metalCaratage]),
   weights: uniqueValues([design.diamondWeight]),
   qualities: uniqueValues([design.diamondQuality]),
   ringSizes: uniqueValues([design.jewelrySize]),

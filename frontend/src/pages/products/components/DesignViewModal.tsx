@@ -72,6 +72,25 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
     usesScopedDesignInfoView,
   } = scope;
 
+  const getOverheadModeLabel = (overhead: any): string => {
+    const mode = String(overhead?.overheadApplyMode || '').trim().toUpperCase();
+    if (mode === 'FLAT') return 'Flat';
+    if (mode === 'PERCENT_BOM_SUBTOTAL' || mode === 'PER_OF_MATERIALS') return '% of Materials';
+    if (mode === 'PERCENT_MATERIALS') return '% of Materials';
+    return mode || '-';
+  };
+
+  const getOverheadConfiguredValue = (overhead: any): string => {
+    const mode = String(overhead?.overheadApplyMode || '').trim().toUpperCase();
+    if (mode === 'FLAT') {
+      return formatMoney(parseNumericValue(overhead?.flatAmount));
+    }
+    const rate = overhead?.ratePercent;
+    return rate === null || rate === undefined || rate === ''
+      ? '-'
+      : `${parseNumericValue(rate).toFixed(2)}%`;
+  };
+
   if (!showInfoModal || !detailInfo) return null;
 
   return (
@@ -316,14 +335,14 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
               </div>
             </div>
             <div className={`grid grid-cols-1 gap-3 ${FINDING_FEATURE_ENABLED ? 'md:grid-cols-6' : 'md:grid-cols-5'}`}>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Metal Value</p><p className="font-semibold">{detailSummary.metalValue.toFixed(2)}</p></div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gem Value</p><p className="font-semibold">{detailSummary.gemValue.toFixed(2)}</p></div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Labor Value</p><p className="font-semibold">{detailSummary.laborValue.toFixed(2)}</p></div>
-              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Overhead Value</p><p className="font-semibold">{detailSummary.overheadValue.toFixed(2)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Metal Value</p><p className="font-semibold">{formatMoney(detailSummary.metalValue)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Gem Value</p><p className="font-semibold">{formatMoney(detailSummary.gemValue)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Labor Value</p><p className="font-semibold">{formatMoney(detailSummary.laborValue)}</p></div>
+              <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Overhead Value</p><p className="font-semibold">{formatMoney(detailSummary.overheadValue)}</p></div>
               {FINDING_FEATURE_ENABLED ? (
-                <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Finding Value</p><p className="font-semibold">{detailSummary.findingValue.toFixed(2)}</p></div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-2 text-sm"><p className="text-xs text-gray-600">Finding Value</p><p className="font-semibold">{formatMoney(detailSummary.findingValue)}</p></div>
               ) : null}
-              <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{detailSummary.totalValue.toFixed(2)}</p></div>
+              <div className="rounded border border-green-200 bg-green-50 p-2 text-sm"><p className="text-xs text-gray-600">Total Value</p><p className="font-semibold">{formatMoney(detailSummary.totalValue)}</p></div>
             </div>
             <div className="rounded border border-slate-200">
               <div className="border-b border-slate-200/60 bg-slate-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-800 backdrop-blur-sm">Metal Information</div>
@@ -345,19 +364,19 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
                       <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={7}>No metal details available.</td></tr>
                     ) : (
                       detailMetals.map((metal: any) => (
-                        <tr key={metal.id || `${metal.goldColour}-${metal.sortOrder}`}>
+                        <tr key={metal.id || `${metal.metalCaratage}-${metal.sortOrder}`}>
                           <td className="px-3 py-2">
                             {getMetalCaratageDisplay(
-                              String(metal.metalCaratage || metal.goldColour || ''),
+                              String(metal.metalCaratage || ''),
                               masterOptions.metalCaratages,
-                            ) || metal.metalCaratage || metal.goldColour || '-'}
+                            ) || metal.metalCaratage || '-'}
                           </td>
                           <td className="px-3 py-2">{parseNumericValue(metal.netWt).toFixed(3)}</td>
                           <td className="px-3 py-2">{parseNumericValue(metal.wastagePercent).toFixed(2)}</td>
                           <td className="px-3 py-2">{parseNumericValue(metal.wastageWt).toFixed(3)}</td>
                           <td className="px-3 py-2">{parseNumericValue(metal.totalWt).toFixed(3)}</td>
-                          <td className="px-3 py-2">{parseNumericValue(metal.pricePerGm).toFixed(2)}</td>
-                          <td className="px-3 py-2">{parseNumericValue(metal.value).toFixed(2)}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(metal.pricePerGm))}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(metal.value))}</td>
                         </tr>
                       ))
                     )}
@@ -399,8 +418,8 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
                           <td className="px-3 py-2">{parseNumericValue(gem.wtPerPcs).toFixed(3)}</td>
                           <td className="px-3 py-2">{parseNumericValue(gem.pcs).toFixed(0)}</td>
                           <td className="px-3 py-2">{parseNumericValue(gem.wtInCts).toFixed(3)}</td>
-                          <td className="px-3 py-2">{parseNumericValue(gem.pricePerCt).toFixed(2)}</td>
-                          <td className="px-3 py-2">{parseNumericValue(gem.amount).toFixed(2)}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(gem.pricePerCt))}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(gem.amount))}</td>
                         </tr>
                       ))
                     )}
@@ -427,9 +446,9 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
                       detailLabors.map((labor: any) => (
                         <tr key={labor.id || `${labor.laborHead}-${labor.sortOrder}`}>
                           <td className="px-3 py-2">{labor.laborHead || '-'}</td>
-                          <td className="px-3 py-2">{parseNumericValue(labor.laborPerUnit).toFixed(2)}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(labor.laborPerUnit))}</td>
                           <td className="px-3 py-2">{parseNumericValue(labor.unitQty).toFixed(2)}</td>
-                          <td className="px-3 py-2">{parseNumericValue(labor.laborValue).toFixed(2)}</td>
+                          <td className="px-3 py-2">{formatMoney(parseNumericValue(labor.laborValue))}</td>
                         </tr>
                       ))
                     )}
@@ -444,17 +463,25 @@ export default function DesignViewModal({ showInfoModal, designNo, onClose, scop
                   <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold text-slate-700">
                     <tr>
                       <th className="px-3 py-2">Overhead</th>
+                      <th className="px-3 py-2">Mode</th>
+                      <th className="px-3 py-2">Configured</th>
                       <th className="px-3 py-2">Value</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {detailOverheadRows.length === 0 ? (
-                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={2}>No overhead details available.</td></tr>
+                      <tr><td className="px-3 py-3 text-sm text-slate-500" colSpan={4}>No overhead details available.</td></tr>
                     ) : (
                       detailOverheadRows.map((overhead: any) => (
-                        <tr key={overhead.id || `${overhead.laborHead}-${overhead.sortOrder}`}>
-                          <td className="px-3 py-2">{String(overhead.laborHead || '-').replace(/^Overhead\s*-\s*/i, '') || '-'}</td>
-                          <td className="px-3 py-2">{parseNumericValue(overhead.laborValue).toFixed(2)}</td>
+                        <tr key={overhead.id || `${overhead.overheadHead || overhead.laborHead}-${overhead.sortOrder}`}>
+                          <td className="px-3 py-2">
+                            {String(overhead.overheadHead || overhead.laborHead || '-').replace(/^Overhead\s*-\s*/i, '') || '-'}
+                          </td>
+                          <td className="px-3 py-2">{getOverheadModeLabel(overhead)}</td>
+                          <td className="px-3 py-2">{getOverheadConfiguredValue(overhead)}</td>
+                          <td className="px-3 py-2">
+                            {formatMoney(parseNumericValue(overhead.overheadValue ?? overhead.laborValue))}
+                          </td>
                         </tr>
                       ))
                     )}

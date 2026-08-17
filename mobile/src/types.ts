@@ -35,7 +35,7 @@ export type Design = {
   diamondType?: string | null;
   diamondWeight?: string | null;
   diamondQuality?: string | null;
-  goldColour?: string | null;
+  metalCaratage?: string | null;
   tags?: string[];
   designDescription?: string | null;
   remarks?: string | null;
@@ -49,7 +49,7 @@ export type Design = {
   ijewelBaseName?: string | null;
   metals?: Array<{
     metalCaratage?: string;
-    goldColour?: string;
+    metalColor?: string;
     netWt?: number;
     totalWt?: number;
     value?: number;
@@ -224,7 +224,6 @@ export type GroupedMastersResponse = {
       livePricePerGm?: number;
     }
   >;
-  goldColours: Array<MasterOption & { wastagePercent?: number }>;
   diamondTypes: MasterOption[];
   diamondSpreads: MasterOption[];
   diamondWeights: MasterOption[];

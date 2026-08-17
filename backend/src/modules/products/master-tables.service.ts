@@ -35,6 +35,8 @@ const MASTER_RELATIONS: Partial<Record<DesignMasterType, string[]>> = {
   [DesignMasterType.METAL_COLOR]: ['metalMaster'],
   [DesignMasterType.METAL_PURITY]: ['metalMaster'],
   [DesignMasterType.METAL_CARATAGE]: ['metalMaster', 'metalColorMaster', 'metalPurityMaster'],
+  [DesignMasterType.FINDING_HEAD]: ['metalCaratageMaster'],
+  [DesignMasterType.LABOR_RULE]: ['jewelryGroupMaster'],
   [DesignMasterType.OVERHEAD_RULE]: ['jewelryGroupMaster'],
 };
 
@@ -57,11 +59,11 @@ const TYPE_WRITE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> = 
     'defaultWastagePercent',
   ],
   [DesignMasterType.VENDOR_NAME]: ['email'],
-  [DesignMasterType.LABOR_RULE]: ['laborApplyMode', 'flatCost', 'ratePerStone', 'ratePerGram', 'ratePerGroup'],
+  [DesignMasterType.LABOR_RULE]: ['jewelryGroupId', 'laborApplyMode', 'flatCost', 'ratePerStone', 'ratePerGram', 'ratePerGroup'],
   [DesignMasterType.OVERHEAD_RULE]: ['jewelryGroupId', 'overheadApplyMode', 'ratePercent', 'flatAmount'],
   [DesignMasterType.FINDING_HEAD]: [
     'findingNo',
-    'metalCaratage',
+    'metalCaratageId',
     'priceIn',
     'pricePerUnit',
     'dimensions',
@@ -76,6 +78,7 @@ const REQUIRED_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> = {
   [DesignMasterType.METAL_PURITY]: ['metalId'],
   [DesignMasterType.METAL_CARATAGE]: ['metalId', 'metalColorId', 'metalPurityId'],
   [DesignMasterType.OVERHEAD_RULE]: ['jewelryGroupId', 'overheadApplyMode'],
+  [DesignMasterType.LABOR_RULE]: ['jewelryGroupId'],
 };
 
 const RELATION_FIELD_TYPES: Record<string, DesignMasterType> = {
@@ -83,6 +86,7 @@ const RELATION_FIELD_TYPES: Record<string, DesignMasterType> = {
   metalId: DesignMasterType.METAL_NAME,
   metalColorId: DesignMasterType.METAL_COLOR,
   metalPurityId: DesignMasterType.METAL_PURITY,
+  metalCaratageId: DesignMasterType.METAL_CARATAGE,
 };
 
 const UNIQUE_SCOPE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> = {
@@ -92,6 +96,7 @@ const UNIQUE_SCOPE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> 
   [DesignMasterType.METAL_PURITY]: ['metalId'],
   [DesignMasterType.METAL_CARATAGE]: ['metalId', 'metalColorId', 'metalPurityId'],
   [DesignMasterType.OVERHEAD_RULE]: ['jewelryGroupId'],
+  [DesignMasterType.LABOR_RULE]: ['jewelryGroupId'],
 };
 
 @Injectable()
@@ -1021,7 +1026,7 @@ export class MasterTablesService {
       Description: '',
       'Is Active': 'TRUE',
     };
-    if ([DesignMasterType.COLLECTION, DesignMasterType.JEWELRY_SIZE, DesignMasterType.OVERHEAD_RULE].includes(masterType)) {
+    if ([DesignMasterType.COLLECTION, DesignMasterType.JEWELRY_SIZE, DesignMasterType.LABOR_RULE, DesignMasterType.OVERHEAD_RULE].includes(masterType)) {
       base['Jewelry Group ID'] = '';
       base['Jewelry Group'] = '';
     }
@@ -1062,6 +1067,7 @@ export class MasterTablesService {
     }
     if (masterType === DesignMasterType.FINDING_HEAD) {
       base['Finding No'] = '';
+      base['Metal Caratage ID'] = '';
       base['Metal Caratage'] = '';
       base['Price In'] = 'PIECES';
       base['Price/Unit'] = '';
@@ -1087,7 +1093,8 @@ export class MasterTablesService {
     output['Metal Purity'] = (row.metalPurity as any)?.value || '';
     output.Email = row.email || '';
     output['Finding No'] = row.findingNo || '';
-    output['Metal Caratage'] = row.metalCaratage || '';
+    output['Metal Caratage ID'] = row.metalCaratageId || '';
+    output['Metal Caratage'] = (row.metalCaratage as any)?.value || '';
     output['Price In'] = row.priceIn || output['Price In'] || '';
     output['Price/Unit'] = row.pricePerUnit ?? '';
     output.Dimensions = row.dimensions || '';
@@ -1120,7 +1127,7 @@ export class MasterTablesService {
     payload.metalPurityId = this.toOptionalInt(this.readCell(row, 'Metal Purity ID'));
     payload.email = this.readCell(row, 'Email') || null;
     payload.findingNo = this.readCell(row, 'Finding No') || null;
-    payload.metalCaratage = this.readCell(row, 'Metal Caratage') || null;
+    payload.metalCaratageId = this.toOptionalInt(this.readCell(row, 'Metal Caratage ID'));
     payload.priceIn = this.readCell(row, 'Price In') || undefined;
     payload.pricePerUnit = this.toOptionalNumber(this.readCell(row, 'Price/Unit'));
     payload.dimensions = this.readCell(row, 'Dimensions') || null;
@@ -1157,6 +1164,9 @@ export class MasterTablesService {
     }
     if (!payload.metalPurityId) {
       payload.metalPurityId = await this.resolveIdByValue(DesignMasterType.METAL_PURITY, this.readCell(row, 'Metal Purity'), { metalId: payload.metalId });
+    }
+    if (!payload.metalCaratageId) {
+      payload.metalCaratageId = await this.resolveIdByValue(DesignMasterType.METAL_CARATAGE, this.readCell(row, 'Metal Caratage'));
     }
     if (masterType) {
       return;
@@ -1378,6 +1388,7 @@ export class MasterTablesService {
       metalMaster,
       metalColorMaster,
       metalPurityMaster,
+      metalCaratageMaster,
       normalizedValue: _normalizedValue,
       normalizedAlias: _normalizedAlias,
       ...plainRow
@@ -1392,6 +1403,7 @@ export class MasterTablesService {
       metal: this.serializeJoined(metalMaster),
       metalColor: this.serializeJoined(metalColorMaster),
       metalPurity: this.serializeJoined(metalPurityMaster),
+      metalCaratage: this.serializeJoined(metalCaratageMaster),
     };
   }
 

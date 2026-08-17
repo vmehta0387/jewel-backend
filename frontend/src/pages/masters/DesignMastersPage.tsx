@@ -20,7 +20,6 @@ type DesignMasterType =
   | 'METAL_COLOR'
   | 'METAL_PURITY'
   | 'METAL_CARATAGE'
-  | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
   | 'DIAMOND_WEIGHT'
@@ -335,7 +334,6 @@ const MASTER_TYPE_CONFIGS: MasterTypeConfig[] = [
 
 function MasterCategoryIcon({ type }: { type: MasterCategoryType }) {
   if (
-    type === 'GOLD_COLOUR' ||
     type === 'METAL_NAME' ||
     type === 'METAL_COLOR' ||
     type === 'METAL_PURITY' ||
@@ -1735,7 +1733,6 @@ export default function DesignMastersPage() {
       'METAL_COLOR',
       'METAL_PURITY',
       'METAL_CARATAGE',
-      'GOLD_COLOUR',
     ]);
     const stoneTypes = new Set<MasterCategoryType>([
       'DIAMOND_TYPE',
@@ -2284,13 +2281,7 @@ export default function DesignMastersPage() {
             weightPerUnit: parseNum(formWeightPerUnit),
           }
         : null;
-    const defaultWastagePayload =
-      selectedType === 'GOLD_COLOUR'
-        ? {
-            pricePerUnit:
-              formPricePerUnit.trim().length > 0 ? parseNum(formPricePerUnit) : null,
-          }
-        : null;
+    const defaultWastagePayload = null;
 
     const selectedPurityOption =
       selectedType === 'METAL_CARATAGE'
@@ -3505,7 +3496,7 @@ export default function DesignMastersPage() {
           isMetalNameType={selectedType === 'METAL_NAME'}
           isMetalColorType={selectedType === 'METAL_COLOR'}
           isMetalPurityType={selectedType === 'METAL_PURITY'}
-          isMetalCaratageType={selectedType === 'METAL_CARATAGE' || selectedType === 'GOLD_COLOUR'}
+          isMetalCaratageType={selectedType === 'METAL_CARATAGE'}
           isLaborRuleType={selectedType === 'LABOR_RULE'}
           isOverheadRuleType={selectedType === 'OVERHEAD_RULE'}
           findingNo={formFindingNo}

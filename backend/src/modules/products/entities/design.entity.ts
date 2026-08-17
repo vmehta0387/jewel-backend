@@ -23,6 +23,7 @@ import { DesignVendor } from './design-vendor.entity';
 import { DesignRelevant } from './design-relevant.entity';
 import { DesignStlFile } from './design-stl-file.entity';
 import { DesignHistory } from './design-history.entity';
+import { DesignTag } from './design-tag.entity';
 import {
   CollectionMaster,
   DesignStatusMaster,
@@ -34,7 +35,6 @@ import {
   JewelrySizeMaster,
   MetalCaratageMaster,
   StageMaster,
-  TagMaster,
 } from './design-master-tables.entity';
 
 @Entity('designs')
@@ -90,9 +90,6 @@ export class Design {
   @Column({ name: 'design_status_id', type: 'int', nullable: true })
   designStatusId: number | null;
 
-  @Column({ name: 'tags_id', type: 'int', nullable: true })
-  tagsId: number | null;
-
   @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
   metalCaratageId: number | null;
 
@@ -106,7 +103,8 @@ export class Design {
   diamondQuality?: string | null;
   designStatus?: string | null;
   tags?: string[] | null;
-  goldColour?: string | null;
+  metalCaratage?: string | null;
+  metalColor?: string | null;
 
   @Column({ name: 'stone_info', nullable: true })
   stoneInfo: string | null;
@@ -176,6 +174,10 @@ export class Design {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
+  @ManyToOne(() => Design, (design) => design.familyDesigns, { nullable: true })
+  @JoinColumn({ name: 'family_design_id' })
+  familyDesign: Design | null;
+
   @ManyToOne(() => JewelryGroupMaster)
   @JoinColumn({ name: 'jewelry_group_id' })
   jewelryGroupMaster: JewelryGroupMaster;
@@ -212,10 +214,6 @@ export class Design {
   @JoinColumn({ name: 'design_status_id' })
   designStatusMaster: DesignStatusMaster | null;
 
-  @ManyToOne(() => TagMaster, { nullable: true })
-  @JoinColumn({ name: 'tags_id' })
-  tagsMaster: TagMaster | null;
-
   @ManyToOne(() => MetalCaratageMaster, { nullable: true })
   @JoinColumn({ name: 'metal_caratage_id' })
   metalCaratageMaster: MetalCaratageMaster | null;
@@ -233,6 +231,9 @@ export class Design {
 
   @OneToMany(() => DesignGemstone, (gemstone) => gemstone.design)
   gemstones: DesignGemstone[];
+
+  @OneToMany(() => DesignTag, (designTag) => designTag.design)
+  designTags: DesignTag[];
 
   @OneToMany(() => DesignLabor, (labor) => labor.design)
   labors: DesignLabor[];
@@ -257,6 +258,9 @@ export class Design {
 
   @OneToMany(() => DesignRelevant, (relevant) => relevant.relatedDesign)
   relatedToDesignLinks: DesignRelevant[];
+
+  @OneToMany(() => Design, (design) => design.familyDesign)
+  familyDesigns: Design[];
 
   @OneToMany(() => DesignStlFile, (stlFile) => stlFile.design)
   stlFiles: DesignStlFile[];

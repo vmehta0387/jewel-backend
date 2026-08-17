@@ -20,7 +20,6 @@ export enum DesignMasterType {
   METAL_COLOR = 'METAL_COLOR',
   METAL_PURITY = 'METAL_PURITY',
   METAL_CARATAGE = 'METAL_CARATAGE',
-  GOLD_COLOUR = 'GOLD_COLOUR',
   DIAMOND_TYPE = 'DIAMOND_TYPE',
   DIAMOND_SPREAD = 'DIAMOND_SPREAD',
   DIAMOND_WEIGHT = 'DIAMOND_WEIGHT',
@@ -226,9 +225,6 @@ export class MetalCaratageMaster extends MasterTableEntity {
   defaultWastagePercent: number | null;
 }
 
-@Entity('gold_colours')
-export class GoldColourMaster extends MasterTableEntity {}
-
 @Entity('diamond_types')
 export class DiamondTypeMaster extends MasterTableEntity {}
 
@@ -251,7 +247,10 @@ export class VendorNameMaster extends MasterTableEntity {
 export class LaborHeadMaster extends MasterTableEntity {}
 
 @Entity('labor_rules')
-export class LaborRuleMaster extends MasterTableEntity {
+export class LaborRuleMaster extends JewelryGroupScopedMasterEntity {
+  @ManyToOne(() => JewelryGroupMaster, { nullable: true })
+  @JoinColumn({ name: 'jewelry_group_id' })
+  jewelryGroupMaster: JewelryGroupMaster | null;
   @Column({ name: 'labor_apply_mode', type: 'varchar', length: 32, nullable: true })
   laborApplyMode: LaborApplyMode | null;
 
@@ -297,8 +296,12 @@ export class FindingHeadMaster extends MasterTableEntity {
   @Column({ name: 'finding_no', length: 100, nullable: true })
   findingNo: string | null;
 
-  @Column({ name: 'metal_caratage', length: 100, nullable: true })
-  metalCaratage: string | null;
+  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  metalCaratageId: number | null;
+
+  @ManyToOne(() => MetalCaratageMaster, { nullable: true })
+  @JoinColumn({ name: 'metal_caratage_id' })
+  metalCaratageMaster: MetalCaratageMaster | null;
 
   @Column({ name: 'price_in', type: 'enum', enum: FindingPriceIn, nullable: true })
   priceIn: FindingPriceIn | null;
@@ -342,7 +345,6 @@ export const DESIGN_MASTER_TABLE_ENTITIES = [
   MetalColorMaster,
   MetalPurityMaster,
   MetalCaratageMaster,
-  GoldColourMaster,
   DiamondTypeMaster,
   DiamondSpreadMaster,
   DiamondWeightMaster,
@@ -371,7 +373,6 @@ export const DESIGN_MASTER_TYPE_TABLE_MAP = {
   [DesignMasterType.METAL_COLOR]: MetalColorMaster,
   [DesignMasterType.METAL_PURITY]: MetalPurityMaster,
   [DesignMasterType.METAL_CARATAGE]: MetalCaratageMaster,
-  [DesignMasterType.GOLD_COLOUR]: GoldColourMaster,
   [DesignMasterType.DIAMOND_TYPE]: DiamondTypeMaster,
   [DesignMasterType.DIAMOND_SPREAD]: DiamondSpreadMaster,
   [DesignMasterType.DIAMOND_WEIGHT]: DiamondWeightMaster,

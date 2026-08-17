@@ -154,7 +154,7 @@ const AiChatScreen = () => {
           designId: design.id,
           title: design.designName || design.designNo || 'Jewelry design',
           meta:
-            [design.goldColour, design.diamondQuality, design.collection || design.version]
+            [design.metalCaratage, design.diamondQuality, design.collection || design.version]
               .filter(Boolean)
               .join(' - ') || 'Lab EF/VVS - Best seller',
           price: Number(design.displayPrice ?? design.totalValue ?? design.price ?? 0),

@@ -29,7 +29,7 @@ export type MobileCatalogDesign = Pick<
   | 'diamondType'
   | 'diamondWeight'
   | 'diamondQuality'
-  | 'goldColour'
+  | 'metalCaratage'
   | 'totalValue'
   | 'displayPrice'
   | 'imageUrls'

@@ -28,7 +28,6 @@ type DesignMasterType =
   | 'METAL_COLOR'
   | 'METAL_PURITY'
   | 'METAL_CARATAGE'
-  | 'GOLD_COLOUR'
   | 'DIAMOND_TYPE'
   | 'DIAMOND_SPREAD'
   | 'DIAMOND_WEIGHT'
@@ -112,7 +111,7 @@ interface DesignRow {
   diamondSpread: string;
   diamondWeight?: string;
   diamondQuality?: string;
-  goldColour: string;
+  metalCaratage: string;
   collection: string;
   stoneInfo: string;
   price: number;
@@ -165,7 +164,7 @@ interface ApiDesignRow {
   diamondSpread?: string | null;
   diamondWeight?: string | null;
   diamondQuality?: string | null;
-  goldColour?: string | null;
+  metalCaratage?: string | null;
   collection?: string | null;
   stoneInfo?: string | null;
   totalValue?: number | string | null;
@@ -192,13 +191,13 @@ interface ApiDesignRow {
 const getDesignMetalSummary = (design: ApiDesignRow): string => {
   const metals = Array.isArray(design.metals)
     ? design.metals
-        .map((item: any) => String(item?.metalCaratage || item?.goldColour || '').trim())
+        .map((item: any) => String(item?.metalCaratage || '').trim())
         .filter(Boolean)
     : [];
   if (metals.length > 0) {
     return metals.join(', ');
   }
-  return String(design.goldColour || '').trim();
+  return String(design.metalCaratage || '').trim();
 };
 
 const getDesignStoneSummary = (design: ApiDesignRow): string => {
@@ -287,7 +286,7 @@ interface PricingRow {
 
 interface MetalRow {
   id: string;
-  goldColour: string;
+  metalCaratage: string;
   netWt: string;
   wastagePercent: string;
   wastageWt: string;
@@ -669,7 +668,7 @@ const normalizeSizeChartKey = (value: string): string => {
 };
 const buildBaseMetalWeightByPurity = (rows: MetalRow[]): Record<string, string> => {
   return rows.reduce<Record<string, string>>((acc, row) => {
-    const purity = getMetalPurityBucket(row.goldColour);
+    const purity = getMetalPurityBucket(row.metalCaratage);
     if (!purity || acc[purity]) return acc;
     const preferredWeight = row.netWt.trim() || row.totalWt.trim() || '0';
     acc[purity] = preferredWeight;
@@ -997,7 +996,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     diamondSpread: design.diamondSpread || '-',
     diamondWeight: design.diamondWeight || '',
     diamondQuality: design.diamondQuality || '',
-    goldColour: getDesignMetalSummary(design) || 'N/A',
+    metalCaratage: getDesignMetalSummary(design) || 'N/A',
     collection: design.collection || 'General',
     stoneInfo: getDesignStoneSummary(design) || 'N/A',
     price: parseNumericValue(design.displayCostPrice ?? design.totalValue),
@@ -1300,14 +1299,14 @@ const buildIjewelEmbedUrl = (modelId?: string | null, baseName?: string | null):
 };
 
 const designSeed: DesignRow[] = [
-  { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, isPrimary: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
-  { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: '3/4 Way', goldColour: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, isPrimary: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
-  { id: '3', designNo: 'RING-0005', designName: 'Ring RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: 'Full Eternity', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, isPrimary: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
-  { id: '4', designNo: 'RING-0004', designName: 'Ring RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '3/4 Way', goldColour: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, isPrimary: false, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
-  { id: '5', designNo: 'NP-0001', designName: 'Nose Pin NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, isPrimary: true, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
-  { id: '6', designNo: 'RING-0003', designName: 'Ring RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: 'Full Eternity', goldColour: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, isPrimary: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
-  { id: '7', designNo: 'RING-0002', designName: 'Ring RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: '3/4 Way', goldColour: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, isPrimary: false, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
-  { id: '8', designNo: 'E-0001', designName: 'Earring E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', goldColour: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, isPrimary: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
+  { id: '1', designNo: 'RING-0006', designName: 'Ring RING-0006', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', metalCaratage: '22 karat-Rose-Gold', collection: 'Silver', stoneInfo: 'Diamond 0', price: 1586.77, tags: ['Diamond Ring'], stage: 'Sketch', status: 'Mold', remarks: 'Primary hero ring', isActive: true, isPrimary: true, createdAt: '2025-12-17 12:23', modifiedAt: '2026-02-21 14:07', updatedByName: '' },
+  { id: '2', designNo: 'BL-0001', designName: 'Bracelet BL-0001', version: 'V1', jewelryGroup: 'Bracelet', jewelrySize: '15.5 CM', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: '3/4 Way', metalCaratage: '90-silver-Silver', collection: 'Silver Fortune', stoneInfo: 'Diamond 0', price: 9.6, tags: ['Silver Bracelet'], stage: 'Approved', status: 'Active', remarks: 'Starter collection item', isActive: true, isPrimary: true, createdAt: '2025-11-09 10:00', modifiedAt: '2026-02-16 15:42', updatedByName: '' },
+  { id: '3', designNo: 'RING-0005', designName: 'Ring RING-0005', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: 'Full Eternity', metalCaratage: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 775.75, tags: ['Diamond Ring', 'Wedding'], stage: 'Production', status: 'Active', remarks: 'Wedding bestseller', isActive: true, isPrimary: true, createdAt: '2025-10-19 11:40', modifiedAt: '2026-02-18 10:51', updatedByName: '' },
+  { id: '4', designNo: 'RING-0004', designName: 'Ring RING-0004', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '3/4 Way', metalCaratage: '18 Karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 1954.25, tags: ['Diamond Ring'], stage: 'Polish', status: 'Active', remarks: 'Premium edition', isActive: true, isPrimary: false, createdAt: '2025-10-01 09:15', modifiedAt: '2026-02-20 17:05', updatedByName: '' },
+  { id: '5', designNo: 'NP-0001', designName: 'Nose Pin NP-0001', version: 'V1', jewelryGroup: 'Nose Pin', jewelrySize: 'N/A', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', metalCaratage: '22 karat-Rose-Gold', collection: 'Hermione', stoneInfo: 'None', price: 1951.6, tags: ['Minimal'], stage: 'Sketch', status: 'Inactive', remarks: 'Paused for revision', isActive: false, isPrimary: true, createdAt: '2025-08-07 13:20', modifiedAt: '2026-01-25 11:35', updatedByName: '' },
+  { id: '6', designNo: 'RING-0003', designName: 'Ring RING-0003', version: 'V1', jewelryGroup: 'Ring', jewelrySize: 'US 6', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: 'Full Eternity', metalCaratage: '22 karat-White-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 2871.74, tags: ['Diamond Ring', 'Gold Pendant'], stage: 'Production', status: 'Active', remarks: 'High-value custom request', isActive: true, isPrimary: true, createdAt: '2025-07-28 08:40', modifiedAt: '2026-02-22 09:05', updatedByName: '' },
+  { id: '7', designNo: 'RING-0002', designName: 'Ring RING-0002', version: 'V2', jewelryGroup: 'Ring', jewelrySize: 'US 8', diamondType: 'Natural Diamonds ? GH/VS', diamondSpread: '3/4 Way', metalCaratage: '18 K-Yellow-Gold', collection: 'Casual', stoneInfo: 'Aquamarine 0', price: 3247.69, tags: ['Diamond Ring'], stage: 'Quality Check', status: 'Active', remarks: 'Awaiting bulk order', isActive: true, isPrimary: false, createdAt: '2025-07-11 16:25', modifiedAt: '2026-02-23 10:45', updatedByName: '' },
+  { id: '8', designNo: 'E-0001', designName: 'Earring E-0001', version: 'V1', jewelryGroup: 'Earring', jewelrySize: '6 Inches', diamondType: 'Lab Diamonds ? EF/VVS-VS', diamondSpread: '1/2 Way', metalCaratage: '22 karat-Rose-Gold', collection: 'Gold', stoneInfo: 'Diamond 0', price: 3555.63, tags: ['Gold Earring'], stage: 'Dispatch', status: 'Active', remarks: 'Ready for handoff', isActive: true, isPrimary: true, createdAt: '2025-06-15 09:00', modifiedAt: '2026-02-24 19:15', updatedByName: '' },
 ];
 
 const defaultForm: DesignForm = {
@@ -1376,7 +1375,6 @@ const emptyMasterOptions = {
   metalColors: [] as MasterOption[],
   metalPurities: [] as MasterOption[],
   metalCaratages: [] as MasterOption[],
-  goldColours: [] as MasterOption[],
   diamondTypes: [] as MasterOption[],
   diamondSpreads: [] as MasterOption[],
   diamondWeights: [] as MasterOption[],
@@ -1407,7 +1405,6 @@ const masterOptionsKeyByType: Record<DesignMasterType, keyof MasterOptionsState>
   METAL_COLOR: 'metalColors',
   METAL_PURITY: 'metalPurities',
   METAL_CARATAGE: 'metalCaratages',
-  GOLD_COLOUR: 'goldColours',
   DIAMOND_TYPE: 'diamondTypes',
   DIAMOND_SPREAD: 'diamondSpreads',
   DIAMOND_WEIGHT: 'diamondWeights',
@@ -1436,7 +1433,6 @@ const masterTypeLabelMap: Record<DesignMasterType, string> = {
   METAL_COLOR: 'Metal Color',
   METAL_PURITY: 'Metal Purity',
   METAL_CARATAGE: 'Metal',
-  GOLD_COLOUR: 'Metal',
   DIAMOND_TYPE: 'Diamond Type',
   DIAMOND_SPREAD: 'Diamond Spread',
   DIAMOND_WEIGHT: 'Diamond Wt',
@@ -1939,13 +1935,13 @@ export default function ProductsPage() {
     jewelrySize: '',
     tags: '',
     status: '',
-    goldColour: '',
+    metalCaratage: '',
     stonePacket: '',
     diamondShape: '',
   });
   const [metalRows, setMetalRows] = useState<MetalRow[]>([{
     id: makeId(),
-    goldColour: '',
+    metalCaratage: '',
     netWt: '',
     wastagePercent: '',
     wastageWt: '',
@@ -2101,11 +2097,8 @@ export default function ProductsPage() {
   const isInfoDetailReady = Boolean(detailDesign && selectedId && String(detailDesign.id || '') === String(selectedId));
   const infoModalTitleDesign = isInfoDetailReady ? detailDesign : selected;
   const shouldShowInfoSkeleton = !isInfoDetailReady && (detailDesignLoading || !detailDesignError);
-  const primaryMetalValue = metalRows[0]?.goldColour || '';
-  const structuredMetalOptions = useMemo(
-    () => (masterOptions.metalCaratages.length > 0 ? masterOptions.metalCaratages : masterOptions.goldColours),
-    [masterOptions.goldColours, masterOptions.metalCaratages],
-  );
+  const primaryMetalValue = metalRows[0]?.metalCaratage || '';
+  const structuredMetalOptions = useMemo(() => masterOptions.metalCaratages, [masterOptions.metalCaratages]);
   const structuredCategoryCode = useMemo(() => {
     const match = masterOptions.jewelryGroups.find(
       (option) => masterOptionMatchesValue(option, form.jewelryGroup),
@@ -2319,11 +2312,18 @@ export default function ProductsPage() {
     [detailAllLabors],
   );
   const detailOverheadRows = useMemo(
-    () =>
-      detailAllLabors.filter((labor: any) =>
+    () => {
+      const savedOverheads = Array.isArray(detailDesign?.overheads) ? detailDesign.overheads : [];
+      if (savedOverheads.length > 0) {
+        return savedOverheads;
+      }
+
+      // Compatibility for designs saved before overheads had their own table.
+      return detailAllLabors.filter((labor: any) =>
         String(labor?.laborHead || '').trim().toLowerCase().startsWith('overhead -'),
-      ),
-    [detailAllLabors],
+      );
+    },
+    [detailAllLabors, detailDesign],
   );
   const detailSummary = useMemo(() => {
     const computedLaborValue = detailLabors.reduce(
@@ -2331,14 +2331,16 @@ export default function ProductsPage() {
       0,
     );
     const computedOverheadValue = detailOverheadRows.reduce(
-      (sum: number, labor: any) => sum + parseNumericValue(labor?.laborValue),
+      (sum: number, overhead: any) =>
+        sum + parseNumericValue(overhead?.overheadValue ?? overhead?.laborValue),
       0,
     );
+    const hasDetailedLaborOrOverheadRows = detailAllLabors.length > 0 || detailOverheadRows.length > 0;
     return {
       metalValue: parseNumericValue(detailDesign?.metalValue),
       gemValue: parseNumericValue(detailDesign?.gemValue),
-      laborValue: detailAllLabors.length ? computedLaborValue : parseNumericValue(detailDesign?.laborValue),
-      overheadValue: detailAllLabors.length ? computedOverheadValue : 0,
+      laborValue: hasDetailedLaborOrOverheadRows ? computedLaborValue : parseNumericValue(detailDesign?.laborValue),
+      overheadValue: hasDetailedLaborOrOverheadRows ? computedOverheadValue : 0,
       findingValue: parseNumericValue(detailDesign?.findingValue),
       totalValue: parseNumericValue(detailDesign?.totalValue),
     };
@@ -2365,6 +2367,11 @@ export default function ProductsPage() {
     return next;
   }, [packetOptions]);
   const resolveDetailPacketName = (gem: any): string => {
+    const returnedPacketName = String(gem?.packetName || gem?.packet?.packetName || '').trim();
+    if (returnedPacketName) {
+      return returnedPacketName;
+    }
+
     const packetId = String(gem?.packetId || '').trim();
     if (packetId && detailPacketNameMap.has(packetId)) {
       return detailPacketNameMap.get(packetId) || packetId;
@@ -2565,7 +2572,7 @@ export default function ProductsPage() {
           normalizeLookupKey(option.value) === lookup ||
           normalizeLookupKey(option.aliasName || '') === lookup,
       ) ||
-      masterOptions.goldColours.find(
+      masterOptions.metalCaratages.find(
         (option) =>
           normalizeLookupKey(option.value) === lookup ||
           normalizeLookupKey(option.aliasName || '') === lookup,
@@ -2601,7 +2608,7 @@ export default function ProductsPage() {
     const rate = getMetalRate(metalCaratage);
     return {
       id: makeId(),
-      goldColour: metalCaratage,
+      metalCaratage: metalCaratage,
       netWt: '',
       wastagePercent: getMetalDefaultWastage(metalCaratage),
       wastageWt: '',
@@ -2834,7 +2841,7 @@ export default function ProductsPage() {
           jewelrySize: filters.jewelrySize || undefined,
           tags: filters.tags || undefined,
           designStatus: filters.status || undefined,
-          goldColour: filters.goldColour || undefined,
+          metalCaratage: filters.metalCaratage || undefined,
           stone: filters.stonePacket || undefined,
           shape: filters.diamondShape || undefined,
         },
@@ -3257,6 +3264,7 @@ export default function ProductsPage() {
       const packetUsedByOtherRow = gemRows.some((row) => row.id !== rowId && row.packetId === packet.id);
       const barcodeLabel = packet.barcode ? ` (${packet.barcode})` : '';
       return {
+        id: packet.id,
         value: packet.id,
         label: `${packet.packetName}${barcodeLabel}`,
         disabled: !isCurrentPacket && packetUsedByOtherRow,
@@ -3309,7 +3317,7 @@ export default function ProductsPage() {
       setForm((prev) => ({ ...prev, jewelrySize: masterValue }));
     } else if (masterType === 'STAGE') {
       setForm((prev) => ({ ...prev, stage: masterValue }));
-    } else if (masterType === 'GOLD_COLOUR' || masterType === 'METAL_CARATAGE') {
+    } else if (masterType === 'METAL_CARATAGE') {
       setMetalRows((prev) =>
         prev.length === 0
           ? [createMetalRow(masterValue)]
@@ -3317,7 +3325,7 @@ export default function ProductsPage() {
               index === 0
                 ? {
                     ...row,
-                    goldColour: masterValue,
+                    metalCaratage: masterValue,
                     wastagePercent: getMetalDefaultWastage(masterValue),
                     pricePerGm:
                       getMetalRate(masterValue) !== undefined
@@ -3445,7 +3453,7 @@ export default function ProductsPage() {
           }
         : null;
     const defaultWastagePayload =
-      inlineMasterType === 'GOLD_COLOUR'
+      inlineMasterType === 'METAL_CARATAGE'
         ? {
             defaultWastagePercent:
               inlinePricePerUnit.trim().length > 0 ? parseNum(inlinePricePerUnit) : null,
@@ -3810,9 +3818,9 @@ export default function ProductsPage() {
   useEffect(() => {
     setMetalRows((prev) =>
       prev.map((row) => {
-        if (!row.goldColour) return row;
-        const rate = getMetalRate(row.goldColour);
-        const defaultWastage = getMetalDefaultWastage(row.goldColour);
+        if (!row.metalCaratage) return row;
+        const rate = getMetalRate(row.metalCaratage);
+        const defaultWastage = getMetalDefaultWastage(row.metalCaratage);
         const nextPricePerGm = row.pricePerGm.trim().length > 0 ? row.pricePerGm : rate !== undefined ? rate.toFixed(2) : '';
         const nextWastagePercent =
           row.wastagePercent.trim().length > 0 ? row.wastagePercent : defaultWastage;
@@ -3837,20 +3845,20 @@ export default function ProductsPage() {
         return nextRow;
       }),
     );
-  }, [masterOptions.metalCaratages, masterOptions.goldColours]);
+  }, [masterOptions.metalCaratages]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((item) => {
       if (showInactive ? item.isActive : !item.isActive) return false;
-      const hay = [item.designNo, item.barcode || '', item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.diamondType, item.diamondSpread, item.goldColour, item.collection, item.stoneInfo, item.tags.join(' '), item.stage, item.status].join(' ').toLowerCase();
+      const hay = [item.designNo, item.barcode || '', item.designName, item.version, item.jewelryGroup, item.jewelrySize, item.diamondType, item.diamondSpread, item.metalCaratage, item.collection, item.stoneInfo, item.tags.join(' '), item.stage, item.status].join(' ').toLowerCase();
       if (q && !hay.includes(q)) return false;
       if (filters.jewelryGroup && item.jewelryGroup !== filters.jewelryGroup) return false;
       if (filters.collection && item.collection !== filters.collection) return false;
       if (filters.jewelrySize && item.jewelrySize !== filters.jewelrySize) return false;
       if (filters.tags && !item.tags.join(' ').toLowerCase().includes(filters.tags.toLowerCase())) return false;
       if (filters.status && item.status !== filters.status) return false;
-      if (filters.goldColour && !item.goldColour.toLowerCase().includes(filters.goldColour.toLowerCase())) return false;
+      if (filters.metalCaratage && !item.metalCaratage.toLowerCase().includes(filters.metalCaratage.toLowerCase())) return false;
       if (filters.stonePacket && !item.stoneInfo.toLowerCase().includes(filters.stonePacket.toLowerCase())) return false;
       return true;
     });
@@ -3887,7 +3895,7 @@ export default function ProductsPage() {
           ? {
               ...primaryVersion,
               ...row,
-              goldColour: primaryVersion.goldColour || row.goldColour,
+              metalCaratage: primaryVersion.metalCaratage || row.metalCaratage,
               stoneInfo: primaryVersion.stoneInfo || row.stoneInfo,
             }
           : row,
@@ -4125,7 +4133,7 @@ export default function ProductsPage() {
     setVersionBuilderWorkflowStep('INFO');
     setShowVersionBuilderRequiredAxisValidation(false);
     setVersionBuilderMetalImageMap({});
-    setVersionBuilderActiveMetal(uniqueNonEmptyValues([row.goldColour])[0] || '');
+    setVersionBuilderActiveMetal(uniqueNonEmptyValues([row.metalCaratage])[0] || '');
     setVersionBuilderUploadedImageUrls([]);
     setVersionBuilderUploadedMediaItems([]);
     setVersionBuilderCreateResults({});
@@ -4215,7 +4223,7 @@ export default function ProductsPage() {
         metals.length > 0
           ? metals.map((item: any) => ({
               id: item.id || makeId(),
-              goldColour: String(item.metalCaratage || item.goldColour || ''),
+              metalCaratage: String(item.metalCaratage || ''),
               netWt: String(item.netWt ?? ''),
               wastagePercent: String(item.wastagePercent ?? ''),
               wastageWt: String(item.wastageWt ?? ''),
@@ -4462,7 +4470,7 @@ export default function ProductsPage() {
           .map((existingRow) =>
             buildVersionBuilderCombinationKey({
               designNo: existingRow.designNo || '',
-              metal: existingRow.goldColour || '',
+              metal: existingRow.metalCaratage || '',
               coverage: existingRow.diamondSpread || '',
               diamondQuality: existingRow.diamondQuality || '',
               caratWeight: existingRow.diamondWeight || '',
@@ -4610,7 +4618,6 @@ export default function ProductsPage() {
           metals: [
             {
               metalCaratage: row.metal,
-              goldColour: row.metal,
               netWt: metalNetWt,
               wastagePercent: breakdown.metal.wastagePercent,
               wastageWt: metalWastageWt,
@@ -5086,12 +5093,12 @@ export default function ProductsPage() {
       uniqueNonEmptyValues(
         (versionBuilderSelections.metals.length > 0
           ? versionBuilderSelections.metals
-          : uniqueNonEmptyValues([versionBuilderBaseDesign?.goldColour || ''])
+          : uniqueNonEmptyValues([versionBuilderBaseDesign?.metalCaratage || ''])
         )
           .map((metal) => getMetalPurityBucket(metal))
           .filter(Boolean),
       ),
-    [versionBuilderBaseDesign?.goldColour, versionBuilderSelections.metals],
+    [versionBuilderBaseDesign?.metalCaratage, versionBuilderSelections.metals],
   );
   const versionBuilderBaseMetalWeightMap = useMemo(
     () => buildBaseMetalWeightByPurity(versionBuilderBaseMetalRows),
@@ -5405,7 +5412,7 @@ export default function ProductsPage() {
     versionBuilderGemRows,
     versionBuilderHighestVersion,
     packetOptions,
-    masterOptions.goldColours,
+    masterOptions.metalCaratages,
     masterOptions.metalCaratages,
     versionBuilderLaborRows,
     versionBuilderOverheadRows,
@@ -6141,7 +6148,9 @@ const createDefaultVendorRow = (): VendorRow => ({
       return '';
     };
     const resolvePacketForGem = (gem: any): string => {
-      const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
+      const direct = gem?.packetId === undefined || gem?.packetId === null
+        ? ''
+        : String(gem.packetId).trim();
       if (direct) return direct;
 
       const match = packetOptions.find((packet) =>
@@ -6177,6 +6186,38 @@ const createDefaultVendorRow = (): VendorRow => ({
       const processStages = Array.isArray(detail.processStages) ? detail.processStages : [];
       const pricingTiers = Array.isArray(detail.pricingTiers) ? detail.pricingTiers : [];
       const vendors = Array.isArray(detail.vendors) ? detail.vendors : [];
+
+      // The packet dropdown loads its remote options only after it is opened. Seed it
+      // from the design detail response so the saved packet name is visible immediately
+      // in edit mode, including when that packet is currently inactive.
+      gemstones.forEach((item: any) => {
+        const packetId = item?.packetId === undefined || item?.packetId === null
+          ? ''
+          : String(item.packetId).trim();
+        if (!packetId) return;
+
+        mergePacketOption(item?.packet || {
+          id: packetId,
+          packetName: item?.packetName,
+          barcode: item?.packetBarcode,
+          stoneId: item?.stoneId,
+          stoneMaster: item?.stoneMaster,
+          shapeId: item?.shapeId,
+          shapeMaster: item?.shapeMaster,
+          sizeId: item?.sizeId,
+          sizeMaster: item?.sizeMaster,
+          cutId: item?.cutId,
+          cutMaster: item?.cutMaster,
+          colorId: item?.colorId,
+          colorMaster: item?.colorMaster,
+          qualityId: item?.qualityId,
+          qualityMaster: item?.qualityMaster,
+          sellingPrice: item?.pricePerCt,
+          weightPerPc: item?.wtPerPcs,
+          pieces: item?.pcs,
+          weight: item?.wtInCts,
+        });
+      });
       setSourceDesignNo(getBaseDesignNo(detail.designNo || row.designNo));
       setSourceDesignId(row.id);
 
@@ -6209,12 +6250,12 @@ const createDefaultVendorRow = (): VendorRow => ({
       setMetalRows(
         metals.length > 0
           ? metals.map((item: any) => {
-              const metalCaratage = resolveMasterValue(masterOptions.metalCaratages, item.metalCaratage, item.goldColour, item.metalCaratageMaster, item.metalCaratageId);
+              const metalCaratage = resolveMasterValue(masterOptions.metalCaratages, item.metalCaratage, item.metalCaratageMaster, item.metalCaratageId);
               const masterRate = getMetalRate(metalCaratage);
               const savedPricePerGm = asInput(item.pricePerGm);
               return {
                 id: item.id || makeId(),
-                goldColour: metalCaratage,
+                metalCaratage: metalCaratage,
                 netWt: asInput(item.netWt),
                 wastagePercent: asInput(item.wastagePercent),
                 wastageWt: asInput(item.wastageWt),
@@ -6224,7 +6265,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 value: asInput(item.value),
               };
             })
-          : [createMetalRow(row.goldColour || '')],
+          : [createMetalRow(row.metalCaratage || '')],
       );
 
       setGemRows(
@@ -6392,7 +6433,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       setSourceDesignNo(getBaseDesignNo(row.designNo));
       setSourceDesignId(row.id);
       setForm({ ...fallbackForm, ...(overrides || {}) });
-      setMetalRows([createMetalRow(row.goldColour)]);
+      setMetalRows([createMetalRow(row.metalCaratage)]);
       setGemRows([{
         id: makeId(),
         packetId: '',
@@ -6511,13 +6552,13 @@ const createDefaultVendorRow = (): VendorRow => ({
     const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, resolvedVersion);
 
     const usedMetalKeys = new Set<string>();
-    if (!metalRows.some((row) => row.goldColour.trim())) {
+    if (!metalRows.some((row) => row.metalCaratage.trim())) {
       showAppAlert('Please add at least one Metal in Metal Information before saving the design.');
       return;
     }
 
     for (const row of metalRows) {
-      if (!row.goldColour.trim()) {
+      if (!row.metalCaratage.trim()) {
         showAppAlert('Metal is required for all Metal rows.');
         return;
       }
@@ -6547,7 +6588,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         return;
       }
 
-      const key = normalizeLookupKey(row.goldColour);
+      const key = normalizeLookupKey(row.metalCaratage);
       if (!key) continue;
       if (usedMetalKeys.has(key)) {
         showAppAlert('Each Metal can be used only once.');
@@ -6632,7 +6673,7 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     const firstMetalMaster = findMasterOptionByValue(
       masterOptions.metalCaratages,
-      metalRows.find((row) => row.goldColour.trim())?.goldColour,
+      metalRows.find((row) => row.metalCaratage.trim())?.metalCaratage,
     );
 
     const basePayload = {
@@ -6689,11 +6730,10 @@ const createDefaultVendorRow = (): VendorRow => ({
     const createPayload = {
       ...basePayload,
       metals: metalRows.map((row) => {
-        const metalMaster = findMasterOptionByValue(masterOptions.metalCaratages, row.goldColour);
+        const metalMaster = findMasterOptionByValue(masterOptions.metalCaratages, row.metalCaratage);
         return {
           metalCaratageId: toOptionalMasterId(metalMaster?.id),
-          metalCaratage: row.goldColour.trim() || undefined,
-          goldColour: row.goldColour.trim() || undefined,
+          metalCaratage: row.metalCaratage.trim() || undefined,
           netWt: parseNum(row.netWt),
           wastagePercent: parseNum(row.wastagePercent),
           wastageWt: getMetalWastageWt(row),
@@ -6954,12 +6994,12 @@ const createDefaultVendorRow = (): VendorRow => ({
         return prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item));
       }
 
-      if (key === 'goldColour') {
+      if (key === 'metalCaratage') {
         const normalizedValue = normalizeLookupKey(nextValue);
         const isDuplicate =
           normalizedValue.length > 0 &&
           prev.some(
-            (row) => row.id !== id && normalizeLookupKey(row.goldColour) === normalizedValue,
+            (row) => row.id !== id && normalizeLookupKey(row.metalCaratage) === normalizedValue,
           );
         if (isDuplicate) {
           showAppAlert('This Metal is already used in another line.');
@@ -6971,7 +7011,7 @@ const createDefaultVendorRow = (): VendorRow => ({
         if (item.id !== id) return item;
 
         let updated: MetalRow = { ...item, [key]: nextValue };
-        if (key === 'goldColour') {
+        if (key === 'metalCaratage') {
           const rate = getMetalRate(nextValue);
           const defaultWastage = getMetalDefaultWastage(value);
           updated = {
@@ -7207,7 +7247,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           item.jewelrySize || '-',
           item.diamondType || '-',
           item.diamondSpread || '-',
-          item.goldColour || '-',
+          item.metalCaratage || '-',
           item.collection || '-',
           item.stoneInfo || '-',
           formatMoney(item.price),
@@ -7753,7 +7793,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   jewelrySize: '',
                   tags: '',
                   status: '',
-                  goldColour: '',
+                  metalCaratage: '',
                   stonePacket: '',
                   diamondShape: '',
                 })}
@@ -7812,10 +7852,10 @@ const createDefaultVendorRow = (): VendorRow => ({
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 ml-1">Metal Info</label>
                 <SmartDropdown
-                  value={filters.goldColour}
+                  value={filters.metalCaratage}
                   onChange={(val, option) => {
                     mergeMasterOption('METAL_CARATAGE', option);
-                    setFilters((prev) => ({ ...prev, goldColour: val }));
+                    setFilters((prev) => ({ ...prev, metalCaratage: val }));
                   }}
                   config={masterDropdownConfig(
                     'METAL_CARATAGE',
@@ -7980,7 +8020,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   {isColumnVisible('metalInfo') ? (
                     <td className="w-48 min-w-48 max-w-48 py-4 px-3 text-sm font-medium text-slate-700">
                       <div className="w-48 whitespace-normal break-words leading-5">
-                        {row.goldColour || '-'}
+                        {row.metalCaratage || '-'}
                       </div>
                     </td>
                   ) : null}
@@ -10553,20 +10593,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                     placeholder="Description"
                   />
                 </div>
-                {inlineMasterType === 'GOLD_COLOUR' ? (
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Default Wastage (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={inlinePricePerUnit}
-                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                      placeholder="Default Wastage %"
-                    />
-                  </div>
-                ) : null}
               </div>
             ) : null}
 

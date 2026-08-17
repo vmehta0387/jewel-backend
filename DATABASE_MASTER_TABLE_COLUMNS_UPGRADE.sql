@@ -35,8 +35,8 @@ ALTER TABLE overhead_rules
 
 ALTER TABLE finding_heads
   ADD COLUMN IF NOT EXISTS finding_no VARCHAR(100) NULL AFTER description,
-  ADD COLUMN IF NOT EXISTS metal_caratage VARCHAR(100) NULL AFTER finding_no,
-  ADD COLUMN IF NOT EXISTS price_in ENUM('PIECES','GRAM','PAIR','INCHES') NULL AFTER metal_caratage,
+  ADD COLUMN IF NOT EXISTS metal_caratage_id INT(11) NULL AFTER finding_no,
+  ADD COLUMN IF NOT EXISTS price_in ENUM('PIECES','GRAM','PAIR','INCHES') NULL AFTER metal_caratage_id,
   ADD COLUMN IF NOT EXISTS price_per_unit DECIMAL(12,2) NULL AFTER price_in,
   ADD COLUMN IF NOT EXISTS dimensions VARCHAR(255) NULL AFTER price_per_unit,
   ADD COLUMN IF NOT EXISTS weight_per_unit DECIMAL(12,3) NULL AFTER dimensions;
