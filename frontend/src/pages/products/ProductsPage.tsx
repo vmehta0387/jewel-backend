@@ -13,6 +13,7 @@ import DesignFormModal from './components/DesignFormModal';
 import DesignHistoryModal from './components/DesignHistoryModal';
 import DesignViewModal from './components/DesignViewModal';
 import Modal from './components/ProductsModal';
+import VersionListGrid from './components/VersionListGrid';
 import VersionBuilderModal, {
   DEFAULT_VERSION_BUILDER_GENERATED_COLUMN_WIDTHS,
   EMPTY_VERSION_BUILDER_SELECTIONS,
@@ -466,12 +467,31 @@ const DESIGN_LIST_PAGE_SIZE = 15;
 const VERSION_LIST_PAGE_SIZE = 50;
 const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v5';
 
+interface VersionListFilters {
+  jewelryGroup: string;
+  collection: string;
+  jewelrySize: string;
+  status: string;
+  metalCaratage: string;
+  diamondShape: string;
+}
+
+const EMPTY_VERSION_LIST_FILTERS: VersionListFilters = {
+  jewelryGroup: '',
+  collection: '',
+  jewelrySize: '',
+  status: '',
+  metalCaratage: '',
+  diamondShape: '',
+};
+
 interface VersionFamilyListState {
   rows: DesignRow[];
   page: number;
   total: number;
   totalPages: number;
   search: string;
+  filters: VersionListFilters;
   loading: boolean;
   error: string | null;
 }
@@ -1798,6 +1818,7 @@ export default function ProductsPage() {
   const [allDesignRows, setAllDesignRows] = useState<DesignRow[]>([]);
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [versionFamilies, setVersionFamilies] = useState<Record<string, VersionFamilyListState>>({});
+  const versionSearchDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [mediaLibraryType, setMediaLibraryType] = useState<MediaLibraryTypeFilter>('ALL');
   const [mediaLibrarySearch, setMediaLibrarySearch] = useState('');
   const [mediaLibraryRows, setMediaLibraryRows] = useState<MediaLibraryItem[]>([]);
@@ -3698,13 +3719,14 @@ export default function ProductsPage() {
 
   const fetchVersionsForDesign = async (
     designNo: string,
-    options?: { page?: number; search?: string; familyDesignId?: string },
+    options?: { page?: number; search?: string; familyDesignId?: string; filters?: VersionListFilters },
   ): Promise<DesignRow[]> => {
     const base = getDesignFamilyKey(designNo || '');
     if (!base) return [];
     const currentState = versionFamilies[base];
     const nextPage = Math.max(1, options?.page || currentState?.page || 1);
     const nextSearch = options?.search ?? currentState?.search ?? '';
+    const nextFilters = options?.filters ?? currentState?.filters ?? EMPTY_VERSION_LIST_FILTERS;
 
     setVersionFamilies((prev) => ({
       ...prev,
@@ -3714,6 +3736,7 @@ export default function ProductsPage() {
         total: prev[base]?.total || 0,
         totalPages: prev[base]?.totalPages || 1,
         search: nextSearch,
+        filters: nextFilters,
         loading: true,
         error: null,
       },
@@ -3727,6 +3750,12 @@ export default function ProductsPage() {
           summaryOnly: true,
           familyDesignId: options?.familyDesignId,
           search: nextSearch.trim() || undefined,
+          jewelryGroup: nextFilters.jewelryGroup || undefined,
+          collection: nextFilters.collection || undefined,
+          jewelrySize: nextFilters.jewelrySize || undefined,
+          designStatus: nextFilters.status || undefined,
+          metalCaratage: nextFilters.metalCaratage || undefined,
+          shape: nextFilters.diamondShape || undefined,
         },
       });
       const versionRows = (((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow));
@@ -3747,6 +3776,7 @@ export default function ProductsPage() {
           total,
           totalPages,
           search: nextSearch,
+          filters: nextFilters,
           loading: false,
           error: null,
         },
@@ -3762,6 +3792,7 @@ export default function ProductsPage() {
           total: prev[base]?.total || 0,
           totalPages: prev[base]?.totalPages || 1,
           search: nextSearch,
+          filters: nextFilters,
           loading: false,
           error: message,
         },
@@ -3781,6 +3812,26 @@ export default function ProductsPage() {
     }
     setExpandedBaseDesigns((prev) => (prev.includes(base) ? prev : [...prev, base]));
     await fetchVersionsForDesign(designNo, { page: versionFamilies[base]?.page || 1, familyDesignId: row.id });
+  };
+
+  const applyVersionListFilter = (
+    row: DesignRow,
+    key: keyof VersionListFilters,
+    value: string,
+  ) => {
+    const base = getDesignFamilyKey(row.designNo || '');
+    if (!base) return;
+    if (versionSearchDebounceRef.current[base]) {
+      clearTimeout(versionSearchDebounceRef.current[base]);
+      delete versionSearchDebounceRef.current[base];
+    }
+    const currentFilters = versionFamilies[base]?.filters || EMPTY_VERSION_LIST_FILTERS;
+    const nextFilters = { ...currentFilters, [key]: value };
+    void fetchVersionsForDesign(row.designNo, {
+      page: 1,
+      familyDesignId: row.id,
+      filters: nextFilters,
+    });
   };
 
   const isVersionsExpanded = (designNo: string) => {
@@ -7806,6 +7857,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                 const versionBase = getDesignFamilyKey(row.designNo || '');
                 const versionState = versionBase ? versionFamilies[versionBase] : undefined;
                 const versionRows = versionState?.rows || getVersionsForDesign(row.designNo);
+                const versionFilters = versionState?.filters || EMPTY_VERSION_LIST_FILTERS;
+                const hasActiveVersionFilters = Object.values(versionFilters).some(Boolean);
                 const preferredImage = getPreferredRowImage(row);
                 const versionCount = Math.max(row.versionCount || 0, versionState?.total || 0, versionRows.length || 0, 1);
                 const versionsExpanded = isVersionsExpanded(row.designNo);
@@ -7994,9 +8047,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                 </tr>
                 {versionsExpanded ? (
                   <tr className="bg-slate-50/70">
-                    <td className="app-table-cell" colSpan={columnCount}>
-                      <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                    <td className="app-table-cell w-0 max-w-0 !p-2 sm:!p-3" colSpan={columnCount}>
+                      <div className="w-full min-w-0 max-w-full space-y-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 sm:p-3 [contain:inline-size]">
+                        <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Versions</p>
                             <p className="text-xs text-slate-500">
@@ -8005,51 +8058,158 @@ const createDefaultVendorRow = (): VendorRow => ({
                               {' '}of {versionState?.total || 0}
                             </p>
                           </div>
-                          <form
-                            className="flex min-w-[280px] flex-1 items-center justify-end gap-2"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              void fetchVersionsForDesign(row.designNo, { page: 1, search: versionState?.search || '', familyDesignId: row.id });
-                            }}
-                          >
-                            <input
-                              type="search"
-                              value={versionState?.search || ''}
-                              onChange={(event) => {
-                                const nextSearch = event.target.value;
-                                if (!versionBase) return;
-                                setVersionFamilies((prev) => ({
-                                  ...prev,
-                                  [versionBase]: {
-                                    rows: prev[versionBase]?.rows || [],
-                                    page: prev[versionBase]?.page || 1,
-                                    total: prev[versionBase]?.total || 0,
-                                    totalPages: prev[versionBase]?.totalPages || 1,
-                                    search: nextSearch,
-                                    loading: prev[versionBase]?.loading || false,
-                                    error: prev[versionBase]?.error || null,
-                                  },
-                                }));
-                              }}
-                              placeholder="Search versions..."
-                              className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
-                            />
-                            <button
-                              type="submit"
-                              className="h-9 rounded-lg border border-slate-200 bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={versionsLoading}
-                            >
-                              Search
-                            </button>
+                        </div>
+                        <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 sm:p-3">
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Filter versions</p>
                             <button
                               type="button"
-                              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={versionsLoading || !(versionState?.search || '').trim()}
-                              onClick={() => fetchVersionsForDesign(row.designNo, { page: 1, search: '', familyDesignId: row.id })}
+                              className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={versionsLoading || (!hasActiveVersionFilters && !(versionState?.search || '').trim())}
+                              onClick={() => {
+                                if (versionBase && versionSearchDebounceRef.current[versionBase]) {
+                                  clearTimeout(versionSearchDebounceRef.current[versionBase]);
+                                  delete versionSearchDebounceRef.current[versionBase];
+                                }
+                                void fetchVersionsForDesign(row.designNo, {
+                                  page: 1,
+                                  search: '',
+                                  familyDesignId: row.id,
+                                  filters: EMPTY_VERSION_LIST_FILTERS,
+                                });
+                              }}
                             >
-                              Clear
+                              Clear all
                             </button>
-                          </form>
+                          </div>
+                          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+                            <form
+                              className="relative min-w-0"
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                if (versionBase && versionSearchDebounceRef.current[versionBase]) {
+                                  clearTimeout(versionSearchDebounceRef.current[versionBase]);
+                                  delete versionSearchDebounceRef.current[versionBase];
+                                }
+                                void fetchVersionsForDesign(row.designNo, {
+                                  page: 1,
+                                  search: versionState?.search || '',
+                                  familyDesignId: row.id,
+                                });
+                              }}
+                            >
+                              <input
+                                type="search"
+                                value={versionState?.search || ''}
+                                onChange={(event) => {
+                                  const nextSearch = event.target.value;
+                                  if (!versionBase) return;
+                                  setVersionFamilies((prev) => ({
+                                    ...prev,
+                                    [versionBase]: {
+                                      rows: prev[versionBase]?.rows || [],
+                                      page: prev[versionBase]?.page || 1,
+                                      total: prev[versionBase]?.total || 0,
+                                      totalPages: prev[versionBase]?.totalPages || 1,
+                                      search: nextSearch,
+                                      filters: prev[versionBase]?.filters || EMPTY_VERSION_LIST_FILTERS,
+                                      loading: prev[versionBase]?.loading || false,
+                                      error: prev[versionBase]?.error || null,
+                                    },
+                                  }));
+                                  if (versionSearchDebounceRef.current[versionBase]) {
+                                    clearTimeout(versionSearchDebounceRef.current[versionBase]);
+                                  }
+                                  versionSearchDebounceRef.current[versionBase] = setTimeout(() => {
+                                    void fetchVersionsForDesign(row.designNo, {
+                                      page: 1,
+                                      search: nextSearch,
+                                      familyDesignId: row.id,
+                                    });
+                                    delete versionSearchDebounceRef.current[versionBase];
+                                  }, 350);
+                                }}
+                                placeholder="Search versions..."
+                                className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-10 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                              />
+                              <button
+                                type="submit"
+                                className="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-md bg-slate-900 text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={versionsLoading}
+                                aria-label="Search versions"
+                                title="Search versions"
+                              >
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle cx="11" cy="11" r="7" />
+                                  <path d="m20 20-3.5-3.5" />
+                                </svg>
+                              </button>
+                            </form>
+                            <SmartDropdown
+                              value={versionFilters.jewelryGroup}
+                              onChange={(value, option) => {
+                                mergeMasterOption('JEWELRY_GROUP', option);
+                                applyVersionListFilter(row, 'jewelryGroup', value);
+                              }}
+                              className="min-w-0"
+                              config={masterDropdownConfig('JEWELRY_GROUP', 'All Categories', toSmartDropdownOptions(masterOptions.jewelryGroups))}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.collection}
+                              onChange={(value, option) => {
+                                mergeMasterOption('COLLECTION', option);
+                                applyVersionListFilter(row, 'collection', value);
+                              }}
+                              className="min-w-0"
+                              config={masterDropdownConfig('COLLECTION', 'All Sub Categories', toSmartDropdownOptions(masterOptions.collections))}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.jewelrySize}
+                              onChange={(value, option) => {
+                                mergeMasterOption('JEWELRY_SIZE', option);
+                                applyVersionListFilter(row, 'jewelrySize', value);
+                              }}
+                              className="min-w-0"
+                              config={masterDropdownConfig('JEWELRY_SIZE', 'All Sizes', toSmartDropdownOptions(masterOptions.jewelrySizes))}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.metalCaratage}
+                              onChange={(value, option) => {
+                                mergeMasterOption('METAL_CARATAGE', option);
+                                applyVersionListFilter(row, 'metalCaratage', value);
+                              }}
+                              className="min-w-0"
+                              config={masterDropdownConfig(
+                                'METAL_CARATAGE',
+                                'All Metals',
+                                toSmartDropdownOptions(masterOptions.metalCaratages, (option) => option.aliasName || option.value),
+                              )}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.diamondShape}
+                              onChange={(value, option) => {
+                                mergeMasterOption('PACKET_SHAPE', option);
+                                applyVersionListFilter(row, 'diamondShape', value);
+                              }}
+                              className="min-w-0"
+                              config={masterDropdownConfig('PACKET_SHAPE', 'All Shapes', toSmartDropdownOptions(masterOptions.packetShapes))}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.status}
+                              onChange={(value) => applyVersionListFilter(row, 'status', value)}
+                              className="min-w-0"
+                              config={{
+                                options: [
+                                  { value: 'Active', label: 'Active' },
+                                  { value: 'Inactive', label: 'Inactive' },
+                                ],
+                                valueKey: 'value',
+                                labelKey: 'label',
+                                placeholder: 'All Statuses',
+                                showSearch: false,
+                              }}
+                            />
+                          </div>
                         </div>
                         {versionsLoading ? (
                           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4">
@@ -8060,31 +8220,50 @@ const createDefaultVendorRow = (): VendorRow => ({
                           </div>
                         ) : versionState?.error ? (
                           <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">{versionState.error}</p>
-                        ) : versionRows.length <= 1 && !(versionState?.search || '').trim() ? (
+                        ) : versionRows.length <= 1 && !(versionState?.search || '').trim() && !hasActiveVersionFilters ? (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No additional versions for this design.</p>
                         ) : versionRows.length === 0 ? (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No versions match this search.</p>
                         ) : (
-                          <div className="space-y-2">
-                            {versionRows.map((versionRow) => {
+                          <VersionListGrid
+                            rows={versionRows.map((versionRow) => {
                               const isPrimaryVersion = versionRow.isPrimary === true;
-                              return (
-                                <div key={versionRow.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700">
-                                  <div className="flex flex-wrap items-center gap-3">
-                                    <span className="font-semibold text-slate-900">{versionRow.designNo}</span>
-                                    <span className="font-mono text-[11px] font-semibold text-slate-500">
-                                      {versionRow.barcode || '-'}
-                                    </span>
-                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{versionRow.version || 'V1'}</span>
-                                    {isPrimaryVersion ? (
-                                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                        Primary
-                                      </span>
-                                    ) : null}
-                                    <span className="text-slate-600">{versionRow.stage || '-'}</span>
-                                    <span className="text-slate-600">{versionRow.status || (versionRow.isActive ? 'Active' : 'Inactive')}</span>
-                                    <span className="text-slate-500">Updated: {versionRow.modifiedAt || '-'}</span>
+                              const versionImage = getPreferredRowImage(versionRow);
+                              return {
+                                id: versionRow.id,
+                                designNo: versionRow.designNo,
+                                barcode: versionRow.barcode,
+                                version: versionRow.version || 'V1',
+                                jewelryGroup: versionRow.jewelryGroup,
+                                jewelrySize: versionRow.jewelrySize,
+                                metalCaratage: versionRow.metalCaratage,
+                                collection: versionRow.collection,
+                                stoneInfo: versionRow.stoneInfo,
+                                price: formatMoney(versionRow.price),
+                                stage: versionRow.stage,
+                                status: versionRow.status,
+                                isActive: versionRow.isActive,
+                                isPrimary: isPrimaryVersion,
+                                modifiedAt: versionRow.modifiedAt,
+                                media: versionImage?.url ? (
+                                  <button
+                                    type="button"
+                                    className="group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#AACDDC] focus-visible:ring-offset-2"
+                                    onClick={() => openListMediaViewer(versionRow)}
+                                    title="Open media viewer"
+                                  >
+                                    <MediaPreview
+                                      url={versionImage.url}
+                                      alt={`${versionRow.designNo} preview`}
+                                      className="h-10 w-10 rounded-xl border border-slate-200 object-cover shadow-sm transition group-hover:border-slate-300 group-hover:shadow-md"
+                                    />
+                                  </button>
+                                ) : (
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-[10px] font-semibold tracking-[0.12em] text-slate-400">
+                                    N/A
                                   </div>
+                                ),
+                                actions: (
                                   <div className="flex items-center gap-1">
                                     <Action label="View" onClick={() => { setSelectedId(versionRow.id); setModal('info'); }} />
                                     {canModifyExistingDesigns ? (
@@ -8096,10 +8275,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                                       </>
                                     ) : null}
                                   </div>
-                                </div>
-                              );
+                                ),
+                              };
                             })}
-                          </div>
+                          />
                         )}
                         <Pagination
                           page={versionState?.page || 1}

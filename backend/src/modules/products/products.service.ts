@@ -2630,8 +2630,26 @@ export class ProductsService {
 
     const qb = this.designRepo
       .createQueryBuilder('design')
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'familyJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'familyCollectionMaster')
+      .leftJoinAndSelect('design.jewelrySizeMaster', 'familyJewelrySizeMaster')
+      .leftJoinAndSelect('design.stageMaster', 'familyStageMaster')
+      .leftJoinAndSelect('design.diamondSpreadMaster', 'familyDiamondSpreadMaster')
+      .leftJoinAndSelect('design.diamondTypeMaster', 'familyDiamondTypeMaster')
+      .leftJoinAndSelect('design.diamondWeightMaster', 'familyDiamondWeightMaster')
+      .leftJoinAndSelect('design.diamondQualityMaster', 'familyDiamondQualityMaster')
+      .leftJoinAndSelect('design.designStatusMaster', 'familyDesignStatusMaster')
+      .leftJoinAndSelect('design.metalCaratageMaster', 'familyMetalCaratageMaster')
+      .addSelect(
+        `(SELECT GROUP_CONCAT(NULLIF(TRIM(mcm.value), '') ORDER BY dm.sort_order SEPARATOR ', ')
+          FROM design_metals dm
+          LEFT JOIN metal_caratages mcm ON mcm.id = dm.metal_caratage_id
+          WHERE dm.design_id = design.id)`,
+        'metalInfo',
+      )
+      .addSelect("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'versionSort')
       .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
-      .orderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC')
+      .orderBy('versionSort', 'ASC')
       .addOrderBy('design.createdAt', 'ASC')
       .skip(skip)
       .take(limit);
@@ -2654,26 +2672,95 @@ export class ProductsService {
             .orWhere('design.barcode LIKE :search', { search })
             .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
-            .orWhere('design.stage LIKE :search', { search })
-            .orWhere('design.designStatus LIKE :search', { search });
+            .orWhere('familyJewelryGroupMaster.value LIKE :search', { search })
+            .orWhere('familyCollectionMaster.value LIKE :search', { search })
+            .orWhere('familyJewelrySizeMaster.value LIKE :search', { search })
+            .orWhere('familyStageMaster.value LIKE :search', { search })
+            .orWhere('familyDiamondSpreadMaster.value LIKE :search', { search })
+            .orWhere('familyDiamondTypeMaster.value LIKE :search', { search })
+            .orWhere('familyDiamondWeightMaster.value LIKE :search', { search })
+            .orWhere('familyDiamondQualityMaster.value LIKE :search', { search })
+            .orWhere('familyDesignStatusMaster.value LIKE :search', { search })
+            .orWhere('familyMetalCaratageMaster.value LIKE :search', { search })
+            .orWhere('design.stoneInfo LIKE :search', { search });
         }),
       );
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    if (query.jewelryGroup?.trim()) {
+      qb.andWhere('familyJewelryGroupMaster.value LIKE :jewelryGroup', {
+        jewelryGroup: `%${query.jewelryGroup.trim()}%`,
+      });
+    }
+
+    if (query.collection?.trim()) {
+      qb.andWhere('familyCollectionMaster.value LIKE :collection', {
+        collection: `%${query.collection.trim()}%`,
+      });
+    }
+
+    if (query.jewelrySize?.trim()) {
+      qb.andWhere('familyJewelrySizeMaster.value LIKE :jewelrySize', {
+        jewelrySize: `%${query.jewelrySize.trim()}%`,
+      });
+    }
+
+    if (query.designStatus?.trim()) {
+      qb.andWhere('familyDesignStatusMaster.value LIKE :designStatus', {
+        designStatus: `%${query.designStatus.trim()}%`,
+      });
+    }
+
+    if (query.metalCaratage?.trim()) {
+      qb.andWhere(
+        `(familyMetalCaratageMaster.value LIKE :metalCaratage OR EXISTS (
+          SELECT 1
+          FROM design_metals family_dm
+          LEFT JOIN metal_caratages family_mcm ON family_mcm.id = family_dm.metal_caratage_id
+          WHERE family_dm.design_id = design.id AND family_mcm.value LIKE :metalCaratage
+        ))`,
+        { metalCaratage: `%${query.metalCaratage.trim()}%` },
+      );
+    }
+
+    if (query.shape?.trim()) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM design_gemstones family_dg
+          LEFT JOIN packet_shapes family_shape ON family_shape.id = family_dg.shape_id
+          WHERE family_dg.design_id = design.id AND family_shape.value LIKE :shape
+        )`,
+        { shape: `%${query.shape.trim()}%` },
+      );
+    }
+
+    const total = await qb.getCount();
+    const { entities: data, raw } = await qb.getRawAndEntities();
     await this.ensureDesignBarcodes(data);
+    const metalInfoByDesign = new Map<string, string | null>();
+    raw.forEach((row) => {
+      const designId = this.optionalText(row.design_id || row.designId || row.design_id_0);
+      if (designId) metalInfoByDesign.set(designId, this.optionalText(row.metalInfo));
+    });
+    const updatedByMap = await this.resolveUserNames(
+      data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+    );
+    const summaryData = await Promise.all(
+      data.map((design) => this.toCompactDesignListRow(
+        design,
+        {
+          metalInfo: metalInfoByDesign.get(String(design.id)) || null,
+          stoneInfo: design.stoneInfo || null,
+          versionCount: total,
+        },
+        requester,
+        design.updatedBy ? updatedByMap.get(design.updatedBy) ?? null : null,
+      )),
+    );
 
     return {
-      data: data.map((design) => ({
-        ...design,
-        versionCount: total,
-        metals: [],
-        gemstones: [],
-        imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-        imageUrls: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-        stlFileUrl: design.stlFileUrl || null,
-        updatedByName: null,
-      })),
+      data: summaryData,
       total,
       page,
       totalPages: Math.ceil(total / limit) || 1,
