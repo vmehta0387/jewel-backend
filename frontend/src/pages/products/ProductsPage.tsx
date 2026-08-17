@@ -13,7 +13,38 @@ import DesignFormModal from './components/DesignFormModal';
 import DesignHistoryModal from './components/DesignHistoryModal';
 import DesignViewModal from './components/DesignViewModal';
 import Modal from './components/ProductsModal';
-import VersionBuilderModal from './components/VersionBuilderModal';
+import VersionBuilderModal, {
+  DEFAULT_VERSION_BUILDER_GENERATED_COLUMN_WIDTHS,
+  EMPTY_VERSION_BUILDER_SELECTIONS,
+  buildBaseMetalWeightByPurity,
+  buildDefaultMetalWeightsForPurities,
+  buildVersionBuilderSizeChartSizes,
+  getDefaultSizeChartGroupCell,
+  getJewelrySizesByStep,
+  getMetalPurityBucket,
+  normalizeSizeChartKey,
+  sortJewelrySizeValues,
+  summarizeVersionBuilderGemPlan,
+  VERSION_BUILDER_DIMENSION_CONFIG,
+  VERSION_BUILDER_GENERATED_COLUMNS,
+  VERSION_BUILDER_GROUP_COLORS,
+  VERSION_BUILDER_REQUIRED_DIMENSION_LABELS,
+  VERSION_BUILDER_WORKFLOW,
+  VersionBuilderBomSelection,
+  VersionBuilderCreateResult,
+  VersionBuilderGemApplyScope,
+  VersionBuilderGemMode,
+  VersionBuilderGeneratedFilterState,
+  VersionBuilderGeneratedColumnKey,
+  VersionBuilderGeneratedRow,
+  VersionBuilderImageMode,
+  VersionBuilderOptionGroup,
+  VersionBuilderSelections,
+  VersionBuilderSizeChartGroupCell,
+  VersionBuilderSizeChartState,
+  VersionBuilderUploadedMediaItem,
+  VersionBuilderWorkflowStep,
+} from './components/VersionBuilderModal';
 
 type ModalType = 'info' | 'relevant' | 'process' | 'history' | 'pricing' | 'vendor' | null;
 
@@ -298,12 +329,19 @@ interface MetalRow {
 interface GemRow {
   id: string;
   packetId: string;
+  stoneId?: number;
   stone: string;
+  shapeId?: number;
   shape: string;
+  sizeId?: number;
   size: string;
+  cutId?: number;
   cut: string;
+  colorId?: number;
   color: string;
+  qualityId?: number;
   quality: string;
+  stoneTypeId?: number;
   settingType: string;
   wtPerPcs: string;
   pcs: string;
@@ -314,6 +352,7 @@ interface GemRow {
 
 interface LaborRow {
   id: string;
+  laborHeadId?: number;
   laborHead: string;
   laborPerUnit: string;
   unitQty: string;
@@ -351,85 +390,6 @@ interface VendorRow {
   supplierStyleNo: string;
 }
 
-interface VersionBuilderSelections {
-  metals: string[];
-  coverages: string[];
-  diamondQualities: string[];
-  caratWeights: string[];
-  sizes: string[];
-}
-
-interface VersionBuilderOptionGroup {
-  id: keyof VersionBuilderSelections;
-  label: string;
-  helper: string;
-  values: string[];
-}
-
-type VersionBuilderImageMode = 'INHERIT_PARENT' | 'MAP_BY_METAL' | 'MANUAL_AFTER_CREATE';
-type VersionBuilderGemMode = 'INHERIT_BASE' | 'OVERRIDE_BLOCK';
-type VersionBuilderGemApplyScope = 'ALL_COMBINATIONS' | 'FILTERED_COMBINATIONS';
-type VersionBuilderWorkflowStep =
-  | 'INFO'
-  | 'DIMENSIONS'
-  | 'GEMSTONES'
-  | 'SIZE_CHART'
-  | 'IMAGES'
-  | 'LABOR_OVERHEAD'
-  | 'BOM'
-  | 'PREVIEW';
-
-interface VersionBuilderBomSelection {
-  size: string;
-  metal: string;
-  diamondQuality: string;
-  coverage: string;
-  caratWeight: string;
-}
-
-interface VersionBuilderGeneratedFilterState {
-  size: string;
-  coverage: string;
-  search: string;
-}
-
-interface VersionBuilderGeneratedRow {
-  resultKey: string;
-  designNo: string;
-  version: string;
-  metal: string;
-  coverage: string;
-  diamondQuality: string;
-  caratWeight: string;
-  size: string;
-  metalPurity: string;
-  metalWeight: string;
-  stoneSummary: string;
-  imageInfo: string;
-  gemstoneInfo: string;
-  composition: string;
-  bomCost: number;
-}
-
-interface VersionBuilderCreateResult {
-  status: 'created' | 'failed' | 'skipped';
-  message?: string;
-}
-
-interface VersionBuilderUploadedMediaItem {
-  previewUrl: string;
-  file: File;
-}
-
-interface VersionBuilderSizeChartGroupCell {
-  count: string;
-  ctPerStone: string;
-}
-
-interface VersionBuilderSizeChartRowState {
-  metalWeights: Record<string, string>;
-  groups: Record<string, VersionBuilderSizeChartGroupCell>;
-}
 
 const getVersionBuilderSizeChartCellKey = (
   coverage: string,
@@ -472,8 +432,6 @@ const buildVersionBuilderCombinationKey = (input: {
     normalizeLookupKey(input.size || ''),
   ].join('|');
 };
-
-type VersionBuilderSizeChartState = Record<string, Record<string, VersionBuilderSizeChartRowState>>;
 
 const DESIGN_LIST_COLUMNS: DesignListColumn[] = [
   { key: 'media', label: 'Media' },
@@ -593,151 +551,6 @@ const toOptionalMasterId = (value: unknown): number | undefined => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
-const parseSizeNumber = (value: string | null | undefined): number | null => {
-  const normalized = String(value ?? '').trim();
-  if (!normalized) return null;
-  const match = normalized.match(/\d+(\.\d+)?/);
-  if (!match) return null;
-  const parsed = Number.parseFloat(match[0]);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-const calculateVersionBuilderGemRowForSize = (
-  row: GemRow,
-  mode: 'varies' | 'fixed',
-  baseSize: string,
-  targetSize: string,
-): { pcs: number; wtPerPcs: number; wtInCts: number } => {
-  const basePcs = Math.max(0, Math.round(parseNum(row.pcs)));
-  const baseWtPerPcs = Math.max(0, parseNum(row.wtPerPcs));
-  const explicitWtInCts = Math.max(0, parseNum(row.wtInCts));
-  const baseSizeValue = parseSizeNumber(baseSize);
-  const targetSizeValue = parseSizeNumber(targetSize);
-
-  let pcs = basePcs;
-  if (
-    mode === 'varies' &&
-    basePcs > 0 &&
-    baseSizeValue != null &&
-    targetSizeValue != null &&
-    baseSizeValue > 0
-  ) {
-    pcs = Math.max(1, Math.round(basePcs * (targetSizeValue / baseSizeValue)));
-  }
-
-  let wtInCts = 0;
-  if (baseWtPerPcs > 0 && pcs > 0) {
-    wtInCts = baseWtPerPcs * pcs;
-  } else if (explicitWtInCts > 0) {
-    wtInCts =
-      mode === 'varies' && basePcs > 0 && pcs > 0 ? explicitWtInCts * (pcs / basePcs) : explicitWtInCts;
-  }
-
-  return {
-    pcs,
-    wtPerPcs: baseWtPerPcs,
-    wtInCts,
-  };
-};
-const buildVersionBuilderSizeChartSizes = (): string[] => {
-  const sizes: string[] = [];
-  for (let size = 3; size <= 11.0001; size += 0.25) {
-    sizes.push(size.toFixed(2));
-  }
-  return sizes;
-};
-const getMetalPurityBucket = (value: string | null | undefined): string => {
-  const raw = String(value ?? '').trim();
-  const normalized = normalizeLookupKey(raw);
-  if (!normalized) return '';
-  if (normalized === 'pt' || normalized.includes('platinum')) return 'PT';
-  const karatMatch = raw.match(/(\d{2})/);
-  if (karatMatch?.[1]) return `${karatMatch[1]}K`;
-  if (normalized.includes('silver')) return 'Silver';
-  return raw.toUpperCase();
-};
-const getCoverageChartRatio = (coverage: string): number => {
-  const normalized = normalizeLookupKey(coverage);
-  if (normalized.includes('1/2') || normalized.includes('half')) return 0.5;
-  if (normalized.includes('3/4')) return 0.75;
-  if (normalized.includes('full')) return 1;
-  return 1;
-};
-const normalizeSizeChartKey = (value: string): string => {
-  const parsed = parseSizeNumber(value);
-  return parsed != null ? parsed.toFixed(2) : String(value ?? '').trim();
-};
-const buildBaseMetalWeightByPurity = (rows: MetalRow[]): Record<string, string> => {
-  return rows.reduce<Record<string, string>>((acc, row) => {
-    const purity = getMetalPurityBucket(row.metalCaratage);
-    if (!purity || acc[purity]) return acc;
-    const preferredWeight = row.netWt.trim() || row.totalWt.trim() || '0';
-    acc[purity] = preferredWeight;
-    return acc;
-  }, {});
-};
-const buildDefaultMetalWeightsForPurities = (
-  purities: string[],
-  baseWeightMap: Record<string, string>,
-): Record<string, string> => {
-  return purities.reduce<Record<string, string>>((acc, purity) => {
-    acc[purity] = baseWeightMap[purity] || '0';
-    return acc;
-  }, {});
-};
-const getDefaultSizeChartGroupCell = (
-  row: GemRow,
-  mode: 'varies' | 'fixed',
-  baseSize: string,
-  targetSize: string,
-  coverage: string,
-): VersionBuilderSizeChartGroupCell => {
-  const computed = calculateVersionBuilderGemRowForSize(row, mode, baseSize, targetSize);
-  const coverageRatio = getCoverageChartRatio(coverage);
-  const adjustedCount =
-    computed.pcs > 0
-      ? mode === 'fixed' ? Math.max(1, Math.round(computed.pcs * coverageRatio))
-        : Math.max(1, Math.round(computed.pcs * coverageRatio))
-      : 0;
-  const ctPerStone =
-    computed.wtPerPcs > 0
-      ? computed.wtPerPcs
-      : computed.pcs > 0 && computed.wtInCts > 0
-        ? computed.wtInCts / computed.pcs
-        : 0;
-  return {
-    count: adjustedCount > 0 ? String(adjustedCount) : '',
-    ctPerStone: ctPerStone > 0 ? ctPerStone.toFixed(3) : '',
-  };
-};
-const summarizeVersionBuilderGemPlan = (
-  rows: GemRow[],
-  groupModes: Record<string, 'varies' | 'fixed'>,
-  baseSize: string,
-  targetSize: string,
-): string => {
-  const totalRows = rows.length;
-  const varyingGroups = rows.filter((row) => (groupModes[row.id] || 'varies') === 'varies').length;
-  const fixedGroups = Math.max(0, totalRows - varyingGroups);
-  const computed = rows.map((row) =>
-    calculateVersionBuilderGemRowForSize(row, groupModes[row.id] || 'varies', baseSize, targetSize),
-  );
-  const totalPcs = computed.reduce((sum, row) => sum + row.pcs, 0);
-  const totalWeight = computed.reduce((sum, row) => sum + row.wtInCts, 0);
-  const parts = [`${totalRows} rows`];
-
-  if (totalPcs > 0) parts.push(`${totalPcs} pcs`);
-  if (totalWeight > 0) parts.push(`${totalWeight.toFixed(2)} ctw`);
-
-  if (varyingGroups > 0 && fixedGroups > 0) {
-    parts.push(`${varyingGroups} vary`);
-  } else if (varyingGroups === totalRows && totalRows > 0) {
-    parts.push('size-based');
-  } else if (fixedGroups === totalRows && totalRows > 0) {
-    parts.push('fixed');
-  }
-
-  return `Configured (${parts.join(' - ')})`;
-};
 const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[] => {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -751,32 +564,6 @@ const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[
   });
   return result;
 };
-const sortJewelrySizeValues = (values: string[]): string[] =>
-  [...values].sort((left, right) => {
-    const leftSize = parseSizeNumber(left);
-    const rightSize = parseSizeNumber(right);
-
-    if (leftSize != null && rightSize != null) {
-      return leftSize - rightSize || left.localeCompare(right, undefined, { numeric: true });
-    }
-    if (leftSize != null) return -1;
-    if (rightSize != null) return 1;
-    return left.localeCompare(right, undefined, { numeric: true });
-  });
-type JewelrySizeStep = 'FULL' | 'HALF' | 'QUARTER';
-const getJewelrySizesByStep = (values: string[], step: JewelrySizeStep): string[] =>
-  values.filter((value) => {
-    const size = parseSizeNumber(value);
-    if (size == null) return false;
-
-    const quarterSteps = Math.round(size * 4);
-    if (Math.abs(size * 4 - quarterSteps) > 0.0001) return false;
-
-    const remainder = ((quarterSteps % 4) + 4) % 4;
-    if (step === 'FULL') return remainder === 0;
-    if (step === 'HALF') return remainder === 2;
-    return remainder === 1 || remainder === 3;
-  });
 const toPacketAbbreviation = (value: string): string => {
   const normalized = (value || '').trim();
   if (!normalized) return '';
@@ -1458,65 +1245,9 @@ const inlineMasterJoinedAddButtonClass = `${inlineMasterAddButtonClass} rounded-
 const lockedFieldSurfaceClass =
   '[&_input:read-only]:!bg-[#c9d5e0] [&_input:read-only]:!text-slate-700 [&_input:disabled]:!bg-[#c9d5e0] [&_input:disabled]:!text-slate-700 [&_input:disabled]:!opacity-100 [&_select:disabled]:!bg-[#c9d5e0] [&_select:disabled]:!text-slate-700 [&_select:disabled]:!opacity-100';
 const FINDING_FEATURE_ENABLED = false;
-const VERSION_BUILDER_DIMENSION_CONFIG: Array<{ id: keyof VersionBuilderSelections; label: string; helper: string }> = [
-  { id: 'metals', label: 'Metal', helper: 'Creates one version per selected metal.' },
-  { id: 'coverages', label: 'Coverage', helper: 'Use all coverage variants for this design.' },
-  { id: 'diamondQualities', label: 'Diamond Quality', helper: 'Useful when pricing differs by quality.' },
-  { id: 'caratWeights', label: 'Diamond Weight', helper: 'Optional if your design supports multiple carat weights.' },
-  { id: 'sizes', label: 'Jewelry Size', helper: 'Select one or many sizes for this version batch.' },
-];
-const VERSION_BUILDER_REQUIRED_DIMENSION_LABELS: Partial<Record<keyof VersionBuilderSelections, string>> = {
-  metals: 'Metal',
-  coverages: 'Coverage',
-  diamondQualities: 'Diamond Quality',
-  sizes: 'Jewelry Size',
-};
-
-const EMPTY_VERSION_BUILDER_SELECTIONS: VersionBuilderSelections = {
-  metals: [],
-  coverages: [],
-  diamondQualities: [],
-  caratWeights: [],
-  sizes: [],
-};
-
-const VERSION_BUILDER_GROUP_COLORS = ['#c7983f', '#3f6db3', '#2f8f67', '#9a5ed0', '#c46b3d', '#6f7b87'];
 const VERSION_BUILDER_SIZE_CHART_SIZES = buildVersionBuilderSizeChartSizes();
 const VERSION_BUILDER_FIXED_GEM_FIELDS = new Set<keyof GemRow>(['wtPerPcs', 'pcs', 'wtInCts']);
 const ZERO_LIKE_NUMERIC_VALUE = /^0(?:\.0+)?$/;
-const VERSION_BUILDER_GENERATED_COLUMNS = [
-  { key: 'sku', label: 'SKU', width: 220, minWidth: 150 },
-  { key: 'metal', label: 'Metal', width: 180, minWidth: 130 },
-  { key: 'purity', label: 'Purity', width: 110, minWidth: 80 },
-  { key: 'quality', label: 'Quality', width: 120, minWidth: 90 },
-  { key: 'caratWeight', label: 'Diamond Wt', width: 130, minWidth: 100 },
-  { key: 'coverage', label: 'Coverage', width: 140, minWidth: 110 },
-  { key: 'size', label: 'Size', width: 100, minWidth: 80 },
-  { key: 'metalWeight', label: 'Metal Weight', width: 140, minWidth: 110 },
-  { key: 'stoneWt', label: 'Stone Wt', width: 150, minWidth: 120 },
-  { key: 'bomCost', label: 'BOM Cost', width: 130, minWidth: 110 },
-  { key: 'status', label: 'Status', width: 170, minWidth: 140 },
-] as const;
-type VersionBuilderGeneratedColumnKey = (typeof VERSION_BUILDER_GENERATED_COLUMNS)[number]['key'];
-const DEFAULT_VERSION_BUILDER_GENERATED_COLUMN_WIDTHS =
-  VERSION_BUILDER_GENERATED_COLUMNS.reduce<Record<VersionBuilderGeneratedColumnKey, number>>((acc, column) => {
-    acc[column.key] = column.width;
-    return acc;
-  }, {} as Record<VersionBuilderGeneratedColumnKey, number>);
-const VERSION_BUILDER_WORKFLOW: Array<{
-  id: VersionBuilderWorkflowStep;
-  title: string;
-  subtitle: string;
-}> = [
-  { id: 'INFO', title: '1 - Style Info', subtitle: 'Base style and general info.' },
-  { id: 'DIMENSIONS', title: '2 - Variant Axes', subtitle: 'Toggle values on and off for version generation.' },
-  { id: 'GEMSTONES', title: '3a - Stone Layout', subtitle: 'Copy or override gemstone rows.' },
-  { id: 'SIZE_CHART', title: '3b - Composition Size Chart', subtitle: 'Edit counts and carat per stone by size.' },
-  { id: 'IMAGES', title: '4 - Media Rules', subtitle: 'Set media behavior for new versions.' },
-  { id: 'LABOR_OVERHEAD', title: '5 - Labor & Overhead', subtitle: 'Add labor rows and overhead rules before BOM.' },
-  { id: 'BOM', title: '6 - BOM', subtitle: 'Live cost breakdown for a sample variant.' },
-  { id: 'PREVIEW', title: '7 - Generated', subtitle: 'Review generated version rows.' },
-];
 
 function shouldReplaceZeroLikeNumericValue(value: string) {
   return ZERO_LIKE_NUMERIC_VALUE.test(value.trim());
@@ -2031,6 +1762,7 @@ export default function ProductsPage() {
     VersionBuilderUploadedMediaItem[]
   >([]);
   const [versionBuilderGemRows, setVersionBuilderGemRows] = useState<GemRow[]>([]);
+  const [versionBuilderInitializing, setVersionBuilderInitializing] = useState(false);
   const [versionBuilderGemLoading, setVersionBuilderGemLoading] = useState(false);
   const [versionBuilderGemError, setVersionBuilderGemError] = useState<string | null>(null);
   const [versionBuilderGemGroupModes, setVersionBuilderGemGroupModes] = useState<Record<string, 'varies' | 'fixed'>>({});
@@ -2087,9 +1819,13 @@ export default function ProductsPage() {
   const mediaLibraryGalleryInputRef = useRef<HTMLInputElement | null>(null);
   const mediaLibraryStlInputRef = useRef<HTMLInputElement | null>(null);
   const versionBuilderUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const versionBuilderInitializationSeqRef = useRef(0);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
   const designSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const masterRequestCountRef = useRef(0);
+  const loadedMasterRequestsRef = useRef(new Set<string>());
+  const inFlightMasterRequestsRef = useRef(new Map<string, Promise<MasterOption[]>>());
   const [designSaveNotice, setDesignSaveNotice] = useState<string | null>(null);
 
   const selected = useMemo(() => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
@@ -2936,26 +2672,43 @@ export default function ProductsPage() {
     });
   };
 
-  const fetchMasterOptions = async (masterType: DesignMasterType, extraParams?: Record<string, unknown>) => {
-    setMastersLoading(true);
-    try {
-      const response = await api.get(`/products/master-tables/${masterType}/dropdown`, {
-        params: {
-          status: 'ACTIVE',
-          ...(extraParams || {}),
-        },
-      });
-      const rows = normalizeMasterOptionRows(response.data);
-      const key = masterOptionsKeyByType[masterType];
-      setMasterOptions((prev) => ({ ...prev, [key]: rows }));
-      return rows;
-    } catch {
-      const key = masterOptionsKeyByType[masterType];
-      setMasterOptions((prev) => ({ ...prev, [key]: [] }));
-      return [];
-    } finally {
-      setMastersLoading(false);
+  const fetchMasterOptions = (
+    masterType: DesignMasterType,
+    extraParams?: Record<string, unknown>,
+    force = false,
+  ): Promise<MasterOption[]> => {
+    const params = { status: 'ACTIVE', ...(extraParams || {}) };
+    const requestKey = `${masterType}:${JSON.stringify(params)}`;
+    const stateKey = masterOptionsKeyByType[masterType];
+
+    if (!force && loadedMasterRequestsRef.current.has(requestKey)) {
+      return Promise.resolve(masterOptions[stateKey]);
     }
+    const inFlight = inFlightMasterRequestsRef.current.get(requestKey);
+    if (!force && inFlight) return inFlight;
+
+    masterRequestCountRef.current += 1;
+    setMastersLoading(true);
+    const request = api
+      .get(`/products/master-tables/${masterType}/dropdown`, { params })
+      .then((response) => {
+        const rows = normalizeMasterOptionRows(response.data);
+        setMasterOptions((prev) => ({ ...prev, [stateKey]: rows }));
+        loadedMasterRequestsRef.current.add(requestKey);
+        return rows;
+      })
+      .catch(() => {
+        // Keep previously loaded/selected values available after a transient failure.
+        return masterOptions[stateKey];
+      })
+      .finally(() => {
+        inFlightMasterRequestsRef.current.delete(requestKey);
+        masterRequestCountRef.current = Math.max(0, masterRequestCountRef.current - 1);
+        if (masterRequestCountRef.current === 0) setMastersLoading(false);
+      });
+
+    inFlightMasterRequestsRef.current.set(requestKey, request);
+    return request;
   };
 
   const fetchMediaLibrary = async () => {
@@ -3559,7 +3312,7 @@ export default function ProductsPage() {
       });
 
       const masterValue = response.data?.value || value;
-      await fetchMasterOptions(inlineMasterType);
+      await fetchMasterOptions(inlineMasterType, undefined, true);
 
       if (inlineMasterCreatedHandlerRef.current) {
         inlineMasterCreatedHandlerRef.current(masterValue, response.data);
@@ -4118,6 +3871,7 @@ export default function ProductsPage() {
   }, [masterOptions, versionBuilderBaseDesign]);
 
   const openVersionBuilder = async (row: DesignRow) => {
+    const initializationSeq = ++versionBuilderInitializationSeqRef.current;
     setVersionBuilderBaseDesign(row);
 
     setVersionBuilderSelections({
@@ -4145,12 +3899,45 @@ export default function ProductsPage() {
     setVersionBuilderLaborRows([{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }]);
     setVersionBuilderOverheadRows([]);
     setVersionBuilderGemError(null);
+    setVersionBuilderInitializing(true);
     setShowVersionBuilderModal(true);
-    void fetchVersionsForDesign(row.designNo, { familyDesignId: row.id });
-    void loadVersionBuilderGemstoneTemplate(row);
+    try {
+      const [detailResponse, jewelryGroups] = await Promise.all([
+        api.get(`/products/${row.id}`),
+        fetchMasterOptions('JEWELRY_GROUP', undefined, true),
+        fetchVersionsForDesign(row.designNo, { familyDesignId: row.id }),
+      ]);
+      if (versionBuilderInitializationSeqRef.current !== initializationSeq) return;
+
+      const detail = detailResponse.data;
+      const freshBaseDesign = mapApiDesignToRow(detail as ApiDesignRow);
+      setVersionBuilderBaseDesign(freshBaseDesign);
+      const jewelryGroupId = jewelryGroups.find((option) =>
+        masterOptionMatchesValue(option, freshBaseDesign.jewelryGroup),
+      )?.id;
+      await Promise.all([
+        fetchMasterOptions('METAL_CARATAGE', undefined, true),
+        fetchMasterOptions('DIAMOND_SPREAD', undefined, true),
+        fetchMasterOptions('DIAMOND_QUALITY', undefined, true),
+        fetchMasterOptions('DIAMOND_WEIGHT', undefined, true),
+        fetchMasterOptions('JEWELRY_SIZE', jewelryGroupId ? { jewelryGroupId } : undefined, true),
+      ]);
+      if (versionBuilderInitializationSeqRef.current !== initializationSeq) return;
+      await loadVersionBuilderGemstoneTemplate(freshBaseDesign, detail);
+    } catch (error: any) {
+      if (versionBuilderInitializationSeqRef.current === initializationSeq) {
+        setVersionBuilderGemError(error?.response?.data?.message || 'Unable to load the latest parent design data.');
+      }
+    } finally {
+      if (versionBuilderInitializationSeqRef.current === initializationSeq) {
+        setVersionBuilderInitializing(false);
+      }
+    }
   };
 
   const closeVersionBuilderModal = () => {
+    versionBuilderInitializationSeqRef.current += 1;
+    setVersionBuilderInitializing(false);
     versionBuilderUploadedImageUrls.forEach((url) => {
       if (url.startsWith('blob:')) {
         URL.revokeObjectURL(url);
@@ -4169,7 +3956,7 @@ export default function ProductsPage() {
     setShowVersionBuilderModal(false);
   };
 
-  const loadVersionBuilderGemstoneTemplate = async (row: DesignRow) => {
+  const loadVersionBuilderGemstoneTemplate = async (row: DesignRow, freshDetail?: any) => {
     const canLoadDetails = String(row.id || '').trim().length > 0;
     if (!canLoadDetails) {
       setVersionBuilderGemRows([createEmptyGemRow()]);
@@ -4179,13 +3966,13 @@ export default function ProductsPage() {
     setVersionBuilderGemLoading(true);
     setVersionBuilderGemError(null);
     try {
-      const detail = (await api.get(`/products/${row.id}`)).data;
+      const detail = freshDetail ?? (await api.get(`/products/${row.id}`)).data;
       const gemstones = Array.isArray(detail?.gemstones) ? detail.gemstones : [];
       const metals = Array.isArray(detail?.metals) ? detail.metals : [];
       const labors = Array.isArray(detail?.labors) ? detail.labors : [];
       const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
       const resolvePacketForGem = (gem: any): string => {
-        const direct = typeof gem?.packetId === 'string' ? gem.packetId.trim() : '';
+        const direct = String(gem?.packetId ?? '').trim();
         if (direct) return direct;
 
         const match = packetOptions.find((packet) =>
@@ -4203,12 +3990,19 @@ export default function ProductsPage() {
           ? gemstones.map((item: any) => ({
               id: item.id || makeId(),
               packetId: resolvePacketForGem(item),
+              stoneId: toOptionalMasterId(item.stoneId),
               stone: String(item.stone || ''),
+              shapeId: toOptionalMasterId(item.shapeId),
               shape: String(item.shape || ''),
+              sizeId: toOptionalMasterId(item.sizeId),
               size: String(item.size || ''),
+              cutId: toOptionalMasterId(item.cutId),
               cut: String(item.cut || ''),
+              colorId: toOptionalMasterId(item.colorId),
               color: String(item.color || ''),
+              qualityId: toOptionalMasterId(item.qualityId),
               quality: String(item.quality || ''),
+              stoneTypeId: toOptionalMasterId(item.stoneTypeId),
               settingType: String(item.stoneType || ''),
               wtPerPcs: String(item.wtPerPcs ?? ''),
               pcs: String(item.pcs ?? ''),
@@ -4241,6 +4035,7 @@ export default function ProductsPage() {
         visibleLabors.length > 0
           ? visibleLabors.map((item: any) => ({
               id: item.id || makeId(),
+              laborHeadId: toOptionalMasterId(item.laborHeadId),
               laborHead: String(item.laborHead || ''),
               laborPerUnit: String(item.laborPerUnit ?? ''),
               unitQty: String(item.unitQty ?? ''),
@@ -4532,6 +4327,7 @@ export default function ProductsPage() {
 
         const gemstones = versionBuilderGemRows
           .map((baseRow) => {
+            const packet = packetOptions.find((entry) => entry.id === baseRow.packetId);
             const cell = chartRow.groups?.[baseRow.id];
             const pcs = Math.max(0, parseNum(cell?.count || '0'));
             const wtPerPcs = Math.max(0, parseNum(cell?.ctPerStone || '0'));
@@ -4539,13 +4335,20 @@ export default function ProductsPage() {
             const pricePerCt = Math.max(0, parseNum(baseRow.pricePerCt || '0'));
             const amount = wtInCts * pricePerCt;
             return {
-              packetId: baseRow.packetId || undefined,
+              packetId: toOptionalMasterId(baseRow.packetId),
+              stoneId: packet?.stoneId ?? baseRow.stoneId ?? getMasterIdByValue(masterOptions.packetStones, baseRow.stone),
               stone: baseRow.stone.trim() || undefined,
+              shapeId: packet?.shapeId ?? baseRow.shapeId ?? getMasterIdByValue(masterOptions.packetShapes, baseRow.shape),
               shape: baseRow.shape.trim() || undefined,
+              sizeId: packet?.sizeId ?? baseRow.sizeId ?? getMasterIdByValue(masterOptions.packetSizes, baseRow.size),
               size: baseRow.size.trim() || undefined,
+              cutId: packet?.cutId ?? baseRow.cutId ?? getMasterIdByValue(masterOptions.packetCuts, baseRow.cut),
               cut: baseRow.cut.trim() || undefined,
+              colorId: packet?.colorId ?? baseRow.colorId ?? getMasterIdByValue(masterOptions.packetColors, baseRow.color),
               color: baseRow.color.trim() || undefined,
-              quality: row.diamondQuality || baseRow.quality.trim() || undefined,
+              qualityId: packet?.qualityId ?? baseRow.qualityId ?? getMasterIdByValue(masterOptions.packetQualities, baseRow.quality),
+              quality: baseRow.quality.trim() || undefined,
+              stoneTypeId: baseRow.stoneTypeId ?? getMasterIdByValue(masterOptions.diamondTypes, baseRow.settingType),
               stoneType: baseRow.settingType.trim() || undefined,
               wtPerPcs,
               pcs,
@@ -4559,6 +4362,7 @@ export default function ProductsPage() {
         const laborRowsPayload = versionBuilderLaborRows
           .filter((laborRow) => laborRow.laborHead.trim() || parseNum(laborRow.laborPerUnit) > 0 || parseNum(laborRow.unitQty) > 0)
           .map((laborRow) => ({
+            laborHeadId: laborRow.laborHeadId ?? getMasterIdByValue(masterOptions.laborHeads, laborRow.laborHead),
             laborHead: laborRow.laborHead.trim() || undefined,
             laborPerUnit: parseNum(laborRow.laborPerUnit),
             unitQty: parseNum(laborRow.unitQty),
@@ -4570,14 +4374,14 @@ export default function ProductsPage() {
             const label = overheadRow.overheadHead.trim() || rule?.value || '';
             if (!label) return null;
             const mode = normalizeOverheadApplyMode(rule?.overheadApplyMode ?? rule?.overheadApplyModeKey ?? rule?.overhead_apply_mode);
-            const ratePercent = Math.max(0, rule?.ratePercent || 0);
-            const flatAmount = Math.max(0, rule?.flatAmount || 0);
+            const ratePercent = Math.max(0, parseNumericValue(rule?.ratePercent));
+            const flatAmount = Math.max(0, parseNumericValue(rule?.flatAmount));
             const value =
               mode === 'FLAT'
                 ? flatAmount
                 : ((breakdown.metal.cost + breakdown.totalStoneCost + breakdown.labor.cost) * ratePercent) / 100;
             return {
-              overheadRuleId: rule?.id ? Number(rule.id) : undefined,
+              overheadRuleId: toOptionalMasterId(rule?.id),
               overheadHead: label,
               overheadApplyMode: rule?.overheadApplyModeKey || rule?.overhead_apply_mode || rule?.overheadApplyMode || undefined,
               ratePercent,
@@ -4594,16 +4398,29 @@ export default function ProductsPage() {
           version: row.version,
           companyId: detail?.companyId || undefined,
           branchId: detail?.branchId || undefined,
+          jewelryGroupId: toOptionalMasterId(detail?.jewelryGroupId) ?? getMasterIdByValue(masterOptions.jewelryGroups, detail?.jewelryGroup),
           jewelryGroup: String(detail?.jewelryGroup || versionBuilderBaseDesign.jewelryGroup || '').trim(),
+          collectionId: toOptionalMasterId(detail?.collectionId) ?? getMasterIdByValue(masterOptions.collections, detail?.collection),
           collection: String(detail?.collection || '').trim() || undefined,
+          jewelrySizeId: getMasterIdByValue(masterOptions.jewelrySizes, row.size),
           jewelrySize: row.size,
+          stageId: toOptionalMasterId(detail?.stageId) ?? getMasterIdByValue(masterOptions.stages, detail?.stage),
           stage: String(detail?.stage || '').trim() || undefined,
+          diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, row.coverage),
           diamondSpread: row.coverage || undefined,
+          diamondTypeId: toOptionalMasterId(detail?.diamondTypeId) ?? getMasterIdByValue(masterOptions.diamondTypes, detail?.diamondType),
           diamondType: String(detail?.diamondType || '').trim() || undefined,
+          diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, row.caratWeight),
           diamondWeight: row.caratWeight || undefined,
+          diamondQualityId: getMasterIdByValue(masterOptions.diamondQualities, row.diamondQuality),
           diamondQuality: row.diamondQuality || undefined,
+          designStatusId: toOptionalMasterId(detail?.designStatusId) ?? getMasterIdByValue(masterOptions.designStatuses, detail?.designStatus),
           designStatus: String(detail?.designStatus || '').trim() || undefined,
+          metalCaratageId: getMasterIdByValue(masterOptions.metalCaratages, row.metal),
           tags: Array.isArray(detail?.tags) ? detail.tags : [],
+          tagIds: (Array.isArray(detail?.designTags) ? detail.designTags : [])
+            .map((item: any) => toOptionalMasterId(item?.tagId ?? item?.tagMaster?.id))
+            .filter((id: number | undefined): id is number => id !== undefined),
           drawerLocation: String(detail?.drawerLocation || '').trim() || undefined,
           otherWeight:
             detail?.otherWeight !== undefined && detail?.otherWeight !== null
@@ -4617,6 +4434,7 @@ export default function ProductsPage() {
           ijewelBaseName: String(detail?.ijewelBaseName || '').trim() || undefined,
           metals: [
             {
+              metalCaratageId: getMasterIdByValue(masterOptions.metalCaratages, row.metal),
               metalCaratage: row.metal,
               netWt: metalNetWt,
               wastagePercent: breakdown.metal.wastagePercent,
@@ -4629,10 +4447,20 @@ export default function ProductsPage() {
           gemstones,
           labors: laborRowsPayload,
           overheads: overheadRowsPayload,
-          findings: [],
+          findings: (Array.isArray(detail?.findings) ? detail.findings : [])
+            .filter((item: any) => String(item?.findingHead || '').trim())
+            .map((item: any) => ({
+              findingHeadId: toOptionalMasterId(item?.findingHeadId ?? item?.findingHeadMaster?.id),
+              findingHead: String(item.findingHead || '').trim(),
+              pricePerUnit: Math.max(0, parseNumericValue(item?.pricePerUnit)),
+              units: Math.max(0, parseNumericValue(item?.units)),
+              totalWeight: Math.max(0, parseNumericValue(item?.totalWeight)),
+              findingValue: Math.max(0, parseNumericValue(item?.findingValue)),
+            })),
           processStages: (Array.isArray(detail?.processStages) ? detail.processStages : [])
             .filter((item: any) => String(item?.processStage || '').trim())
             .map((item: any) => ({
+              processStageId: toOptionalMasterId(item?.processStageId ?? item?.processStageMaster?.id),
               processStage: String(item.processStage || '').trim(),
               netWeight: parseNum(String(item.netWeight ?? '0')),
               duration: parseNum(String(item.duration ?? '0')),
@@ -4652,6 +4480,7 @@ export default function ProductsPage() {
           vendors: (Array.isArray(detail?.vendors) ? detail.vendors : [])
             .filter((item: any) => String(item?.supplierName || '').trim())
             .map((item: any) => ({
+              vendorNameId: toOptionalMasterId(item?.vendorNameId ?? item?.vendorNameMaster?.id),
               supplierName: String(item.supplierName || '').trim(),
               stockType: String(item.stockType || '').trim() || undefined,
               supplierStyleNo: String(item.supplierStyleNo || '').trim() || undefined,
@@ -4818,12 +4647,26 @@ export default function ProductsPage() {
       amount: 'decimal',
     };
     const nextValue = numericFieldMode[field] ? sanitizeNumericTextInput(value, numericFieldMode[field]!) : value;
+    const masterIdFieldByValueField: Partial<Record<keyof GemRow, keyof GemRow>> = {
+      stone: 'stoneId',
+      shape: 'shapeId',
+      size: 'sizeId',
+      cut: 'cutId',
+      color: 'colorId',
+      quality: 'qualityId',
+      settingType: 'stoneTypeId',
+    };
+    const changedMasterIdField = masterIdFieldByValueField[field];
+    const rowPatch: Partial<GemRow> = {
+      [field]: nextValue,
+      ...(changedMasterIdField ? { packetId: '', [changedMasterIdField]: undefined } : {}),
+    };
 
     const currentRow = versionBuilderGemRows.find((row) => row.id === rowId);
-    const nextRow = currentRow ? { ...currentRow, [field]: nextValue } : null;
+    const nextRow = currentRow ? { ...currentRow, ...rowPatch } : null;
 
     setVersionBuilderGemRows((prev) =>
-      prev.map((row) => (row.id === rowId ? { ...row, [field]: nextValue } : row)),
+      prev.map((row) => (row.id === rowId ? { ...row, ...rowPatch } : row)),
     );
 
     if (nextRow && (field === 'wtPerPcs' || field === 'pcs')) {
@@ -4859,8 +4702,12 @@ export default function ProductsPage() {
     setVersionBuilderGemRows((prev) => [...prev, createEmptyGemRow()]);
   };
 
-  const applyPacketToVersionBuilderGemRow = (rowId: string, packetId: string) => {
-    const packet = packetOptions.find((entry) => entry.id === packetId);
+  const applyPacketToVersionBuilderGemRow = (
+    rowId: string,
+    packetId: string,
+    selectedPacket?: SmartDropdownOption | null,
+  ) => {
+    const packet = selectedPacket ? mergePacketOption(selectedPacket) : packetOptions.find((entry) => entry.id === packetId);
     if (!packet) {
       updateVersionBuilderGemRow(rowId, 'packetId', '');
       return;
@@ -4875,10 +4722,17 @@ export default function ProductsPage() {
       ? {
           ...currentRow,
           packetId: packet.id,
+          stoneId: packet.stoneId,
           stone: packet.stone || currentRow.stone,
+          shapeId: packet.shapeId,
           shape: packet.shape || currentRow.shape,
+          sizeId: packet.sizeId,
           size: packet.size || currentRow.size,
+          cutId: packet.cutId,
+          cut: packet.cut || currentRow.cut,
+          colorId: packet.colorId,
           color: packet.color || currentRow.color,
+          qualityId: packet.qualityId,
           quality: packet.quality || currentRow.quality,
           wtPerPcs: packetWeightPerPc || currentRow.wtPerPcs,
           pcs: packetPieces || currentRow.pcs,
@@ -5309,10 +5163,11 @@ export default function ProductsPage() {
     const selectedMetalPurity = getMetalPurityBucket(selectedMetal);
     const selectedMetalOption = getMetalMasterOption(selectedMetal);
     const metalNetWeight = Math.max(0, parseNum(chartRow.metalWeights?.[selectedMetalPurity] || '0'));
-    const metalWastagePercent =
+    const rawMetalWastagePercent =
       selectedMetalOption?.defaultWastagePercent !== undefined && selectedMetalOption?.defaultWastagePercent !== null
         ? selectedMetalOption.defaultWastagePercent
         : selectedMetalOption?.wastagePercent || 0;
+    const metalWastagePercent = Math.max(0, parseNumericValue(rawMetalWastagePercent));
     const metalTotalWeight = metalNetWeight + (metalNetWeight * metalWastagePercent) / 100;
     const metalRate = getMetalRate(selectedMetal) || 0;
     const metalCost = metalTotalWeight * metalRate;
@@ -5356,8 +5211,8 @@ export default function ProductsPage() {
         const rule = getVersionBuilderOverheadRuleForRow(row);
         if (!rule) return null;
         const mode = normalizeOverheadApplyMode(rule.overheadApplyMode ?? rule.overheadApplyModeKey ?? rule.overhead_apply_mode);
-        const ratePercent = Math.max(0, rule.ratePercent || 0);
-        const flatAmount = Math.max(0, rule.flatAmount || 0);
+        const ratePercent = Math.max(0, parseNumericValue(rule.ratePercent));
+        const flatAmount = Math.max(0, parseNumericValue(rule.flatAmount));
         const cost = mode === 'FLAT' ? flatAmount : (bomSubtotal * ratePercent) / 100;
         const formula =
           mode === 'FLAT'
@@ -7110,7 +6965,13 @@ const createDefaultVendorRow = (): VendorRow => ({
       laborValue: 'decimal',
     };
     const nextValue = numericFieldMode[key] ? sanitizeNumericTextInput(value, numericFieldMode[key]!) : value;
-    setVersionBuilderLaborRows((prev) => prev.map((item) => (item.id === id ? { ...item, [key]: nextValue } : item)));
+    setVersionBuilderLaborRows((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? { ...item, ...(key === 'laborHead' ? { laborHeadId: undefined } : {}), [key]: nextValue }
+          : item,
+      ),
+    );
   };
 
   const updateFindingRow = (id: string, key: keyof Omit<FindingRow, 'id'>, value: string) => {
@@ -8431,7 +8292,18 @@ const createDefaultVendorRow = (): VendorRow => ({
           onClose={confirmCloseVersionBuilderModal}
           footer={versionBuilderFooter}
         >
-          <div className={`space-y-5 ${lockedFieldSurfaceClass}`}>
+          <div className={`relative space-y-5 ${lockedFieldSurfaceClass}`} aria-busy={versionBuilderInitializing}>
+            {versionBuilderInitializing ? (
+              <div className="absolute inset-0 z-50 flex min-h-[28rem] items-center justify-center rounded-2xl bg-white/95 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="h-9 w-9 animate-spin rounded-full border-4 border-[#eadfcf] border-t-[#bf944d]" />
+                  <div>
+                    <p className="text-sm font-bold text-[#2b241d]">Loading latest design data</p>
+                    <p className="mt-1 text-xs text-slate-500">Refreshing parent details, versions, and masters...</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="overflow-x-auto">
               <div className="flex min-w-max items-end border-b border-[#e3d9cc]">
                 {VERSION_BUILDER_WORKFLOW.map((step) => {
@@ -8926,21 +8798,23 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8f6a2c]">
                                   Diamond Packet
                                 </label>
-                                <select
-                                  className="w-full rounded-xl border border-[#ddd2c3] bg-[#fbf8f3] px-4 py-2.5 text-[12px] font-semibold text-[#2b241d]"
+                                <SmartDropdown
                                   value={item.packetId}
-                                  disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
-                                  onChange={(event) => applyPacketToVersionBuilderGemRow(item.id, event.target.value)}
-                                >
-                                  <option value="">-- Custom values (not from inventory) --</option>
-                                  {packetOptions.map((entry) => (
-                                    <option key={entry.id} value={entry.id}>
-                                      {entry.packetName}
-                                      {entry.sellingPrice != null ? ` - $${Number(entry.sellingPrice).toFixed(2)}/stone` : ''}
-                                      {entry.pieces != null ? ` - qty ${entry.pieces}` : ''}
-                                    </option>
-                                  ))}
-                                </select>
+                                  onChange={(value, option) => applyPacketToVersionBuilderGemRow(item.id, value, option)}
+                                  className="w-full"
+                                  config={{
+                                    apiSubPath: '/products/master-tables/PACKET',
+                                    options: packetOptions.map((entry) => ({ ...entry, label: entry.packetName })),
+                                    extraParams: { status: 'ACTIVE' },
+                                    pagination: true,
+                                    limit: 50,
+                                    responsePath: 'data',
+                                    valueKey: 'id',
+                                    labelKey: 'packetName',
+                                    placeholder: '-- Custom values (not from inventory) --',
+                                    disabled: versionBuilderGemMode !== 'OVERRIDE_BLOCK',
+                                  }}
+                                />
                                 <p className="mt-2 text-[11px] text-slate-500">
                                   Selecting a packet sets type, shape, size and quality automatically.
                                 </p>
@@ -8962,7 +8836,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                         {item.stone || packet?.stone || '-'} - {item.shape || packet?.shape || '-'}
                                       </p>
                                       <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Cost / Stone</p>
-                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">${parseNum(item.pricePerCt || String(packet?.sellingPrice || 0)).toFixed(2)}</p>
+                                      <p className="mt-1 text-[12px] font-semibold text-[#2b241d]">{formatMoney(parseNum(item.pricePerCt || String(packet?.sellingPrice || 0)))}</p>
                                     </div>
                                     <div>
                                       <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-500">Size</p>
@@ -8984,42 +8858,62 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   <div className="mt-4 grid gap-3 md:grid-cols-4">
                                     <div>
                                       <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Stone Type</label>
-                                      <input
-                                        type="text"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                      <SmartDropdown
                                         value={item.stone}
-                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
-                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'stone', event.target.value)}
+                                        onChange={(value, option) => {
+                                          mergeMasterOption('PACKET_STONE', option);
+                                          updateVersionBuilderGemRow(item.id, 'stone', value);
+                                        }}
+                                        className="w-full"
+                                        config={{
+                                          ...masterDropdownConfig('PACKET_STONE', 'Select Stone', toSmartDropdownOptions(masterOptions.packetStones)),
+                                          disabled: versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked,
+                                        }}
                                       />
                                     </div>
                                     <div>
                                       <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Shape</label>
-                                      <input
-                                        type="text"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                      <SmartDropdown
                                         value={item.shape}
-                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
-                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'shape', event.target.value)}
+                                        onChange={(value, option) => {
+                                          mergeMasterOption('PACKET_SHAPE', option);
+                                          updateVersionBuilderGemRow(item.id, 'shape', value);
+                                        }}
+                                        className="w-full"
+                                        config={{
+                                          ...masterDropdownConfig('PACKET_SHAPE', 'Select Shape', toSmartDropdownOptions(masterOptions.packetShapes)),
+                                          disabled: versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked,
+                                        }}
                                       />
                                     </div>
                                     <div>
                                       <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Diameter (mm)</label>
-                                      <input
-                                        type="text"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                      <SmartDropdown
                                         value={item.size}
-                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
-                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'size', event.target.value)}
+                                        onChange={(value, option) => {
+                                          mergeMasterOption('PACKET_SIZE', option);
+                                          updateVersionBuilderGemRow(item.id, 'size', value);
+                                        }}
+                                        className="w-full"
+                                        config={{
+                                          ...masterDropdownConfig('PACKET_SIZE', 'Select Size', toSmartDropdownOptions(masterOptions.packetSizes)),
+                                          disabled: versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked,
+                                        }}
                                       />
                                     </div>
                                     <div>
                                       <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">Quality</label>
-                                      <input
-                                        type="text"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
+                                      <SmartDropdown
                                         value={item.quality}
-                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked}
-                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'quality', event.target.value)}
+                                        onChange={(value, option) => {
+                                          mergeMasterOption('PACKET_QUALITY', option);
+                                          updateVersionBuilderGemRow(item.id, 'quality', value);
+                                        }}
+                                        className="w-full"
+                                        config={{
+                                          ...masterDropdownConfig('PACKET_QUALITY', 'Select Quality', toSmartDropdownOptions(masterOptions.packetQualities)),
+                                          disabled: versionBuilderGemMode !== 'OVERRIDE_BLOCK' || isPacketLinked,
+                                        }}
                                       />
                                     </div>
                                     <div>
@@ -9063,16 +8957,19 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     </div>
                                     <div>
                                       <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500">@(P/C/In USD)</label>
-                                      <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-[12px]"
-                                        value={item.pricePerCt}
-                                        onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
-                                        onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
-                                        disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
-                                        onChange={(event) => updateVersionBuilderGemRow(item.id, 'pricePerCt', event.target.value)}
-                                      />
+                                      <div className="relative">
+                                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-[10px] font-semibold text-slate-500">USD</span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          className="w-full rounded-lg border border-slate-300 py-2 pl-11 pr-3 text-[12px]"
+                                          value={item.pricePerCt}
+                                          onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                          onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
+                                          disabled={versionBuilderGemMode !== 'OVERRIDE_BLOCK'}
+                                          onChange={(event) => updateVersionBuilderGemRow(item.id, 'pricePerCt', event.target.value)}
+                                        />
+                                      </div>
                                     </div>
                                   </div>
                                 </details>
@@ -9097,7 +8994,7 @@ const createDefaultVendorRow = (): VendorRow => ({
             ) : null}
 
             {versionBuilderWorkflowStep === 'SIZE_CHART' ? (
-              <div className="rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
+              <div className="min-w-0 overflow-hidden rounded-[26px] border border-[#e4d8c9] bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[#8f6a2c]">Step 3b - Composition Size Chart</p>
                   <h3 className="mt-1 text-[1.15rem] font-bold text-[#2b241d]">Each group gets its own count column - edit any cell</h3>
@@ -9345,13 +9242,13 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
-                  <div className="space-y-4">
-                    <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
+                <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="min-w-0 space-y-4">
+                    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
                       <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c]">Labor Information</div>
-                      <div className="overflow-x-auto scrollbar-top">
-                        <table className="min-w-full text-sm">
-                          <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
+                      <div className="max-w-full overflow-x-auto overscroll-x-contain scrollbar-top">
+                        <table className="min-w-[760px] text-sm">
+                          <thead className="sticky top-0 z-10 border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                             <tr>
                               <th className="px-2 py-2">##</th>
                               <th className="px-2 py-2">Labor Head</th>
@@ -9367,21 +9264,24 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <td className="px-2 py-2 text-xs text-gray-600">{idx + 1}.</td>
                                 <td className="px-2 py-2">
                                   <div className="flex items-center gap-2">
-                                    <select
-                                      className="w-full min-w-[10.5rem] rounded border border-gray-300 px-2 py-1"
+                                    <SmartDropdown
                                       value={item.laborHead}
-                                      onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborHead', event.target.value)}
-                                    >
-                                      <option value="">Select Labor Head</option>
-                                      {!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead ? (
-                                        <option value={item.laborHead}>{item.laborHead}</option>
-                                      ) : null}
-                                      {masterOptions.laborHeads.map((option) => (
-                                        <option key={option.id} value={option.value}>
-                                          {option.value}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      onChange={(value, option) => {
+                                        mergeMasterOption('LABOR_HEAD', option);
+                                        updateVersionBuilderLaborRow(item.id, 'laborHead', value);
+                                      }}
+                                      className="w-full min-w-[10.5rem]"
+                                      config={masterDropdownConfig(
+                                        'LABOR_HEAD',
+                                        'Select Labor Head',
+                                        [
+                                          ...(!masterOptions.laborHeads.some((option) => option.value === item.laborHead) && item.laborHead
+                                            ? [{ value: item.laborHead, label: item.laborHead }]
+                                            : []),
+                                          ...toSmartDropdownOptions(masterOptions.laborHeads),
+                                        ],
+                                      )}
+                                    />
                                     <button
                                       type="button"
                                       className={inlineMasterAddButtonClass}
@@ -9397,16 +9297,19 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   </div>
                                 </td>
                                 <td className="px-2 py-2">
-                                  <input
-                                    className="w-full rounded border border-gray-300 px-2 py-1"
-                                    value={item.laborPerUnit}
-                                    onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
-                                    onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
-                                    onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborPerUnit', event.target.value)}
-                                    onFocus={handleNumericFieldFocus}
-                                    onMouseUp={handleNumericFieldMouseUp}
-                                    placeholder="Price Per Quantity"
-                                  />
+                                  <div className="relative min-w-[8.5rem]">
+                                    <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-[9px] font-semibold text-slate-500">USD</span>
+                                    <input
+                                      className="w-full rounded border border-gray-300 py-1 pl-10 pr-2"
+                                      value={item.laborPerUnit}
+                                      onKeyDown={(event) => handleNumericFieldKeyDown(event, 'decimal')}
+                                      onPaste={(event) => handleNumericFieldPaste(event, 'decimal')}
+                                      onChange={(event) => updateVersionBuilderLaborRow(item.id, 'laborPerUnit', event.target.value)}
+                                      onFocus={handleNumericFieldFocus}
+                                      onMouseUp={handleNumericFieldMouseUp}
+                                      placeholder="0.00"
+                                    />
+                                  </div>
                                 </td>
                                 <td className="px-2 py-2">
                                   <input
@@ -9423,7 +9326,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 <td className="px-2 py-2">
                                   <input
                                     className="w-full cursor-not-allowed rounded border border-gray-300 bg-[#c9d5e0] px-2 py-1 text-gray-700"
-                                    value={getLaborValue(item).toFixed(2)}
+                                    value={formatMoney(getLaborValue(item))}
                                     readOnly
                                     tabIndex={-1}
                                   />
@@ -9442,7 +9345,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                             <tr className="bg-gray-50 text-xs font-semibold text-gray-700">
                               <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
                               <td className="px-2 py-2">
-                                {versionBuilderLaborRows.reduce((sum, row) => sum + getLaborValue(row), 0).toFixed(2)}
+                                {formatMoney(versionBuilderLaborRows.reduce((sum, row) => sum + getLaborValue(row), 0))}
                               </td>
                               <td className="px-2 py-2"></td>
                             </tr>
@@ -9466,12 +9369,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
+                  <div className="min-w-0 space-y-4">
+                    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-[#e4d8c9] bg-white shadow-sm ring-1 ring-[#2b241d]/5">
                       <div className="border-b border-[#e4d8c9] bg-[#f8f2e8] px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-[#8f6a2c]">Overhead Information</div>
-                      <div className="overflow-x-auto scrollbar-top">
+                      <div className="max-w-full overflow-x-auto overscroll-x-contain scrollbar-top">
                         <table className="min-w-[680px] text-sm">
-                          <thead className="border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
+                          <thead className="sticky top-0 z-10 border-b border-gray-200 bg-white text-left text-[11px] font-semibold text-slate-900">
                             <tr>
                               <th className="w-14 px-3 py-2">##</th>
                               <th className="w-[290px] px-3 py-2">Overhead</th>
@@ -9496,17 +9399,20 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     <td className="px-3 py-2 text-xs text-gray-600">{idx + 1}.</td>
                                     <td className="px-3 py-2">
                                       <div className="flex items-center gap-2">
-                                        <select
-                                          className="w-full min-w-[14rem] rounded border border-gray-300 px-2 py-1"
+                                        <SmartDropdown
                                           value={item.ruleId}
-                                          onChange={(event) => {
-                                            const selectedRuleOption = versionBuilderCategoryRuleFiltered.overheadRules.find((rule) => rule.id === event.target.value);
+                                          onChange={(value, option) => {
+                                            mergeMasterOption('OVERHEAD_RULE', option);
+                                            const normalizedOption = option ? normalizeMasterOptionRows([option])[0] : null;
+                                            const selectedRuleOption =
+                                              normalizedOption ||
+                                              versionBuilderCategoryRuleFiltered.overheadRules.find((rule) => rule.id === value);
                                             setVersionBuilderOverheadRows((prev) =>
                                               prev.map((row) =>
                                                 row.id === item.id
                                                   ? {
                                                       ...row,
-                                                      ruleId: event.target.value,
+                                                      ruleId: value,
                                                       overheadHead: selectedRuleOption?.value || '',
                                                       ruleSnapshot: selectedRuleOption || null,
                                                     }
@@ -9514,18 +9420,31 @@ const createDefaultVendorRow = (): VendorRow => ({
                                               ),
                                             );
                                           }}
-                                        >
-                                          <option value="">Select Overhead</option>
-                                          {item.ruleSnapshot &&
-                                          !versionBuilderCategoryRuleFiltered.overheadRules.some((option) => option.id === item.ruleSnapshot?.id) ? (
-                                            <option value={item.ruleSnapshot.id}>{item.ruleSnapshot.value}</option>
-                                          ) : null}
-                                          {versionBuilderCategoryRuleFiltered.overheadRules.map((option) => (
-                                            <option key={option.id} value={option.id}>
-                                              {option.value}
-                                            </option>
-                                          ))}
-                                        </select>
+                                          className="w-full min-w-[14rem]"
+                                          config={{
+                                            ...masterDropdownConfig(
+                                              'OVERHEAD_RULE',
+                                              'Select Overhead',
+                                              toSmartDropdownOptions([
+                                                ...(item.ruleSnapshot &&
+                                                !versionBuilderCategoryRuleFiltered.overheadRules.some((option) => option.id === item.ruleSnapshot?.id)
+                                                  ? [item.ruleSnapshot]
+                                                  : []),
+                                                ...versionBuilderCategoryRuleFiltered.overheadRules,
+                                              ]),
+                                              masterOptions.jewelryGroups.find((option) =>
+                                                masterOptionMatchesValue(option, versionBuilderBaseDesign.jewelryGroup),
+                                              )?.id
+                                                ? {
+                                                    jewelryGroupId: masterOptions.jewelryGroups.find((option) =>
+                                                      masterOptionMatchesValue(option, versionBuilderBaseDesign.jewelryGroup),
+                                                    )?.id,
+                                                  }
+                                                : undefined,
+                                            ),
+                                            valueKey: 'id',
+                                          }}
+                                        />
                                         <button
                                           type="button"
                                           className={inlineMasterAddButtonClass}

@@ -412,6 +412,7 @@ export class MasterTablesService {
 
     const repo = this.getRepository(masterType);
     const data = this.pickWritable(masterType, dto);
+    this.syncMetalCaratageDisplayValue(masterType, data);
     await this.validateBeforeSave(masterType, data);
     await this.assertUnique(repo, masterType, data);
     const row = repo.create(data);
@@ -433,6 +434,7 @@ export class MasterTablesService {
     }
 
     const data = this.pickWritable(masterType, dto);
+    this.syncMetalCaratageDisplayValue(masterType, data);
     const nextRow = { ...row, ...data };
     await this.validateBeforeSave(masterType, nextRow);
     await this.assertUnique(repo, masterType, nextRow, id);
@@ -1238,6 +1240,34 @@ export class MasterTablesService {
       }
     }
     return data;
+  }
+
+  /**
+   * Metal caratage exposes aliasName as its single editable display field.
+   * Keep the canonical value in sync so lookups, uniqueness checks, existing
+   * design references, and dropdown responses all observe the same name.
+   */
+  private syncMetalCaratageDisplayValue(
+    masterType: DesignMasterType,
+    data: Record<string, unknown>,
+  ): void {
+    if (masterType !== DesignMasterType.METAL_CARATAGE) {
+      return;
+    }
+
+    const hasEditableValue = Object.prototype.hasOwnProperty.call(data, 'aliasName');
+    const hasLegacyValue = Object.prototype.hasOwnProperty.call(data, 'value');
+    if (!hasEditableValue && !hasLegacyValue) {
+      return;
+    }
+
+    const displayValue = this.optionalString(data.aliasName) || this.optionalString(data.value);
+    if (!displayValue) {
+      throw new BadRequestException('aliasName is required for METAL_CARATAGE');
+    }
+
+    data.aliasName = displayValue;
+    data.value = displayValue;
   }
 
   private async validateBeforeSave(masterType: DesignMasterType, data: Record<string, unknown>) {
