@@ -432,11 +432,22 @@ const OptionSection = ({
 //   );
 // };
 
-const DesignDetailScreen = () => {
+const DesignDetailScreen = ({
+  modalDesignId,
+  modalPresetCategory,
+  onClose,
+}: {
+  modalDesignId?: string;
+  modalPresetCategory?: string;
+  onClose?: () => void;
+} = {}) => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
+  const isModal = Boolean(modalDesignId && onClose);
+  const designId = modalDesignId || route.params?.designId;
+  const presetCategory = modalPresetCategory ?? route.params?.presetCategory;
   const { width, height: windowHeight } = useWindowDimensions();
   const mediaHeight = Math.min(width >= 700 ? 360 : 260, Math.max(156, width * 0.54));
   const mediaListRef = useRef<FlatList<string> | null>(null);
@@ -503,10 +514,12 @@ const DesignDetailScreen = () => {
   const resolveRequestSeqRef = useRef(0);
 
   const handleBackToDesigns = useCallback(() => {
-    navigation.navigate('Designs', {
-      presetCategory: route.params?.presetCategory,
-    });
-  }, [navigation, route.params?.presetCategory]);
+    if (isModal && onClose) {
+      onClose();
+      return;
+    }
+    navigation.navigate('Designs', { presetCategory });
+  }, [isModal, onClose, navigation, presetCategory]);
 
   const applyActiveDesignSelection = useCallback((design: Design, selectedOptions?: Partial<VersionFilters>) => {
     const next = { ...getFilterValuesFromDesign(design), ...(selectedOptions || {}) };
@@ -614,25 +627,32 @@ const DesignDetailScreen = () => {
     setError(null);
 
     try {
-      const response = await fetchMobileDesignConfigurator(token, route.params.designId);
+      const response = await fetchMobileDesignConfigurator(token, designId);
       const selectedDesign = await loadStoneCountForDesign(response.selectedDesign);
       applyConfiguratorResponse({ ...response, selectedDesign });
       await loadPriceForDesign(selectedDesign);
       trackDesignViewed(selectedDesign.id, {
         designNo: selectedDesign.designNo,
         designName: selectedDesign.designName,
-        sourceDesignId: route.params.designId,
+        sourceDesignId: designId,
       });
     } catch (err: any) {
       setError(err?.message || 'Unable to load design');
     }
-  }, [token, route.params.designId, applyConfiguratorResponse, loadPriceForDesign, loadStoneCountForDesign]);
+  }, [token, designId, applyConfiguratorResponse, loadPriceForDesign, loadStoneCountForDesign]);
 
   useFocusEffect(
     useCallback(() => {
       loadDesign();
     }, [loadDesign]),
   );
+
+  // In modal mode useFocusEffect never fires, so use a plain effect keyed on designId
+  useEffect(() => {
+    if (!isModal) return;
+    loadDesign();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isModal, designId]);
 
   const activeDesign = useMemo(() => {
     if (!familyDesigns.length) return null;
@@ -881,7 +901,7 @@ const DesignDetailScreen = () => {
       setError(null);
 
       try {
-        const response = await resolveMobileDesignConfigurator(token, route.params.designId, {
+        const response = await resolveMobileDesignConfigurator(token, designId, {
           ...nextFilters,
           selectedKey,
         });
@@ -906,7 +926,7 @@ const DesignDetailScreen = () => {
     },
     [
       token,
-      route.params.designId,
+      designId,
       selectedShape,
       selectedDiamondType,
       selectedStyle,
@@ -966,6 +986,7 @@ const DesignDetailScreen = () => {
         },
       },
     });
+    if (isModal && onClose) onClose();
     trackCreateOrderStarted(activeDesign.id, {
       designNo: activeDesign.designNo,
       designName: activeDesign.designName,
@@ -1358,7 +1379,7 @@ const DesignDetailScreen = () => {
     diamondTypeOptions.length > 1;
 
   if (!activeDesign && !error) {
-    return (
+    const loadingContent = (
       <View style={{flex: 1}}>
         <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <SafeAreaView style={styles.stateScreen} edges={['top']}>
@@ -1367,10 +1388,18 @@ const DesignDetailScreen = () => {
         </SafeAreaView>
       </View>
     );
+    if (isModal) {
+      return (
+        <Modal visible animationType="slide" onRequestClose={onClose}>
+          {loadingContent}
+        </Modal>
+      );
+    }
+    return loadingContent;
   }
 
   if (!activeDesign) {
-    return (
+    const errorContent = (
       <View style={{flex: 1}}>
         <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
         <SafeAreaView style={styles.stateScreen} edges={['top']}>
@@ -1384,9 +1413,17 @@ const DesignDetailScreen = () => {
         </SafeAreaView>
       </View>
     );
+    if (isModal) {
+      return (
+        <Modal visible animationType="slide" onRequestClose={onClose}>
+          {errorContent}
+        </Modal>
+      );
+    }
+    return errorContent;
   }
 
-  return (
+  const screenContent = (
     <View style={styles.root}>
       <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={StyleSheet.absoluteFillObject} />
       <SafeAreaView ref={screenRef} style={styles.screenShell} edges={['top']}>
@@ -1813,6 +1850,15 @@ const DesignDetailScreen = () => {
       </SafeAreaView>
     </View>
   );
+
+  if (isModal) {
+    return (
+      <Modal visible animationType="slide" onRequestClose={onClose}>
+        {screenContent}
+      </Modal>
+    );
+  }
+  return screenContent;
 };
 
 const styles = StyleSheet.create({

@@ -22,7 +22,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
-import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
+import DesignDetailScreen from './DesignDetailScreen';
+
 import { fetchAllGroupedMasters } from '../api/masters';
 import type { Design, GroupedMastersResponse } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
@@ -242,6 +243,7 @@ const DesignsScreen = () => {
   const [draftPriceBand, setDraftPriceBand] = useState<PriceBand>('ALL');
   const [draftSortOption, setDraftSortOption] = useState<SortOption>('recent');
   const [notificationsVisible, setNotificationsVisible] = useState(false);
+  const [detailDesignId, setDetailDesignId] = useState<string | null>(null);
   const appliedSearchPresetRef = useRef('');
   const requestSeqRef = useRef(0);
   const loadedQueryKeyRef = useRef('');
@@ -482,12 +484,7 @@ const DesignsScreen = () => {
       <TouchableOpacity
         activeOpacity={0.92}
         style={[styles.cardTouchable, numColumns > 1 ? styles.cardTouchableGrid : null]}
-        onPress={() =>
-          navigation.navigate('DesignDetail', {
-            designId: item.id,
-            presetCategory: route.params?.presetCategory,
-          })
-        }
+        onPress={() => setDetailDesignId(item.id)}
       >
         <View style={styles.designCard}>
           <View style={styles.imageShell}>
@@ -732,6 +729,14 @@ const DesignsScreen = () => {
           onClose={() => setNotificationsVisible(false)}
           onOpenNotification={handleOpenNotificationEntry}
         />
+
+        {detailDesignId ? (
+          <DesignDetailScreen
+            modalDesignId={detailDesignId}
+            modalPresetCategory={route.params?.presetCategory}
+            onClose={() => setDetailDesignId(null)}
+          />
+        ) : null}
 
         <Modal
           visible={sortMenuVisible}

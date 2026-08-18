@@ -218,8 +218,8 @@ type ConfiguratorOptions = Record<ConfiguratorKey, string>;
 
 type ConfiguratorResponse = {
   selectedDesign: DesignDetail;
-  selectedOptions?: Partial<ConfiguratorOptions> & { metalColor?: string };
-  optionGroups?: Partial<Record<ConfiguratorKey | 'metalColor', string[]>>;
+  selectedOptions?: Partial<Record<ConfiguratorKey | 'metalColor', unknown>>;
+  optionGroups?: Partial<Record<ConfiguratorKey | 'metalColor', unknown[]>>;
 };
 
 const emptyConfiguratorOptions = (): ConfiguratorOptions => ({
@@ -309,8 +309,12 @@ const isVideoUrl = (url: string): boolean => {
   const clean = stripUrlSuffix(normalized);
   return ['.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg'].some((ext) => clean.endsWith(ext));
 };
-const compactOptions = (values?: string[]): string[] =>
-  Array.from(new Set((values || []).map((value) => String(value || '').trim()).filter(Boolean)));
+const toOptionLabel = (value: unknown): string => {
+  if (value && typeof value === 'object' && 'label' in value) return String((value as { label: unknown }).label || '').trim();
+  return String(value || '').trim();
+};
+const compactOptions = (values?: unknown[]): string[] =>
+  Array.from(new Set((values || []).map(toOptionLabel).filter(Boolean)));
 
 const formatMoney = (value: number): string =>
   `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -884,8 +888,8 @@ export default function OrdersPage() {
     const optionGroups = response.optionGroups || {};
     const normalizedOptions: ConfiguratorOptions = {
       ...emptyConfiguratorOptions(),
-      ...selectedOptions,
-      metalCaratage: selectedOptions.metalCaratage || selectedOptions.metalColor || '',
+      ...Object.fromEntries(Object.entries(selectedOptions).map(([k, v]) => [k, toOptionLabel(v)])),
+      metalCaratage: toOptionLabel(selectedOptions.metalCaratage || selectedOptions.metalColor || ''),
     };
     const normalizedGroups: Record<ConfiguratorKey, string[]> = {
       diamondType: compactOptions(optionGroups.diamondType),
