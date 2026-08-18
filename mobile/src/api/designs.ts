@@ -50,79 +50,124 @@ export type MobileCatalogQuery = {
   sort?: 'recent' | 'priceAsc' | 'priceDesc' | 'designAsc' | 'designDesc';
 };
 
-export type MobileConfiguratorOptions = {
-  diamondType: string;
-  shape: string;
-  style: string;
-  metalCaratage: string;
-  weight: string;
-  quality: string;
-  ringSize: string;
+export type MobileConfiguratorOption = {
+  id: number | null;
+  label: string;
 };
 
-export type MobileConfiguratorResolveQuery = Partial<MobileConfiguratorOptions> & {
+export type MobileConfiguratorOptions = {
+  diamondType: MobileConfiguratorOption;
+  shape: MobileConfiguratorOption;
+  style: MobileConfiguratorOption;
+  metalCaratage: MobileConfiguratorOption;
+  weight: MobileConfiguratorOption;
+  quality: MobileConfiguratorOption;
+  ringSize: MobileConfiguratorOption;
+};
+
+export type MobileConfiguratorResolveQuery = {
   selectedKey?: keyof MobileConfiguratorOptions;
+  // ID-based (preferred)
+  diamondTypeId?: number;
+  shapeId?: number;
+  styleId?: number;
+  metalCaratageId?: number;
+  weightId?: number;
+  qualityId?: number;
+  ringSizeId?: number;
+  // Label-based (legacy fallback)
+  diamondType?: string;
+  shape?: string;
+  style?: string;
+  metalCaratage?: string;
+  weight?: string;
+  quality?: string;
+  ringSize?: string;
 };
 
 export type MobileConfiguratorResponse = {
   selectedDesign: Design;
   selectedOptions: MobileConfiguratorOptions;
-  optionGroups: Record<keyof MobileConfiguratorOptions, string[]>;
+  optionGroups: Record<keyof MobileConfiguratorOptions, MobileConfiguratorOption[]>;
 };
 
-type LegacyMobileConfiguratorOptions = Partial<MobileConfiguratorOptions> & {
+type LegacyMobileConfiguratorOptions = Partial<Record<keyof MobileConfiguratorOptions, string>> & {
   metalColor?: string;
 };
 
 type LegacyMobileConfiguratorResponse = {
   selectedDesign: Design;
-  selectedOptions?: LegacyMobileConfiguratorOptions;
-  optionGroups?: Partial<Record<keyof MobileConfiguratorOptions | 'metalColor', string[]>>;
+  selectedOptions?: LegacyMobileConfiguratorOptions | Record<string, { id: number | null; label: string }>;
+  optionGroups?: Partial<Record<keyof MobileConfiguratorOptions | 'metalColor', string[] | MobileConfiguratorOption[]>>;
 };
 
+const emptyMobileConfiguratorOption = (): MobileConfiguratorOption => ({ id: null, label: '' });
+
 const emptyMobileConfiguratorOptions = (): MobileConfiguratorOptions => ({
-  diamondType: '',
-  shape: '',
-  style: '',
-  metalCaratage: '',
-  weight: '',
-  quality: '',
-  ringSize: '',
+  diamondType: emptyMobileConfiguratorOption(),
+  shape: emptyMobileConfiguratorOption(),
+  style: emptyMobileConfiguratorOption(),
+  metalCaratage: emptyMobileConfiguratorOption(),
+  weight: emptyMobileConfiguratorOption(),
+  quality: emptyMobileConfiguratorOption(),
+  ringSize: emptyMobileConfiguratorOption(),
 });
 
-const splitMetalValues = (values?: string[]) =>
+const toOption = (raw: unknown): MobileConfiguratorOption => {
+  if (raw && typeof raw === 'object' && 'label' in raw) {
+    return { id: (raw as any).id ?? null, label: String((raw as any).label || '') };
+  }
+  return { id: null, label: String(raw || '') };
+};
+
+const toOptionArray = (raw: unknown[]): MobileConfiguratorOption[] =>
   Array.from(
-    new Set(
-      (values || [])
-        .flatMap((val) => String(val || '').split(','))
-        .map((val) => val.trim())
-        .filter(Boolean),
-    ),
+    new Map(
+      (raw || [])
+        .map(toOption)
+        .filter((opt) => opt.label)
+        .map((opt) => [opt.label.toLowerCase(), opt]),
+    ).values(),
   );
 
 const normalizeMobileConfiguratorResponse = (
   response: LegacyMobileConfiguratorResponse,
 ): MobileConfiguratorResponse => {
-  const selectedOptions = response.selectedOptions || {};
-  const optionGroups = response.optionGroups || {};
-  const rawMetalCaratage = selectedOptions.metalCaratage || selectedOptions.metalColor || '';
-  const firstMetalCaratage = rawMetalCaratage.split(',')[0]?.trim() || '';
+  const rawSelected = response.selectedOptions || {};
+  const rawGroups = response.optionGroups || {};
+
+  const resolveOption = (key: keyof MobileConfiguratorOptions, legacyKey?: string): MobileConfiguratorOption => {
+    const val = (rawSelected as any)[key] ?? (legacyKey ? (rawSelected as any)[legacyKey] : undefined);
+    return toOption(val);
+  };
+
+  const metalOpt = resolveOption('metalCaratage', 'metalColor');
+  const firstMetal: MobileConfiguratorOption = {
+    id: metalOpt.id,
+    label: metalOpt.label.split(',')[0]?.trim() || '',
+  };
 
   return {
     selectedDesign: response.selectedDesign,
     selectedOptions: {
-      ...emptyMobileConfiguratorOptions(),
-      ...selectedOptions,
-      metalCaratage: firstMetalCaratage,
+      diamondType: resolveOption('diamondType'),
+      shape: resolveOption('shape'),
+      style: resolveOption('style'),
+      metalCaratage: firstMetal,
+      weight: resolveOption('weight'),
+      quality: resolveOption('quality'),
+      ringSize: resolveOption('ringSize'),
     },
     optionGroups: {
-      diamondType: optionGroups.diamondType || [],
-      shape: optionGroups.shape || [],
-      style: optionGroups.style || [],
-      metalCaratage: splitMetalValues(optionGroups.metalCaratage || optionGroups.metalColor || []),
-      weight: optionGroups.weight || [],
-      quality: optionGroups.quality || [],
-      ringSize: optionGroups.ringSize || [],
+      diamondType: toOptionArray((rawGroups.diamondType || []) as any[]),
+      shape: toOptionArray((rawGroups.shape || []) as any[]),
+      style: toOptionArray((rawGroups.style || []) as any[]),
+      metalCaratage: toOptionArray([
+        ...((rawGroups.metalCaratage || rawGroups.metalColor || []) as any[]),
+      ]),
+      weight: toOptionArray((rawGroups.weight || []) as any[]),
+      quality: toOptionArray((rawGroups.quality || []) as any[]),
+      ringSize: toOptionArray((rawGroups.ringSize || []) as any[]),
     },
   };
 };
@@ -193,44 +238,49 @@ export const resolveMobileDesignConfigurator = (
   id: string,
   options: MobileConfiguratorResolveQuery,
 ) => {
-  const buildPath = (useLegacyMetalKey = false) => {
-    const params = new URLSearchParams();
-    Object.entries(options).forEach(([key, value]) => {
-      if (!value) return;
-      if (useLegacyMetalKey && key === 'selectedKey' && value === 'metalCaratage') {
-        params.set(key, 'metalColor');
-        return;
-      }
-      if (useLegacyMetalKey && key === 'metalCaratage') {
-        params.set('metalColor', String(value));
-        return;
-      }
-      params.set(key, String(value));
-    });
-    const qs = params.toString();
-    return `/products/mobile/configurator/${encodeURIComponent(id)}/resolve${qs ? `?${qs}` : ''}`;
-  };
-
-  const shouldRetryLegacy =
-    options.selectedKey === 'metalCaratage' ||
-    Boolean(options.metalCaratage);
-
-  return apiRequest<LegacyMobileConfiguratorResponse>(
-    buildPath(),
-    { method: 'GET' },
-    token,
-  )
-    .catch((error) => {
-      if (!shouldRetryLegacy || error?.status !== 400) {
-        throw error;
-      }
-      return apiRequest<LegacyMobileConfiguratorResponse>(
-        buildPath(true),
-        { method: 'GET' },
-        token,
-      );
-    })
+  const params = new URLSearchParams();
+  Object.entries(options).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const qs = params.toString();
+  const path = `/products/mobile/configurator/${encodeURIComponent(id)}/resolve${qs ? `?${qs}` : ''}`;
+  return apiRequest<LegacyMobileConfiguratorResponse>(path, { method: 'GET' }, token)
     .then(normalizeMobileConfiguratorResponse);
+};
+
+// Helper: build a resolve query from a selected option, preferring ID over label
+export const buildConfiguratorResolveQuery = (
+  key: keyof MobileConfiguratorOptions,
+  option: MobileConfiguratorOption,
+  current: MobileConfiguratorOptions,
+): MobileConfiguratorResolveQuery => {
+  const query: MobileConfiguratorResolveQuery = { selectedKey: key };
+  const idKey = `${key}Id` as keyof MobileConfiguratorResolveQuery;
+  const labelKey = key as keyof MobileConfiguratorResolveQuery;
+
+  // Set the changed key
+  if (option.id !== null) {
+    (query as any)[idKey] = option.id;
+  } else {
+    (query as any)[labelKey] = option.label;
+  }
+
+  // Carry over other current selections using IDs where available
+  (Object.keys(current) as (keyof MobileConfiguratorOptions)[]).forEach((k) => {
+    if (k === key) return;
+    const cur = current[k];
+    if (!cur?.label) return;
+    const curIdKey = `${k}Id` as keyof MobileConfiguratorResolveQuery;
+    const curLabelKey = k as keyof MobileConfiguratorResolveQuery;
+    if (cur.id !== null) {
+      (query as any)[curIdKey] = cur.id;
+    } else {
+      (query as any)[curLabelKey] = cur.label;
+    }
+  });
+
+  return query;
 };
 
 export const fetchAllDesigns = async (token: string, limit = 500) => {

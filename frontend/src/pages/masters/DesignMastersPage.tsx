@@ -1926,7 +1926,7 @@ export default function DesignMastersPage() {
     }
   }, [formMetalName, selectedMetalOption, selectedType]);
 
-  const fetchRows = async () => {
+  const fetchRows = useCallback(async () => {
     setLoading(true);
     try {
       if (isPacketType) {
@@ -1956,11 +1956,11 @@ export default function DesignMastersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isPacketType, selectedType, viewInactive, searchTerm]);
 
   useEffect(() => {
     fetchRows();
-  }, [selectedType, viewInactive, searchTerm]);
+  }, [fetchRows]);
 
   const resetModalState = () => {
     setEditingRow(null);
@@ -2471,7 +2471,7 @@ export default function DesignMastersPage() {
       }
       setShowModal(false);
       resetModalState();
-      void fetchRows();
+      fetchRows();
     } catch (error: any) {
       showAppAlert(error?.response?.data?.message || 'Unable to save master value.');
     } finally {

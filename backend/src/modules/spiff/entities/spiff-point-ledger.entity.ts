@@ -29,7 +29,7 @@ export class SpiffPointLedger {
   branchId: string | null;
 
   @Column({ name: 'order_id', nullable: true })
-  orderId: string | null;
+  orderId: number | null;
 
   @Column({
     name: 'event_type',

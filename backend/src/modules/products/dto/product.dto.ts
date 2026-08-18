@@ -1110,6 +1110,43 @@ export class ResolveMobileDesignConfiguratorQueryDto {
   @IsOptional()
   selectedKey?: 'diamondType' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
 
+  // ID-based filters (preferred — exact match)
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  diamondTypeId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  shapeId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  styleId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  metalCaratageId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  weightId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  qualityId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  ringSizeId?: number;
+
+  // Text-based filters (fallback for legacy clients)
   @IsString()
   @IsOptional()
   diamondType?: string;

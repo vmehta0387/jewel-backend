@@ -1,13 +1,11 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { Order } from './order.entity';
 import { User } from '../../users/entities/user.entity';
 
@@ -21,11 +19,11 @@ export interface OrderHistoryChange {
 
 @Entity('order_history')
 export class OrderHistory {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ name: 'order_id' })
-  orderId: string;
+  orderId: number;
 
   @Column({ name: 'action_type' })
   actionType: OrderHistoryActionType;
@@ -58,11 +56,4 @@ export class OrderHistory {
 
   @CreateDateColumn({ name: 'performed_at' })
   performedAt: Date;
-
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

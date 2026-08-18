@@ -40,6 +40,7 @@ export class MasterTablesController {
     return this.masterTablesService.dropdown(params.masterType, query);
   }
 
+
   @Get(':masterType/export/template')
   async exportTemplate(@Param() params: MasterTableTypeParamDto) {
     const file = await this.masterTablesService.exportTemplate(params.masterType);
@@ -68,33 +69,39 @@ export class MasterTablesController {
     return this.masterTablesService.importRows(params.masterType, file, req.user);
   }
 
-  @Get(':masterType')
-  list(@Param() params: MasterTableTypeParamDto, @Query() query: FindMasterTableQueryDto) {
-    return this.masterTablesService.list(params.masterType, query);
-  }
-
   @Post(':masterType/find-one')
   findOne(@Param() params: MasterTableTypeParamDto, @Body() dto: FindOneMasterTableDto) {
     return this.masterTablesService.findOne(params.masterType, dto);
   }
 
+  // PARAMETERIZED WITH ID ROUTES (more specific than single param)
   @Get(':masterType/:id')
   get(@Param() params: MasterTableTypeParamDto, @Param('id', ParseIntPipe) id: number) {
     return this.masterTablesService.get(params.masterType, id);
   }
 
-  @Post(':masterType')
-  create(
+  @Post(':masterType/:id')
+  createOrUpdate(
     @Param() params: MasterTableTypeParamDto,
-    @Body() dto: SaveMasterTableDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<SaveMasterTableDto>,
     @Request() req: { user: AuthUser },
   ) {
-    return this.masterTablesService.create(params.masterType, dto, req.user);
+    return this.masterTablesService.update(params.masterType, id, dto, req.user);
   }
 
   @Patch(':masterType/:id')
+  patch(
+    @Param() params: MasterTableTypeParamDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: Partial<SaveMasterTableDto>,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.masterTablesService.update(params.masterType, id, dto, req.user);
+  }
+
   @Put(':masterType/:id')
-  update(
+  put(
     @Param() params: MasterTableTypeParamDto,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: Partial<SaveMasterTableDto>,
@@ -111,6 +118,21 @@ export class MasterTablesController {
     @Request() req: { user: AuthUser },
   ) {
     return this.masterTablesService.setActive(params.masterType, id, isActive, req.user);
+  }
+
+  // GENERAL SINGLE PARAM ROUTES LAST (least specific)
+  @Get(':masterType')
+  list(@Param() params: MasterTableTypeParamDto, @Query() query: FindMasterTableQueryDto) {
+    return this.masterTablesService.list(params.masterType, query);
+  }
+
+  @Post(':masterType')
+  create(
+    @Param() params: MasterTableTypeParamDto,
+    @Body() dto: SaveMasterTableDto,
+    @Request() req: { user: AuthUser },
+  ) {
+    return this.masterTablesService.create(params.masterType, dto, req.user);
   }
 
 

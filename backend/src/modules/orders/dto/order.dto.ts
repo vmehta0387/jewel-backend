@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 
 export class CreateOrderDto {
@@ -9,8 +9,10 @@ export class CreateOrderDto {
   @IsUUID()
   branchId: string;
 
-  @IsUUID()
-  designId: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  designId: number;
 
   @IsOptional()
   @IsUUID()
@@ -89,8 +91,10 @@ export class UpdateOrderDto {
   branchId?: string;
 
   @IsOptional()
-  @IsUUID()
-  designId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  designId?: number;
 
   @IsOptional()
   @IsUUID()
@@ -192,8 +196,10 @@ export class FindOrdersQueryDto {
   branchId?: string;
 
   @IsOptional()
-  @IsUUID()
-  designId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  designId?: number;
 
   @IsOptional()
   @IsUUID()
@@ -274,4 +280,3 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-

@@ -80,6 +80,11 @@ type MobileConfiguratorKey =
   | 'quality'
   | 'ringSize';
 
+interface MobileConfiguratorOption {
+  id: number | null;
+  label: string;
+}
+
 interface NormalizedMetalRow {
   metalCaratageId: number | null;
   metalCaratage: string | null;
@@ -2117,6 +2122,18 @@ export class ProductsService {
   private async loadMobileConfiguratorFamily(id: string, requester: AuthUser): Promise<Design[]> {
     const selected = await this.designRepo.findOne({
       where: { id },
+      relations: [
+        'jewelryGroupMaster',
+        'collectionMaster',
+        'jewelrySizeMaster',
+        'stageMaster',
+        'diamondSpreadMaster',
+        'diamondTypeMaster',
+        'diamondWeightMaster',
+        'diamondQualityMaster',
+        'designStatusMaster',
+        'metalCaratageMaster',
+      ],
     });
 
     if (!selected) {
@@ -2128,33 +2145,16 @@ export class ProductsService {
     const familyDesignId = selected.familyDesignId || selected.id;
     const qb = this.designRepo
       .createQueryBuilder('design')
-      .select([
-        'design.id',
-        'design.designNo',
-        'design.designName',
-        'design.version',
-        'design.familyDesignId',
-        'design.isPrimary',
-        'design.companyId',
-        'design.branchId',
-        'design.jewelryGroup',
-        'design.collection',
-        'design.jewelrySize',
-        'design.stage',
-        'design.diamondSpread',
-        'design.diamondType',
-        'design.diamondWeight',
-        'design.diamondQuality',
-        'design.stoneInfo',
-        'design.designDescription',
-        'design.remarks',
-        'design.totalValue',
-        'design.grossWeight',
-        'design.imageUrls',
-        'design.ijewelModelId',
-        'design.ijewelBaseName',
-        'design.createdAt',
-      ])
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'configJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'configCollectionMaster')
+      .leftJoinAndSelect('design.jewelrySizeMaster', 'configJewelrySizeMaster')
+      .leftJoinAndSelect('design.stageMaster', 'configStageMaster')
+      .leftJoinAndSelect('design.diamondSpreadMaster', 'configDiamondSpreadMaster')
+      .leftJoinAndSelect('design.diamondTypeMaster', 'configDiamondTypeMaster')
+      .leftJoinAndSelect('design.diamondWeightMaster', 'configDiamondWeightMaster')
+      .leftJoinAndSelect('design.diamondQualityMaster', 'configDiamondQualityMaster')
+      .leftJoinAndSelect('design.designStatusMaster', 'configDesignStatusMaster')
+      .leftJoinAndSelect('design.metalCaratageMaster', 'configMetalCaratageMaster')
       .where('design.isActive = :isActive', { isActive: true })
       .orderBy('design.isPrimary', 'DESC')
       .addOrderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC')
@@ -2166,10 +2166,12 @@ export class ProductsService {
 
     const rows = await qb.getMany();
     const family = rows.length ? rows : [selected];
+    family.forEach((design) => this.hydrateDesignDisplayLabels(design));
     const designIds = family.map((design) => design.id);
     const metals = designIds.length
       ? await this.metalRepo.find({
           where: { designId: In(designIds) },
+          relations: ['metalCaratageMaster', 'metalCaratageMaster.metalColorMaster'],
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
@@ -2177,8 +2179,8 @@ export class ProductsService {
     // stone count, but gemstone row details remain hidden from the mobile response.
     const gemstones = designIds.length
       ? await this.gemstoneRepo.find({
-          select: ['id', 'designId', 'stone', 'stoneType', 'pcs'],
           where: { designId: In(designIds) },
+          relations: ['stoneMaster', 'stoneTypeMaster'],
           order: { sortOrder: 'ASC', createdAt: 'ASC' },
         })
       : [];
@@ -2186,8 +2188,8 @@ export class ProductsService {
     const gemstonesByDesign = this.groupByDesignId(gemstones);
     for (const design of family) {
       const designKey = String(design.id);
-      design.metals = metalsByDesign.get(designKey) || [];
-      design.gemstones = gemstonesByDesign.get(designKey) || [];
+      design.metals = (metalsByDesign.get(designKey) || []).map((metal) => this.hydrateMetalDisplayLabels(metal));
+      design.gemstones = (gemstonesByDesign.get(designKey) || []).map((gemstone) => this.hydrateGemstoneDisplayLabels(gemstone));
     }
     return family;
   }
@@ -2198,12 +2200,17 @@ export class ProductsService {
     requestedOptions: Partial<Record<MobileConfiguratorKey, string>> = {},
     requester?: AuthUser,
   ): Promise<any> {
+    const designOptions = this.getMobileConfiguratorOptions(selected);
+    const selectedOptions: Record<string, { id: number | null; label: string }> = {};
+    (Object.keys(designOptions) as MobileConfiguratorKey[]).forEach((key) => {
+      const opt = designOptions[key][0];
+      selectedOptions[key] = opt
+        ? { id: opt.id, label: requestedOptions[key] || opt.label }
+        : { id: null, label: requestedOptions[key] || '' };
+    });
     return {
       selectedDesign: await this.toMobileConfiguratorDesign(selected, requester),
-      selectedOptions: {
-        ...this.getMobileConfiguratorOptions(selected),
-        ...this.resolveMobileConfiguratorRequestedOptions(requestedOptions),
-      },
+      selectedOptions,
       optionGroups: this.getMobileConfiguratorOptionGroups(family),
     };
   }
@@ -2339,36 +2346,36 @@ export class ProductsService {
   }
 
   private getMobileConfiguratorOptionGroups(family: Design[]) {
-    const groups = {
-      diamondType: new Map<string, string>(),
-      shape: new Map<string, string>(),
-      style: new Map<string, string>(),
-      metalCaratage: new Map<string, string>(),
-      weight: new Map<string, string>(),
-      quality: new Map<string, string>(),
-      ringSize: new Map<string, string>(),
+    const groups: Record<MobileConfiguratorKey, Map<string, MobileConfiguratorOption>> = {
+      diamondType: new Map(),
+      shape: new Map(),
+      style: new Map(),
+      metalCaratage: new Map(),
+      weight: new Map(),
+      quality: new Map(),
+      ringSize: new Map(),
     };
 
     for (const design of family) {
-      const values = this.getMobileConfiguratorValues(design);
-      (Object.keys(values) as Array<keyof typeof values>).forEach((key) => {
-        values[key].forEach((value) => {
-          const normalized = this.mobileConfiguratorOptionKey(key, value);
+      const options = this.getMobileConfiguratorOptions(design);
+      (Object.keys(options) as MobileConfiguratorKey[]).forEach((key) => {
+        for (const opt of options[key]) {
+          const normalized = opt.label.replace(/\s+/g, ' ').trim().toLowerCase();
           if (normalized && !groups[key].has(normalized)) {
-            groups[key].set(normalized, this.mobileConfiguratorDisplayValue(key, value));
+            groups[key].set(normalized, opt);
           }
-        });
+        }
       });
     }
 
     return Object.fromEntries(
-      Object.entries(groups).map(([key, values]) => [
+      Object.entries(groups).map(([key, map]) => [
         key,
-        Array.from(values.values()).sort((a, b) =>
-          a.localeCompare(b, undefined, { numeric: key !== 'ringSize', sensitivity: 'base' }),
+        Array.from(map.values()).sort((a, b) =>
+          a.label.localeCompare(b.label, undefined, { numeric: key !== 'ringSize', sensitivity: 'base' }),
         ),
       ]),
-    );
+    ) as Record<MobileConfiguratorKey, MobileConfiguratorOption[]>;
   }
 
   private resolveMobileConfiguratorDiamondType(design: Design): string {
@@ -2402,100 +2409,125 @@ export class ProductsService {
     return /\b(lab|grown|hpht|cvd|natural|synthetic|earth[-\s]?mined)\b/.test(normalized);
   }
 
-  private getMobileConfiguratorValues(design: Design): Record<MobileConfiguratorKey, string[]> {
-    const values = {
-      diamondType: new Set<string>(),
-      shape: new Set<string>(),
-      style: new Set<string>(),
-      metalCaratage: new Set<string>(),
-      weight: new Set<string>(),
-      quality: new Set<string>(),
-      ringSize: new Set<string>(),
-    };
-    const add = (key: MobileConfiguratorKey, value?: string | number | null) => {
-      const text = this.mobileConfiguratorDisplayValue(key, value);
-      if (text) values[key].add(text);
+  private getMobileConfiguratorOptions(design: Design): Record<MobileConfiguratorKey, MobileConfiguratorOption[]> {
+    const addOpt = (id: number | null, label: string): MobileConfiguratorOption | null => {
+      const text = label.replace(/\s+/g, ' ').trim();
+      return text ? { id, label: text } : null;
     };
 
-    add('diamondType', design.diamondType);
-    for (const gemstone of design.gemstones || []) {
-      const stoneValue = this.optionalText(gemstone.stone) || this.optionalText(gemstone.stoneType);
-      stoneValue?.split(',').forEach((stone) => add('shape', stone));
+    const diamondType: MobileConfiguratorOption[] = [];
+    const dtLabel = this.resolveMobileConfiguratorDiamondType(design);
+    if (dtLabel) diamondType.push({ id: design.diamondTypeId ?? null, label: dtLabel });
+
+    const shape: MobileConfiguratorOption[] = [];
+    for (const gem of design.gemstones || []) {
+      const stoneLabel = this.optionalText(gem.stone) || this.optionalText(gem.stoneType);
+      if (stoneLabel) {
+        stoneLabel.split(',').forEach((part) => {
+          const opt = addOpt(gem.stoneId ?? null, part.trim());
+          if (opt && !shape.some((s) => s.label.toLowerCase() === opt.label.toLowerCase())) {
+            shape.push(opt);
+          }
+        });
+      }
     }
-    add('style', design.diamondSpread);
-    this.getUsedMetalCaratageCandidates(design).forEach((metal) => add('metalCaratage', metal));
-    add('weight', design.diamondWeight);
-    add('quality', design.diamondQuality);
-    add('ringSize', design.jewelrySize);
 
-    return Object.fromEntries(
-      Object.entries(values).map(([key, set]) => [key, Array.from(set)]),
-    ) as Record<MobileConfiguratorKey, string[]>;
-  }
+    const style: MobileConfiguratorOption[] = [];
+    const styleLabel = this.mobileConfiguratorDisplayValue('style', design.diamondSpread);
+    if (styleLabel) style.push({ id: design.diamondSpreadId ?? null, label: styleLabel });
 
-  private getMobileConfiguratorOptions(design: Design) {
-    const values = this.getMobileConfiguratorValues(design);
-    return {
-      diamondType: values.diamondType[0] || '',
-      shape: values.shape[0] || '',
-      style: values.style[0] || '',
-      metalCaratage: values.metalCaratage[0] || '',
-      weight: values.weight[0] || '',
-      quality: values.quality[0] || '',
-      ringSize: values.ringSize[0] || '',
-    };
-  }
+    const metalCaratage: MobileConfiguratorOption[] = [];
+    for (const metal of design.metals || []) {
+      const caratLabel = this.mobileConfiguratorText(metal.metalCaratage);
+      if (caratLabel) {
+        caratLabel.split(',').forEach((part) => {
+          const trimmed = part.trim();
+          if (trimmed && !metalCaratage.some((m) => m.label.toLowerCase() === trimmed.toLowerCase())) {
+            metalCaratage.push({ id: metal.metalCaratageId ?? null, label: trimmed });
+          }
+        });
+      }
+    }
+    if (!metalCaratage.length) {
+      const fallback = this.mobileConfiguratorText(design.metalCaratage);
+      if (fallback) {
+        fallback.split(',').forEach((part) => {
+          const trimmed = part.trim();
+          if (trimmed) metalCaratage.push({ id: design.metalCaratageId ?? null, label: trimmed });
+        });
+      }
+    }
 
-  private resolveMobileConfiguratorRequestedOptions(
-    requestedOptions: Partial<Record<MobileConfiguratorKey, string>>,
-  ): Partial<Record<MobileConfiguratorKey, string>> {
-    return Object.fromEntries(
-      Object.entries(requestedOptions).map(([key, value]) => [
-        key,
-        this.mobileConfiguratorDisplayValue(
-          key as MobileConfiguratorKey,
-          key === 'shape' || key === 'metalCaratage' ? String(value || '').split(',')[0] : value,
-        ),
-      ]),
-    ) as Partial<Record<MobileConfiguratorKey, string>>;
+    const weight: MobileConfiguratorOption[] = [];
+    const weightLabel = this.mobileConfiguratorDisplayValue('weight', design.diamondWeight);
+    if (weightLabel) weight.push({ id: design.diamondWeightId ?? null, label: weightLabel });
+
+    const quality: MobileConfiguratorOption[] = [];
+    const qualityLabel = this.mobileConfiguratorDisplayValue('quality', design.diamondQuality);
+    if (qualityLabel) quality.push({ id: design.diamondQualityId ?? null, label: qualityLabel });
+
+    const ringSize: MobileConfiguratorOption[] = [];
+    const ringSizeLabel = this.mobileConfiguratorDisplayValue('ringSize', design.jewelrySize);
+    if (ringSizeLabel) ringSize.push({ id: design.jewelrySizeId ?? null, label: ringSizeLabel });
+
+    return { diamondType, shape, style, metalCaratage, weight, quality, ringSize };
   }
 
   private pickMobileConfiguratorMatch(
     family: Design[],
     query: ResolveMobileDesignConfiguratorQueryDto,
   ): Design {
-    const wanted = this.normalizeMobileConfiguratorQuery(query);
-    const keys = Object.keys(wanted) as Array<keyof typeof wanted>;
+    // Build a map of key -> requested ID (preferred) and key -> requested label (fallback)
+    const wantedIds: Partial<Record<MobileConfiguratorKey, number>> = {};
+    const wantedLabels = this.normalizeMobileConfiguratorQuery(query);
+
+    if (query.diamondTypeId) wantedIds.diamondType = query.diamondTypeId;
+    if (query.shapeId) wantedIds.shape = query.shapeId;
+    if (query.styleId) wantedIds.style = query.styleId;
+    if (query.metalCaratageId) wantedIds.metalCaratage = query.metalCaratageId;
+    if (query.weightId) wantedIds.weight = query.weightId;
+    if (query.qualityId) wantedIds.quality = query.qualityId;
+    if (query.ringSizeId) wantedIds.ringSize = query.ringSizeId;
+
+    const keys = [
+      ...new Set([
+        ...(Object.keys(wantedIds) as MobileConfiguratorKey[]),
+        ...(Object.keys(wantedLabels) as MobileConfiguratorKey[]),
+      ]),
+    ];
+
     if (!keys.length) {
       return family.find((design) => design.isPrimary) || family[0];
     }
-    const selectedKey = query.selectedKey && wanted[query.selectedKey] ? query.selectedKey : null;
 
-    const strict = family.find((design) => {
-      const values = this.getMobileConfiguratorValues(design);
-      return keys.every((key) => values[key]?.some((value) => this.mobileOptionMatches(key, value, wanted[key])));
-    });
+    const selectedKey = query.selectedKey && (wantedIds[query.selectedKey] || wantedLabels[query.selectedKey])
+      ? query.selectedKey
+      : null;
+
+    const matchesKey = (design: Design, key: MobileConfiguratorKey): boolean => {
+      const opts = this.getMobileConfiguratorOptions(design)[key];
+      const wantedId = wantedIds[key];
+      const wantedLabel = wantedLabels[key];
+      if (wantedId) {
+        return opts.some((opt) => opt.id !== null && opt.id === wantedId);
+      }
+      if (wantedLabel) {
+        return opts.some((opt) => this.mobileConfiguratorOptionKey('diamondType', opt.label) === this.mobileConfiguratorOptionKey('diamondType', wantedLabel));
+      }
+      return false;
+    };
+
+    const strict = family.find((design) => keys.every((key) => matchesKey(design, key)));
     if (strict) return strict;
 
     const preferredFamily = selectedKey
-      ? family.filter((design) => {
-          const values = this.getMobileConfiguratorValues(design);
-          return values[selectedKey]?.some((value) => this.mobileOptionMatches(selectedKey, value, wanted[selectedKey]));
-        })
+      ? family.filter((design) => matchesKey(design, selectedKey))
       : [];
     const candidates = preferredFamily.length ? preferredFamily : family;
 
     return [...candidates].sort((a, b) => {
-      const aValues = this.getMobileConfiguratorValues(a);
-      const bValues = this.getMobileConfiguratorValues(b);
-      const aScore = keys.reduce(
-        (score, key) => score + (aValues[key]?.some((value) => this.mobileOptionMatches(key, value, wanted[key])) ? 1 : 0),
-        0,
-      );
-      const bScore = keys.reduce(
-        (score, key) => score + (bValues[key]?.some((value) => this.mobileOptionMatches(key, value, wanted[key])) ? 1 : 0),
-        0,
-      );
+      const aScore = keys.reduce((score, key) => score + (matchesKey(a, key) ? 1 : 0), 0);
+      const bScore = keys.reduce((score, key) => score + (matchesKey(b, key) ? 1 : 0), 0);
       if (aScore !== bScore) return bScore - aScore;
       if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
       return this.parseVersionNumber(a.version) - this.parseVersionNumber(b.version);
@@ -2512,10 +2544,6 @@ export class ProductsService {
     return wanted;
   }
 
-  private mobileOptionMatches(key: MobileConfiguratorKey, left?: string | null, right?: string | null): boolean {
-    return this.mobileConfiguratorOptionKey(key, left) === this.mobileConfiguratorOptionKey(key, right);
-  }
-
   private mobileConfiguratorOptionKey(key: MobileConfiguratorKey, value?: string | number | null): string {
     const display = this.mobileConfiguratorDisplayValue(key, value);
     return display.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2527,29 +2555,6 @@ export class ProductsService {
   ): string {
     const text = key === 'weight' ? this.toMobileCaratLabel(value) : this.mobileConfiguratorText(value);
     return text.replace(/\s+/g, ' ').trim();
-  }
-
-  private getUsedMetalCaratageCandidates(design: Design): string[] {
-    const candidates = new Set<string>();
-    for (const metal of design.metals || []) {
-      const value = this.mobileConfiguratorText(metal.metalCaratage || (metal as any).metalCaratage);
-      if (value) {
-        value.split(',').forEach((item) => {
-          const trimmed = item.trim();
-          if (trimmed) candidates.add(trimmed);
-        });
-      }
-    }
-    if (!candidates.size) {
-      const fallback = this.mobileConfiguratorText(design.metalCaratage);
-      if (fallback) {
-        fallback.split(',').forEach((item) => {
-          const trimmed = item.trim();
-          if (trimmed) candidates.add(trimmed);
-        });
-      }
-    }
-    return Array.from(candidates);
   }
 
   private resolveTotalStoneWeight(design: Design): number {
@@ -2776,20 +2781,18 @@ export class ProductsService {
   ): Promise<any> {
     const qb = this.designRepo
       .createQueryBuilder('design')
-      .select([
-        'design.id',
-        'design.designNo',
-        'design.barcode',
-        'design.version',
-        'design.designName',
-        'design.jewelryGroup',
-        'design.collection',
-        'design.jewelrySize',
-        'design.designStatus',
-        'design.stoneInfo',
-        'design.isPrimary',
-        'design.createdAt',
-      ])
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'selectorJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'selectorCollectionMaster')
+      .leftJoinAndSelect('design.jewelrySizeMaster', 'selectorJewelrySizeMaster')
+      .leftJoinAndSelect('design.designStatusMaster', 'selectorDesignStatusMaster')
+      .leftJoinAndSelect('design.metalCaratageMaster', 'selectorMetalCaratageMaster')
+      .addSelect(
+        `(SELECT GROUP_CONCAT(NULLIF(TRIM(selector_mcm.value), '') ORDER BY selector_dm.sort_order SEPARATOR ', ')
+          FROM design_metals selector_dm
+          LEFT JOIN metal_caratages selector_mcm ON selector_mcm.id = selector_dm.metal_caratage_id
+          WHERE selector_dm.design_id = design.id)`,
+        'selectorMetalInfo',
+      )
       .orderBy('design.createdAt', 'DESC')
       .skip(skip)
       .take(limit);
@@ -2812,15 +2815,16 @@ export class ProductsService {
             .orWhere('design.barcode LIKE :search', { search })
             .orWhere('design.designName LIKE :search', { search })
             .orWhere('design.version LIKE :search', { search })
-            .orWhere('design.jewelryGroup LIKE :search', { search })
-            .orWhere('design.collection LIKE :search', { search })
-            .orWhere('design.jewelrySize LIKE :search', { search })
-            .orWhere('design.designStatus LIKE :search', { search })
+            .orWhere('selectorJewelryGroupMaster.value LIKE :search', { search })
+            .orWhere('selectorCollectionMaster.value LIKE :search', { search })
+            .orWhere('selectorJewelrySizeMaster.value LIKE :search', { search })
+            .orWhere('selectorDesignStatusMaster.value LIKE :search', { search })
+            .orWhere('selectorMetalCaratageMaster.value LIKE :search', { search })
             .orWhere(
               `EXISTS (
-                SELECT 1 FROM design_metals dm
-                INNER JOIN metal_caratages mcm ON mcm.id = dm.metal_caratage_id
-                WHERE dm.design_id = design.id AND mcm.value LIKE :search
+                SELECT 1 FROM design_metals selector_search_dm
+                INNER JOIN metal_caratages selector_search_mcm ON selector_search_mcm.id = selector_search_dm.metal_caratage_id
+                WHERE selector_search_dm.design_id = design.id AND selector_search_mcm.value LIKE :search
               )`,
             )
             .orWhere('design.stoneInfo LIKE :search', { search });
@@ -2829,7 +2833,7 @@ export class ProductsService {
     }
 
     if (query.jewelryGroup?.trim()) {
-      qb.andWhere('design.jewelryGroup LIKE :jewelryGroup', {
+      qb.andWhere('selectorJewelryGroupMaster.value LIKE :jewelryGroup', {
         jewelryGroup: `%${query.jewelryGroup.trim()}%`,
       });
     }
@@ -2837,35 +2841,62 @@ export class ProductsService {
     qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
 
     if (query.collection?.trim()) {
-      qb.andWhere('design.collection LIKE :collection', {
+      qb.andWhere('selectorCollectionMaster.value LIKE :collection', {
         collection: `%${query.collection.trim()}%`,
       });
     }
 
     if (query.jewelrySize?.trim()) {
-      qb.andWhere('design.jewelrySize LIKE :jewelrySize', {
+      qb.andWhere('selectorJewelrySizeMaster.value LIKE :jewelrySize', {
         jewelrySize: `%${query.jewelrySize.trim()}%`,
       });
     }
 
     if (query.designStatus?.trim()) {
-      qb.andWhere('design.designStatus LIKE :designStatus', {
+      qb.andWhere('selectorDesignStatusMaster.value LIKE :designStatus', {
         designStatus: `%${query.designStatus.trim()}%`,
       });
     }
 
     if (query.metalCaratage?.trim()) {
       qb.andWhere(
-        `EXISTS (
-          SELECT 1 FROM design_metals dm
-          INNER JOIN metal_caratages mcm ON mcm.id = dm.metal_caratage_id
-          WHERE dm.design_id = design.id AND mcm.value LIKE :metalCaratage
-        )`,
+        `(selectorMetalCaratageMaster.value LIKE :metalCaratage OR EXISTS (
+          SELECT 1 FROM design_metals selector_filter_dm
+          INNER JOIN metal_caratages selector_filter_mcm ON selector_filter_mcm.id = selector_filter_dm.metal_caratage_id
+          WHERE selector_filter_dm.design_id = design.id AND selector_filter_mcm.value LIKE :metalCaratage
+        ))`,
         { metalCaratage: `%${query.metalCaratage.trim()}%` },
       );
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const total = await qb.getCount();
+    const { entities, raw } = await qb.getRawAndEntities();
+    await this.ensureDesignBarcodes(entities);
+    const metalInfoByDesign = new Map<string, string | null>();
+    raw.forEach((row) => {
+      const designId = this.optionalText(row.design_id || row.designId || row.design_id_0);
+      if (designId) metalInfoByDesign.set(designId, this.optionalText(row.selectorMetalInfo));
+    });
+    const data = await Promise.all(entities.map(async (design) => {
+      this.hydrateDesignDisplayLabels(design);
+      return {
+        id: design.id,
+        designNo: design.designNo,
+        barcode: design.barcode,
+        version: design.version,
+        designName: design.designName,
+        jewelryGroup: design.jewelryGroup,
+        collection: design.collection,
+        jewelrySize: design.jewelrySize,
+        metalCaratage: metalInfoByDesign.get(String(design.id)) || design.metalCaratage || null,
+        designStatus: design.designStatus,
+        stoneInfo: design.stoneInfo,
+        isPrimary: design.isPrimary,
+        createdAt: design.createdAt,
+        imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
+        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
+      };
+    }));
 
     return {
       data,

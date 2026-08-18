@@ -79,13 +79,13 @@ export class OrdersController {
 
   @Get(':id/history')
   getHistory(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    return this.ordersService.getHistory(id, req.user);
+    return this.ordersService.getHistory(Number(id), req.user);
   }
 
   @Get(':id')
   @TaskPermissions()
   findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    return this.ordersService.findOne(id, req.user);
+    return this.ordersService.findOne(Number(id), req.user);
   }
 
   @Post()
@@ -95,7 +95,7 @@ export class OrdersController {
 
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: UpdateOrderDto, @Request() req: { user: AuthUser }) {
-    return this.ordersService.update(id, dto, req.user);
+    return this.ordersService.update(Number(id), dto, req.user);
   }
 
   @Patch(':id/status')
@@ -104,7 +104,7 @@ export class OrdersController {
     @Body() dto: UpdateOrderStatusDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.ordersService.update(id, dto, req.user);
+    return this.ordersService.update(Number(id), dto, req.user);
   }
 
   @Patch(':id/active')

@@ -1315,7 +1315,7 @@ export class SpiffService {
     userId: string;
     companyId: string | null;
     branchId: string | null;
-    orderId: string | null;
+    orderId: number | null;
     points: number;
     eventType: SpiffLedgerEvent;
     eventKey: string;

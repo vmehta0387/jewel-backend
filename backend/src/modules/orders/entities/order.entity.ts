@@ -1,6 +1,6 @@
 import {
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   Column,
   ManyToOne,
   CreateDateColumn,
@@ -8,7 +8,6 @@ import {
   JoinColumn,
   BeforeInsert,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
@@ -17,8 +16,8 @@ import { Design } from '../../products/entities/design.entity';
 
 @Entity('orders')
 export class Order {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
   @Column({ name: 'order_number', unique: true })
   orderNumber: string;
@@ -106,10 +105,7 @@ export class Order {
   updatedAt: Date;
 
   @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
+  formatOrderNumber() {
     if (this.orderNumber) {
       this.orderNumber = this.orderNumber.trim().toUpperCase();
     }

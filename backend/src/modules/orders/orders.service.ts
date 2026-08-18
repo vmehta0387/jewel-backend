@@ -58,8 +58,8 @@ export class OrdersService implements OnModuleInit {
     try {
       await this.orderRepo.query(`
         CREATE TABLE IF NOT EXISTS order_history (
-          id varchar(36) NOT NULL,
-          order_id varchar(36) NOT NULL,
+          id int(11) NOT NULL AUTO_INCREMENT,
+          order_id int(11) NOT NULL,
           action_type varchar(50) NOT NULL,
           summary text NOT NULL,
           changes json NULL,
@@ -270,7 +270,7 @@ export class OrdersService implements OnModuleInit {
     };
   }
 
-  async findOne(id: string, requester: AuthUser) {
+  async findOne(id: number, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
       relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
@@ -302,7 +302,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   async generateOrderPdf(id: string, requester: AuthUser): Promise<{ buffer: Buffer; fileName: string }> {
-    const order = await this.findOne(id, requester) as unknown as Order & {
+    const order = await this.findOne(Number(id), requester) as unknown as Order & {
       companyName?: string | null;
       branchName?: string | null;
       designNo?: string | null;
@@ -351,6 +351,10 @@ export class OrdersService implements OnModuleInit {
       if (!design) {
         throw new NotFoundException('Design not found');
       }
+      this.assertDesignScope(design, requester, {
+        companyId: effectiveCompanyId,
+        branchId: effectiveBranchId,
+      });
     }
 
     const pricing = await this.calculateOrderPrice({
@@ -472,7 +476,7 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 
-  async update(id: string, dto: UpdateOrderDto, requester: AuthUser) {
+  async update(id: number, dto: UpdateOrderDto, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
       relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
@@ -512,9 +516,19 @@ export class OrdersService implements OnModuleInit {
       if (!design) {
         throw new NotFoundException('Design not found');
       }
+      this.assertDesignScope(design, requester, {
+        companyId: effectiveCompanyId,
+        branchId: effectiveBranchId,
+      });
       order.designId = dto.designId;
     } else if (order.designId) {
       design = await this.designRepo.findOne({ where: { id: order.designId } });
+      if (design) {
+        this.assertDesignScope(design, requester, {
+          companyId: effectiveCompanyId,
+          branchId: effectiveBranchId,
+        });
+      }
     }
 
     if (dto.companyId !== undefined || branch) {
@@ -635,6 +649,10 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Selected branch not found');
     }
     const effectiveCompanyId = branch?.companyId || params.companyId?.trim() || requester.companyId || undefined;
+    this.assertDesignScope(design, requester, {
+      companyId: effectiveCompanyId || null,
+      branchId: branch?.id || branchId || null,
+    });
 
     const pricing = await this.calculateOrderPrice({
       design,
@@ -646,7 +664,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   async updateActiveStatus(id: string, isActive: boolean, requester: AuthUser) {
-    const order = await this.findOne(id, requester);
+    const order = await this.findOne(Number(id), requester);
     this.assertOrderEditable(order, requester);
     const beforeSnapshot = this.getOrderAuditSnapshot(order);
     order.isActive = isActive;
@@ -655,7 +673,7 @@ export class OrdersService implements OnModuleInit {
     return saved;
   }
 
-  async getHistory(id: string, requester: AuthUser) {
+  async getHistory(id: number, requester: AuthUser) {
     if (!this.isPowerOrderUser(requester)) {
       throw new ForbiddenException('Only internal reps and super admin can view order history');
     }
@@ -1924,7 +1942,7 @@ export class OrdersService implements OnModuleInit {
               ? `Your order ${orderLabel} for ${designLabel} was submitted for approval.`
               : `Your order ${orderLabel} for ${designLabel} was created successfully.`,
           entityType: 'ORDER',
-          entityId: context.id,
+          entityId: String(context.id),
           actionUrl: `/orders/${context.id}`,
           channelPush: true,
           metadata: {
@@ -1947,7 +1965,7 @@ export class OrdersService implements OnModuleInit {
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} submitted ${orderLabel} for approval.`,
             entityType: 'ORDER',
-            entityId: context.id,
+            entityId: String(context.id),
             actionUrl: `/orders/${context.id}`,
             channelPush: true,
             metadata: {
@@ -2001,7 +2019,7 @@ export class OrdersService implements OnModuleInit {
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} moved ${orderLabel} back to pending approval.`,
             entityType: 'ORDER',
-            entityId: context.id,
+            entityId: String(context.id),
             actionUrl: `/orders/${context.id}`,
             channelPush: true,
             metadata,
@@ -2050,7 +2068,7 @@ export class OrdersService implements OnModuleInit {
         title: transition.title,
         message: transition.message,
         entityType: 'ORDER',
-        entityId: context.id,
+        entityId: String(context.id),
         actionUrl: `/orders/${context.id}`,
         channelPush: true,
         metadata: {
@@ -2065,7 +2083,7 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  private async loadOrderNotificationContext(orderId: string): Promise<Order | null> {
+  private async loadOrderNotificationContext(orderId: number): Promise<Order | null> {
     return this.orderRepo.findOne({
       where: { id: orderId },
       relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
