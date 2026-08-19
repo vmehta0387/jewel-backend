@@ -385,7 +385,7 @@ export class OrdersService implements OnModuleInit {
         orderNumber,
         companyId: effectiveCompanyId ?? null,
         branchId: effectiveBranchId ?? null,
-        designId: dto.designId ?? null,
+        designId: dto.designId != null ? String(dto.designId) : null,
         salesRepId: selectedSalesRep?.id || requester.id,
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date(), { defaultOffsetDays: 28 }),
         quantity: dto.quantity ?? 1,
@@ -491,7 +491,7 @@ export class OrdersService implements OnModuleInit {
     if (hasDetailChanges) {
       this.assertOrderEditable(order, requester);
     }
-    const requestedBranchId = dto.branchId?.trim() || order.branchId || requester.branchId || null;
+    const requestedBranchId = dto.branchId?.trim() || (order.branchId != null ? String(order.branchId) : null) || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
       : null;
@@ -499,7 +499,7 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Selected branch not found');
     }
 
-    const requestedCompanyId = dto.companyId?.trim() || order.companyId || requester.companyId || null;
+    const requestedCompanyId = dto.companyId?.trim() || (order.companyId != null ? String(order.companyId) : null) || requester.companyId || null;
     const effectiveCompanyId = branch?.companyId || requestedCompanyId;
     const effectiveBranchId = branch?.id || requestedBranchId;
 
@@ -520,7 +520,7 @@ export class OrdersService implements OnModuleInit {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
       });
-      order.designId = dto.designId;
+      order.designId = dto.designId != null ? String(dto.designId) : null;
     } else if (order.designId) {
       design = await this.designRepo.findOne({ where: { id: order.designId } });
       if (design) {
@@ -552,8 +552,8 @@ export class OrdersService implements OnModuleInit {
     }
     const pricing = await this.calculateOrderPrice({
       design,
-      companyId: order.companyId ?? undefined,
-      branchId: order.branchId ?? undefined,
+      companyId: order.companyId != null ? String(order.companyId) : undefined,
+      branchId: order.branchId != null ? String(order.branchId) : undefined,
     });
     order.price = dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
@@ -592,7 +592,7 @@ export class OrdersService implements OnModuleInit {
       order.completedAt = null;
     } else if (dto.orderType === 'ORDER' && order.status === OrderStatus.QUOTE) {
       const selectedSalesRep = order.salesRepId
-        ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
+        ? await this.userRepo.findOne({ where: { id: String(order.salesRepId) } })
         : null;
       const nextStatus = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
       this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
@@ -1364,15 +1364,15 @@ export class OrdersService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.companyId && order.companyId !== requester.companyId) {
+    if (order.companyId && String(order.companyId) !== String(requester.companyId)) {
       throw new NotFoundException('Order not found');
     }
 
-    if (requester.branchId && order.branchId !== requester.branchId) {
+    if (requester.branchId && String(order.branchId) !== String(requester.branchId)) {
       throw new NotFoundException('Order not found');
     }
 
-    if (requester.role === UserRole.SALES_REP && order.salesRepId !== requester.id) {
+    if (requester.role === UserRole.SALES_REP && String(order.salesRepId) !== String(requester.id)) {
       throw new NotFoundException('Order not found');
     }
   }
@@ -1449,7 +1449,7 @@ export class OrdersService implements OnModuleInit {
       return true;
     }
     return requester.role === UserRole.SALES_REP
-      && order.salesRepId === requester.id
+      && String(order.salesRepId) === String(requester.id)
       && [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL].includes(order.status);
   }
 
@@ -1612,15 +1612,15 @@ export class OrdersService implements OnModuleInit {
       throw new ForbiddenException('User is not assigned to a company');
     }
 
-    if (design.companyId && design.companyId !== requester.companyId) {
+    if (design.companyId && String(design.companyId) !== String(requester.companyId)) {
       throw new ForbiddenException('You cannot access another company data');
     }
 
-    if (scope.companyId && design.companyId && design.companyId !== scope.companyId) {
+    if (scope.companyId && design.companyId && String(design.companyId) !== String(scope.companyId)) {
       throw new BadRequestException('Design does not belong to the selected company');
     }
 
-    if (scope.branchId && design.branchId && design.branchId !== scope.branchId) {
+    if (scope.branchId && design.branchId && String(design.branchId) !== String(scope.branchId)) {
       throw new BadRequestException('Design does not belong to the selected branch');
     }
   }
@@ -1646,8 +1646,8 @@ export class OrdersService implements OnModuleInit {
 
     const pricing = await this.calculateOrderPrice({
       design: order.design,
-      companyId: order.companyId ?? undefined,
-      branchId: order.branchId ?? undefined,
+      companyId: order.companyId != null ? String(order.companyId) : undefined,
+      branchId: order.branchId != null ? String(order.branchId) : undefined,
     });
 
     if (requester.role === UserRole.SUPER_ADMIN) {
@@ -1931,9 +1931,9 @@ export class OrdersService implements OnModuleInit {
 
       if (context.salesRepId) {
         await this.notificationsService.createForUser({
-          userId: context.salesRepId,
-          companyId: context.companyId,
-          branchId: context.branchId,
+          userId: String(context.salesRepId),
+          companyId: context.companyId != null ? String(context.companyId) : null,
+          branchId: context.branchId != null ? String(context.branchId) : null,
           type: 'ORDER_CREATED',
           priority: NotificationPriority.P2,
           title: `Order ${orderLabel} created`,
@@ -1955,11 +1955,11 @@ export class OrdersService implements OnModuleInit {
       }
 
       if (context.status === OrderStatus.PENDING_APPROVAL) {
-        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
+        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? String(context.salesRepId) : null]);
         if (approverIds.length) {
           await this.notificationsService.createForUsers(approverIds, {
-            companyId: context.companyId,
-            branchId: context.branchId,
+            companyId: context.companyId != null ? String(context.companyId) : null,
+            branchId: context.branchId != null ? String(context.branchId) : null,
             type: 'ORDER_APPROVAL_REQUIRED',
             priority: NotificationPriority.P1,
             title: `Approval needed for ${orderLabel}`,
@@ -2060,9 +2060,9 @@ export class OrdersService implements OnModuleInit {
       if (!transition) return;
 
       await this.notificationsService.createForUser({
-        userId: context.salesRepId,
-        companyId: context.companyId,
-        branchId: context.branchId,
+        userId: String(context.salesRepId),
+        companyId: context.companyId != null ? String(context.companyId) : null,
+        branchId: context.branchId != null ? String(context.branchId) : null,
         type: transition.type,
         priority: transition.priority,
         title: transition.title,
@@ -2104,7 +2104,7 @@ export class OrdersService implements OnModuleInit {
     if (order.branchId) {
       const branchManagers = await this.userRepo.find({
         where: {
-          branchId: order.branchId,
+          branchId: String(order.branchId),
           role: UserRole.BRANCH_MANAGER,
           isActive: true,
         },
@@ -2122,7 +2122,7 @@ export class OrdersService implements OnModuleInit {
     if (order.companyId) {
       const companyAdmins = await this.userRepo.find({
         where: {
-          companyId: order.companyId,
+          companyId: String(order.companyId),
           role: UserRole.COMPANY_ADMIN,
           isActive: true,
         },

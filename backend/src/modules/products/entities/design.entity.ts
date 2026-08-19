@@ -8,6 +8,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
@@ -48,8 +49,9 @@ export class Design {
   @Column({ nullable: true, length: 7, unique: true })
   barcode: string | null;
 
+  @Index('idx_designs_family_design_id')
   @Column({ name: 'family_design_id', type: 'int', nullable: true })
-  familyDesignId: number | string | null;
+  familyDesignId: number | null;
 
   @Column({ name: 'design_name', nullable: true })
   designName: string | null;
@@ -57,10 +59,12 @@ export class Design {
   @Column({ default: 'V1' })
   version: string;
 
-  @Column({ name: 'company_id', nullable: true })
+  @Index('idx_designs_company_id')
+  @Column({ name: 'company_id', type: 'int', nullable: true })
   companyId: string | null;
 
-  @Column({ name: 'branch_id', nullable: true })
+  @Index('idx_designs_branch_id')
+  @Column({ name: 'branch_id', type: 'int', nullable: true })
   branchId: string | null;
 
   @Column({ name: 'jewelry_group_id', type: 'int' })
@@ -160,10 +164,12 @@ export class Design {
   @Column({ name: 'is_primary', default: false })
   isPrimary: boolean;
 
-  @Column({ name: 'created_by', nullable: true })
+  @Index('idx_designs_created_by')
+  @Column({ name: 'created_by', type: 'int', nullable: true })
   createdBy: string | null;
 
-  @Column({ name: 'updated_by', nullable: true })
+  @Index('idx_designs_updated_by')
+  @Column({ name: 'updated_by', type: 'int', nullable: true })
   updatedBy: string | null;
 
   @ManyToOne(() => Company, { nullable: true })
@@ -174,7 +180,7 @@ export class Design {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
-  @ManyToOne(() => Design, (design) => design.familyDesigns, { nullable: true })
+  @ManyToOne(() => Design, (design) => design.familyDesigns, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'family_design_id' })
   familyDesign: Design | null;
 

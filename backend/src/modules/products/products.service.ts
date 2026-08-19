@@ -13,26 +13,26 @@ import { extname, join } from 'path';
 import * as XLSX from 'xlsx';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Brackets, DataSource, In, Repository } from 'typeorm';
-import {  
-  CreateProductDto,  
+import {
+  CreateProductDto,
   GetNextDesignNoQueryDto,
   GetNextDesignVersionQueryDto,
   DesignFindingDto,
   DesignGemstoneDto,
   DesignLaborDto,
   DesignMetalDto,
-  DesignOverheadDto,  
+  DesignOverheadDto,
   FindDesignMediaLibraryQueryDto,
   DesignPricingTierDto,
   DesignProcessStageDto,
-  DesignVendorDto,  
+  DesignVendorDto,
   FindMobileCatalogProductsQueryDto,
   FindMobileTrendingProductsQueryDto,
   FindProductsQueryDto,
   MobileCatalogCategory,
   PricingIncrementBy,
   ProductDurationType,
-  ResolveMobileDesignConfiguratorQueryDto,  
+  ResolveMobileDesignConfiguratorQueryDto,
   UpdateProductDto,
   UploadStlFileDto,
 } from './dto/product.dto';
@@ -334,7 +334,7 @@ export class ProductsService {
   private readonly galleryImageMaxBytes = 5 * 1024 * 1024;
   private readonly galleryVideoMaxBytes = 50 * 1024 * 1024;
 
-  private s3Client: S3Client | null = null;  
+  private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private metalNameSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
@@ -432,7 +432,7 @@ export class ProductsService {
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
     private readonly masterTablesService: MasterTablesService,
-  ) {}
+  ) { }
 
   private compactPacketMaster(master: { id: number; value: string } | null | undefined): PacketMasterSummary | null {
     if (!master) {
@@ -601,7 +601,7 @@ export class ProductsService {
       const stlFileRepo = manager.getRepository(DesignStlFile);
       let transactionSaved = await this.saveDesignWithUniqueBarcode(design, undefined, designRepo);
       if (!transactionSaved.familyDesignId) {
-        transactionSaved.familyDesignId = transactionSaved.id;
+        transactionSaved.familyDesignId = Number(transactionSaved.id);
         transactionSaved = await this.saveDesignWithUniqueBarcode(transactionSaved, transactionSaved.id, designRepo);
       }
       await this.syncDesignStlFileRecord(transactionSaved.id, transactionSaved.stlFileUrl, null, requester.id, stlFileRepo);
@@ -2115,8 +2115,112 @@ export class ProductsService {
     requester: AuthUser,
   ): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
-    const selected = this.pickMobileConfiguratorMatch(family, query);
-    return this.toMobileConfiguratorResponse(family, selected, this.normalizeMobileConfiguratorQuery(query), requester);
+    const selected = await this.fetchMobileConfiguratorMatchFromDb(id, query, requester);
+    return this.toMobileConfiguratorResponse(family, selected, query, requester);
+  }
+
+  private async fetchMobileConfiguratorMatchFromDb(
+    id: string,
+    query: ResolveMobileDesignConfiguratorQueryDto,
+    requester: AuthUser,
+  ): Promise<Design> {
+    const familyDesign = await this.designRepo.findOne({ where: { id } });
+    if (!familyDesign) throw new NotFoundException('Product design not found');
+    const familyDesignId = familyDesign.familyDesignId || familyDesign.id;
+
+    const qb = this.designRepo.createQueryBuilder('design')
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'configJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'configCollectionMaster')
+      .leftJoinAndSelect('design.jewelrySizeMaster', 'configJewelrySizeMaster')
+      .leftJoinAndSelect('design.stageMaster', 'configStageMaster')
+      .leftJoinAndSelect('design.diamondSpreadMaster', 'configDiamondSpreadMaster')
+      .leftJoinAndSelect('design.diamondTypeMaster', 'configDiamondTypeMaster')
+      .leftJoinAndSelect('design.diamondWeightMaster', 'configDiamondWeightMaster')
+      .leftJoinAndSelect('design.diamondQualityMaster', 'configDiamondQualityMaster')
+      .leftJoinAndSelect('design.designStatusMaster', 'configDesignStatusMaster')
+      .leftJoinAndSelect('design.metalCaratageMaster', 'configMetalCaratageMaster')
+      .leftJoin('design.gemstones', 'gemstone')
+      .leftJoin('design.metals', 'metal')
+      .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
+      .andWhere('design.isActive = :isActive', { isActive: true });
+
+    this.applyScopeFilter(qb, requester);
+
+    const scoreCases: string[] = [];
+    const params: any = {};
+
+    const diamondTypeId = query.diamondTypeId ?? (query.diamondType && !isNaN(Number(query.diamondType)) ? Number(query.diamondType) : undefined);
+    const styleId = query.styleId ?? (query.style && !isNaN(Number(query.style)) ? Number(query.style) : undefined);
+    const weightId = query.weightId ?? (query.weight && !isNaN(Number(query.weight)) ? Number(query.weight) : undefined);
+    const qualityId = query.qualityId ?? (query.quality && !isNaN(Number(query.quality)) ? Number(query.quality) : undefined);
+    const ringSizeId = query.ringSizeId ?? (query.ringSize && !isNaN(Number(query.ringSize)) ? Number(query.ringSize) : undefined);
+    const shapeId = query.shapeId ?? (query.shape && !isNaN(Number(query.shape)) ? Number(query.shape) : undefined);
+    const metalCaratageId = query.metalCaratageId ?? (query.metalCaratage && !isNaN(Number(query.metalCaratage)) ? Number(query.metalCaratage) : undefined);
+
+    if (diamondTypeId !== undefined && diamondTypeId !== null) {
+      const boost = query.selectedKey === 'diamondType' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN design.diamond_type_id = :diamondTypeId THEN ${boost} ELSE 0 END)`);
+      params.diamondTypeId = diamondTypeId;
+    }
+    if (styleId !== undefined && styleId !== null) {
+      const boost = query.selectedKey === 'style' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN design.diamond_spread_id = :styleId THEN ${boost} ELSE 0 END)`);
+      params.styleId = styleId;
+    }
+    if (weightId !== undefined && weightId !== null) {
+      const boost = query.selectedKey === 'weight' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN design.diamond_weight_id = :weightId THEN ${boost} ELSE 0 END)`);
+      params.weightId = weightId;
+    }
+    if (qualityId !== undefined && qualityId !== null) {
+      const boost = query.selectedKey === 'quality' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN design.diamond_quality_id = :qualityId THEN ${boost} ELSE 0 END)`);
+      params.qualityId = qualityId;
+    }
+    if (ringSizeId !== undefined && ringSizeId !== null) {
+      const boost = query.selectedKey === 'ringSize' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN design.jewelry_size_id = :ringSizeId THEN ${boost} ELSE 0 END)`);
+      params.ringSizeId = ringSizeId;
+    }
+    if (shapeId !== undefined && shapeId !== null) {
+      const boost = query.selectedKey === 'shape' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN gemstone.shape_id = :shapeId OR gemstone.stone_id = :shapeId OR gemstone.stone_type_id = :shapeId THEN ${boost} ELSE 0 END)`);
+      params.shapeId = shapeId;
+    }
+    if (metalCaratageId !== undefined && metalCaratageId !== null) {
+      const boost = query.selectedKey === 'metalCaratage' ? 1000 : 1;
+      scoreCases.push(`(CASE WHEN metal.metal_caratage_id = :metalCaratageId THEN ${boost} ELSE 0 END)`);
+      params.metalCaratageId = metalCaratageId;
+    }
+
+    if (scoreCases.length > 0) {
+      qb.addSelect(`(${scoreCases.join(' + ')})`, 'match_score');
+      qb.orderBy('match_score', 'DESC');
+    }
+
+    qb.addSelect(`(CASE WHEN design.id = :requestedId THEN 1 ELSE 0 END)`, 'requested_score');
+    params.requestedId = Number(id);
+    if (scoreCases.length > 0) {
+      qb.addOrderBy('requested_score', 'DESC');
+    } else {
+      qb.orderBy('requested_score', 'DESC');
+    }
+    qb.addOrderBy('design.isPrimary', 'DESC');
+    qb.addOrderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC');
+
+    qb.setParameters(params);
+
+    // console.log('=== SQL EXACT MATCH QUERY ===');
+    // console.log(qb.getSql());
+    // console.log('PARAMETERS:', qb.getParameters());
+
+    const { entities } = await qb.getRawAndEntities();
+
+    if (!entities.length) return familyDesign;
+
+    const selected = entities[0];
+    this.hydrateDesignDisplayLabels(selected);
+    return selected;
   }
 
   private async loadMobileConfiguratorFamily(id: string, requester: AuthUser): Promise<Design[]> {
@@ -2164,25 +2268,30 @@ export class ProductsService {
 
     this.applyScopeFilter(qb, requester);
 
+    // console.log('=== MOBILE CONFIGURATOR SQL ===');
+    // console.log(qb.getSql());
+    // console.log('PARAMETERS:', qb.getParameters());
+    // console.log('===============================');
+
     const rows = await qb.getMany();
     const family = rows.length ? rows : [selected];
     family.forEach((design) => this.hydrateDesignDisplayLabels(design));
     const designIds = family.map((design) => design.id);
     const metals = designIds.length
       ? await this.metalRepo.find({
-          where: { designId: In(designIds) },
-          relations: ['metalCaratageMaster', 'metalCaratageMaster.metalColorMaster'],
-          order: { sortOrder: 'ASC', createdAt: 'ASC' },
-        })
+        where: { designId: In(designIds) },
+        relations: ['metalCaratageMaster', 'metalCaratageMaster.metalColorMaster'],
+        order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      })
       : [];
     // Stone names and quantities are needed for configurator matching and the total
     // stone count, but gemstone row details remain hidden from the mobile response.
     const gemstones = designIds.length
       ? await this.gemstoneRepo.find({
-          where: { designId: In(designIds) },
-          relations: ['stoneMaster', 'stoneTypeMaster'],
-          order: { sortOrder: 'ASC', createdAt: 'ASC' },
-        })
+        where: { designId: In(designIds) },
+        relations: ['stoneMaster', 'stoneTypeMaster'],
+        order: { sortOrder: 'ASC', createdAt: 'ASC' },
+      })
       : [];
     const metalsByDesign = this.groupByDesignId(metals);
     const gemstonesByDesign = this.groupByDesignId(gemstones);
@@ -2197,21 +2306,53 @@ export class ProductsService {
   private async toMobileConfiguratorResponse(
     family: Design[],
     selected: Design,
-    requestedOptions: Partial<Record<MobileConfiguratorKey, string>> = {},
+    query: ResolveMobileDesignConfiguratorQueryDto = {},
     requester?: AuthUser,
   ): Promise<any> {
+    const wantedIds: Partial<Record<MobileConfiguratorKey, number>> = {};
+    if (query.diamondTypeId !== undefined && query.diamondTypeId !== null) wantedIds.diamondType = Number(query.diamondTypeId);
+    if (query.shapeId !== undefined && query.shapeId !== null) wantedIds.shape = Number(query.shapeId);
+    if (query.styleId !== undefined && query.styleId !== null) wantedIds.style = Number(query.styleId);
+    if (query.metalCaratageId !== undefined && query.metalCaratageId !== null) wantedIds.metalCaratage = Number(query.metalCaratageId);
+    if (query.weightId !== undefined && query.weightId !== null) wantedIds.weight = Number(query.weightId);
+    if (query.qualityId !== undefined && query.qualityId !== null) wantedIds.quality = Number(query.qualityId);
+    if (query.ringSizeId !== undefined && query.ringSizeId !== null) wantedIds.ringSize = Number(query.ringSizeId);
+
+    const wantedLabels = this.normalizeMobileConfiguratorQuery(query);
+    const optionGroups = this.getMobileConfiguratorOptionGroups(family);
     const designOptions = this.getMobileConfiguratorOptions(selected);
+
     const selectedOptions: Record<string, { id: number | null; label: string }> = {};
-    (Object.keys(designOptions) as MobileConfiguratorKey[]).forEach((key) => {
-      const opt = designOptions[key][0];
+    (Object.keys(optionGroups) as MobileConfiguratorKey[]).forEach((key) => {
+      const wantedId = wantedIds[key];
+      const wantedLabel = wantedLabels[key];
+
+      let opt: MobileConfiguratorOption | undefined;
+      if (wantedId !== undefined && wantedId !== null) {
+        opt = designOptions[key]?.find((o) => o.id !== null && Number(o.id) === Number(wantedId));
+      }
+      if (!opt && wantedLabel) {
+        opt = designOptions[key]?.find((o) => this.mobileConfiguratorOptionKey(key, o.label) === this.mobileConfiguratorOptionKey(key, wantedLabel));
+      }
+      if (!opt && wantedId !== undefined && wantedId !== null) {
+        opt = optionGroups[key]?.find((o) => o.id !== null && Number(o.id) === Number(wantedId));
+      }
+      if (!opt && wantedLabel) {
+        opt = optionGroups[key]?.find((o) => this.mobileConfiguratorOptionKey(key, o.label) === this.mobileConfiguratorOptionKey(key, wantedLabel));
+      }
+      if (!opt) {
+        opt = designOptions[key]?.[0] || optionGroups[key]?.[0];
+      }
+
       selectedOptions[key] = opt
-        ? { id: opt.id, label: requestedOptions[key] || opt.label }
-        : { id: null, label: requestedOptions[key] || '' };
+        ? { id: opt.id, label: opt.label }
+        : { id: null, label: '' };
     });
+
     return {
-      selectedDesign: await this.toMobileConfiguratorDesign(selected, requester),
+      selectedDesign: await this.toMobileConfiguratorDesign(selected, selectedOptions, requester),
       selectedOptions,
-      optionGroups: this.getMobileConfiguratorOptionGroups(family),
+      optionGroups,
     };
   }
 
@@ -2242,12 +2383,12 @@ export class ProductsService {
       .filter((value): value is number => value !== null);
     const packets = packetRefs.length
       ? await this.packetRepo.find({
-          where: [
-            ...(packetIdRefs.length ? [{ id: In(packetIdRefs) }] : []),
-            { barcode: In(packetRefs) },
-            { packetName: In(packetRefs) },
-          ],
-        })
+        where: [
+          ...(packetIdRefs.length ? [{ id: In(packetIdRefs) }] : []),
+          { barcode: In(packetRefs) },
+          { packetName: In(packetRefs) },
+        ],
+      })
       : [];
     const packetNameById = new Map(packets.map((packet) => [packet.id, packet.packetName]));
     const packetNameByBarcode = new Map(
@@ -2277,9 +2418,16 @@ export class ProductsService {
 
   private async toMobileConfiguratorDesign(
     design: Design,
+    selectedOptions?: Record<string, { id: number | null; label: string }>,
     requester?: AuthUser,
   ): Promise<any> {
     const displayPrice = requester ? await this.resolveMobileConfiguratorDisplayPrice(design, requester) : undefined;
+    const selectedMetalCaratage = selectedOptions?.metalCaratage?.label || design.metalCaratage;
+    const selectedDiamondWeight = selectedOptions?.weight?.label || design.diamondWeight;
+    const selectedDiamondType = selectedOptions?.diamondType?.label || this.resolveMobileConfiguratorDiamondType(design);
+    const selectedDiamondQuality = selectedOptions?.quality?.label || design.diamondQuality;
+    const selectedSpread = selectedOptions?.style?.label || design.diamondSpread;
+    const selectedRingSize = selectedOptions?.ringSize?.label || design.jewelrySize;
 
     return {
       id: design.id,
@@ -2290,13 +2438,13 @@ export class ProductsService {
       isPrimary: design.isPrimary,
       jewelryGroup: design.jewelryGroup,
       collection: design.collection,
-      jewelrySize: design.jewelrySize,
+      jewelrySize: selectedRingSize,
       stage: design.stage,
-      diamondSpread: design.diamondSpread,
-      diamondType: this.resolveMobileConfiguratorDiamondType(design),
-      diamondWeight: design.diamondWeight,
-      diamondQuality: design.diamondQuality,
-      metalCaratage: design.metalCaratage,
+      diamondSpread: selectedSpread,
+      diamondType: selectedDiamondType,
+      diamondWeight: selectedDiamondWeight,
+      diamondQuality: selectedDiamondQuality,
+      metalCaratage: selectedMetalCaratage,
       tags: Array.isArray(design.tags) ? design.tags : [],
       designDescription: design.designDescription,
       remarks: design.remarks,
@@ -2316,21 +2464,7 @@ export class ProductsService {
         metalColor: metal.metalColor || null,
         netWt: Number(metal.netWt || 0),
         totalWt: Number(metal.totalWt || 0),
-        value: Number(metal.value || 0),
       })),
-      // Design gemstones are hidden on mobile for now, so do not include them in this payload.
-      // gemstones: await this.withGemstonePacketNames((design.gemstones || []).map((gem) => ({
-      //   packetId: gem.packetId,
-      //   stone: gem.stone,
-      //   shape: gem.shape,
-      //   size: gem.size,
-      //   color: gem.color,
-      //   quality: gem.quality,
-      //   stoneType: gem.stoneType,
-      //   wtPerPcs: Number(gem.wtPerPcs || 0),
-      //   wtInCts: Number(gem.wtInCts || 0),
-      //   pcs: Number(gem.pcs || 0),
-      // }))),
     };
   }
 
@@ -2417,15 +2551,17 @@ export class ProductsService {
 
     const diamondType: MobileConfiguratorOption[] = [];
     const dtLabel = this.resolveMobileConfiguratorDiamondType(design);
-    if (dtLabel) diamondType.push({ id: design.diamondTypeId ?? null, label: dtLabel });
+    const dtId = design.diamondTypeMaster?.id ?? design.diamondTypeId ?? null;
+    if (dtLabel) diamondType.push({ id: dtId, label: dtLabel });
 
     const shape: MobileConfiguratorOption[] = [];
     for (const gem of design.gemstones || []) {
       const stoneLabel = this.optionalText(gem.stone) || this.optionalText(gem.stoneType);
+      const gemShapeId = gem.shapeMaster?.id ?? gem.shapeId ?? gem.stoneMaster?.id ?? gem.stoneId ?? gem.stoneTypeMaster?.id ?? gem.stoneTypeId ?? null;
       if (stoneLabel) {
         stoneLabel.split(',').forEach((part) => {
-          const opt = addOpt(gem.stoneId ?? null, part.trim());
-          if (opt && !shape.some((s) => s.label.toLowerCase() === opt.label.toLowerCase())) {
+          const opt = addOpt(gemShapeId, part.trim());
+          if (opt && !shape.some((s) => (opt.id !== null && s.id === opt.id) || s.label.toLowerCase() === opt.label.toLowerCase())) {
             shape.push(opt);
           }
         });
@@ -2434,104 +2570,49 @@ export class ProductsService {
 
     const style: MobileConfiguratorOption[] = [];
     const styleLabel = this.mobileConfiguratorDisplayValue('style', design.diamondSpread);
-    if (styleLabel) style.push({ id: design.diamondSpreadId ?? null, label: styleLabel });
+    const styleId = design.diamondSpreadMaster?.id ?? design.diamondSpreadId ?? null;
+    if (styleLabel) style.push({ id: styleId, label: styleLabel });
 
     const metalCaratage: MobileConfiguratorOption[] = [];
     for (const metal of design.metals || []) {
       const caratLabel = this.mobileConfiguratorText(metal.metalCaratage);
+      const metalCaratId = metal.metalCaratageMaster?.id ?? metal.metalCaratageId ?? null;
       if (caratLabel) {
         caratLabel.split(',').forEach((part) => {
           const trimmed = part.trim();
-          if (trimmed && !metalCaratage.some((m) => m.label.toLowerCase() === trimmed.toLowerCase())) {
-            metalCaratage.push({ id: metal.metalCaratageId ?? null, label: trimmed });
+          if (trimmed && !metalCaratage.some((m) => (metalCaratId !== null && m.id === metalCaratId) || m.label.toLowerCase() === trimmed.toLowerCase())) {
+            metalCaratage.push({ id: metalCaratId, label: trimmed });
           }
         });
       }
     }
     if (!metalCaratage.length) {
       const fallback = this.mobileConfiguratorText(design.metalCaratage);
+      const designMetalCaratId = design.metalCaratageMaster?.id ?? design.metalCaratageId ?? null;
       if (fallback) {
         fallback.split(',').forEach((part) => {
           const trimmed = part.trim();
-          if (trimmed) metalCaratage.push({ id: design.metalCaratageId ?? null, label: trimmed });
+          if (trimmed) metalCaratage.push({ id: designMetalCaratId, label: trimmed });
         });
       }
     }
 
     const weight: MobileConfiguratorOption[] = [];
     const weightLabel = this.mobileConfiguratorDisplayValue('weight', design.diamondWeight);
-    if (weightLabel) weight.push({ id: design.diamondWeightId ?? null, label: weightLabel });
+    const weightId = design.diamondWeightMaster?.id ?? design.diamondWeightId ?? null;
+    if (weightLabel) weight.push({ id: weightId, label: weightLabel });
 
     const quality: MobileConfiguratorOption[] = [];
     const qualityLabel = this.mobileConfiguratorDisplayValue('quality', design.diamondQuality);
-    if (qualityLabel) quality.push({ id: design.diamondQualityId ?? null, label: qualityLabel });
+    const qualityId = design.diamondQualityMaster?.id ?? design.diamondQualityId ?? null;
+    if (qualityLabel) quality.push({ id: qualityId, label: qualityLabel });
 
     const ringSize: MobileConfiguratorOption[] = [];
     const ringSizeLabel = this.mobileConfiguratorDisplayValue('ringSize', design.jewelrySize);
-    if (ringSizeLabel) ringSize.push({ id: design.jewelrySizeId ?? null, label: ringSizeLabel });
+    const ringSizeId = design.jewelrySizeMaster?.id ?? design.jewelrySizeId ?? null;
+    if (ringSizeLabel) ringSize.push({ id: ringSizeId, label: ringSizeLabel });
 
     return { diamondType, shape, style, metalCaratage, weight, quality, ringSize };
-  }
-
-  private pickMobileConfiguratorMatch(
-    family: Design[],
-    query: ResolveMobileDesignConfiguratorQueryDto,
-  ): Design {
-    // Build a map of key -> requested ID (preferred) and key -> requested label (fallback)
-    const wantedIds: Partial<Record<MobileConfiguratorKey, number>> = {};
-    const wantedLabels = this.normalizeMobileConfiguratorQuery(query);
-
-    if (query.diamondTypeId) wantedIds.diamondType = query.diamondTypeId;
-    if (query.shapeId) wantedIds.shape = query.shapeId;
-    if (query.styleId) wantedIds.style = query.styleId;
-    if (query.metalCaratageId) wantedIds.metalCaratage = query.metalCaratageId;
-    if (query.weightId) wantedIds.weight = query.weightId;
-    if (query.qualityId) wantedIds.quality = query.qualityId;
-    if (query.ringSizeId) wantedIds.ringSize = query.ringSizeId;
-
-    const keys = [
-      ...new Set([
-        ...(Object.keys(wantedIds) as MobileConfiguratorKey[]),
-        ...(Object.keys(wantedLabels) as MobileConfiguratorKey[]),
-      ]),
-    ];
-
-    if (!keys.length) {
-      return family.find((design) => design.isPrimary) || family[0];
-    }
-
-    const selectedKey = query.selectedKey && (wantedIds[query.selectedKey] || wantedLabels[query.selectedKey])
-      ? query.selectedKey
-      : null;
-
-    const matchesKey = (design: Design, key: MobileConfiguratorKey): boolean => {
-      const opts = this.getMobileConfiguratorOptions(design)[key];
-      const wantedId = wantedIds[key];
-      const wantedLabel = wantedLabels[key];
-      if (wantedId) {
-        return opts.some((opt) => opt.id !== null && opt.id === wantedId);
-      }
-      if (wantedLabel) {
-        return opts.some((opt) => this.mobileConfiguratorOptionKey('diamondType', opt.label) === this.mobileConfiguratorOptionKey('diamondType', wantedLabel));
-      }
-      return false;
-    };
-
-    const strict = family.find((design) => keys.every((key) => matchesKey(design, key)));
-    if (strict) return strict;
-
-    const preferredFamily = selectedKey
-      ? family.filter((design) => matchesKey(design, selectedKey))
-      : [];
-    const candidates = preferredFamily.length ? preferredFamily : family;
-
-    return [...candidates].sort((a, b) => {
-      const aScore = keys.reduce((score, key) => score + (matchesKey(a, key) ? 1 : 0), 0);
-      const bScore = keys.reduce((score, key) => score + (matchesKey(b, key) ? 1 : 0), 0);
-      if (aScore !== bScore) return bScore - aScore;
-      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
-      return this.parseVersionNumber(a.version) - this.parseVersionNumber(b.version);
-    })[0];
   }
 
   private normalizeMobileConfiguratorQuery(query: ResolveMobileDesignConfiguratorQueryDto) {
@@ -3053,13 +3134,13 @@ export class ProductsService {
         : dto.labors !== undefined
           ? this.normalizeLegacyOverheadsFromLabors(dto.labors)
           : this.toOverheadDtos(existingRows.overheads).map((row) => ({
-              overheadRuleId: this.optionalInt(row.overheadRuleId),
-              overheadHead: this.optionalText(row.overheadHead),
-              overheadApplyMode: this.optionalText(row.overheadApplyMode),
-              ratePercent: row.ratePercent ?? null,
-              flatAmount: row.flatAmount ?? null,
-              overheadValue: this.toNumber(row.overheadValue),
-            }));
+            overheadRuleId: this.optionalInt(row.overheadRuleId),
+            overheadHead: this.optionalText(row.overheadHead),
+            overheadApplyMode: this.optionalText(row.overheadApplyMode),
+            ratePercent: row.ratePercent ?? null,
+            flatAmount: row.flatAmount ?? null,
+            overheadValue: this.toNumber(row.overheadValue),
+          }));
     const normalizedFindings = await this.resolveNormalizedFindingRows(this.normalizeFindings(
       dto.findings !== undefined ? dto.findings : this.toFindingDtos(existingRows.findings),
     ));
@@ -3086,7 +3167,8 @@ export class ProductsService {
       design.barcode = await this.resolveDesignBarcode(undefined, id);
     }
     design.version = version;
-    design.familyDesignId = design.familyDesignId || await this.resolveFamilyDesignId(undefined, designNo, scope) || design.id;
+    const resolvedFamilyId = await this.resolveFamilyDesignId(undefined, designNo, scope);
+    design.familyDesignId = design.familyDesignId || (resolvedFamilyId !== null ? resolvedFamilyId : Number(design.id));
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
     const shouldSyncFamilyName = design.isPrimary && dto.designName !== undefined;
     if (dto.designName !== undefined) {
@@ -4307,10 +4389,10 @@ export class ProductsService {
     const metalRateMap = await this.getMetalCaratageRateMap();
     const packetRows = packetIds.size
       ? await this.packetRepo.find({
-          where: {
-            id: In(Array.from(packetIds)),
-          },
-        })
+        where: {
+          id: In(Array.from(packetIds)),
+        },
+      })
       : [];
     const packetRateMap = new Map(
       packetRows.map((row) => [row.id, this.toNumber(row.sellingPrice)]),
@@ -4559,20 +4641,20 @@ export class ProductsService {
     return rows
       .filter((row) => !this.isLegacyOverheadLaborRow(row))
       .map((row) => {
-      const laborPerUnit = this.toNumber(row.laborPerUnit);
-      const unitQty = this.toNumber(row.unitQty);
-      const laborValue = laborPerUnit * unitQty;
+        const laborPerUnit = this.toNumber(row.laborPerUnit);
+        const unitQty = this.toNumber(row.unitQty);
+        const laborValue = laborPerUnit * unitQty;
 
-      return {
-        laborHeadId: this.optionalInt(row.laborHeadId),
-        laborHead: this.optionalText(row.laborHead),
-        laborRuleId: this.optionalInt(row.laborRuleId),
-        laborRule: this.optionalText(row.laborRule),
-        laborPerUnit,
-        unitQty,
-        laborValue,
-      };
-    });
+        return {
+          laborHeadId: this.optionalInt(row.laborHeadId),
+          laborHead: this.optionalText(row.laborHead),
+          laborRuleId: this.optionalInt(row.laborRuleId),
+          laborRule: this.optionalText(row.laborRule),
+          laborPerUnit,
+          unitQty,
+          laborValue,
+        };
+      });
   }
 
   private normalizeOverheads(rows: DesignOverheadDto[]): NormalizedOverheadRow[] {
@@ -5197,10 +5279,10 @@ export class ProductsService {
     inputId: string | number | undefined,
     designNo: string,
     scope: ScopeResult,
-  ): Promise<string | number | null> {
-    const normalizedInputId = this.optionalText(inputId);
-    if (normalizedInputId) {
-      return normalizedInputId;
+  ): Promise<number | null> {
+    const rawInputId = Number(inputId);
+    if (Number.isFinite(rawInputId) && rawInputId > 0) {
+      return rawInputId;
     }
 
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
@@ -5229,7 +5311,7 @@ export class ProductsService {
     }
 
     const parent = await qb.getOne();
-    return parent?.id || null;
+    return parent?.id ? Number(parent.id) : null;
   }
 
   private async syncFamilyDesignName(

@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Index,
 } from 'typeorm';
 import { Order } from './order.entity';
 import { User } from '../../users/entities/user.entity';
@@ -22,6 +23,7 @@ export class OrderHistory {
   @PrimaryGeneratedColumn()
   id: number;
 
+  @Index('idx_order_history_order_id')
   @Column({ name: 'order_id' })
   orderId: number;
 
@@ -34,7 +36,8 @@ export class OrderHistory {
   @Column({ type: 'json', nullable: true })
   changes: OrderHistoryChange[] | null;
 
-  @Column({ name: 'performed_by', nullable: true })
+  @Index('idx_order_history_performed_by')
+  @Column({ name: 'performed_by', type: 'int', nullable: true })
   performedBy: string | null;
 
   @Column({ name: 'performed_by_name', nullable: true })
@@ -54,6 +57,6 @@ export class OrderHistory {
   @JoinColumn({ name: 'performed_by' })
   performedByUser: User;
 
-  @CreateDateColumn({ name: 'performed_at' })
+  @CreateDateColumn({ name: 'performed_at', type: 'datetime' })
   performedAt: Date;
 }

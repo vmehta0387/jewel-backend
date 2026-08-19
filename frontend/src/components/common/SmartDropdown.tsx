@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../../services/api';
 
@@ -28,6 +28,7 @@ export interface SmartDropdownConfig {
   placeholder?: string;
   clearLabel?: string;
   disabled?: boolean;
+  renderLabel?: (option: SmartDropdownOption) => ReactNode;
 }
 
 interface SmartDropdownProps {
@@ -363,7 +364,7 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     }
   };
 
-  const buttonLabel = selectedOption ? optionText(selectedOption, merged.labelKey) : value || merged.placeholder || 'Select...';
+  const buttonLabel = selectedOption ? (merged.renderLabel ? merged.renderLabel(selectedOption) : optionText(selectedOption, merged.labelKey)) : value || merged.placeholder || 'Select...';
   const listMaxHeight = Math.max(140, dropdownStyle.maxHeight - (merged.showSearch ? 58 : 12));
   const listMinHeight = Math.min(220, listMaxHeight);
 
@@ -475,7 +476,7 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => selectOption(option)}
                     >
-                      {optionText(option, merged.labelKey)}
+                      {merged.renderLabel ? merged.renderLabel(option) : optionText(option, merged.labelKey)}
                     </button>
                   );
                 })

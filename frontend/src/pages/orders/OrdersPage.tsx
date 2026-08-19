@@ -7,6 +7,7 @@ import AlertDialog from '../../components/common/AlertDialog';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import Pagination from '../../components/common/Pagination';
 import SearchableSelect from '../../components/common/SearchableSelect';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
@@ -550,6 +551,7 @@ export default function OrdersPage() {
   const [deliveryDateMin, setDeliveryDateMin] = useState(() => getExpectedDeliveryMin());
   const [orderNumber, setOrderNumber] = useState('');
   const [editingDesignNo, setEditingDesignNo] = useState('');
+  const [baseDesignId, setBaseDesignId] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
@@ -566,6 +568,7 @@ export default function OrdersPage() {
   const [selectedConfiguratorOptions, setSelectedConfiguratorOptions] = useState<ConfiguratorOptions>(emptyConfiguratorOptions);
   const [configuratorLoading, setConfiguratorLoading] = useState(false);
   const [configuratorError, setConfiguratorError] = useState<string | null>(null);
+  const [configuratorRawOptionGroups, setConfiguratorRawOptionGroups] = useState<any>({});
   const [resolvingConfigurator, setResolvingConfigurator] = useState(false);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(() => new Set());
@@ -578,7 +581,6 @@ export default function OrdersPage() {
     jewelrySize: '',
     designStatus: '',
   });
-  const [packetLookup, setPacketLookup] = useState<Record<string, string>>({});
   const [viewOrder, setViewOrder] = useState<OrderRow | null>(null);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
   const [viewDesign, setViewDesign] = useState<DesignDetail | null>(null);
@@ -634,13 +636,13 @@ export default function OrdersPage() {
   const pageOffset = (page - 1) * pageSize;
   const hasActiveFilters = Boolean(
     filters.search ||
-      filters.orderStatus ||
-      filters.companyId ||
-      filters.salesRepId ||
-      filters.deliveryFrom ||
-      filters.deliveryTo ||
-      filters.createdFrom ||
-      filters.createdTo,
+    filters.orderStatus ||
+    filters.companyId ||
+    filters.salesRepId ||
+    filters.deliveryFrom ||
+    filters.deliveryTo ||
+    filters.createdFrom ||
+    filters.createdTo,
   );
   const formTotalAmount = useMemo(
     () => calculateTotalAmount(form.price, form.quantity),
@@ -768,7 +770,6 @@ export default function OrdersPage() {
   };
 
   const loadPackets = async (): Promise<Record<string, string>> => {
-    if (Object.keys(packetLookup).length) return packetLookup;
     const response = await api.get('/products/master-tables/PACKET', { params: { page: 1, limit: 200, status: 'ACTIVE' } });
     const packets = response.data?.data || [];
     const mapped: Record<string, string> = {};
@@ -777,7 +778,6 @@ export default function OrdersPage() {
         mapped[String(packet.id)] = String(packet.packetName);
       }
     });
-    setPacketLookup(mapped);
     return mapped;
   };
 
@@ -844,33 +844,7 @@ export default function OrdersPage() {
     return unique;
   };
 
-  const loadDesignFamilyMedia = async (design: DesignDetail | null): Promise<string[]> => {
-    if (!design?.designNo) {
-      return uniqueMediaUrls(design?.imageUrls || []);
-    }
 
-    const baseDesignNo = getBaseDesignNo(design.designNo);
-    const currentMedia = uniqueMediaUrls(design.imageUrls || []);
-
-    try {
-      const response = await api.get('/products', {
-        params: {
-          search: baseDesignNo,
-          limit: 200,
-          status: 'ALL',
-          summaryOnly: true,
-        },
-      });
-      const rows: DesignOption[] = response.data?.data || [];
-      const familyMedia = rows
-        .filter((row) => getBaseDesignNo(row.designNo) === baseDesignNo)
-        .flatMap((row) => row.imageUrls || []);
-
-      return uniqueMediaUrls([...currentMedia, ...familyMedia]);
-    } catch {
-      return currentMedia;
-    }
-  };
 
   const resetConfiguratorState = () => {
     setDesignDetail(null);
@@ -878,6 +852,7 @@ export default function OrdersPage() {
     setConfiguratorOptionGroups(emptyOptionGroups());
     setSelectedConfiguratorOptions(emptyConfiguratorOptions());
     setConfiguratorError(null);
+    setConfiguratorRawOptionGroups({});
     setResolvingConfigurator(false);
     setSelectedMediaIndex(0);
     setFailedMediaUrls(new Set());
@@ -921,6 +896,7 @@ export default function OrdersPage() {
     const normalized = normalizeConfiguratorResponse(response);
     setDesignDetail(normalized.selectedDesign);
     setConfiguratorOptionGroups(normalized.optionGroups);
+    setConfiguratorRawOptionGroups(response.optionGroups || {});
     setSelectedConfiguratorOptions(normalized.selectedOptions);
     setSelectedMediaIndex(0);
     setFailedMediaUrls(new Set());
@@ -936,7 +912,7 @@ export default function OrdersPage() {
         shortDescription: preserveManualDescription && prev.shortDescription ? prev.shortDescription : generatedDescription,
       };
     });
-    const familyMedia = await loadDesignFamilyMedia(normalized.selectedDesign);
+    const familyMedia = uniqueMediaUrls(normalized.selectedDesign?.imageUrls || []);
     setDesignMediaUrls(familyMedia);
   };
 
@@ -992,20 +968,14 @@ export default function OrdersPage() {
     setFilters(nextFilters);
   }, [searchParams]);
 
-  useEffect(() => {
-    loadCompanies();
-  }, []);
 
-  useEffect(() => {
-    loadFilterSalesReps(filters.companyId);
-  }, [filters.companyId]);
 
   useEffect(() => {
     if (!showAddModal) return;
+    loadCompanies();
     if (!editingOrderId) {
       loadOrderNumber();
     }
-    loadPackets();
   }, [showAddModal, editingOrderId]);
 
   useEffect(
@@ -1019,7 +989,6 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (!showViewModal) return;
-    loadPackets();
   }, [showViewModal]);
 
   useEffect(() => {
@@ -1111,9 +1080,9 @@ export default function OrdersPage() {
 
       const sampleOrders = Array.isArray(response.data?.orders)
         ? response.data.orders
-            .slice(0, 3)
-            .map((order: any) => [order?.orderNumber, order?.status].filter(Boolean).join(' - '))
-            .filter(Boolean)
+          .slice(0, 3)
+          .map((order: any) => [order?.orderNumber, order?.status].filter(Boolean).join(' - '))
+          .filter(Boolean)
         : [];
       const suffix = sampleOrders.length ? `\n\nExisting item(s):\n${sampleOrders.join('\n')}` : '';
       return confirmAppDialog(`This PO has already been used for ${count} item(s). Continue?${suffix}`, {
@@ -1276,10 +1245,6 @@ export default function OrdersPage() {
       setViewDesign(design);
       setViewMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
       setViewOrderLoading(false);
-      void loadPackets();
-      void loadDesignFamilyMedia(design).then((familyMedia) => {
-        setViewMediaUrls(familyMedia);
-      });
     } catch {
       setViewOrder(order);
       setViewDesign(null);
@@ -1314,7 +1279,6 @@ export default function OrdersPage() {
         setViewDesign(design);
         setViewMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
         setViewOrderLoading(false);
-        void loadPackets();
         void loadDesignFamilyMedia(design).then((familyMedia) => {
           setViewMediaUrls(familyMedia);
         });
@@ -1368,6 +1332,7 @@ export default function OrdersPage() {
       const { detail, design } = await fetchOrderWithDesign(order.id);
       setEditingDesignNo(detail.designNo || order.designNo || '');
       setDeliveryDateMin(getExpectedDeliveryMin(detail.createdAt || order.createdAt));
+      setBaseDesignId(detail.designId || '');
       setForm({
         companyId: detail.companyId || '',
         branchId: detail.branchId || '',
@@ -1473,11 +1438,11 @@ export default function OrdersPage() {
       to: statusChangeTarget,
       shipping: statusChangeTarget === 'COMPLETED'
         ? {
-            shipDate: completedShippingForm.shipDate,
-            shipVia: completedShippingForm.shipVia,
-            trackingNo: completedShippingForm.trackingNo.trim(),
-            invoiceNo: completedShippingForm.invoiceNo.trim(),
-          }
+          shipDate: completedShippingForm.shipDate,
+          shipVia: completedShippingForm.shipVia,
+          trackingNo: completedShippingForm.trackingNo.trim(),
+          invoiceNo: completedShippingForm.invoiceNo.trim(),
+        }
         : undefined,
     });
     closeOrderStatusChange();
@@ -1564,8 +1529,12 @@ export default function OrdersPage() {
     try {
       const params = new URLSearchParams();
       (Object.keys(nextOptions) as ConfiguratorKey[]).forEach((optionKey) => {
-        if (nextOptions[optionKey]) {
-          params.set(optionKey, nextOptions[optionKey]);
+        const optionLabel = nextOptions[optionKey];
+        if (optionLabel) {
+          const rawGroup = configuratorRawOptionGroups[optionKey] || configuratorRawOptionGroups[optionKey === 'metalCaratage' ? 'metalColor' : optionKey] || [];
+          const rawOption = rawGroup.find((o: any) => typeof o === 'object' && o !== null && String(o.name || o.value || o.label || '') === optionLabel);
+          const optionId = rawOption?.id || rawOption?.value || optionLabel;
+          params.set(optionKey, optionId);
         }
       });
       params.set('selectedKey', key);
@@ -1583,6 +1552,7 @@ export default function OrdersPage() {
 
   const selectDesignForOrder = (designId: string, closePicker = false) => {
     setPriceManuallyEdited(false);
+    setBaseDesignId(designId);
     setForm((prev) => ({ ...prev, designId }));
     if (designId) {
       setFormErrors((prev) => ({ ...prev, designId: undefined, price: undefined, totalAmount: undefined }));
@@ -1606,7 +1576,7 @@ export default function OrdersPage() {
 
   const selectedDesignLabel = useMemo(() => {
     if (!designDetail) return '-';
-    return formatDesignLabel(designDetail.designNo, designDetail.version);
+    return formatDesignLabel(designDetail.designNo);
   }, [designDetail]);
 
   const editingDesignLabel = useMemo(() => {
@@ -1659,9 +1629,9 @@ export default function OrdersPage() {
           return true;
         })
         .map((option) => ({
-        value: option.id,
-        label: formatDesignLabel(option.designNo, option.version),
-      }));
+          value: option.id,
+          label: formatDesignLabel(option.designNo, option.version),
+        }));
     },
     [designOptions, designFilters, designDetail],
   );
@@ -1685,11 +1655,11 @@ export default function OrdersPage() {
   }, [designOptions, designFilters.jewelryGroup]);
   const hasActiveDesignFilters = Boolean(
     designFilters.search ||
-      designFilters.jewelryGroup ||
-      designFilters.collection ||
-      designFilters.metal ||
-      designFilters.jewelrySize ||
-      designFilters.designStatus,
+    designFilters.jewelryGroup ||
+    designFilters.collection ||
+    designFilters.metal ||
+    designFilters.jewelrySize ||
+    designFilters.designStatus,
   );
   const filteredDesignOptions = useMemo(
     () =>
@@ -1732,11 +1702,6 @@ export default function OrdersPage() {
       return next;
     });
   };
-
-  // const resolvePacketName = (packetId?: string | null): string => {
-  //   if (!packetId) return '-';
-  //   return packetLookup[packetId] || '-';
-  // };
 
   const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
     if (!canEditOrderByStatus(order.status, currentUserRole)) {
@@ -1940,6 +1905,7 @@ export default function OrdersPage() {
               resetConfiguratorState();
               setBranches([]);
               setPriceManuallyEdited(false);
+              setBaseDesignId('');
               setShowAddModal(true);
             }}
           >
@@ -1962,47 +1928,54 @@ export default function OrdersPage() {
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Status</label>
-            <select
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            <SmartDropdown
               value={filters.orderStatus}
-              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, orderStatus: event.target.value })); }}
-            >
-              <option value="">All Status</option>
-              {orderStatusOptions.map((status) => (
-                <option key={status} value={status}>{status}</option>
-              ))}
-            </select>
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, orderStatus: val })); }}
+              config={{
+                options: orderStatusOptions.map(status => ({ id: status, value: status })),
+                valueKey: 'id',
+                labelKey: 'value',
+                placeholder: 'All Status',
+                clearLabel: 'All Status',
+              }}
+              className="mt-1"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Company</label>
-            <select
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            <SmartDropdown
               value={filters.companyId}
-              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: event.target.value, salesRepId: '' })); }}
-            >
-              <option value="">All Companies</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.companyName}</option>
-              ))}
-            </select>
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: val, salesRepId: '' })); }}
+              config={{
+                apiSubPath: '/companies/lookup',
+                extraParams: { limit: 200, status: 'ACTIVE' },
+                valueKey: 'id',
+                labelKey: 'companyName',
+                placeholder: 'All Companies',
+                clearLabel: 'All Companies',
+              }}
+              className="mt-1"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Rep Name</label>
-            <select
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            <SmartDropdown
               value={filters.salesRepId}
-              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: event.target.value })); }}
-            >
-              <option value="">All Reps</option>
-              {filterSalesReps.map((salesRep) => {
-                const fullName = `${salesRep.firstName || ''} ${salesRep.lastName || ''}`.trim();
-                return (
-                  <option key={salesRep.id} value={salesRep.id}>
-                    {fullName || salesRep.email || 'Sales Rep'}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: val })); }}
+              config={{
+                apiSubPath: '/users/lookup',
+                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: filters.companyId || undefined },
+                valueKey: 'id',
+                labelKey: 'email',
+                renderLabel: (option) => {
+                  const fullName = `${option.firstName || ''} ${option.lastName || ''}`.trim();
+                  return fullName || String(option.email || 'Sales Rep');
+                },
+                placeholder: 'All Reps',
+                clearLabel: 'All Reps',
+              }}
+              className="mt-1"
+            />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600">Delivery From</label>
@@ -2266,604 +2239,606 @@ export default function OrdersPage() {
           ) : (
             <div className="space-y-6 [&_input]:rounded-md [&_input]:border-slate-200/80 [&_input]:shadow-sm [&_input]:transition-all [&_input]:focus:border-indigo-400 [&_input]:focus:ring-2 [&_input]:focus:ring-indigo-100 [&_input]:bg-white [&_input]:text-slate-800 [&_input]:placeholder:text-slate-400 [&_select]:rounded-md [&_select]:border-slate-200/80 [&_select]:shadow-sm [&_select]:transition-all [&_select]:focus:border-indigo-400 [&_select]:focus:ring-2 [&_select]:focus:ring-indigo-100 [&_select]:bg-white [&_select]:text-slate-800 [&_textarea]:rounded-md [&_textarea]:border-slate-200/80 [&_textarea]:shadow-sm [&_textarea]:transition-all [&_textarea]:focus:border-indigo-400 [&_textarea]:focus:ring-2 [&_textarea]:focus:ring-indigo-100 [&_textarea]:bg-white [&_textarea]:text-slate-800 [&_textarea]:placeholder:text-slate-400">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
-              <span className="font-semibold text-red-600">*Required fields</span>
-              <span className="font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md">
-              <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">
-                General Information
+                <span className="font-semibold text-red-600">*Required fields</span>
+                <span className="font-semibold text-slate-700">Order No: {orderNumber || '---'}</span>
               </div>
-              <div className="space-y-4 p-4">
-                <fieldset className="rounded-xl border border-[#ead7b5] bg-[#fffaf2] px-4 pb-4 pt-3 shadow-sm">
-                  <legend className="rounded-full border border-[#ead7b5] bg-white px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#9a6a2f]">Filter</legend>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.35fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_auto] xl:items-end">
-                    <div>
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <label className="text-sm font-medium text-slate-700">Design No</label>
-                        {!isEditing && (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-[#c9954f] hover:bg-[#fff8ed] hover:text-slate-900"
-                            onClick={() => {
-                              setShowDesignPickerModal(true);
-                              openDesignDropdown();
-                            }}
-                          >
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 5h18" />
-                              <path d="M6 12h12" />
-                              <path d="M10 19h4" />
-                            </svg>
-                            Advanced filter
-                          </button>
-                        )}
-                      </div>
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
-                          value={editingDesignLabel}
-                          disabled
-                          readOnly
-                        />
-                      ) : (
-                        <SearchableSelect
-                          value={form.designId}
-                          onChange={(value) => selectDesignForOrder(value)}
-                          options={designSelectOptions}
-                          placeholder="Select Design"
-                          filterOptions={false}
-                          loading={designOptionsLoading}
-                          loadingText="Loading designs..."
-                          hasMore={designOptionsPage < designOptionsTotalPages}
-                          onOpen={openDesignDropdown}
-                          onSearchChange={handleDesignDropdownSearch}
-                          onLoadMore={loadMoreDesigns}
-                        />
-                      )}
-                      {formErrors.designId && (
-                        <p id="design-error" className="mt-1 text-xs font-medium text-rose-600">
-                          {formErrors.designId}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Category</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={designFilters.jewelryGroup}
-                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelryGroup: event.target.value, collection: '' }))}
-                      >
-                        <option value="">All Categories</option>
-                        {designFilterOptions.jewelryGroups.map((value) => (
-                          <option key={value} value={value}>{value}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Size</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={designFilters.jewelrySize}
-                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, jewelrySize: event.target.value }))}
-                      >
-                        <option value="">All Sizes</option>
-                        {designFilterOptions.jewelrySizes.map((value) => (
-                          <option key={value} value={value}>{value}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Metal</label>
-                      <select
-                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={designFilters.metal}
-                        onChange={(event) => setDesignFilters((prev) => ({ ...prev, metal: event.target.value }))}
-                      >
-                        <option value="">All Metals</option>
-                        {designFilterOptions.metals.map((value) => (
-                          <option key={value} value={value}>{value}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <Button
-                        variant="secondary"
-                        type="button"
-                        disabled={!hasActiveDesignFilters}
-                        onClick={resetDesignFilters}
-                      >
-                        Reset
-                      </Button>
-                    </div>
-                  </div>
-                </fieldset>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(220px,0.75fr)]">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Company*</label>
-                    <select
-                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                        formErrors.companyId
-                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                      } ${
-                        !canSelectOrderCompany ? 'appearance-none bg-none' : ''
-                      }`}
-                      value={form.companyId}
-                      disabled={!canSelectOrderCompany}
-                      aria-invalid={Boolean(formErrors.companyId)}
-                      aria-describedby={formErrors.companyId ? 'company-error' : undefined}
-                      onChange={(event) => {
-                        setPriceManuallyEdited(false);
-                        setForm((prev) => ({ ...prev, companyId: event.target.value, branchId: '', salesRepId: '' }));
-                        setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined, salesRepId: undefined }));
-                      }}
-                    >
-                      <option value="">Select Company</option>
-                      {companies.map((company) => (
-                        <option key={company.id} value={company.id}>
-                          {company.companyName}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.companyId && (
-                      <p id="company-error" className="mt-1 text-xs font-medium text-rose-600">
-                        {formErrors.companyId}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Branch*</label>
-                    <select
-                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                        formErrors.branchId
-                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                      } ${
-                        !canSelectOrderBranch || !form.companyId ? 'appearance-none bg-none' : ''
-                      }`}
-                      value={form.branchId}
-                      disabled={!canSelectOrderBranch || !form.companyId}
-                      aria-invalid={Boolean(formErrors.branchId)}
-                      aria-describedby={formErrors.branchId ? 'branch-error' : undefined}
-                      onChange={(event) => {
-                        setPriceManuallyEdited(false);
-                        setForm((prev) => ({ ...prev, branchId: event.target.value, salesRepId: '' }));
-                        setFormErrors((prev) => ({ ...prev, branchId: undefined, salesRepId: undefined }));
-                      }}
-                    >
-                      <option value="">Select Branch</option>
-                      {branches.map((branch) => (
-                        <option key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.branchId && (
-                      <p id="branch-error" className="mt-1 text-xs font-medium text-rose-600">
-                        {formErrors.branchId}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Sales Rep*</label>
-                    <select
-                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                        formErrors.salesRepId
-                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                      } ${
-                        currentUser?.role === 'SALES_REP' || !form.branchId ? 'appearance-none bg-none' : ''
-                      }`}
-                      value={form.salesRepId}
-                      disabled={currentUser?.role === 'SALES_REP' || !form.branchId}
-                      aria-invalid={Boolean(formErrors.salesRepId)}
-                      aria-describedby={formErrors.salesRepId ? 'sales-rep-error' : undefined}
-                      onChange={(event) => {
-                        setForm((prev) => ({ ...prev, salesRepId: event.target.value }));
-                        setFormErrors((prev) => ({ ...prev, salesRepId: undefined }));
-                      }}
-                    >
-                      <option value="">Select Sales Rep</option>
-                      {salesReps.map((salesRep) => {
-                        const fullName = `${salesRep.firstName || ''} ${salesRep.lastName || ''}`.trim();
-                        return (
-                          <option key={salesRep.id} value={salesRep.id}>
-                            {fullName || salesRep.email || 'Sales Rep'}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    {formErrors.salesRepId && (
-                      <p id="sales-rep-error" className="mt-1 text-xs font-medium text-rose-600">
-                        {formErrors.salesRepId}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Expected Delivery Date*</label>
-                    <input
-                      type="date"
-                      className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                        formErrors.deliveryDate
-                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                      }`}
-                      value={form.deliveryDate}
-                      min={deliveryDateMin}
-                      required
-                      aria-invalid={Boolean(formErrors.deliveryDate)}
-                      aria-describedby={formErrors.deliveryDate ? 'delivery-date-error' : undefined}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setForm((prev) => ({ ...prev, deliveryDate: value }));
-                        if (value && deliveryDateMin && value < deliveryDateMin) {
-                          setFormErrors((prev) => ({
-                            ...prev,
-                            deliveryDate: 'Expected delivery date cannot be within 2 weeks of order creation date.',
-                          }));
-                        } else if (value) {
-                          setFormErrors((prev) => ({ ...prev, deliveryDate: undefined }));
-                        }
-                      }}
-                    />
-                    {formErrors.deliveryDate && (
-                      <p id="delivery-date-error" className="mt-1 text-xs font-medium text-rose-600">
-                        {formErrors.deliveryDate}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
-                  <div className="md:col-span-3 xl:col-span-4">
-                    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#9a7a4c]">Ring Configurator</div>
-                          <div className="mt-1 text-lg font-bold text-slate-900">{selectedDesignLabel}</div>
-                          <div className="text-sm text-slate-500">{designDetail?.designName || designDetail?.jewelryGroup || 'Select a design to configure order details.'}</div>
-                        </div>
-                        {(configuratorLoading || resolvingConfigurator) && (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                            {configuratorLoading ? 'Loading design...' : 'Updating selection...'}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                        <div className="space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4 xl:min-h-[520px]">
-                          <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Options</div>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            {configuratorFields.map(({ key, label }) => {
-                              const options = configuratorOptionGroups[key];
-                              const value = selectedConfiguratorOptions[key];
-                              if (!options.length && !value) return null;
-                              return (
-                                <div key={key}>
-                                  <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</label>
-                                  {options.length > 1 && options.length <= 4 ? (
-                                    <div className="mt-1 flex flex-wrap gap-1.5">
-                                      {options.map((option) => {
-                                        const active = option === value;
-                                        return (
-                                          <button
-                                            key={option}
-                                            type="button"
-                                            disabled={resolvingConfigurator}
-                                            onClick={() => handleConfiguratorOptionChange(key, option)}
-                                            className={`min-h-[24px] max-w-full rounded-full border px-2 py-0.5 text-[10px] font-bold leading-tight transition ${
-                                              active
-                                                ? 'border-[#c9954f] bg-[#fff8ed] text-slate-950 ring-2 ring-[#ead7b5]'
-                                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                                            } disabled:cursor-wait disabled:opacity-70`}
-                                          >
-                                            <span className="block truncate">{option}</span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : options.length > 1 ? (
-                                    <select
-                                      className="mt-1 w-full rounded-full border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                                      value={value}
-                                      disabled={resolvingConfigurator}
-                                      onChange={(event) => handleConfiguratorOptionChange(key, event.target.value)}
-                                    >
-                                      {options.map((option) => (
-                                        <option key={option} value={option}>{option}</option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <div className="mt-1 inline-flex min-h-[24px] max-w-full items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold leading-tight text-slate-900">
-                                      <span className="truncate">{value || options[0] || '-'}</span>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {configuratorError && (
-                            <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-                              {configuratorError}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-4">
-                          <div
-                            className="mx-auto flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                            style={{ width: '200px', height: '200px', maxWidth: '200px', maxHeight: '200px' }}
-                          >
-                            {selectedMediaUrl ? (
-                              <OrderMediaPreview
-                                url={selectedMediaUrl}
-                                alt={selectedDesignLabel}
-                                failedMediaUrls={failedMediaUrls}
-                                onImageError={markMediaFailed}
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-400">
-                                No media available
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
-                            {mediaUrls.length ? (
-                              <div className="flex gap-2">
-                                {mediaUrls.map((url, index) => {
-                                  const resolved = resolvePublicAssetUrl(url);
-                                  const active = index === selectedMediaIndex;
-                                  return (
-                                    <button
-                                      key={`${url}-${index}`}
-                                      type="button"
-                                      className={`h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-white p-1 transition ${
-                                        active ? 'border-[#c9954f] ring-2 ring-[#ead7b5]' : 'border-slate-200 hover:border-slate-300'
-                                      }`}
-                                      onClick={() => setSelectedMediaIndex(index)}
-                                      title={`${getUrlExtension(resolved)} file`}
-                                    >
-                                      {isImageUrl(resolved) && !failedMediaUrls.has(resolved) ? (
-                                        <img
-                                          src={resolved}
-                                          alt={`${selectedDesignLabel}-${index + 1}`}
-                                          className="h-full w-full rounded object-cover"
-                                          onError={() => markMediaFailed(resolved)}
-                                        />
-                                      ) : isVideoUrl(resolved) ? (
-                                        <div className="flex h-full w-full items-center justify-center rounded bg-slate-900/5 text-[10px] font-bold text-slate-500">
-                                          VIDEO
-                                        </div>
-                                      ) : (
-                                        <MediaFileFallback label={getUrlExtension(resolved)} compact />
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="flex h-20 items-center justify-center text-center text-xs font-semibold text-slate-400">
-                                No files
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Product Specifications</div>
-                            <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                              <div><span className="text-slate-500">Category</span><div className="font-semibold text-slate-900">{designDetail?.jewelryGroup || '-'}</div></div>
-                              <div><span className="text-slate-500">Status</span><div className="font-semibold text-slate-900">{designDetail?.designStatus || '-'}</div></div>
-                              <div><span className="text-slate-500">Diamond Type</span><div className="font-semibold text-slate-900">{designDetail?.diamondType || '-'}</div></div>
-                              <div><span className="text-slate-500">Diamond Spread</span><div className="font-semibold text-slate-900">{designDetail?.diamondSpread || '-'}</div></div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Customer Name</label>
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.customerName}
-                      onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Customer Phone</label>
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.customerPhone}
-                      onChange={(event) => setForm((prev) => ({ ...prev, customerPhone: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Customer Email</label>
-                    <input
-                      type="email"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.customerEmail}
-                      onChange={(event) => setForm((prev) => ({ ...prev, customerEmail: event.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
-                    <input
-                      type="text"
-                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={form.purchaseOrderNumber}
-                      onChange={(event) => {
-                        purchaseOrderBlurCheckRef.current = '';
-                        setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }));
-                      }}
-                      onBlur={checkPurchaseOrderUsageOnBlur}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
-                <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
-                  Order Pricing & Notes
+              <div className="overflow-hidden rounded-2xl border border-sky-200/60 bg-white shadow-sm ring-1 ring-sky-900/5 transition-all hover:shadow-md">
+                <div className="border-b border-sky-200/60 bg-sky-50/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-sky-800 backdrop-blur-sm">
+                  General Information
                 </div>
                 <div className="space-y-4 p-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Sale Price @*</label>
-                      <div className="mt-1 flex">
-                        <input
-                          type="number"
-                          className={`w-full rounded-l border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                            formErrors.price
-                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                          }`}
-                          value={form.price}
-                          required
-                          min="0.01"
-                          aria-invalid={Boolean(formErrors.price)}
-                          aria-describedby={formErrors.price ? 'price-error' : undefined}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            setPriceManuallyEdited(true);
-                            setForm((prev) => ({ ...prev, price: value }));
-                            if (Number(value || 0) > 0) {
-                              setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
-                            }
-                          }}
-                        />
-                        <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                  <fieldset className="rounded-xl border border-[#ead7b5] bg-[#fffaf2] px-4 pb-4 pt-3 shadow-sm">
+                    <legend className="rounded-full border border-[#ead7b5] bg-white px-2 py-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#9a6a2f]">Filter</legend>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.35fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_minmax(150px,0.7fr)_auto] xl:items-end">
+                      <div>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <label className="text-sm font-medium text-slate-700">Design No</label>
+                          {!isEditing && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-[#c9954f] hover:bg-[#fff8ed] hover:text-slate-900"
+                              onClick={() => {
+                                setShowDesignPickerModal(true);
+                                openDesignDropdown();
+                              }}
+                            >
+                              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 5h18" />
+                                <path d="M6 12h12" />
+                                <path d="M10 19h4" />
+                              </svg>
+                              Advanced filter
+                            </button>
+                          )}
+                        </div>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                            value={editingDesignLabel}
+                            disabled
+                            readOnly
+                          />
+                        ) : (
+                          <SmartDropdown
+                            value={baseDesignId || form.designId}
+                            onChange={(val) => selectDesignForOrder(val)}
+                            config={{
+                              apiSubPath: '/products',
+                              extraParams: {
+                                status: 'ACTIVE',
+                                selectorOnly: true,
+                                jewelryGroup: designFilters.jewelryGroup || undefined,
+                                collection: designFilters.collection || undefined,
+                                metalCaratage: designFilters.metal || undefined,
+                                jewelrySize: designFilters.jewelrySize || undefined,
+                                designStatus: designFilters.designStatus || undefined,
+                              },
+                              pagination: true,
+                              valueKey: 'id',
+                              labelKey: 'designNo',
+                              renderLabel: (opt) => formatDesignLabel(opt.designNo as string, opt.version as string),
+                              placeholder: 'Select Design',
+                            }}
+                          />
+                        )}
+                        {formErrors.designId && (
+                          <p id="design-error" className="mt-1 text-xs font-medium text-rose-600">
+                            {formErrors.designId}
+                          </p>
+                        )}
                       </div>
-                      {formErrors.price && (
-                        <p id="price-error" className="mt-1 text-xs font-medium text-rose-600">
-                          {formErrors.price}
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Category</label>
+                        <SmartDropdown
+                          value={designFilters.jewelryGroup}
+                          onChange={(val) => setDesignFilters((prev) => ({ ...prev, jewelryGroup: val, collection: '' }))}
+                          config={{
+                            apiSubPath: '/products/master-tables/JEWELRY_GROUP/dropdown',
+                            valueKey: 'value',
+                            labelKey: 'label',
+                            placeholder: 'All Categories',
+                            clearLabel: 'All Categories',
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Size</label>
+                        <SmartDropdown
+                          value={designFilters.jewelrySize}
+                          onChange={(val) => setDesignFilters((prev) => ({ ...prev, jewelrySize: val }))}
+                          config={{
+                            apiSubPath: '/products/master-tables/JEWELRY_SIZE/dropdown',
+                            valueKey: 'value',
+                            labelKey: 'label',
+                            placeholder: 'All Sizes',
+                            clearLabel: 'All Sizes',
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Metal</label>
+                        <SmartDropdown
+                          value={designFilters.metal}
+                          onChange={(val) => setDesignFilters((prev) => ({ ...prev, metal: val }))}
+                          config={{
+                            apiSubPath: '/products/master-tables/METAL_CARATAGE/dropdown',
+                            valueKey: 'value',
+                            labelKey: 'label',
+                            placeholder: 'All Metals',
+                            clearLabel: 'All Metals',
+                          }}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          disabled={!hasActiveDesignFilters}
+                          onClick={resetDesignFilters}
+                        >
+                          Reset
+                        </Button>
+                      </div>
+                    </div>
+                  </fieldset>
+
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(220px,0.75fr)]">
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Company*</label>
+                      <SmartDropdown
+                        value={form.companyId}
+                        onChange={(val) => {
+                          setPriceManuallyEdited(false);
+                          setForm((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' }));
+                          setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined, salesRepId: undefined }));
+                        }}
+                        config={{
+                          apiSubPath: '/companies/lookup',
+                          extraParams: { limit: 200, status: 'ACTIVE' },
+                          valueKey: 'id',
+                          labelKey: 'companyName',
+                          placeholder: 'Select Company',
+                          disabled: !canSelectOrderCompany,
+                          options: form.companyId ? companies.filter(c => c.id === form.companyId).map(c => ({ id: c.id, companyName: c.companyName })) : [],
+                        }}
+                        className={`mt-1 ${formErrors.companyId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : ''
+                          } ${!canSelectOrderCompany ? 'appearance-none bg-none' : ''}`}
+                      />
+                      {formErrors.companyId && (
+                        <p id="company-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.companyId}
                         </p>
                       )}
                     </div>
+
                     <div>
-                      <label className="text-sm font-medium text-slate-700">No. of Pcs*</label>
+                      <label className="text-sm font-medium text-slate-700">Branch*</label>
+                      <SmartDropdown
+                        value={form.branchId}
+                        onChange={(val) => {
+                          setPriceManuallyEdited(false);
+                          setForm((prev) => ({ ...prev, branchId: val, salesRepId: '' }));
+                          setFormErrors((prev) => ({ ...prev, branchId: undefined, salesRepId: undefined }));
+                        }}
+                        config={{
+                          apiSubPath: '/branches',
+                          extraParams: { companyId: form.companyId, limit: 200, status: 'ACTIVE' },
+                          valueKey: 'id',
+                          labelKey: 'name',
+                          placeholder: 'Select Branch',
+                          disabled: !canSelectOrderBranch || !form.companyId,
+                          options: form.branchId ? branches.filter(b => b.id === form.branchId).map(b => ({ id: b.id, name: b.name })) : [],
+                        }}
+                        className={`mt-1 ${formErrors.branchId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : ''
+                          } ${(!canSelectOrderBranch || !form.companyId) ? 'appearance-none bg-none' : ''}`}
+                      />
+                      {formErrors.branchId && (
+                        <p id="branch-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.branchId}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Sales Rep*</label>
+                      <SmartDropdown
+                        value={form.salesRepId}
+                        onChange={(val) => {
+                          setForm((prev) => ({ ...prev, salesRepId: val }));
+                          setFormErrors((prev) => ({ ...prev, salesRepId: undefined }));
+                        }}
+                        config={{
+                          apiSubPath: '/users/lookup',
+                          extraParams: { role: 'SALES_REP', status: 'ACTIVE', branchId: form.branchId },
+                          valueKey: 'id',
+                          labelKey: 'email',
+                          renderLabel: (option) => {
+                            const fullName = `${option.firstName || ''} ${option.lastName || ''}`.trim();
+                            return fullName || String(option.email || 'Sales Rep');
+                          },
+                          placeholder: 'Select Sales Rep',
+                          disabled: currentUser?.role === 'SALES_REP' || !form.branchId,
+                          options: form.salesRepId ? salesReps.filter(s => s.id === form.salesRepId).map(s => ({
+                            id: s.id,
+                            email: s.email,
+                            firstName: s.firstName,
+                            lastName: s.lastName
+                          })) : [],
+                        }}
+                        className={`mt-1 ${formErrors.salesRepId
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : ''
+                          } ${(currentUser?.role === 'SALES_REP' || !form.branchId) ? 'appearance-none bg-none' : ''}`}
+                      />
+                      {formErrors.salesRepId && (
+                        <p id="sales-rep-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.salesRepId}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Expected Delivery Date*</label>
                       <input
-                        type="number"
-                        className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
-                          formErrors.quantity
-                            ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                            : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                        }`}
-                        value={form.quantity}
+                        type="date"
+                        className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${formErrors.deliveryDate
+                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                          : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                          }`}
+                        value={form.deliveryDate}
+                        min={deliveryDateMin}
                         required
-                        min="1"
-                        aria-invalid={Boolean(formErrors.quantity)}
-                        aria-describedby={formErrors.quantity ? 'quantity-error' : undefined}
+                        aria-invalid={Boolean(formErrors.deliveryDate)}
+                        aria-describedby={formErrors.deliveryDate ? 'delivery-date-error' : undefined}
                         onChange={(event) => {
                           const value = event.target.value;
-                          setForm((prev) => ({ ...prev, quantity: value }));
-                          if (Number(value || 0) > 0) {
-                            setFormErrors((prev) => ({ ...prev, quantity: undefined, totalAmount: undefined }));
+                          setForm((prev) => ({ ...prev, deliveryDate: value }));
+                          if (value && deliveryDateMin && value < deliveryDateMin) {
+                            setFormErrors((prev) => ({
+                              ...prev,
+                              deliveryDate: 'Expected delivery date cannot be within 2 weeks of order creation date.',
+                            }));
+                          } else if (value) {
+                            setFormErrors((prev) => ({ ...prev, deliveryDate: undefined }));
                           }
                         }}
                       />
-                      {formErrors.quantity && (
-                        <p id="quantity-error" className="mt-1 text-xs font-medium text-rose-600">
-                          {formErrors.quantity}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT*</label>
-                      <div className="mt-1 flex">
-                        <input
-                          type="number"
-                          className={`w-full rounded-l border px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 ${
-                            formErrors.totalAmount
-                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
-                          }`}
-                          value={formatNumberInput(formTotalAmount)}
-                          required
-                          min="0.01"
-                          aria-invalid={Boolean(formErrors.totalAmount)}
-                          aria-describedby={formErrors.totalAmount ? 'total-amount-error' : undefined}
-                          onChange={(event) => {
-                            updatePriceFromTotalAmount(event.target.value);
-                            if (Number(event.target.value || 0) > 0) {
-                              setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
-                            }
-                          }}
-                        />
-                        <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
-                      </div>
-                      {formErrors.totalAmount && (
-                        <p id="total-amount-error" className="mt-1 text-xs font-medium text-rose-600">
-                          {formErrors.totalAmount}
+                      {formErrors.deliveryDate && (
+                        <p id="delivery-date-error" className="mt-1 text-xs font-medium text-rose-600">
+                          {formErrors.deliveryDate}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+                    <div className="md:col-span-3 xl:col-span-4">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#9a7a4c]">Ring Configurator</div>
+                            <div className="mt-1 text-lg font-bold text-slate-900">{selectedDesignLabel}</div>
+                            <div className="text-sm text-slate-500">{designDetail?.designName || designDetail?.jewelryGroup || 'Select a design to configure order details.'}</div>
+                          </div>
+                          {(configuratorLoading || resolvingConfigurator) && (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                              {configuratorLoading ? 'Loading design...' : 'Updating selection...'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                          <div className="space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-4 xl:min-h-[520px]">
+                            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Options</div>
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              {configuratorFields.map(({ key, label }) => {
+                                const options = configuratorOptionGroups[key];
+                                const value = selectedConfiguratorOptions[key];
+                                if (!options.length && !value) return null;
+                                return (
+                                  <div key={key}>
+                                    <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</label>
+                                    {options.length > 1 && options.length <= 4 ? (
+                                      <div className="mt-1 flex flex-wrap gap-1.5">
+                                        {options.map((option) => {
+                                          const active = option === value;
+                                          return (
+                                            <button
+                                              key={option}
+                                              type="button"
+                                              disabled={resolvingConfigurator}
+                                              onClick={() => handleConfiguratorOptionChange(key, option)}
+                                              className={`min-h-[24px] max-w-full rounded-full border px-2 py-0.5 text-[10px] font-bold leading-tight transition ${active
+                                                ? 'border-[#c9954f] bg-[#fff8ed] text-slate-950 ring-2 ring-[#ead7b5]'
+                                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                                                } disabled:cursor-wait disabled:opacity-70`}
+                                            >
+                                              <span className="block truncate">{option}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : options.length > 1 ? (
+                                      <select
+                                        className="mt-1 w-full rounded-full border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                        value={value}
+                                        disabled={resolvingConfigurator}
+                                        onChange={(event) => handleConfiguratorOptionChange(key, event.target.value)}
+                                      >
+                                        {options.map((option) => (
+                                          <option key={option} value={option}>{option}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <div className="mt-1 inline-flex min-h-[24px] max-w-full items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold leading-tight text-slate-900">
+                                        <span className="truncate">{value || options[0] || '-'}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {configuratorError && (
+                              <div className="rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+                                {configuratorError}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-4">
+                            <div
+                              className="mx-auto flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                              style={{ width: '200px', height: '200px', maxWidth: '200px', maxHeight: '200px' }}
+                            >
+                              {selectedMediaUrl ? (
+                                <OrderMediaPreview
+                                  url={selectedMediaUrl}
+                                  alt={selectedDesignLabel}
+                                  failedMediaUrls={failedMediaUrls}
+                                  onImageError={markMediaFailed}
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-400">
+                                  No media available
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+                              {mediaUrls.length ? (
+                                <div className="flex gap-2">
+                                  {mediaUrls.map((url, index) => {
+                                    const resolved = resolvePublicAssetUrl(url);
+                                    const active = index === selectedMediaIndex;
+                                    return (
+                                      <button
+                                        key={`${url}-${index}`}
+                                        type="button"
+                                        className={`h-20 w-20 shrink-0 overflow-hidden rounded-lg border bg-white p-1 transition ${active ? 'border-[#c9954f] ring-2 ring-[#ead7b5]' : 'border-slate-200 hover:border-slate-300'
+                                          }`}
+                                        onClick={() => setSelectedMediaIndex(index)}
+                                        title={`${getUrlExtension(resolved)} file`}
+                                      >
+                                        {isImageUrl(resolved) && !failedMediaUrls.has(resolved) ? (
+                                          <img
+                                            src={resolved}
+                                            alt={`${selectedDesignLabel}-${index + 1}`}
+                                            className="h-full w-full rounded object-cover"
+                                            onError={() => markMediaFailed(resolved)}
+                                          />
+                                        ) : isVideoUrl(resolved) ? (
+                                          <div className="flex h-full w-full items-center justify-center rounded bg-slate-900/5 text-[10px] font-bold text-slate-500">
+                                            VIDEO
+                                          </div>
+                                        ) : (
+                                          <MediaFileFallback label={getUrlExtension(resolved)} compact />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="flex h-20 items-center justify-center text-center text-xs font-semibold text-slate-400">
+                                  No files
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Product Specifications</div>
+                              <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                                <div><span className="text-slate-500">Category</span><div className="font-semibold text-slate-900">{designDetail?.jewelryGroup || '-'}</div></div>
+                                <div><span className="text-slate-500">Status</span><div className="font-semibold text-slate-900">{designDetail?.designStatus || '-'}</div></div>
+                                <div><span className="text-slate-500">Diamond Type</span><div className="font-semibold text-slate-900">{designDetail?.diamondType || '-'}</div></div>
+                                <div><span className="text-slate-500">Diamond Spread</span><div className="font-semibold text-slate-900">{designDetail?.diamondSpread || '-'}</div></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Short Description</label>
-                      <textarea
-                        className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={form.shortDescription}
-                        onChange={(event) => setForm((prev) => ({ ...prev, shortDescription: event.target.value }))}
+                      <label className="text-sm font-medium text-slate-700">Customer Name</label>
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.customerName}
+                        onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Notes</label>
-                      <textarea
-                        className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={form.notes}
-                        onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                      <label className="text-sm font-medium text-slate-700">Customer Phone</label>
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.customerPhone}
+                        onChange={(event) => setForm((prev) => ({ ...prev, customerPhone: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Customer Email</label>
+                      <input
+                        type="email"
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.customerEmail}
+                        onChange={(event) => setForm((prev) => ({ ...prev, customerEmail: event.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
+                      <input
+                        type="text"
+                        className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        value={form.purchaseOrderNumber}
+                        onChange={(event) => {
+                          purchaseOrderBlurCheckRef.current = '';
+                          setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }));
+                        }}
+                        onBlur={checkPurchaseOrderUsageOnBlur}
                       />
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-          <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => {
-                setShowAddModal(false);
-                setEditingOrderId(null);
-                setEditingOrderStatus('');
-                setEditOrderLoading(false);
-                setEditingDesignNo('');
-                setFormErrors({});
-                setDeliveryDateMin(getExpectedDeliveryMin());
-                resetConfiguratorState();
-              }}
-            >
-              Close
-            </Button>
-            <Button
-              type="button"
-              disabled={savingOrder}
-              onClick={handleSaveOrder}
-            >
-              {savingOrder ? 'Saving...' : isEditing ? 'Update' : 'Save'}
-            </Button>
-          </div>
-          </div>
+              <div>
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ring-1 ring-slate-900/5">
+                  <div className="border-b border-slate-200/70 bg-slate-50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-slate-700">
+                    Order Pricing & Notes
+                  </div>
+                  <div className="space-y-4 p-4">
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Sale Price @*</label>
+                        <div className="mt-1 flex">
+                          <input
+                            type="number"
+                            className={`w-full rounded-l border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${formErrors.price
+                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                              }`}
+                            value={form.price}
+                            required
+                            min="0.01"
+                            aria-invalid={Boolean(formErrors.price)}
+                            aria-describedby={formErrors.price ? 'price-error' : undefined}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setPriceManuallyEdited(true);
+                              setForm((prev) => ({ ...prev, price: value }));
+                              if (Number(value || 0) > 0) {
+                                setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
+                              }
+                            }}
+                          />
+                          <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                        </div>
+                        {formErrors.price && (
+                          <p id="price-error" className="mt-1 text-xs font-medium text-rose-600">
+                            {formErrors.price}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">No. of Pcs*</label>
+                        <input
+                          type="number"
+                          className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${formErrors.quantity
+                            ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                            : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                            }`}
+                          value={form.quantity}
+                          required
+                          min="1"
+                          aria-invalid={Boolean(formErrors.quantity)}
+                          aria-describedby={formErrors.quantity ? 'quantity-error' : undefined}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setForm((prev) => ({ ...prev, quantity: value }));
+                            if (Number(value || 0) > 0) {
+                              setFormErrors((prev) => ({ ...prev, quantity: undefined, totalAmount: undefined }));
+                            }
+                          }}
+                        />
+                        {formErrors.quantity && (
+                          <p id="quantity-error" className="mt-1 text-xs font-medium text-rose-600">
+                            {formErrors.quantity}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT*</label>
+                        <div className="mt-1 flex">
+                          <input
+                            type="number"
+                            className={`w-full rounded-l border px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 ${formErrors.totalAmount
+                              ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
+                              }`}
+                            value={formatNumberInput(formTotalAmount)}
+                            required
+                            min="0.01"
+                            aria-invalid={Boolean(formErrors.totalAmount)}
+                            aria-describedby={formErrors.totalAmount ? 'total-amount-error' : undefined}
+                            onChange={(event) => {
+                              updatePriceFromTotalAmount(event.target.value);
+                              if (Number(event.target.value || 0) > 0) {
+                                setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));
+                              }
+                            }}
+                          />
+                          <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
+                        </div>
+                        {formErrors.totalAmount && (
+                          <p id="total-amount-error" className="mt-1 text-xs font-medium text-rose-600">
+                            {formErrors.totalAmount}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Short Description</label>
+                        <textarea
+                          className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          value={form.shortDescription}
+                          onChange={(event) => setForm((prev) => ({ ...prev, shortDescription: event.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Notes</label>
+                        <textarea
+                          className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                          value={form.notes}
+                          onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-4">
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingOrderId(null);
+                    setEditingOrderStatus('');
+                    setEditOrderLoading(false);
+                    setEditingDesignNo('');
+                    setFormErrors({});
+                    setDeliveryDateMin(getExpectedDeliveryMin());
+                    resetConfiguratorState();
+                  }}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  disabled={savingOrder}
+                  onClick={handleSaveOrder}
+                >
+                  {savingOrder ? 'Saving...' : isEditing ? 'Update' : 'Save'}
+                </Button>
+              </div>
+            </div>
           )}
         </Modal>
       )}
@@ -3058,9 +3033,8 @@ export default function OrdersPage() {
                   <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Ship Date *</label>
                   <input
                     type="date"
-                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      completedShippingErrors.shipDate ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-                    }`}
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${completedShippingErrors.shipDate ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                      }`}
                     value={completedShippingForm.shipDate}
                     onChange={(event) => {
                       setCompletedShippingForm((prev) => ({ ...prev, shipDate: event.target.value }));
@@ -3072,9 +3046,8 @@ export default function OrdersPage() {
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Ship Via *</label>
                   <select
-                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      completedShippingErrors.shipVia ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-                    }`}
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${completedShippingErrors.shipVia ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                      }`}
                     value={completedShippingForm.shipVia}
                     onChange={(event) => {
                       setCompletedShippingForm((prev) => ({ ...prev, shipVia: event.target.value }));
@@ -3094,9 +3067,8 @@ export default function OrdersPage() {
                   <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Tracking No. *</label>
                   <input
                     type="text"
-                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      completedShippingErrors.trackingNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-                    }`}
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${completedShippingErrors.trackingNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                      }`}
                     value={completedShippingForm.trackingNo}
                     onChange={(event) => {
                       setCompletedShippingForm((prev) => ({ ...prev, trackingNo: event.target.value }));
@@ -3110,9 +3082,8 @@ export default function OrdersPage() {
                   <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Invoice No. *</label>
                   <input
                     type="text"
-                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${
-                      completedShippingErrors.invoiceNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
-                    }`}
+                    className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 ${completedShippingErrors.invoiceNo ? 'border-rose-300 bg-rose-50' : 'border-slate-300'
+                      }`}
                     value={completedShippingForm.invoiceNo}
                     onChange={(event) => {
                       setCompletedShippingForm((prev) => ({ ...prev, invoiceNo: event.target.value }));
@@ -3308,9 +3279,8 @@ export default function OrdersPage() {
                         return (
                           <tr
                             key={design.id}
-                            className={`cursor-pointer border-b border-slate-100 transition hover:bg-[#fffaf2] ${
-                              selected ? 'bg-[#fff8ed]' : 'bg-white'
-                            }`}
+                            className={`cursor-pointer border-b border-slate-100 transition hover:bg-[#fffaf2] ${selected ? 'bg-[#fff8ed]' : 'bg-white'
+                              }`}
                             onClick={() => selectDesignForOrder(design.id, true)}
                           >
                             <td className="px-3 py-3">
@@ -3369,182 +3339,182 @@ export default function OrdersPage() {
             </div>
           ) : (
             <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-              <label className="text-sm font-medium text-slate-700">Design</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign ? formatDesignLabel(viewDesign.designNo, viewDesign.version) : '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Company</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.companyName || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Branch</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.branchName || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Category</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.jewelryGroup || '-'}
-              </div>
-              </div>
-              {/* <div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Design</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign ? formatDesignLabel(viewDesign.designNo, viewDesign.version) : '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Company</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.companyName || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Branch</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.branchName || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Category</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.jewelryGroup || '-'}
+                  </div>
+                </div>
+                {/* <div>
               <label className="text-sm font-medium text-slate-700">Sub Category</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.collection || '-'}
               </div>
               </div> */}
-              <div>
-              <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.jewelrySize || '-'}
-              </div>
-              </div>
-              {/* <div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Jewelry Size</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.jewelrySize || '-'}
+                  </div>
+                </div>
+                {/* <div>
               <label className="text-sm font-medium text-slate-700">Design Status</label>
               <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {viewDesign?.designStatus || '-'}
               </div>
               </div> */}
-              <div>
-              <label className="text-sm font-medium text-slate-700">Diamond Type</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.diamondType || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.diamondSpread || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.diamondWeight || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewDesign?.diamondQuality || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Expected Delivery Date</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.deliveryDate || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Ship Date</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.shipDate || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Ship Via</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {formatShipVia(viewOrder?.shipVia)}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Tracking No.</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.trackingNo || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Invoice No.</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.invoiceNo || '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Quantity</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.quantity ?? '-'}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Sale Price</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
-                {formatMoney(Number(viewOrder?.price || 0))}
-              </div>
-              </div>
-              <div>
-              <label className="text-sm font-medium text-slate-700">Total Amount</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
-                {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
-              </div>
-              </div>
-            {canViewCostPrice && (
-              <div>
-                <label className="text-sm font-medium text-slate-700">Cost Price</label>
-                <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {viewOrder?.costPrice !== undefined && viewOrder?.costPrice !== null
-                    ? formatMoney(Number(viewOrder?.costPrice || 0))
-                    : '-'}
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Diamond Type</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.diamondType || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Diamond Spread</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.diamondSpread || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Diamond Wt</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.diamondWeight || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Diamond Quality</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewDesign?.diamondQuality || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Expected Delivery Date</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.deliveryDate || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Ship Date</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.shipDate || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Ship Via</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {formatShipVia(viewOrder?.shipVia)}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Tracking No.</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.trackingNo || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Invoice No.</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.invoiceNo || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Quantity</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.quantity ?? '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Sale Price</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                    {formatMoney(Number(viewOrder?.price || 0))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Total Amount</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
+                    {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
+                  </div>
+                </div>
+                {canViewCostPrice && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Cost Price</label>
+                    <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {viewOrder?.costPrice !== undefined && viewOrder?.costPrice !== null
+                        ? formatMoney(Number(viewOrder?.costPrice || 0))
+                        : '-'}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Sales Rep</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Client Name</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.customerName || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Client Phone</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.customerPhone || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Client Email</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.customerEmail || '-'}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
+                  <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {viewOrder?.purchaseOrderNumber || '-'}
+                  </div>
                 </div>
               </div>
-            )}
-            <div>
-              <label className="text-sm font-medium text-slate-700">Sales Rep</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Client Name</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.customerName || '-'}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Client Phone</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.customerPhone || '-'}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Client Email</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.customerEmail || '-'}
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Purchase Order Number</label>
-              <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {viewOrder?.purchaseOrderNumber || '-'}
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-6 rounded-xl border border-slate-200">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
-            <div className="flex min-h-[54px] flex-wrap items-center gap-2 bg-white px-4 py-3">
-              {viewDesign?.metals?.length ? (
-                viewDesign.metals.map((metal, index) => {
-                  const label = metal.metalCaratage || '-';
-                  return (
-                    <span key={metal.id || `${label}-${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {label}
-                    </span>
-                  );
-                })
-              ) : (
-                <span className="text-sm text-slate-500">No metal information</span>
-              )}
-            </div>
-          </div>
+              <div className="mt-6 rounded-xl border border-slate-200">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
+                <div className="flex min-h-[54px] flex-wrap items-center gap-2 bg-white px-4 py-3">
+                  {viewDesign?.metals?.length ? (
+                    viewDesign.metals.map((metal, index) => {
+                      const label = metal.metalCaratage || '-';
+                      return (
+                        <span key={metal.id || `${label}-${index}`} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                          {label}
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span className="text-sm text-slate-500">No metal information</span>
+                  )}
+                </div>
+              </div>
 
-          {/* <div className="mt-6 rounded-xl border border-slate-200">
+              {/* <div className="mt-6 rounded-xl border border-slate-200">
             <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Stone Information</div>
             <div className="app-table-shell">
               <div className="app-table-scroll scrollbar-top">
@@ -3588,43 +3558,43 @@ export default function OrdersPage() {
             </div>
           </div> */}
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-            <div>
-              <div className="text-sm font-semibold text-slate-800 mb-2">Images & Videos</div>
-              {viewMediaUrls.length ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {viewMediaUrls.map((url, index) => (
-                    <MediaPreview key={`${url}-${index}`} url={url} alt={`${viewDesign?.designNo || 'order-media'}-${index}`} />
-                  ))}
+              <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800 mb-2">Images & Videos</div>
+                  {viewMediaUrls.length ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {viewMediaUrls.map((url, index) => (
+                        <MediaPreview key={`${url}-${index}`} url={url} alt={`${viewDesign?.designNo || 'order-media'}-${index}`} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-36 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
+                      No media available for this design.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="flex h-36 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500">
-                  No media available for this design.
-                </div>
-              )}
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-slate-700">Short Description</label>
-                <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {viewOrder?.shortDescription || '-'}
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Short Description</label>
+                    <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {viewOrder?.shortDescription || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-700">Notes</label>
+                    <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {viewOrder?.notes || '-'}
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700">Notes</label>
-                <div className="mt-1 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                  {viewOrder?.notes || '-'}
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button variant="secondary" type="button" onClick={() => setShowViewModal(false)}>
-              Close
-            </Button>
-          </div>
-          </div>
+              <div className="mt-6 flex justify-end gap-2 border-t border-slate-200 pt-4">
+                <Button variant="secondary" type="button" onClick={() => setShowViewModal(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
           )}
         </Modal>
       )}

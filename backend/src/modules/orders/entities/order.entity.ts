@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
   JoinColumn,
   BeforeInsert,
+  Index,
 } from 'typeorm';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 import { Company } from '../../companies/entities/company.entity';
@@ -16,23 +17,35 @@ import { Design } from '../../products/entities/design.entity';
 
 @Entity('orders')
 export class Order {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
 
   @Column({ name: 'order_number', unique: true })
   orderNumber: string;
 
-  @Column({ name: 'company_id', nullable: true })
+  @Index('idx_orders_company_id')
+  @Column({ name: 'company_id', type: 'int', nullable: true })
   companyId: string | null;
 
-  @Column({ name: 'branch_id', nullable: true })
+  @Index('idx_orders_branch_id')
+  @Column({ name: 'branch_id', type: 'int', nullable: true })
   branchId: string | null;
 
+  @Index('idx_orders_design_id')
   @Column({ name: 'design_id', type: 'int', nullable: true })
-  designId: number | string | null;
+  designId: string | null;
 
-  @Column({ name: 'sales_rep_id', nullable: true })
+  @Index('idx_orders_sales_rep_id')
+  @Column({ name: 'sales_rep_id', type: 'int', nullable: true })
   salesRepId: string | null;
+
+  @Index('idx_orders_created_by')
+  @Column({ name: 'created_by', type: 'int', nullable: true })
+  createdBy: string | null;
+
+  @Index('idx_orders_updated_by')
+  @Column({ name: 'updated_by', type: 'int', nullable: true })
+  updatedBy: string | null;
 
   @Column({ name: 'delivery_date', type: 'date', nullable: true })
   deliveryDate: string | null;
@@ -67,7 +80,7 @@ export class Order {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
-  @Column({ name: 'completed_at', type: 'datetime', nullable: true })
+  @Column({ name: 'completed_at', type: 'datetime', precision: 6, nullable: true })
   completedAt: Date | null;
 
   @Column({ name: 'ship_date', type: 'date', nullable: true })
@@ -90,7 +103,7 @@ export class Order {
   @JoinColumn({ name: 'branch_id' })
   branch: Branch;
 
-  @ManyToOne(() => Design, { nullable: true })
+  @ManyToOne(() => Design, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })
   design: Design;
 
@@ -98,10 +111,18 @@ export class Order {
   @JoinColumn({ name: 'sales_rep_id' })
   salesRep: User;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'created_by' })
+  createdByUser: User;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'updated_by' })
+  updatedByUser: User;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 6 })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 6 })
   updatedAt: Date;
 
   @BeforeInsert()

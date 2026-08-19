@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Index,
 } from 'typeorm';
 import { Design } from './design.entity';
 import { User } from '../../users/entities/user.entity';
@@ -14,6 +15,7 @@ export class DesignStlFile {
   @PrimaryGeneratedColumn({ type: 'int' })
   id: number | string;
 
+  @Index('idx_design_stl_files_design_id')
   @Column({ name: 'design_id', type: 'int' })
   designId: number | string;
 
@@ -26,8 +28,9 @@ export class DesignStlFile {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
-  @Column({ name: 'uploaded_by', nullable: true })
-  uploadedBy: string | null;
+  @Index('idx_design_stl_files_uploaded_by')
+  @Column({ name: 'uploaded_by', type: 'int', nullable: true })
+  uploadedBy: number | string | null;
 
   @ManyToOne(() => Design, (design) => design.stlFiles, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })
@@ -39,5 +42,4 @@ export class DesignStlFile {
 
   @CreateDateColumn({ name: 'uploaded_at' })
   uploadedAt: Date;
-
 }
