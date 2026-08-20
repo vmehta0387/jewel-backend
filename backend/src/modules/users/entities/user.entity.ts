@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
 import { UserRole } from '../../../common/enums/user-role.enum';
@@ -6,8 +6,8 @@ import { TaskPermission } from '../../../common/enums/task-permission.enum';
 
 @Entity('users')
 export class User {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
   @Column({ unique: true })
   email: string;
@@ -27,11 +27,11 @@ export class User {
   @Column({ type: 'enum', enum: UserRole })
   role: UserRole;
 
-  @Column({ name: 'company_id', nullable: true })
-  companyId: string;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
-  @Column({ name: 'branch_id', nullable: true })
-  branchId: string;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
   @Column({ name: 'task_permissions', type: 'json', nullable: true })
   taskPermissions: TaskPermission[];

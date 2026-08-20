@@ -88,10 +88,10 @@ export abstract class MasterTableEntity {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
-  @Column({ name: 'created_by', type: 'int', nullable: true })
+  @Column({ name: 'created_by', type: 'int', width: 11, nullable: true })
   createdBy: number | null;
 
-  @Column({ name: 'updated_by', type: 'int', nullable: true })
+  @Column({ name: 'updated_by', type: 'int', width: 11, nullable: true })
   updatedBy: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
@@ -121,7 +121,7 @@ export abstract class MasterTableEntity {
 }
 
 export abstract class JewelryGroupScopedMasterEntity extends MasterTableEntity {
-  @Column({ name: 'jewelry_group_id', type: 'int', nullable: true })
+  @Column({ name: 'jewelry_group_id', type: 'int', width: 11, nullable: true })
   jewelryGroupId: number | null;
 }
 
@@ -165,7 +165,7 @@ export class MetalNameMaster extends MasterTableEntity {
 
 @Entity('metal_colors')
 export class MetalColorMaster extends MasterTableEntity {
-  @Column({ name: 'metal_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_id', type: 'int', width: 11, nullable: true })
   metalId: number | null;
 
   @ManyToOne(() => MetalNameMaster, { nullable: true })
@@ -175,7 +175,7 @@ export class MetalColorMaster extends MasterTableEntity {
 
 @Entity('metal_purities')
 export class MetalPurityMaster extends MasterTableEntity {
-  @Column({ name: 'metal_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_id', type: 'int', width: 11, nullable: true })
   metalId: number | null;
 
   @ManyToOne(() => MetalNameMaster, { nullable: true })
@@ -188,13 +188,13 @@ export class MetalPurityMaster extends MasterTableEntity {
 
 @Entity('metal_caratages')
 export class MetalCaratageMaster extends MasterTableEntity {
-  @Column({ name: 'metal_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_id', type: 'int', width: 11, nullable: true })
   metalId: number | null;
 
-  @Column({ name: 'metal_color_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_color_id', type: 'int', width: 11, nullable: true })
   metalColorId: number | null;
 
-  @Column({ name: 'metal_purity_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_purity_id', type: 'int', width: 11, nullable: true })
   metalPurityId: number | null;
 
   @ManyToOne(() => MetalNameMaster, { nullable: true })
@@ -269,7 +269,7 @@ export class LaborRuleMaster extends JewelryGroupScopedMasterEntity {
 
 @Entity('overhead_rules')
 export class OverheadRuleMaster extends MasterTableEntity {
-  @Column({ name: 'jewelry_group_id', type: 'int', nullable: true })
+  @Column({ name: 'jewelry_group_id', type: 'int', width: 11, nullable: true })
   jewelryGroupId: number | null;
 
   @ManyToOne(() => JewelryGroupMaster, { nullable: true })
@@ -296,7 +296,7 @@ export class FindingHeadMaster extends MasterTableEntity {
   @Column({ name: 'finding_no', length: 100, nullable: true })
   findingNo: string | null;
 
-  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_caratage_id', type: 'int', width: 11, nullable: true })
   metalCaratageId: number | null;
 
   @ManyToOne(() => MetalCaratageMaster, { nullable: true })

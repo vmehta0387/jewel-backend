@@ -1,13 +1,12 @@
 ﻿import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
@@ -16,19 +15,19 @@ import { SpiffLedgerEvent } from '../enums/spiff-ledger-event.enum';
 
 @Entity('spiff_point_ledger')
 export class SpiffPointLedger {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'user_id' })
-  userId: string;
+  @Column({ name: 'user_id', type: 'int', width: 11 })
+  userId: number;
 
-  @Column({ name: 'company_id', nullable: true })
-  companyId: string | null;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
-  @Column({ name: 'branch_id', nullable: true })
-  branchId: string | null;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
-  @Column({ name: 'order_id', nullable: true })
+  @Column({ name: 'order_id', type: 'int', width: 11, nullable: true })
   orderId: number | null;
 
   @Column({
@@ -69,10 +68,6 @@ export class SpiffPointLedger {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  assignId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date;
 }

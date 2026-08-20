@@ -2,13 +2,13 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 
 @Entity('pricing_rules')
 export class PricingRule {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
 
   @Column({ name: 'rule_type', type: 'enum', enum: ['COMPANY', 'BRANCH', 'COLLECTION'] })
   ruleType: string;
 
-  @Column({ name: 'entity_id' })
+  @Column({ name: 'entity_id', type: 'int', width: 11 })
   entityId: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2 })

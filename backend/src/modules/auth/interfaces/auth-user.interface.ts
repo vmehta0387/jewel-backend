@@ -8,13 +8,13 @@ export interface AuthActionPermission {
 }
 
 export interface AuthUser {
-  id: string;
+  id: number;
   email: string;
   firstName: string;
   lastName: string;
   role: UserRole;
-  companyId: string | null;
-  branchId: string | null;
+  companyId: number | null;
+  branchId: number | null;
   photoUrl: string | null;
   phone?: string | null;
   taskPermissions: TaskPermission[];
@@ -24,10 +24,10 @@ export interface AuthUser {
 }
 
 export interface JwtPayload {
-  sub: string;
+  sub: number;
   email: string;
   role: UserRole;
-  companyId: string | null;
-  branchId: string | null;
+  companyId: number | null;
+  branchId: number | null;
   taskPermissions: TaskPermission[];
 }

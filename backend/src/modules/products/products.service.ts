@@ -67,8 +67,8 @@ import { MasterTablesService } from './master-tables.service';
 
 
 interface ScopeResult {
-  companyId: string | null;
-  branchId: string | null;
+  companyId: number | null;
+  branchId: number | null;
 }
 
 type MobileConfiguratorKey =
@@ -880,7 +880,7 @@ export class ProductsService {
   }
 
   async exportDesignsByIds(
-    ids: string[],
+    ids: number[],
     requester: AuthUser,
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const workbook = XLSX.utils.book_new();
@@ -1530,7 +1530,7 @@ export class ProductsService {
     });
     if (query.summaryOnly) {
       const updatedByMap = await this.resolveUserNames(
-        data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+        data.map((design) => design.updatedBy).filter((value): value is number => Boolean(value)),
       );
       const summaryData = await Promise.all(
         data.map(async (design) => {
@@ -1554,7 +1554,7 @@ export class ProductsService {
     }
 
     const updatedByMap = await this.resolveUserNames(
-      data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+      data.map((design) => design.updatedBy).filter((value): value is number => Boolean(value)),
     );
     const enrichedData = await Promise.all(
       data.map(async (design) => {
@@ -1909,7 +1909,7 @@ export class ProductsService {
     try {
       const preview = await this.pricingService.calculateDesignRetailPrice({
         design,
-        companyId: requester.companyId as string,
+        companyId: requester.companyId as number,
         branchId,
       });
       return preview.finalPrice;
@@ -2103,14 +2103,14 @@ export class ProductsService {
     return result;
   }
 
-  async findMobileConfigurator(id: string, requester: AuthUser): Promise<any> {
+  async findMobileConfigurator(id: number, requester: AuthUser): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
     const selected = family.find((design) => design.id === id) || family.find((design) => design.isPrimary) || family[0];
     return this.toMobileConfiguratorResponse(family, selected, {}, requester);
   }
 
   async resolveMobileConfigurator(
-    id: string,
+    id: number,
     query: ResolveMobileDesignConfiguratorQueryDto,
     requester: AuthUser,
   ): Promise<any> {
@@ -2120,7 +2120,7 @@ export class ProductsService {
   }
 
   private async fetchMobileConfiguratorMatchFromDb(
-    id: string,
+    id: number,
     query: ResolveMobileDesignConfiguratorQueryDto,
     requester: AuthUser,
   ): Promise<Design> {
@@ -2223,7 +2223,7 @@ export class ProductsService {
     return selected;
   }
 
-  private async loadMobileConfiguratorFamily(id: string, requester: AuthUser): Promise<Design[]> {
+  private async loadMobileConfiguratorFamily(id: number, requester: AuthUser): Promise<Design[]> {
     const selected = await this.designRepo.findOne({
       where: { id },
       relations: [
@@ -2830,7 +2830,7 @@ export class ProductsService {
       if (designId) metalInfoByDesign.set(designId, this.optionalText(row.metalInfo));
     });
     const updatedByMap = await this.resolveUserNames(
-      data.map((design) => design.updatedBy).filter((value): value is string => Boolean(value)),
+      data.map((design) => design.updatedBy).filter((value): value is number => Boolean(value)),
     );
     const summaryData = await Promise.all(
       data.map((design) => this.toCompactDesignListRow(
@@ -2987,7 +2987,7 @@ export class ProductsService {
     };
   }
 
-  async findOne(id: string | number, requester: AuthUser): Promise<any> {
+  async findOne(id: number, requester: AuthUser): Promise<any> {
     const design = await this.designRepo.findOne({
       where: { id },
       relations: [
@@ -3097,7 +3097,7 @@ export class ProductsService {
     };
   }
 
-  async update(id: string | number, dto: UpdateProductDto, requester: AuthUser): Promise<any> {
+  async update(id: number, dto: UpdateProductDto, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     const designMasterRefs = await this.resolveDesignMasterRefs(dto, design);
@@ -3278,7 +3278,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async setPrimaryVersion(id: string, requester: AuthUser): Promise<any> {
+  async setPrimaryVersion(id: number, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
 
@@ -3317,7 +3317,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async updateStatus(id: string, isActive: boolean, requester: AuthUser): Promise<any> {
+  async updateStatus(id: number, isActive: boolean, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     if (isActive && requester.role !== UserRole.SUPER_ADMIN) {
       throw new ForbiddenException('Only Super Admin can activate inactive designs.');
@@ -3346,7 +3346,7 @@ export class ProductsService {
     };
   }
 
-  async remove(id: string, requester: AuthUser): Promise<{ deleted: boolean }> {
+  async remove(id: number, requester: AuthUser): Promise<{ deleted: boolean }> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     if (!design.isActive) {
@@ -3360,8 +3360,8 @@ export class ProductsService {
   }
 
   async replaceRelevantDesigns(
-    id: string,
-    designIds: string[],
+    id: number,
+    designIds: number[],
     requester: AuthUser,
     options?: { logHistory?: boolean },
   ): Promise<any> {
@@ -3375,7 +3375,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async replaceProcessStages(id: string, rows: DesignProcessStageDto[], requester: AuthUser): Promise<any> {
+  async replaceProcessStages(id: number, rows: DesignProcessStageDto[], requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replaceProcessStageRows(id, rows || []);
@@ -3383,7 +3383,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async replacePricingTiers(id: string, rows: DesignPricingTierDto[], requester: AuthUser): Promise<any> {
+  async replacePricingTiers(id: number, rows: DesignPricingTierDto[], requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replacePricingTierRows(id, rows || []);
@@ -3391,7 +3391,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async replaceVendors(id: string, rows: DesignVendorDto[], requester: AuthUser): Promise<any> {
+  async replaceVendors(id: number, rows: DesignVendorDto[], requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     await this.getDesignForWrite(id, requester);
     await this.replaceVendorRows(id, rows || []);
@@ -3399,7 +3399,7 @@ export class ProductsService {
     return this.findOne(id, requester);
   }
 
-  async uploadStlFile(id: string, dto: UploadStlFileDto, requester: AuthUser): Promise<any> {
+  async uploadStlFile(id: number, dto: UploadStlFileDto, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
     const fileUrl = this.normalizePersistentStlFileUrl(dto.fileUrl);
@@ -3427,7 +3427,7 @@ export class ProductsService {
   }
 
   async getStlFileContent(
-    id: string,
+    id: number,
     requester: AuthUser,
   ): Promise<{ buffer: Buffer; fileName: string }> {
     const design = await this.getDesignForRead(id, requester);
@@ -3666,7 +3666,7 @@ export class ProductsService {
     return { files: uploaded };
   }
 
-  async getHistory(id: string, requester: AuthUser): Promise<any[]> {
+  async getHistory(id: number, requester: AuthUser): Promise<any[]> {
     if (requester.role !== UserRole.SUPER_ADMIN) {
       throw new ForbiddenException('Only Super Admin can view design history');
     }
@@ -3750,7 +3750,7 @@ export class ProductsService {
   }
 
   async removeMediaLibraryItem(
-    id: string,
+    id: number,
     requester: AuthUser,
   ): Promise<{ removed: boolean; usageCount?: number; usedBy?: Array<{ id: string; designNo: string; version: string }> }> {
     this.assertDesignCreateAccess(requester);
@@ -3808,7 +3808,7 @@ export class ProductsService {
     };
   }
 
-  private async getDesignForWrite(id: string | number, requester: AuthUser): Promise<Design> {
+  private async getDesignForWrite(id: number, requester: AuthUser): Promise<Design> {
     this.assertDesignWriteAccess(requester);
     const design = await this.designRepo.findOne({ where: { id } });
     if (!design) {
@@ -3818,7 +3818,7 @@ export class ProductsService {
     return design;
   }
 
-  private async getDesignForRead(id: string, requester: AuthUser): Promise<Design> {
+  private async getDesignForRead(id: number, requester: AuthUser): Promise<Design> {
     const design = await this.designRepo.findOne({ where: { id } });
     if (!design) {
       throw new NotFoundException('Product design not found');
@@ -3850,12 +3850,12 @@ export class ProductsService {
   }
 
   private async resolveScope(
-    inputCompanyId: string | undefined,
-    inputBranchId: string | undefined,
+    inputCompanyId: number | undefined,
+    inputBranchId: number | undefined,
     requester: AuthUser,
   ): Promise<ScopeResult> {
-    let companyId = inputCompanyId?.trim() || null;
-    let branchId = inputBranchId?.trim() || null;
+    let companyId = inputCompanyId || null;
+    let branchId = inputBranchId || null;
 
     if (branchId) {
       const branch = await this.branchRepo.findOne({ where: { id: branchId } });
@@ -3904,11 +3904,11 @@ export class ProductsService {
   private applyScopeFilter(
     qb: any,
     requester: AuthUser,
-    companyId?: string,
-    branchId?: string,
+    companyId?: number,
+    branchId?: number,
   ): void {
-    const normalizedCompanyId = companyId?.trim();
-    const normalizedBranchId = branchId?.trim();
+    const normalizedCompanyId = companyId;
+    const normalizedBranchId = branchId;
 
     if (requester.role === UserRole.SUPER_ADMIN) {
       if (normalizedCompanyId) {
@@ -3993,7 +3993,7 @@ export class ProductsService {
   private async assertUniqueDesign(
     designNo: string,
     version: string,
-    companyId: string | null,
+    companyId: number | null,
     excludeId?: string | number,
   ): Promise<void> {
     const existing = await this.designRepo.findOne({
@@ -4072,7 +4072,7 @@ export class ProductsService {
     return this.buildDesignNoPrefix(normalizedGroup);
   }
 
-  private async generateNextDesignNo(prefix: string, companyId: string | null): Promise<string> {
+  private async generateNextDesignNo(prefix: string, companyId: number | null): Promise<string> {
     const regex = `^${prefix}-[0-9]+$`;
     const qb = this.designRepo
       .createQueryBuilder('design')
@@ -4095,7 +4095,7 @@ export class ProductsService {
   }
 
   private async withDesignNoLock<T>(
-    companyId: string | null,
+    companyId: number | null,
     prefix: string,
     callback: () => Promise<T>,
   ): Promise<T> {
@@ -4213,7 +4213,7 @@ export class ProductsService {
 
   private async syncMetalCaratageRatesForMetalName(
     metalName: string,
-    updatedBy?: string | null,
+    updatedBy?: number | null,
   ): Promise<string[]> {
     const normalizedMetalName = this.optionalText(metalName);
     if (!normalizedMetalName) {
@@ -4277,7 +4277,7 @@ export class ProductsService {
     return Array.from(affectedValues);
   }
 
-  private async safeSaveMetalPriceHistory(master: ProductMasterRow, changedBy: string): Promise<void> {
+  private async safeSaveMetalPriceHistory(master: ProductMasterRow, changedBy: number): Promise<void> {
     try {
       await this.metalPriceHistoryRepo.save(
         this.metalPriceHistoryRepo.create({
@@ -4293,9 +4293,9 @@ export class ProductsService {
     }
   }
 
-  private systemMasterRequester(userId?: string | null): AuthUser {
+  private systemMasterRequester(userId?: number | null): AuthUser {
     return {
-      id: userId || '0',
+      id: userId || 0,
       email: 'system@local',
       firstName: 'System',
       lastName: '',
@@ -4307,7 +4307,7 @@ export class ProductsService {
     };
   }
 
-  private scheduleMetalNameDependentsSync(master: ProductMasterRow, updatedBy: string): void {
+  private scheduleMetalNameDependentsSync(master: ProductMasterRow, updatedBy: number): void {
     const key = this.normalizeLookupKey(master.value) || String(master.id);
     const existingTimer = this.metalNameSyncTimers.get(key);
     if (existingTimer) {
@@ -4321,7 +4321,7 @@ export class ProductsService {
     this.metalNameSyncTimers.set(key, timer);
   }
 
-  private async safeSyncMetalNameDependents(master: ProductMasterRow, updatedBy: string): Promise<void> {
+  private async safeSyncMetalNameDependents(master: ProductMasterRow, updatedBy: number): Promise<void> {
     try {
       const affectedMetalCaratages = await this.syncMetalCaratageRatesForMetalName(
         master.value,
@@ -4739,7 +4739,7 @@ export class ProductsService {
     return values.length > 0 ? values.join(', ') : null;
   }
 
-  private async replaceMetalRows(designId: string | number, rows: NormalizedMetalRow[]): Promise<void> {
+  private async replaceMetalRows(designId: number, rows: NormalizedMetalRow[]): Promise<void> {
     await this.metalRepo.delete({ designId });
 
     if (rows.length === 0) {
@@ -4763,7 +4763,7 @@ export class ProductsService {
       .execute();
   }
 
-  private async replaceGemstoneRows(designId: string | number, rows: NormalizedGemstoneRow[]): Promise<void> {
+  private async replaceGemstoneRows(designId: number, rows: NormalizedGemstoneRow[]): Promise<void> {
     await this.gemstoneRepo.delete({ designId });
 
     if (rows.length === 0) {
@@ -4787,15 +4787,15 @@ export class ProductsService {
       .execute();
   }
 
-  private async replaceDesignTags(designId: string | number, tagIds: number[]): Promise<void> {
-    await this.designTagRepo.delete({ designId: Number(designId) });
+  private async replaceDesignTags(designId: number, tagIds: number[]): Promise<void> {
+    await this.designTagRepo.delete({ designId });
     if (!tagIds.length) return;
     await this.designTagRepo.save(
-      tagIds.map((tagId) => this.designTagRepo.create({ designId: Number(designId), tagId })),
+      tagIds.map((tagId) => this.designTagRepo.create({ designId, tagId })),
     );
   }
 
-  private async replaceLaborRows(designId: string | number, rows: NormalizedLaborRow[]): Promise<void> {
+  private async replaceLaborRows(designId: number, rows: NormalizedLaborRow[]): Promise<void> {
     await this.laborRepo.delete({ designId });
 
     if (rows.length === 0) {
@@ -4819,7 +4819,7 @@ export class ProductsService {
       .execute();
   }
 
-  private async replaceOverheadRows(designId: string | number, rows: NormalizedOverheadRow[]): Promise<void> {
+  private async replaceOverheadRows(designId: number, rows: NormalizedOverheadRow[]): Promise<void> {
     await this.overheadRepo.delete({ designId });
 
     if (rows.length === 0) {
@@ -4843,7 +4843,7 @@ export class ProductsService {
       .execute();
   }
 
-  private async replaceFindingRows(designId: string | number, rows: NormalizedFindingRow[]): Promise<void> {
+  private async replaceFindingRows(designId: number, rows: NormalizedFindingRow[]): Promise<void> {
     await this.findingRepo.delete({ designId });
 
     if (rows.length === 0) {
@@ -4871,9 +4871,9 @@ export class ProductsService {
     input: {
       processStages?: DesignProcessStageDto[];
       vendors?: DesignVendorDto[];
-      relevantDesignIds?: Array<string | number>;
+      relevantDesignIds?: Array<number>;
     },
-    design: Pick<Design, 'id' | 'companyId'> & { id: string | number | null },
+    design: Pick<Design, 'id' | 'companyId'> & { id: number | null },
     requester: AuthUser,
   ): Promise<void> {
     if (input.processStages !== undefined) {
@@ -4896,9 +4896,9 @@ export class ProductsService {
       return;
     }
 
-    const selfId = design.id === null ? null : String(design.id);
+    const selfId = design.id === null ? null : design.id;
     const deduplicated = Array.from(
-      new Set((input.relevantDesignIds || []).filter((entry) => !!entry && String(entry) !== selfId)),
+      new Set((input.relevantDesignIds || []).filter((entry) => !!entry && entry !== selfId)),
     );
 
     if (deduplicated.length === 0) {
@@ -4919,7 +4919,7 @@ export class ProductsService {
   }
 
   private async replaceProcessStageRows(
-    designId: string | number,
+    designId: number,
     rows: DesignProcessStageDto[],
   ): Promise<void> {
     if (!rows || rows.length === 0) {
@@ -4950,7 +4950,7 @@ export class ProductsService {
   }
 
   private async replacePricingTierRows(
-    designId: string | number,
+    designId: number,
     rows: DesignPricingTierDto[],
   ): Promise<void> {
     await this.pricingTierRepo.delete({ designId });
@@ -4976,7 +4976,7 @@ export class ProductsService {
     await this.pricingTierRepo.save(entities);
   }
 
-  private async replaceVendorRows(designId: string | number, rows: DesignVendorDto[]): Promise<void> {
+  private async replaceVendorRows(designId: number, rows: DesignVendorDto[]): Promise<void> {
     if (!rows || rows.length === 0) {
       await this.vendorRepo.delete({ designId });
       return;
@@ -5002,7 +5002,7 @@ export class ProductsService {
     await this.vendorRepo.save(entities);
   }
 
-  private async resolveUserNames(userIds: string[]): Promise<Map<string, string>> {
+  private async resolveUserNames(userIds: number[]): Promise<Map<number, string>> {
     const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
     if (uniqueIds.length === 0) {
       return new Map();
@@ -5012,21 +5012,21 @@ export class ProductsService {
       where: { id: In(uniqueIds) },
       select: ['id', 'firstName', 'lastName', 'email'],
     });
-    const map = new Map<string, string>();
+    const map = new Map<number, string>();
     users.forEach((user) => {
       const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-      map.set(user.id, fullName || user.email || user.id);
+      map.set(user.id, fullName || user.email || user.id.toString());
     });
     return map;
   }
 
   private async setRelevantDesignLinks(
     design: Design,
-    designIds: Array<string | number>,
+    designIds: Array<number>,
     requester: AuthUser,
   ): Promise<void> {
     const deduplicated = Array.from(
-      new Set((designIds || []).filter((entry) => !!entry && String(entry) !== String(design.id))),
+      new Set((designIds || []).filter((entry) => !!entry && entry !== design.id)),
     );
 
     if (deduplicated.length === 0) {
@@ -5059,10 +5059,10 @@ export class ProductsService {
   }
 
   private async addHistory(
-    designId: string | number,
+    designId: number,
     actionType: string,
     remarks: string,
-    userId?: string,
+    userId?: number,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
     try {
@@ -5126,7 +5126,7 @@ export class ProductsService {
     }
   }
 
-  private async getExistingRows(designId: string | number): Promise<{
+  private async getExistingRows(designId: number): Promise<{
     metals: DesignMetal[];
     gemstones: DesignGemstone[];
     labors: DesignLabor[];
@@ -5317,7 +5317,7 @@ export class ProductsService {
   private async syncFamilyDesignName(
     design: Design,
     designName: string | null,
-    requesterId: string,
+    requesterId: number,
   ): Promise<void> {
     const normalizedName = this.optionalText(designName);
     const familyKey = this.getDesignFamilyKey(design.designNo);
@@ -5616,12 +5616,12 @@ export class ProductsService {
     row: DesignImportRow,
     companyMap: Map<string, Company>,
     branchMap: Map<string, Branch[]>,
-  ): Promise<{ companyId: string | null; branchId: string | null }> {
+  ): Promise<{ companyId: number | null; branchId: number | null }> {
     const companyCode = String(row.companyCode || '').trim().toUpperCase();
     const branchCode = String(row.branchCode || '').trim().toUpperCase();
 
-    let companyId: string | null = null;
-    let branchId: string | null = null;
+    let companyId: number | null = null;
+    let branchId: number | null = null;
 
     if (companyCode) {
       const company = companyMap.get(companyCode);
@@ -5912,10 +5912,10 @@ export class ProductsService {
   }
 
   private async syncDesignStlFileRecord(
-    designId: string | number,
+    designId: number,
     nextFileUrl: string | null | undefined,
     previousFileUrl: string | null | undefined,
-    uploadedBy?: string | null,
+    uploadedBy?: number | null,
     repository: Repository<DesignStlFile> = this.stlFileRepo,
     preferredFileName?: string | null,
   ): Promise<void> {
@@ -6174,7 +6174,7 @@ export class ProductsService {
     mediaType: DesignMediaType;
     mimeType?: string | null;
     fileSizeBytes?: number | null;
-    uploadedBy?: string | null;
+    uploadedBy?: number | null;
   }): Promise<void> {
     const fileName = (input.fileName || '').trim();
     const fileKey = (input.fileKey || '').trim();

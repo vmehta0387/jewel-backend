@@ -1,14 +1,13 @@
-import { BeforeInsert, Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Branch } from './branch.entity';
 
 @Entity('branch_pricing_slabs')
 export class BranchPricingSlab {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'branch_id' })
-  branchId: string;
+  @Column({ name: 'branch_id', type: 'int', width: 11 })
+  branchId: number;
 
   @Column({ name: 'min_cost', type: 'decimal', precision: 10, scale: 2 })
   minCost: number;
@@ -29,10 +28,4 @@ export class BranchPricingSlab {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

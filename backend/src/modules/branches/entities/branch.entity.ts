@@ -1,5 +1,4 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, BeforeInsert, OneToMany } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, BeforeInsert, OneToMany } from 'typeorm';
 import { Company } from '../../companies/entities/company.entity';
 import { User } from '../../users/entities/user.entity';
 import { BranchPricingSlab } from './branch-pricing-slab.entity';
@@ -7,11 +6,11 @@ import { BranchShipToType } from '../enums/branch-ship-to-type.enum';
 
 @Entity('branches')
 export class Branch {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'company_id' })
-  companyId: string;
+  @Column({ name: 'company_id', type: 'int', width: 11 })
+  companyId: number;
 
   @Column()
   name: string;
@@ -61,8 +60,8 @@ export class Branch {
   @Column({ name: 'ship_country', nullable: true })
   shipCountry: string;
 
-  @Column({ name: 'branch_manager_id', nullable: true })
-  branchManagerId: string;
+  @Column({ name: 'branch_manager_id', type: 'int', width: 11, nullable: true })
+  branchManagerId: number | null;
 
   @Column({ name: 'branch_multiplier', type: 'decimal', precision: 5, scale: 2, default: 1.00 })
   branchMultiplier: number;
@@ -104,9 +103,6 @@ export class Branch {
 
   @BeforeInsert()
   generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
     this.code = this.code.toUpperCase().replace(/\s+/g, '');
   }
 }

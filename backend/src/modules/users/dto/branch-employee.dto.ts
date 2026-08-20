@@ -1,4 +1,4 @@
-﻿import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
+﻿import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateBranchEmployeeDto {
   @IsEmail()
@@ -19,8 +19,8 @@ export class CreateBranchEmployeeDto {
   phone?: string;
 
   @IsOptional()
-  @IsString()
-  branchId?: string;
+  @IsInt()
+  branchId?: number;
 }
 
 export class UpdateBranchEmployeeDto {
@@ -46,8 +46,8 @@ export class UpdateBranchEmployeeDto {
   phone?: string;
 
   @IsOptional()
-  @IsString()
-  branchId?: string;
+  @IsInt()
+  branchId?: number;
 }
 
 export class UpdateBranchEmployeeStatusDto {

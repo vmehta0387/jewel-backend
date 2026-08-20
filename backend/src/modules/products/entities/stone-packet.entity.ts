@@ -39,22 +39,22 @@ export class StonePacket {
   @Column({ name: 'stock_type', nullable: true })
   stockType: string | null;
 
-  @Column({ name: 'stone_id', type: 'int', nullable: true })
+  @Column({ name: 'stone_id', type: 'int', width: 11, nullable: true })
   stoneId: number | null;
 
-  @Column({ name: 'shape_id', type: 'int', nullable: true })
+  @Column({ name: 'shape_id', type: 'int', width: 11, nullable: true })
   shapeId: number | null;
 
-  @Column({ name: 'size_id', type: 'int', nullable: true })
+  @Column({ name: 'size_id', type: 'int', width: 11, nullable: true })
   sizeId: number | null;
 
-  @Column({ name: 'cut_id', type: 'int', nullable: true })
+  @Column({ name: 'cut_id', type: 'int', width: 11, nullable: true })
   cutId: number | null;
 
-  @Column({ name: 'color_id', type: 'int', nullable: true })
+  @Column({ name: 'color_id', type: 'int', width: 11, nullable: true })
   colorId: number | null;
 
-  @Column({ name: 'quality_id', type: 'int', nullable: true })
+  @Column({ name: 'quality_id', type: 'int', width: 11, nullable: true })
   qualityId: number | null;
 
   @Column({

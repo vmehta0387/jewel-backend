@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 
 export enum PermissionDataScope {
@@ -10,11 +10,11 @@ export enum PermissionDataScope {
 @Entity('user_permission_actions')
 @Index(['userId', 'actionKey'], { unique: true })
 export class UserPermissionAction {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'user_id', length: 36 })
-  userId: string;
+  @Column({ name: 'user_id', type: 'int', width: 11 })
+  userId: number;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

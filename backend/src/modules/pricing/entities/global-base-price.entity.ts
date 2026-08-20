@@ -4,10 +4,9 @@ import {
   Column,
   CreateDateColumn,
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 
 export enum GlobalBasePriceCategory {
   METAL = 'METAL',
@@ -21,8 +20,8 @@ export enum GlobalBasePriceUnit {
 
 @Entity('global_base_prices')
 export class GlobalBasePrice {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
   @Column({
     type: 'enum',
@@ -57,11 +56,11 @@ export class GlobalBasePrice {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
-  @Column({ name: 'created_by', nullable: true })
-  createdBy: string | null;
+  @Column({ name: 'created_by', type: 'int', width: 11, nullable: true })
+  createdBy: number | null;
 
-  @Column({ name: 'updated_by', nullable: true })
-  updatedBy: string | null;
+  @Column({ name: 'updated_by', type: 'int', width: 11, nullable: true })
+  updatedBy: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
@@ -71,9 +70,6 @@ export class GlobalBasePrice {
 
   @BeforeInsert()
   beforeInsert() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
     this.normalize();
   }
 

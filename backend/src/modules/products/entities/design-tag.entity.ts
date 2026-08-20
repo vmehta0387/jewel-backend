@@ -8,10 +8,10 @@ export class DesignTag {
   @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
+  @Column({ name: 'design_id', type: 'int', width: 11 })
   designId: number;
 
-  @Column({ name: 'tag_id', type: 'int' })
+  @Column({ name: 'tag_id', type: 'int', width: 11 })
   tagId: number;
 
   @ManyToOne(() => Design, (design) => design.designTags, { onDelete: 'CASCADE' })

@@ -1,14 +1,12 @@
 ﻿import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
 import { Company } from '../../companies/entities/company.entity';
 import { Branch } from '../../branches/entities/branch.entity';
@@ -16,20 +14,20 @@ import { SpiffClaimStatus } from '../enums/spiff-claim-status.enum';
 
 @Entity('spiff_redemption_claims')
 export class SpiffRedemptionClaim {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
   @Column({ name: 'claim_number', unique: true, length: 30 })
   claimNumber: string;
 
-  @Column({ name: 'user_id' })
-  userId: string;
+  @Column({ name: 'user_id', type: 'int', width: 11 })
+  userId: number;
 
-  @Column({ name: 'company_id', nullable: true })
-  companyId: string | null;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
-  @Column({ name: 'branch_id', nullable: true })
-  branchId: string | null;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
   @Column({ name: 'requested_points', type: 'decimal', precision: 12, scale: 2 })
   requestedPoints: number;
@@ -65,8 +63,8 @@ export class SpiffRedemptionClaim {
   @Column({ name: 'giftbit_response', type: 'json', nullable: true })
   giftbitResponse: Record<string, unknown> | null;
 
-  @Column({ name: 'approved_by_id', nullable: true })
-  approvedById: string | null;
+  @Column({ name: 'approved_by_id', type: 'int', width: 11, nullable: true })
+  approvedById: number | null;
 
   @Column({ name: 'approved_at', type: 'datetime', nullable: true })
   approvedAt: Date | null;
@@ -96,10 +94,4 @@ export class SpiffRedemptionClaim {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
-  @BeforeInsert()
-  assignId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

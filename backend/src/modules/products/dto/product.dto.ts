@@ -412,13 +412,17 @@ export class CreateProductDto {
   @IsOptional()
   version?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  companyId?: string;
+  companyId?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  branchId?: string;
+  branchId?: number;
 
   @IsString()
   @IsOptional()
@@ -618,9 +622,9 @@ export class CreateProductDto {
   vendors?: DesignVendorDto[];
 
   @IsArray()
-  @IsString({ each: true })
+  @IsNumber({}, { each: true })
   @IsOptional()
-  relevantDesignIds?: string[];
+  relevantDesignIds?: number[];
 
   @Type(() => Boolean)
   @IsBoolean()
@@ -632,13 +636,17 @@ export class GetNextDesignNoQueryDto {
   @IsString()
   jewelryGroup: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  companyId?: string;
+  companyId?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  branchId?: string;
+  branchId?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -656,13 +664,17 @@ export class GetNextDesignVersionQueryDto {
   @IsString()
   designNo: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  companyId?: string;
+  companyId?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  branchId?: string;
+  branchId?: number;
 }
 
 export class UpdateProductDto {
@@ -678,13 +690,17 @@ export class UpdateProductDto {
   @IsOptional()
   version?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  companyId?: string;
+  companyId?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  branchId?: string;
+  branchId?: number;
 
   @IsString()
   @IsOptional()
@@ -884,9 +900,9 @@ export class UpdateProductDto {
   vendors?: DesignVendorDto[];
 
   @IsArray()
-  @IsString({ each: true })
+  @IsNumber({}, { each: true })
   @IsOptional()
-  relevantDesignIds?: string[];
+  relevantDesignIds?: number[];
 
   @Type(() => Boolean)
   @IsBoolean()
@@ -968,13 +984,17 @@ export class FindProductsQueryDto {
   @IsOptional()
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  companyId?: string;
+  companyId?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  branchId?: string;
+  branchId?: number;
 
   @IsString()
   @IsOptional()

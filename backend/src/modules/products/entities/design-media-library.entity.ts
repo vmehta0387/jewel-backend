@@ -18,7 +18,7 @@ export enum DesignMediaType {
 @Entity('design_media_library')
 export class DesignMediaLibrary {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
   @Column({ name: 'media_type', type: 'enum', enum: DesignMediaType })
   mediaType: DesignMediaType;
@@ -35,8 +35,8 @@ export class DesignMediaLibrary {
   @Column({ name: 'file_size_bytes', type: 'bigint', nullable: true })
   fileSizeBytes: string | null;
 
-  @Column({ name: 'uploaded_by', nullable: true })
-  uploadedBy: string | null;
+  @Column({ name: 'uploaded_by', type: 'int', width: 11, nullable: true })
+  uploadedBy: number | null;
 
   @Column({ name: 'status', type: 'int', default: 1 })
   status: number;

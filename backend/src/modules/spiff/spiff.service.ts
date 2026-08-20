@@ -71,7 +71,7 @@ export class SpiffService {
     private readonly branchRepo: Repository<Branch>,
     private readonly giftogramService: GiftogramService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   async getConfig() {
     const pointsPerDollar = await this.getPointsPerDollar();
@@ -205,7 +205,7 @@ export class SpiffService {
         });
       }
 
-      const topRepByCompany = new Map<string, { userId: string; points: number }>();
+      const topRepByCompany = new Map<string, { userId: number; points: number }>();
       if (companyIds.length > 0) {
         const topRepQb = this.ledgerRepo
           .createQueryBuilder('ledger')
@@ -229,8 +229,8 @@ export class SpiffService {
 
         const topRepRows = await topRepQb.getRawMany();
         for (const row of topRepRows) {
-          const companyId = String(row.companyId || '').trim();
-          const userId = String(row.userId || '').trim();
+          const companyId = row.companyId;
+          const userId = row.userId;
           if (!companyId || !userId || topRepByCompany.has(companyId)) {
             continue;
           }
@@ -250,7 +250,7 @@ export class SpiffService {
       const topRepUserById = new Map(topRepUsers.map((user) => [user.id, user]));
 
       const entries = companyPointRows.slice(0, limit).map((row, index) => {
-        const companyId = String(row.companyId || '').trim();
+        const companyId = row.companyId;
         const company = companyById.get(companyId);
         const orderAgg = companyOrdersAgg.get(companyId) || { totalOrders: 0, totalGmv: 0 };
         const topRepInfo = topRepByCompany.get(companyId);
@@ -313,7 +313,7 @@ export class SpiffService {
         const repCompanyById = new Map(repCompanies.map((company) => [company.id, company]));
 
         globalRepEntries = globalRepRows.slice(0, repLimit).map((row, index) => {
-          const userId = String(row.userId || '').trim();
+          const userId = row.userId;
           const repUser = repUserById.get(userId);
           const repCompany = repUser?.companyId ? repCompanyById.get(repUser.companyId) : null;
 
@@ -370,7 +370,7 @@ export class SpiffService {
 
     const rows = await qb.getRawMany();
     const userIds = rows
-      .map((row) => String(row.userId || '').trim())
+      .map((row) => row.userId)
       .filter((id) => id.length > 0);
     const users = userIds.length
       ? await this.userRepo.find({ where: { id: In(userIds) } })
@@ -378,7 +378,7 @@ export class SpiffService {
     const userById = new Map(users.map((user) => [user.id, user]));
 
     const entries = rows.slice(0, limit).map((row, index) => {
-      const userId = String(row.userId || '').trim();
+      const userId = row.userId;
       const user = userById.get(userId);
       return {
         rank: index + 1,
@@ -389,12 +389,12 @@ export class SpiffService {
       };
     });
 
-    const myIndex = rows.findIndex((row) => String(row.userId || '').trim() === requester.id);
+    const myIndex = rows.findIndex((row) => row.userId === requester.id);
     const myRank = myIndex >= 0
       ? {
-          rank: myIndex + 1,
-          points: this.toNumber(rows[myIndex]?.points),
-        }
+        rank: myIndex + 1,
+        points: this.toNumber(rows[myIndex]?.points),
+      }
       : null;
 
     return {
@@ -563,7 +563,7 @@ export class SpiffService {
 
   async updatePoints(dto: CreateSpiffClaimDto | CreateSpiffPointAdjustmentDto, requester: AuthUser) {
     const action = this.optionalText((dto as CreateSpiffPointAdjustmentDto).action)?.toUpperCase();
-    const targetUserId = this.optionalText((dto as CreateSpiffPointAdjustmentDto).userId);
+    const targetUserId = this.toPositiveIntOrNull((dto as CreateSpiffPointAdjustmentDto).userId);
     if (action || targetUserId || requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.BRANCH_MANAGER) {
       return this.applyPointUpdate(dto, requester);
     }
@@ -655,7 +655,7 @@ export class SpiffService {
   private async applyPointUpdate(dto: CreateSpiffClaimDto | CreateSpiffPointAdjustmentDto, requester: AuthUser) {
     this.assertCanManageClaims(requester);
 
-    const targetUserId = this.optionalText((dto as CreateSpiffPointAdjustmentDto).userId);
+    const targetUserId = this.toPositiveIntOrNull((dto as CreateSpiffPointAdjustmentDto).userId);
     if (!targetUserId) {
       throw new BadRequestException('Sales rep is required');
     }
@@ -728,7 +728,7 @@ export class SpiffService {
   async getUserWallet(userId: string, requester: AuthUser): Promise<WalletSummary> {
     this.assertCanManageClaims(requester);
 
-    const targetUserId = this.optionalText(userId);
+    const targetUserId = this.toPositiveIntOrNull(userId);
     if (!targetUserId) {
       throw new BadRequestException('Sales rep is required');
     }
@@ -742,7 +742,7 @@ export class SpiffService {
     return this.computeWallet(targetUser.id);
   }
 
-  async reviewClaim(id: string, dto: ReviewSpiffClaimDto, requester: AuthUser) {
+  async reviewClaim(id: number, dto: ReviewSpiffClaimDto, requester: AuthUser) {
     this.assertCanManageClaims(requester);
 
     const claim = await this.claimRepo.findOne({
@@ -833,7 +833,7 @@ export class SpiffService {
     return this.serializeClaim(saved);
   }
 
-  async fulfillClaim(id: string, dto: FulfillSpiffClaimDto, requester: AuthUser) {
+  async fulfillClaim(id: number, dto: FulfillSpiffClaimDto, requester: AuthUser) {
     this.assertCanManageClaims(requester);
 
     const claim = await this.claimRepo.findOne({
@@ -1097,7 +1097,7 @@ export class SpiffService {
     }
   }
 
-  private async loadClaimNotificationContext(claimId: string): Promise<SpiffRedemptionClaim | null> {
+  private async loadClaimNotificationContext(claimId: number): Promise<SpiffRedemptionClaim | null> {
     return this.claimRepo.findOne({
       where: { id: claimId },
       relations: ['user', 'company', 'branch', 'approvedBy'],
@@ -1106,12 +1106,12 @@ export class SpiffService {
 
   private async getClaimManagerUserIds(
     claim: SpiffRedemptionClaim,
-    excludeIds: Array<string | null | undefined> = [],
-  ): Promise<string[]> {
+    excludeIds: Array<number | null | undefined> = [],
+  ): Promise<number[]> {
     const excluded = new Set(
-      excludeIds.map((value) => String(value || '').trim()).filter((value) => value.length > 0),
+      excludeIds.map((value) => value || '').filter((value) => value),
     );
-    const ids = new Set<string>();
+    const ids = new Set<number>();
 
     if (!claim.companyId && !claim.branchId) {
       return [];
@@ -1144,10 +1144,10 @@ export class SpiffService {
       }),
     );
 
-    const users = await qb.getRawMany<{ id: string }>();
+    const users = await qb.getRawMany<{ id: number }>();
 
     users.forEach((user) => {
-      const userId = String(user.id || '').trim();
+      const userId = user.id;
       if (userId && !excluded.has(userId)) {
         ids.add(userId);
       }
@@ -1312,9 +1312,9 @@ export class SpiffService {
   }
 
   private async createLedgerEntryIfMissing(input: {
-    userId: string;
-    companyId: string | null;
-    branchId: string | null;
+    userId: number;
+    companyId: number | null;
+    branchId: number | null;
     orderId: number | null;
     points: number;
     eventType: SpiffLedgerEvent;
@@ -1358,7 +1358,7 @@ export class SpiffService {
     }
   }
 
-  private async computeWallet(userId: string): Promise<WalletSummary> {
+  private async computeWallet(userId: number): Promise<WalletSummary> {
     const totalEarnedRaw = await this.ledgerRepo
       .createQueryBuilder('ledger')
       .select('COALESCE(SUM(ledger.points), 0)', 'points')
@@ -1416,7 +1416,7 @@ export class SpiffService {
     };
   }
 
-  private async isSpiffEarningEligible(userId: string): Promise<boolean> {
+  private async isSpiffEarningEligible(userId: number): Promise<boolean> {
     const user = await this.userRepo.findOne({
       where: { id: userId },
       select: ['id', 'role'],
@@ -1424,12 +1424,12 @@ export class SpiffService {
     return user?.role === UserRole.SALES_REP;
   }
 
-  private async getUserAwardRate(userId: string): Promise<number> {
+  private async getUserAwardRate(userId: number): Promise<number> {
     const totalEarnedPoints = await this.getUserTotalEarnedPoints(userId);
     return this.resolveTier(totalEarnedPoints).awardRate;
   }
 
-  private async getUserTotalEarnedPoints(userId: string): Promise<number> {
+  private async getUserTotalEarnedPoints(userId: number): Promise<number> {
     const raw = await this.ledgerRepo
       .createQueryBuilder('ledger')
       .select('COALESCE(SUM(ledger.points), 0)', 'points')
@@ -1686,20 +1686,20 @@ export class SpiffService {
       manualAction === 'REDEEM'
         ? 'Points redeemed'
         : points < 0
-        ? 'Points removed'
-        : 'Points added';
+          ? 'Points removed'
+          : 'Points added';
     return {
       id: `earned:${String(row.groupId || row.orderId || orderNumber || row.createdAt)}`,
       type: 'EARNED',
       title: isManualAdjustment
         ? manualTitle
         : isCancellationReversal
-        ? orderNumber
-          ? `Order ${orderNumber} cancelled`
-          : 'Order cancelled'
-        : orderNumber
-          ? `Order ${orderNumber}`
-          : 'SPIFF points earned',
+          ? orderNumber
+            ? `Order ${orderNumber} cancelled`
+            : 'Order cancelled'
+          : orderNumber
+            ? `Order ${orderNumber}`
+            : 'SPIFF points earned',
       subtitle: this.formatLedgerEvents(eventTypes),
       orderId: this.optionalText(row.orderId),
       orderNumber,
@@ -1931,7 +1931,7 @@ export class SpiffService {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
-  private async upsertSetting(settingKey: string, settingValue: string, updatedById: string | null) {
+  private async upsertSetting(settingKey: string, settingValue: string, updatedById: number | null) {
     let existing: SpiffSetting | null = null;
     try {
       existing = await this.settingRepo.findOne({ where: { settingKey } });
@@ -1999,6 +1999,14 @@ export class SpiffService {
   private toNumber(value: unknown): number {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private toPositiveIntOrNull(value: unknown): number | null {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      return null;
+    }
+    return parsed;
   }
 
   private optionalText(value: unknown): string | null {

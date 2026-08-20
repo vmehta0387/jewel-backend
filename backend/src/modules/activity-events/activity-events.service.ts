@@ -89,14 +89,13 @@ export class ActivityEventsService {
     const eventName = this.requiredText(event.event, 'event', 120);
 
     return this.activityEventRepo.create({
-      id: this.validClientId(event.id) || randomUUID(),
       userId: requester.id,
       deviceId: this.optionalText(event.deviceId || headerDeviceId, 120),
       module,
       event: eventName,
       screen: this.optionalText(event.screen, 120),
       entityType: this.optionalText(event.entityType, 80),
-      entityId: this.optionalText(event.entityId, 120),
+      entityId: event.entityId ? Number(event.entityId) : null,
       changes: this.sanitizeJson(event.changes) as ActivityEvent['changes'],
       data: this.sanitizeJson(event.data) as ActivityEvent['data'],
       createdAt: this.parseCreatedAt(event.createdAt),
@@ -107,12 +106,6 @@ export class ActivityEventsService {
     if (!value) return new Date();
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-  }
-
-  private validClientId(value?: string) {
-    const normalized = this.optionalText(value, 36);
-    if (!normalized) return null;
-    return /^[a-zA-Z0-9_-]{6,36}$/.test(normalized) ? normalized : null;
   }
 
   private requiredText(value: unknown, field: string, maxLength: number) {

@@ -125,8 +125,8 @@ export class OrdersService implements OnModuleInit {
         .orderBy('order.createdAt', 'DESC')
         .take(10);
 
-      if (query.excludeOrderId?.trim()) {
-        qb.andWhere('order.id != :excludeOrderId', { excludeOrderId: query.excludeOrderId.trim() });
+      if (query.excludeOrderId) {
+        qb.andWhere('order.id != :excludeOrderId', { excludeOrderId: query.excludeOrderId });
       }
 
       const [orders, count] = await qb.getManyAndCount();
@@ -301,7 +301,7 @@ export class OrdersService implements OnModuleInit {
     };
   }
 
-  async generateOrderPdf(id: string, requester: AuthUser): Promise<{ buffer: Buffer; fileName: string }> {
+  async generateOrderPdf(id: number, requester: AuthUser): Promise<{ buffer: Buffer; fileName: string }> {
     const order = await this.findOne(Number(id), requester) as unknown as Order & {
       companyName?: string | null;
       branchName?: string | null;
@@ -319,7 +319,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   async create(dto: CreateOrderDto, requester: AuthUser) {
-    const requestedBranchId = dto.branchId?.trim() || requester.branchId || null;
+    const requestedBranchId = dto.branchId || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
       : null;
@@ -327,7 +327,7 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Selected branch not found');
     }
 
-    const requestedCompanyId = dto.companyId?.trim() || requester.companyId || null;
+    const requestedCompanyId = dto.companyId || requester.companyId || null;
     const effectiveCompanyId = branch?.companyId || requestedCompanyId;
     const effectiveBranchId = branch?.id || requestedBranchId;
 
@@ -385,7 +385,7 @@ export class OrdersService implements OnModuleInit {
         orderNumber,
         companyId: effectiveCompanyId ?? null,
         branchId: effectiveBranchId ?? null,
-        designId: dto.designId != null ? String(dto.designId) : null,
+        designId: dto.designId != null ? dto.designId : null,
         salesRepId: selectedSalesRep?.id || requester.id,
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date(), { defaultOffsetDays: 28 }),
         quantity: dto.quantity ?? 1,
@@ -435,13 +435,10 @@ export class OrdersService implements OnModuleInit {
   }
 
   private async resolveOrderSalesRep(
-    salesRepId: string | undefined,
-    scope: { companyId: string | null; branchId: string | null },
+    salesRepId: number | undefined,
+    scope: { companyId: number | null; branchId: number | null },
   ): Promise<User | null> {
-    const normalizedSalesRepId = salesRepId?.trim();
-    if (!normalizedSalesRepId) {
-      return null;
-    }
+    const normalizedSalesRepId = salesRepId;
 
     const salesRep = await this.userRepo.findOne({ where: { id: normalizedSalesRepId } });
     if (!salesRep || salesRep.role !== UserRole.SALES_REP || !salesRep.isActive) {
@@ -491,7 +488,7 @@ export class OrdersService implements OnModuleInit {
     if (hasDetailChanges) {
       this.assertOrderEditable(order, requester);
     }
-    const requestedBranchId = dto.branchId?.trim() || (order.branchId != null ? String(order.branchId) : null) || requester.branchId || null;
+    const requestedBranchId = dto.branchId || order.branchId || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
       : null;
@@ -499,7 +496,7 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Selected branch not found');
     }
 
-    const requestedCompanyId = dto.companyId?.trim() || (order.companyId != null ? String(order.companyId) : null) || requester.companyId || null;
+    const requestedCompanyId = dto.companyId || order.companyId || requester.companyId || null;
     const effectiveCompanyId = branch?.companyId || requestedCompanyId;
     const effectiveBranchId = branch?.id || requestedBranchId;
 
@@ -520,7 +517,7 @@ export class OrdersService implements OnModuleInit {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
       });
-      order.designId = dto.designId != null ? String(dto.designId) : null;
+      order.designId = dto.designId != null ? dto.designId : null;
     } else if (order.designId) {
       design = await this.designRepo.findOne({ where: { id: order.designId } });
       if (design) {
@@ -552,8 +549,8 @@ export class OrdersService implements OnModuleInit {
     }
     const pricing = await this.calculateOrderPrice({
       design,
-      companyId: order.companyId != null ? String(order.companyId) : undefined,
-      branchId: order.branchId != null ? String(order.branchId) : undefined,
+      companyId: order.companyId != null ? order.companyId : undefined,
+      branchId: order.branchId != null ? order.branchId : undefined,
     });
     order.price = dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
@@ -592,7 +589,7 @@ export class OrdersService implements OnModuleInit {
       order.completedAt = null;
     } else if (dto.orderType === 'ORDER' && order.status === OrderStatus.QUOTE) {
       const selectedSalesRep = order.salesRepId
-        ? await this.userRepo.findOne({ where: { id: String(order.salesRepId) } })
+        ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
         : null;
       const nextStatus = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
       this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
@@ -635,20 +632,20 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  async getPricePreview(params: { designId: string; companyId: string; branchId: string }, requester: AuthUser) {
+  async getPricePreview(params: { designId: number; companyId: number; branchId: number }, requester: AuthUser) {
     const design = await this.designRepo.findOne({ where: { id: params.designId } });
     if (!design) {
       throw new NotFoundException('Design not found');
     }
 
-    const branchId = params.branchId?.trim() || requester.branchId || undefined;
+    const branchId = params.branchId || requester.branchId || undefined;
     const branch = branchId
       ? await this.branchRepo.findOne({ where: { id: branchId } })
       : null;
     if (branchId && !branch) {
       throw new BadRequestException('Selected branch not found');
     }
-    const effectiveCompanyId = branch?.companyId || params.companyId?.trim() || requester.companyId || undefined;
+    const effectiveCompanyId = branch?.companyId || params.companyId || requester.companyId || undefined;
     this.assertDesignScope(design, requester, {
       companyId: effectiveCompanyId || null,
       branchId: branch?.id || branchId || null,
@@ -663,7 +660,7 @@ export class OrdersService implements OnModuleInit {
     return pricing;
   }
 
-  async updateActiveStatus(id: string, isActive: boolean, requester: AuthUser) {
+  async updateActiveStatus(id: number, isActive: boolean, requester: AuthUser) {
     const order = await this.findOne(Number(id), requester);
     this.assertOrderEditable(order, requester);
     const beforeSnapshot = this.getOrderAuditSnapshot(order);
@@ -906,9 +903,9 @@ export class OrdersService implements OnModuleInit {
     return { points };
   }
 
-  private resolveScope(requester: AuthUser, companyId?: string, branchId?: string) {
-    const normalizedCompanyId = companyId?.trim();
-    const normalizedBranchId = branchId?.trim();
+  private resolveScope(requester: AuthUser, companyId?: number, branchId?: number) {
+    const normalizedCompanyId = companyId;
+    const normalizedBranchId = branchId;
 
     if (requester.role === UserRole.SUPER_ADMIN) {
       return { companyId: normalizedCompanyId || null, branchId: normalizedBranchId || null };
@@ -932,9 +929,9 @@ export class OrdersService implements OnModuleInit {
     return { companyId: requester.companyId, branchId: normalizedBranchId || null };
   }
 
-  private applyScopeFilter(qb: any, requester: AuthUser, companyId?: string, branchId?: string): void {
-    const normalizedCompanyId = companyId?.trim();
-    const normalizedBranchId = branchId?.trim();
+  private applyScopeFilter(qb: any, requester: AuthUser, companyId?: number, branchId?: number): void {
+    const normalizedCompanyId = companyId;
+    const normalizedBranchId = branchId;
 
     if (requester.role === UserRole.SUPER_ADMIN) {
       if (normalizedCompanyId) {
@@ -1600,10 +1597,10 @@ export class OrdersService implements OnModuleInit {
 
   private getRequesterDisplayName(requester: AuthUser): string {
     const name = `${requester.firstName || ''} ${requester.lastName || ''}`.trim();
-    return name || requester.email || requester.id;
+    return name || requester.email || String(requester.id);
   }
 
-  private assertDesignScope(design: Design, requester: AuthUser, scope: { companyId: string | null; branchId: string | null }) {
+  private assertDesignScope(design: Design, requester: AuthUser, scope: { companyId: number | null; branchId: number | null }) {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
     }
@@ -1627,8 +1624,8 @@ export class OrdersService implements OnModuleInit {
 
   private async calculateOrderPrice(params: {
     design: Design | null;
-    companyId?: string;
-    branchId?: string;
+    companyId?: number;
+    branchId?: number;
   }): Promise<{
     baseCost: number;
     companyMultiplier: number;
@@ -1646,8 +1643,8 @@ export class OrdersService implements OnModuleInit {
 
     const pricing = await this.calculateOrderPrice({
       design: order.design,
-      companyId: order.companyId != null ? String(order.companyId) : undefined,
-      branchId: order.branchId != null ? String(order.branchId) : undefined,
+      companyId: order.companyId != null ? order.companyId : undefined,
+      branchId: order.branchId != null ? order.branchId : undefined,
     });
 
     if (requester.role === UserRole.SUPER_ADMIN) {
@@ -1931,9 +1928,9 @@ export class OrdersService implements OnModuleInit {
 
       if (context.salesRepId) {
         await this.notificationsService.createForUser({
-          userId: String(context.salesRepId),
-          companyId: context.companyId != null ? String(context.companyId) : null,
-          branchId: context.branchId != null ? String(context.branchId) : null,
+          userId: context.salesRepId,
+          companyId: context.companyId ?? null,
+          branchId: context.branchId ?? null,
           type: 'ORDER_CREATED',
           priority: NotificationPriority.P2,
           title: `Order ${orderLabel} created`,
@@ -1942,7 +1939,7 @@ export class OrdersService implements OnModuleInit {
               ? `Your order ${orderLabel} for ${designLabel} was submitted for approval.`
               : `Your order ${orderLabel} for ${designLabel} was created successfully.`,
           entityType: 'ORDER',
-          entityId: String(context.id),
+          entityId: context.id,
           actionUrl: `/orders/${context.id}`,
           channelPush: true,
           metadata: {
@@ -1955,17 +1952,17 @@ export class OrdersService implements OnModuleInit {
       }
 
       if (context.status === OrderStatus.PENDING_APPROVAL) {
-        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? String(context.salesRepId) : null]);
+        const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? context.salesRepId : null]);
         if (approverIds.length) {
           await this.notificationsService.createForUsers(approverIds, {
-            companyId: context.companyId != null ? String(context.companyId) : null,
-            branchId: context.branchId != null ? String(context.branchId) : null,
+            companyId: context.companyId ?? null,
+            branchId: context.branchId ?? null,
             type: 'ORDER_APPROVAL_REQUIRED',
             priority: NotificationPriority.P1,
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} submitted ${orderLabel} for approval.`,
             entityType: 'ORDER',
-            entityId: String(context.id),
+            entityId: context.id,
             actionUrl: `/orders/${context.id}`,
             channelPush: true,
             metadata: {
@@ -2019,7 +2016,7 @@ export class OrdersService implements OnModuleInit {
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} moved ${orderLabel} back to pending approval.`,
             entityType: 'ORDER',
-            entityId: String(context.id),
+            entityId: context.id,
             actionUrl: `/orders/${context.id}`,
             channelPush: true,
             metadata,
@@ -2060,15 +2057,15 @@ export class OrdersService implements OnModuleInit {
       if (!transition) return;
 
       await this.notificationsService.createForUser({
-        userId: String(context.salesRepId),
-        companyId: context.companyId != null ? String(context.companyId) : null,
-        branchId: context.branchId != null ? String(context.branchId) : null,
+        userId: context.salesRepId,
+        companyId: context.companyId ?? null,
+        branchId: context.branchId ?? null,
         type: transition.type,
         priority: transition.priority,
         title: transition.title,
         message: transition.message,
         entityType: 'ORDER',
-        entityId: String(context.id),
+        entityId: context.id,
         actionUrl: `/orders/${context.id}`,
         channelPush: true,
         metadata: {
@@ -2090,13 +2087,13 @@ export class OrdersService implements OnModuleInit {
     });
   }
 
-  private async getApproverUserIdsForOrder(order: Order, excludeIds: Array<string | null | undefined> = []): Promise<string[]> {
+  private async getApproverUserIdsForOrder(order: Order, excludeIds: Array<number | null | undefined> = []): Promise<number[]> {
     const excluded = new Set(
-      excludeIds.map((value) => String(value || '').trim()).filter((value) => value.length > 0),
+      excludeIds.filter((value): value is number => typeof value === 'number')
     );
-    const ids = new Set<string>();
+    const ids = new Set<number>();
 
-    const branchManagerId = String(order.branch?.branchManager?.id || '').trim();
+    const branchManagerId = order.branch?.branchManager?.id;
     if (branchManagerId && !excluded.has(branchManagerId)) {
       ids.add(branchManagerId);
     }
@@ -2104,7 +2101,7 @@ export class OrdersService implements OnModuleInit {
     if (order.branchId) {
       const branchManagers = await this.userRepo.find({
         where: {
-          branchId: String(order.branchId),
+          branchId: order.branchId,
           role: UserRole.BRANCH_MANAGER,
           isActive: true,
         },
@@ -2112,7 +2109,7 @@ export class OrdersService implements OnModuleInit {
       });
 
       branchManagers.forEach((user) => {
-        const userId = String(user.id || '').trim();
+        const userId = user.id;
         if (userId && !excluded.has(userId)) {
           ids.add(userId);
         }
@@ -2122,7 +2119,7 @@ export class OrdersService implements OnModuleInit {
     if (order.companyId) {
       const companyAdmins = await this.userRepo.find({
         where: {
-          companyId: String(order.companyId),
+          companyId: order.companyId,
           role: UserRole.COMPANY_ADMIN,
           isActive: true,
         },
@@ -2130,7 +2127,7 @@ export class OrdersService implements OnModuleInit {
       });
 
       companyAdmins.forEach((user) => {
-        const userId = String(user.id || '').trim();
+        const userId = user.id;
         if (userId && !excluded.has(userId)) {
           ids.add(userId);
         }

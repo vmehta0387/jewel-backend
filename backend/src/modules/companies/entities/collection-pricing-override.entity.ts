@@ -1,5 +1,4 @@
-import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, BeforeInsert } from 'typeorm';
-import { randomUUID } from 'crypto';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
 import { Company } from './company.entity';
 
 export enum CollectionType {
@@ -11,11 +10,11 @@ export enum CollectionType {
 
 @Entity('collection_pricing_overrides')
 export class CollectionPricingOverride {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'company_id' })
-  companyId: string;
+  @Column({ name: 'company_id', type: 'int', width: 11 })
+  companyId: number;
 
   @Column({ name: 'collection_type', type: 'enum', enum: CollectionType })
   collectionType: CollectionType;
@@ -33,10 +32,4 @@ export class CollectionPricingOverride {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

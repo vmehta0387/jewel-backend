@@ -1,14 +1,12 @@
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
-import { randomUUID } from 'crypto';
 import { User } from '../../users/entities/user.entity';
 
 export interface ActivityEventChange {
@@ -20,12 +18,12 @@ export interface ActivityEventChange {
 @Entity('activity_events')
 @Index('idx_activity_events_user_created_at', ['userId', 'createdAt'])
 export class ActivityEvent {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
   @Index('idx_activity_events_user_id')
-  @Column({ name: 'user_id', length: 36 })
-  userId: string;
+  @Column({ name: 'user_id', type: 'int', width: 11 })
+  userId: number;
 
   @Index('idx_activity_events_device_id')
   @Column({ name: 'device_id', length: 120, nullable: true })
@@ -46,8 +44,8 @@ export class ActivityEvent {
   entityType: string | null;
 
   @Index('idx_activity_events_entity_id')
-  @Column({ name: 'entity_id', length: 120, nullable: true })
-  entityId: string | null;
+  @Column({ name: 'entity_id', type: 'int', width: 11, nullable: true })
+  entityId: number | null;
 
   @Column({ type: 'json', nullable: true })
   changes: ActivityEventChange[] | null;
@@ -63,10 +61,4 @@ export class ActivityEvent {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @BeforeInsert()
-  generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
-  }
 }

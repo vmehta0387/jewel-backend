@@ -17,15 +17,15 @@ import { NotificationsGateway } from './notifications.gateway';
 const DESIGN_UPDATED_NOTIFICATION_TYPE = 'DESIGN_UPDATED';
 
 export interface CreateNotificationInput {
-  userId: string;
-  companyId?: string | null;
-  branchId?: string | null;
+  userId: number;
+  companyId?: number | null;
+  branchId?: number | null;
   type: string;
   priority?: NotificationPriority | string;
   title: string;
   message: string;
   entityType?: string | null;
-  entityId?: string | null;
+  entityId?: number | null;
   actionUrl?: string | null;
   channelInApp?: boolean;
   channelEmail?: boolean;
@@ -128,7 +128,7 @@ export class NotificationsService {
     };
   }
 
-  async markRead(id: string, requester: AuthUser, isRead = true) {
+  async markRead(id: number, requester: AuthUser, isRead = true) {
     const notification = await this.notificationRepo.findOne({
       where: { id, recipientUserId: requester.id },
     });
@@ -173,25 +173,24 @@ export class NotificationsService {
 
     const record = existing
       ? Object.assign(existing, {
-          userId: requester.id,
-          platform: this.optionalText(dto.platform),
-          deviceId: this.optionalText(dto.deviceId),
-          appVersion: this.optionalText(dto.appVersion),
-          isActive: true,
-          lastRegisteredAt: new Date(),
-          lastError: null,
-        })
+        userId: requester.id,
+        platform: this.optionalText(dto.platform),
+        deviceId: this.optionalText(dto.deviceId),
+        appVersion: this.optionalText(dto.appVersion),
+        isActive: true,
+        lastRegisteredAt: new Date(),
+        lastError: null,
+      })
       : this.pushDeviceRepo.create({
-          id: randomUUID(),
-          userId: requester.id,
-          expoPushToken,
-          platform: this.optionalText(dto.platform),
-          deviceId: this.optionalText(dto.deviceId),
-          appVersion: this.optionalText(dto.appVersion),
-          isActive: true,
-          lastRegisteredAt: new Date(),
-          lastError: null,
-        });
+        userId: requester.id,
+        expoPushToken,
+        platform: this.optionalText(dto.platform),
+        deviceId: this.optionalText(dto.deviceId),
+        appVersion: this.optionalText(dto.appVersion),
+        isActive: true,
+        lastRegisteredAt: new Date(),
+        lastError: null,
+      });
 
     const saved = await this.pushDeviceRepo.save(record);
     return {
@@ -223,7 +222,6 @@ export class NotificationsService {
 
   async createForUser(input: CreateNotificationInput) {
     const record = this.notificationRepo.create({
-      id: randomUUID(),
       recipientUserId: input.userId,
       companyId: input.companyId ?? null,
       branchId: input.branchId ?? null,
@@ -232,7 +230,7 @@ export class NotificationsService {
       title: this.normalizeText(input.title),
       message: this.normalizeText(input.message),
       entityType: this.optionalText(input.entityType),
-      entityId: this.optionalText(input.entityId),
+      entityId: input.entityId ?? null,
       actionUrl: this.optionalText(input.actionUrl),
       channelInApp: input.channelInApp ?? true,
       channelEmail: input.channelEmail ?? false,
@@ -248,8 +246,8 @@ export class NotificationsService {
     return saved;
   }
 
-  async createForUsers(userIds: string[], input: Omit<CreateNotificationInput, 'userId'>) {
-    const uniqueUserIds = Array.from(new Set(userIds.map((id) => id?.trim()).filter(Boolean) as string[]));
+  async createForUsers(userIds: number[], input: Omit<CreateNotificationInput, 'userId'>) {
+    const uniqueUserIds = Array.from(new Set(userIds.filter((id) => typeof id === 'number')));
     if (!uniqueUserIds.length) return [];
 
     const users = await this.userRepo.find({
@@ -264,7 +262,6 @@ export class NotificationsService {
 
     const rows = users.map((user) =>
       this.notificationRepo.create({
-        id: randomUUID(),
         recipientUserId: user.id,
         companyId: input.companyId ?? user.companyId ?? null,
         branchId: input.branchId ?? user.branchId ?? null,
@@ -273,7 +270,7 @@ export class NotificationsService {
         title: this.normalizeText(input.title),
         message: this.normalizeText(input.message),
         entityType: this.optionalText(input.entityType),
-        entityId: this.optionalText(input.entityId),
+        entityId: input.entityId ?? null,
         actionUrl: this.optionalText(input.actionUrl),
         channelInApp: input.channelInApp ?? true,
         channelEmail: input.channelEmail ?? false,
@@ -362,9 +359,9 @@ export class NotificationsService {
 
         const payload = (await response.json().catch(() => null)) as
           | {
-              data?: Array<{ status?: string; details?: { error?: string } }>;
-              errors?: Array<{ message?: string }>;
-            }
+            data?: Array<{ status?: string; details?: { error?: string } }>;
+            errors?: Array<{ message?: string }>;
+          }
           | null;
 
         if (!response.ok) {
@@ -403,7 +400,7 @@ export class NotificationsService {
     }
   }
 
-  private async emitUnreadCountUpdate(userId: string) {
+  private async emitUnreadCountUpdate(userId: number) {
     try {
       const unreadCount = await this.notificationRepo.count({
         where: {
@@ -432,8 +429,8 @@ export class NotificationsService {
     return /^Expo(nent)?PushToken\[[^\]]+\]$/.test(normalized);
   }
 
-  private isSupportedExpoTokenValue(value: string | null | undefined): boolean {
-    return Boolean(String(value || '').trim());
+  private isSupportedExpoTokenValue(value: number | null | undefined): boolean {
+    return Boolean(value);
   }
 
   private optionalText(value: string | null | undefined): string | null {

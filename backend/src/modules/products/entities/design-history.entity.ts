@@ -12,10 +12,10 @@ import { User } from '../../users/entities/user.entity';
 @Entity('design_history')
 export class DesignHistory {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
   @Column({ name: 'action_type' })
   actionType: string;
@@ -23,8 +23,8 @@ export class DesignHistory {
   @Column({ type: 'text' })
   remarks: string;
 
-  @Column({ name: 'performed_by', nullable: true })
-  performedBy: string | null;
+  @Column({ name: 'performed_by', type: 'int', width: 11, nullable: true })
+  performedBy: number | null;
 
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, unknown> | null;

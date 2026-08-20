@@ -50,7 +50,7 @@ export class OrdersController {
     if (!designId || !companyId || !branchId) {
       return { baseCost: 0, companyMultiplier: 1, companyPrice: 0, branchMultiplier: 1, finalPrice: 0 };
     }
-    return this.ordersService.getPricePreview({ designId, companyId, branchId }, req.user);
+    return this.ordersService.getPricePreview({ designId: Number(designId), companyId: Number(companyId), branchId: Number(branchId) }, req.user);
   }
 
   @Get('summary')
@@ -70,7 +70,7 @@ export class OrdersController {
 
   @Get(':id/pdf')
   async downloadPdf(@Param('id') id: string, @Request() req: { user: AuthUser }) {
-    const file = await this.ordersService.generateOrderPdf(id, req.user);
+    const file = await this.ordersService.generateOrderPdf(Number(id), req.user);
     return new StreamableFile(file.buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${file.fileName}"`,
@@ -113,6 +113,6 @@ export class OrdersController {
     @Body() dto: UpdateOrderActiveStatusDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.ordersService.updateActiveStatus(id, dto.isActive, req.user);
+    return this.ordersService.updateActiveStatus(Number(id), dto.isActive, req.user);
   }
 }

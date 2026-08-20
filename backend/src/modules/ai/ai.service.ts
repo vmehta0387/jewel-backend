@@ -128,7 +128,7 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
             );
 
             const candidates = res.data || [];
-            
+
             // Generate full details from DB
             const details = await Promise.all(
               candidates.slice(0, limit).map((design: any) => this.productsService.findOne(design.id, readUser)),
@@ -141,8 +141,8 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
                 try {
                   const preview = await this.ordersService.getPricePreview({
                     designId: d.id,
-                    companyId: companyId as string,
-                    branchId: branchId as string,
+                    companyId: companyId as number,
+                    branchId: branchId as number,
                   }, readUser);
                   return { designId: d.id, finalPrice: preview.finalPrice };
                 } catch {

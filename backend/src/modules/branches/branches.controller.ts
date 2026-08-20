@@ -12,7 +12,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 @UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
 @Controller('branches')
 export class BranchesController {
-  constructor(private readonly branchesService: BranchesService) {}
+  constructor(private readonly branchesService: BranchesService) { }
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
@@ -44,7 +44,7 @@ export class BranchesController {
       page ? parseInt(page) : 1,
       limit ? parseInt(limit) : 10,
       search,
-      companyId,
+      companyId ? parseInt(companyId) : undefined,
       status,
       country,
       city,
@@ -61,28 +61,28 @@ export class BranchesController {
     UserRole.SALES_REP,
   )
   @ActionPermissions()
-  findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  findOne(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.branchesService.findOne(id, req.user);
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('branch.edit')
-  update(@Param('id') id: string, @Body() dto: UpdateBranchDto, @Request() req: { user: AuthUser }) {
+  update(@Param('id') id: number, @Body() dto: UpdateBranchDto, @Request() req: { user: AuthUser }) {
     return this.branchesService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('branch.edit')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateBranchStatusDto, @Request() req: { user: AuthUser }) {
+  updateStatus(@Param('id') id: number, @Body() dto: UpdateBranchStatusDto, @Request() req: { user: AuthUser }) {
     return this.branchesService.updateStatus(id, dto.isActive, req.user);
   }
 
   @Post(':id/pricing-slabs')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('branch.pricing.manage')
-  updatePricingSlabs(@Param('id') id: string, @Body() slabs: BranchPricingSlabDto[], @Request() req: { user: AuthUser }) {
+  updatePricingSlabs(@Param('id') id: number, @Body() slabs: BranchPricingSlabDto[], @Request() req: { user: AuthUser }) {
     return this.branchesService.updatePricingSlabs(id, slabs, req.user);
   }
 }

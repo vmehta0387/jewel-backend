@@ -10,7 +10,7 @@ import { AuthUser, JwtPayload } from '../interfaces/auth-user.interface';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private static readonly LAST_SEEN_WRITE_THROTTLE_MS = 60 * 1000;
-  private static readonly lastSeenWriteByUser = new Map<string, number>();
+  private static readonly lastSeenWriteByUser = new Map<number, number>();
 
   constructor(
     configService: ConfigService,

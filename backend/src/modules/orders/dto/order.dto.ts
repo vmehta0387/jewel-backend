@@ -3,11 +3,11 @@ import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID,
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 
 export class CreateOrderDto {
-  @IsUUID()
-  companyId: string;
+  @IsNumber()
+  companyId: number;
 
-  @IsUUID()
-  branchId: string;
+  @IsNumber()
+  branchId: number;
 
   @Type(() => Number)
   @IsInt()
@@ -15,8 +15,8 @@ export class CreateOrderDto {
   designId: number;
 
   @IsOptional()
-  @IsUUID()
-  salesRepId?: string;
+  @IsNumber()
+  salesRepId?: number;
 
   @IsOptional()
   @IsString()
@@ -83,12 +83,12 @@ export class CreateOrderDto {
 
 export class UpdateOrderDto {
   @IsOptional()
-  @IsUUID()
-  companyId?: string;
+  @IsNumber()
+  companyId?: number;
 
   @IsOptional()
-  @IsUUID()
-  branchId?: string;
+  @IsNumber()
+  branchId?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -97,8 +97,8 @@ export class UpdateOrderDto {
   designId?: number;
 
   @IsOptional()
-  @IsUUID()
-  salesRepId?: string;
+  @IsNumber()
+  salesRepId?: number;
 
   @IsOptional()
   @IsString()
@@ -188,12 +188,12 @@ export class FindOrdersQueryDto {
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
 
   @IsOptional()
-  @IsUUID()
-  companyId?: string;
+  @IsNumber()
+  companyId?: number;
 
   @IsOptional()
-  @IsUUID()
-  branchId?: string;
+  @IsNumber()
+  branchId?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -202,8 +202,8 @@ export class FindOrdersQueryDto {
   designId?: number;
 
   @IsOptional()
-  @IsUUID()
-  salesRepId?: string;
+  @IsNumber()
+  salesRepId?: number;
 
   @IsOptional()
   @IsEnum(OrderStatus)
@@ -239,19 +239,19 @@ export class FindOrdersQueryDto {
 }
 
 export class FindPurchaseOrderUsageQueryDto {
-  @IsUUID()
-  companyId: string;
+  @IsNumber()
+  companyId: number;
 
   @IsOptional()
-  @IsUUID()
-  branchId?: string;
+  @IsNumber()
+  branchId?: number;
 
   @IsString()
   purchaseOrderNumber: string;
 
   @IsOptional()
-  @IsUUID()
-  excludeOrderId?: string;
+  @IsNumber()
+  excludeOrderId?: number;
 }
 
 export class UpdateOrderStatusDto {

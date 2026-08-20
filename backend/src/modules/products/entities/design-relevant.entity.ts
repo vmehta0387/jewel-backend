@@ -4,13 +4,13 @@ import { Design } from './design.entity';
 @Entity('design_relevant')
 export class DesignRelevant {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'related_design_id', type: 'int' })
-  relatedDesignId: number | string;
+  @Column({ name: 'related_design_id', type: 'int', width: 11 })
+  relatedDesignId: number;
 
   @ManyToOne(() => Design, (design) => design.relevantDesignLinks, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })

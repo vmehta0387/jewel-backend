@@ -24,7 +24,7 @@ export class BranchesService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(BranchPricingSlab)
     private readonly pricingSlabRepo: Repository<BranchPricingSlab>,
-  ) {}
+  ) { }
 
   async create(dto: CreateBranchDto, requester?: AuthUser): Promise<Branch> {
     if (dto.branchManagerId && dto.newBranchManager) {
@@ -82,7 +82,7 @@ export class BranchesService {
     page = 1,
     limit = 10,
     search?: string,
-    companyId?: string,
+    companyId?: number,
     status?: string,
     country?: string,
     city?: string,
@@ -116,8 +116,8 @@ export class BranchesService {
       );
     }
 
-    if (companyId?.trim()) {
-      query.andWhere('branch.companyId = :companyId', { companyId: companyId.trim() });
+    if (companyId) {
+      query.andWhere('branch.companyId = :companyId', { companyId });
     }
 
     if (status === 'ACTIVE') {
@@ -165,7 +165,7 @@ export class BranchesService {
     };
   }
 
-  async findOne(id: string, requester?: AuthUser): Promise<Branch> {
+  async findOne(id: number, requester?: AuthUser): Promise<Branch> {
     const branch = await this.branchRepo.findOne({
       where: { id },
       relations: ['company', 'branchManager', 'pricingSlabs'],
@@ -195,7 +195,7 @@ export class BranchesService {
     return this.sanitizeBranch(branch);
   }
 
-  async update(id: string, dto: UpdateBranchDto, requester?: AuthUser): Promise<Branch> {
+  async update(id: number, dto: UpdateBranchDto, requester?: AuthUser): Promise<Branch> {
     if (dto.branchManagerId !== undefined && dto.newBranchManager !== undefined) {
       throw new BadRequestException('Provide either branchManagerId or newBranchManager, not both');
     }
@@ -268,14 +268,14 @@ export class BranchesService {
     return this.findOne(id, requester);
   }
 
-  async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<Branch> {
+  async updateStatus(id: number, isActive: boolean, requester?: AuthUser): Promise<Branch> {
     const branch = await this.findOne(id, requester);
     branch.isActive = isActive;
     await this.branchRepo.save(branch);
     return this.findOne(id, requester);
   }
 
-  async updatePricingSlabs(branchId: string, slabs: BranchPricingSlabDto[], requester?: AuthUser): Promise<void> {
+  async updatePricingSlabs(branchId: number, slabs: BranchPricingSlabDto[], requester?: AuthUser): Promise<void> {
     if (requester) {
       await this.findOne(branchId, requester);
     }
@@ -287,7 +287,6 @@ export class BranchesService {
 
     const entities = slabs.map((slab) =>
       this.pricingSlabRepo.create({
-        id: randomUUID(),
         branchId,
         minCost: slab.minCost,
         maxCost: slab.maxCost,
@@ -300,8 +299,8 @@ export class BranchesService {
   }
 
   private async createAndAssignBranchManager(
-    branchId: string,
-    companyId: string,
+    branchId: number,
+    companyId: number,
     managerData: NewBranchManagerDto,
   ): Promise<void> {
     const email = managerData.email.trim().toLowerCase();
@@ -312,7 +311,6 @@ export class BranchesService {
 
     const passwordHash = await bcrypt.hash('TempPassword123!', 10);
     const manager = this.userRepo.create({
-      id: randomUUID(),
       email,
       passwordHash,
       firstName: managerData.firstName.trim(),
@@ -335,9 +333,9 @@ export class BranchesService {
   }
 
   private async assignExistingBranchManager(
-    branchId: string,
-    companyId: string,
-    branchManagerId: string | null,
+    branchId: number,
+    companyId: number,
+    branchManagerId: number | null,
   ): Promise<void> {
     const branch = await this.branchRepo.findOne({ where: { id: branchId } });
     if (!branch) {
@@ -390,7 +388,7 @@ export class BranchesService {
     await this.userRepo.save(manager);
   }
 
-  private async syncExistingBranchManager(branchManagerId: string, companyId: string, branchId: string): Promise<void> {
+  private async syncExistingBranchManager(branchManagerId: number, companyId: number, branchId: number): Promise<void> {
     const manager = await this.userRepo.findOne({ where: { id: branchManagerId } });
     if (!manager) {
       return;
@@ -414,7 +412,7 @@ export class BranchesService {
     return branch;
   }
 
-  private async ensureCompanyExists(companyId: string): Promise<void> {
+  private async ensureCompanyExists(companyId: number): Promise<void> {
     const company = await this.companyRepo.findOne({ where: { id: companyId } });
     if (!company) {
       throw new NotFoundException('Company not found');
@@ -425,7 +423,7 @@ export class BranchesService {
     return code.toUpperCase().replace(/\s+/g, '');
   }
 
-  private async assertUniqueCode(companyId: string, code: string, excludeId?: string): Promise<void> {
+  private async assertUniqueCode(companyId: number, code: string, excludeId?: number): Promise<void> {
     const existing = await this.branchRepo.findOne({ where: { companyId, code } });
     if (existing && existing.id !== excludeId) {
       throw new ConflictException('Branch code already exists for this company');

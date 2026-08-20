@@ -5,12 +5,12 @@ import { VendorNameMaster } from './design-master-tables.entity';
 @Entity('design_vendors')
 export class DesignVendor {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'vendor_name_id', type: 'int' })
+  @Column({ name: 'vendor_name_id', type: 'int', width: 11 })
   vendorNameId: number;
 
   supplierName?: string;

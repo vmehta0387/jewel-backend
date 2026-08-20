@@ -37,7 +37,7 @@ import {
 @TaskPermissions(TaskPermission.USER_MANAGEMENT)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
@@ -111,7 +111,7 @@ export class UsersController {
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.view')
-  findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  findOne(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.usersService.findOne(id, req.user);
   }
 
@@ -125,14 +125,14 @@ export class UsersController {
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.edit')
-  update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Request() req: { user: AuthUser }) {
+  update(@Param('id') id: number, @Body() dto: UpdateUserDto, @Request() req: { user: AuthUser }) {
     return this.usersService.update(id, dto, req.user);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.status_update')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto, @Request() req: { user: AuthUser }) {
+  updateStatus(@Param('id') id: number, @Body() dto: UpdateUserStatusDto, @Request() req: { user: AuthUser }) {
     return this.usersService.updateStatus(id, dto.isActive, req.user);
   }
 }

@@ -41,7 +41,7 @@ import {
 @Entity('designs')
 export class Design {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
   @Column({ name: 'design_no' })
   designNo: string;
@@ -50,7 +50,7 @@ export class Design {
   barcode: string | null;
 
   @Index('idx_designs_family_design_id')
-  @Column({ name: 'family_design_id', type: 'int', nullable: true })
+  @Column({ name: 'family_design_id', type: 'int', width: 11, nullable: true })
   familyDesignId: number | null;
 
   @Column({ name: 'design_name', nullable: true })
@@ -60,41 +60,41 @@ export class Design {
   version: string;
 
   @Index('idx_designs_company_id')
-  @Column({ name: 'company_id', type: 'int', nullable: true })
-  companyId: string | null;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
   @Index('idx_designs_branch_id')
-  @Column({ name: 'branch_id', type: 'int', nullable: true })
-  branchId: string | null;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
-  @Column({ name: 'jewelry_group_id', type: 'int' })
+  @Column({ name: 'jewelry_group_id', type: 'int', width: 11 })
   jewelryGroupId: number;
 
-  @Column({ name: 'collection_id', type: 'int', nullable: true })
+  @Column({ name: 'collection_id', type: 'int', width: 11, nullable: true })
   collectionId: number | null;
 
-  @Column({ name: 'jewelry_size_id', type: 'int', nullable: true })
+  @Column({ name: 'jewelry_size_id', type: 'int', width: 11, nullable: true })
   jewelrySizeId: number | null;
 
-  @Column({ name: 'stage_id', type: 'int', nullable: true })
+  @Column({ name: 'stage_id', type: 'int', width: 11, nullable: true })
   stageId: number | null;
 
-  @Column({ name: 'diamond_spread_id', type: 'int', nullable: true })
+  @Column({ name: 'diamond_spread_id', type: 'int', width: 11, nullable: true })
   diamondSpreadId: number | null;
 
-  @Column({ name: 'diamond_type_id', type: 'int', nullable: true })
+  @Column({ name: 'diamond_type_id', type: 'int', width: 11, nullable: true })
   diamondTypeId: number | null;
 
-  @Column({ name: 'diamond_weight_id', type: 'int', nullable: true })
+  @Column({ name: 'diamond_weight_id', type: 'int', width: 11, nullable: true })
   diamondWeightId: number | null;
 
-  @Column({ name: 'diamond_quality_id', type: 'int', nullable: true })
+  @Column({ name: 'diamond_quality_id', type: 'int', width: 11, nullable: true })
   diamondQualityId: number | null;
 
-  @Column({ name: 'design_status_id', type: 'int', nullable: true })
+  @Column({ name: 'design_status_id', type: 'int', width: 11, nullable: true })
   designStatusId: number | null;
 
-  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_caratage_id', type: 'int', width: 11, nullable: true })
   metalCaratageId: number | null;
 
   jewelryGroup?: string;
@@ -165,12 +165,12 @@ export class Design {
   isPrimary: boolean;
 
   @Index('idx_designs_created_by')
-  @Column({ name: 'created_by', type: 'int', nullable: true })
-  createdBy: string | null;
+  @Column({ name: 'created_by', type: 'int', width: 11, nullable: true })
+  createdBy: number | null;
 
   @Index('idx_designs_updated_by')
-  @Column({ name: 'updated_by', type: 'int', nullable: true })
-  updatedBy: string | null;
+  @Column({ name: 'updated_by', type: 'int', width: 11, nullable: true })
+  updatedBy: number | null;
 
   @ManyToOne(() => Company, { nullable: true })
   @JoinColumn({ name: 'company_id' })

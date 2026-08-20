@@ -40,7 +40,7 @@ export class AuthService implements OnModuleInit {
     @InjectRepository(HelpRequest)
     private readonly helpRequestRepo: Repository<HelpRequest>,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     await this.ensureHelpRequestsTable();
@@ -76,7 +76,6 @@ export class AuthService implements OnModuleInit {
     }
 
     const request = this.helpRequestRepo.create({
-      id: randomUUID(),
       contactInfo,
       message,
       status: 'OPEN',
@@ -95,10 +94,12 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('Signup is only available from the mobile app');
     }
 
-    const signupCompanyId = this.optionalText(process.env.MOBILE_SIGNUP_COMPANY_ID);
-    const signupBranchId = this.optionalText(process.env.MOBILE_SIGNUP_BRANCH_ID);
-    if (!signupCompanyId || !signupBranchId) {
-      throw new BadRequestException('Mobile signup company and branch are not configured');
+    const rawSignupCompanyId = this.optionalText(process.env.MOBILE_SIGNUP_COMPANY_ID);
+    const rawSignupBranchId = this.optionalText(process.env.MOBILE_SIGNUP_BRANCH_ID);
+    const signupCompanyId = rawSignupCompanyId ? Number(rawSignupCompanyId) : null;
+    const signupBranchId = rawSignupBranchId ? Number(rawSignupBranchId) : null;
+    if (!signupCompanyId || !signupBranchId || Number.isNaN(signupCompanyId) || Number.isNaN(signupBranchId)) {
+      throw new BadRequestException('Mobile signup company and branch are not configured correctly');
     }
 
     const [company, branch] = await Promise.all([
@@ -126,7 +127,6 @@ export class AuthService implements OnModuleInit {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = this.userRepo.create({
-      id: randomUUID(),
       email: normalizedEmail,
       passwordHash,
       firstName: dto.firstName.trim(),
@@ -185,7 +185,7 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  async deactivateMyAccount(userId: string): Promise<{ success: true }> {
+  async deactivateMyAccount(userId: number): Promise<{ success: true }> {
     const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -226,7 +226,7 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async me(userId: string): Promise<AuthUser> {
+  async me(userId: number): Promise<AuthUser> {
     const user = await this.userRepo.findOne({
       where: { id: userId, isActive: true },
       relations: ['branch', 'company'],
@@ -238,7 +238,7 @@ export class AuthService implements OnModuleInit {
   }
 
   async uploadMyPhoto(
-    userId: string,
+    userId: number,
     file?: { buffer?: Buffer; originalname?: string; mimetype?: string },
     request?: { protocol?: string; get?: (name: string) => string | undefined; headers?: Record<string, string | string[] | undefined> },
   ): Promise<AuthUser> {
@@ -289,7 +289,7 @@ export class AuthService implements OnModuleInit {
     return this.toAuthUser(user);
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto): Promise<AuthUser> {
+  async updateProfile(userId: number, dto: UpdateProfileDto): Promise<AuthUser> {
     const user = await this.userRepo.findOne({
       where: { id: userId, isActive: true },
       relations: ['branch', 'company'],
@@ -406,7 +406,7 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private resolveCompanyId(user: User): string | null {
+  private resolveCompanyId(user: User): number | null {
     return user.companyId || user.branch?.companyId || null;
   }
 

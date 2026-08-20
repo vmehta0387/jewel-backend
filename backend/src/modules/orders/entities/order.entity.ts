@@ -24,28 +24,28 @@ export class Order {
   orderNumber: string;
 
   @Index('idx_orders_company_id')
-  @Column({ name: 'company_id', type: 'int', nullable: true })
-  companyId: string | null;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
   @Index('idx_orders_branch_id')
-  @Column({ name: 'branch_id', type: 'int', nullable: true })
-  branchId: string | null;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
   @Index('idx_orders_design_id')
-  @Column({ name: 'design_id', type: 'int', nullable: true })
-  designId: string | null;
+  @Column({ name: 'design_id', type: 'int', width: 11, nullable: true })
+  designId: number | null;
 
   @Index('idx_orders_sales_rep_id')
-  @Column({ name: 'sales_rep_id', type: 'int', nullable: true })
-  salesRepId: string | null;
+  @Column({ name: 'sales_rep_id', type: 'int', width: 11, nullable: true })
+  salesRepId: number | null;
 
   @Index('idx_orders_created_by')
-  @Column({ name: 'created_by', type: 'int', nullable: true })
-  createdBy: string | null;
+  @Column({ name: 'created_by', type: 'int', width: 11, nullable: true })
+  createdBy: number | null;
 
   @Index('idx_orders_updated_by')
-  @Column({ name: 'updated_by', type: 'int', nullable: true })
-  updatedBy: string | null;
+  @Column({ name: 'updated_by', type: 'int', width: 11, nullable: true })
+  updatedBy: number | null;
 
   @Column({ name: 'delivery_date', type: 'date', nullable: true })
   deliveryDate: string | null;

@@ -4,7 +4,7 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
@@ -17,17 +17,17 @@ export enum NotificationPriority {
 
 @Entity('notifications')
 export class Notification {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'recipient_user_id', length: 36 })
-  recipientUserId: string;
+  @Column({ name: 'recipient_user_id', type: 'int', width: 11 })
+  recipientUserId: number;
 
-  @Column({ name: 'company_id', length: 36, nullable: true })
-  companyId: string | null;
+  @Column({ name: 'company_id', type: 'int', width: 11, nullable: true })
+  companyId: number | null;
 
-  @Column({ name: 'branch_id', length: 36, nullable: true })
-  branchId: string | null;
+  @Column({ name: 'branch_id', type: 'int', width: 11, nullable: true })
+  branchId: number | null;
 
   @Column({ length: 60 })
   type: string;
@@ -44,8 +44,8 @@ export class Notification {
   @Column({ name: 'entity_type', length: 60, nullable: true })
   entityType: string | null;
 
-  @Column({ name: 'entity_id', length: 36, nullable: true })
-  entityId: string | null;
+  @Column({ name: 'entity_id', type: 'int', width: 11, nullable: true })
+  entityId: number | null;
 
   @Column({ name: 'action_url', type: 'text', nullable: true })
   actionUrl: string | null;

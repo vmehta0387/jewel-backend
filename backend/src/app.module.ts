@@ -25,7 +25,7 @@ import { ActivityEventsModule } from './modules/activity-events/activity-events.
       password: process.env.DATABASE_PASSWORD,
       database: process.env.DATABASE_NAME,
       autoLoadEntities: true,
-      synchronize: false,
+      synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',
     }),
     UsersModule,
     BranchesModule,

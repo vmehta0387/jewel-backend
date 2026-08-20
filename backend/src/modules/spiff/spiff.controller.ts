@@ -34,7 +34,7 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard, TaskPermissionsGuard, ActionPermissionsGuard)
 @Controller('spiff')
 export class SpiffController {
-  constructor(private readonly spiffService: SpiffService) {}
+  constructor(private readonly spiffService: SpiffService) { }
 
   @Get('config')
   @TaskPermissions(TaskPermission.ORDER_ENTRIES)
@@ -125,7 +125,7 @@ export class SpiffController {
   @TaskPermissions(TaskPermission.ORDER_ENTRIES)
   @AnyActionPermissions('spiff.claim.review', 'mobile.spiff.claim.review')
   reviewClaim(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: ReviewSpiffClaimDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -136,7 +136,7 @@ export class SpiffController {
   @TaskPermissions(TaskPermission.ORDER_ENTRIES)
   @ActionPermissions('spiff.claim.fulfill')
   fulfillClaim(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: FulfillSpiffClaimDto,
     @Request() req: { user: AuthUser },
   ) {

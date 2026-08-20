@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsEnum, IsIn, IsInt, IsOptional, IsString, Min, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TaskPermission } from '../../../common/enums/task-permission.enum';
 import { UserRole } from '../../../common/enums/user-role.enum';
@@ -11,28 +11,35 @@ export class FindUsersQueryDto {
 
   @IsOptional()
   @IsEnum(UserRole)
+
   role?: UserRole;
 
   @IsOptional()
   @IsIn(['ACTIVE', 'INACTIVE', 'ALL'])
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  @IsString()
-  companyId?: string;
+  companyId?: number;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  @IsString()
-  branchId?: string;
+  branchId?: number;
 }
 
 export class CheckUserHandleQueryDto {
   @IsString()
   userHandle: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  @IsString()
-  excludeUserId?: string;
+  excludeUserId?: number;
 }
 
 export class UserPermissionActionDto {
@@ -66,12 +73,12 @@ export class CreateUserDto {
   role: UserRole;
 
   @IsOptional()
-  @IsString()
-  companyId?: string | null;
+  @IsInt()
+  companyId?: number | null;
 
   @IsOptional()
-  @IsString()
-  branchId?: string | null;
+  @IsInt()
+  branchId?: number | null;
 
   @IsOptional()
   @IsString()
@@ -124,12 +131,12 @@ export class UpdateUserDto {
   role?: UserRole;
 
   @IsOptional()
-  @IsString()
-  companyId?: string | null;
+  @IsInt()
+  companyId?: number | null;
 
   @IsOptional()
-  @IsString()
-  branchId?: string | null;
+  @IsInt()
+  branchId?: number | null;
 
   @IsOptional()
   @IsString()

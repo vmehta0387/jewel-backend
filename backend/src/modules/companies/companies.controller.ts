@@ -12,7 +12,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 @UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
 @Controller('companies')
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(private readonly companiesService: CompaniesService) { }
 
   @Post()
   @Roles(UserRole.SUPER_ADMIN)
@@ -32,7 +32,7 @@ export class CompaniesController {
     @Query('status') status?: string,
     @Query('country') country?: string,
     @Query('city') city?: string,
-    @Query('accountManagerId') accountManagerId?: string,
+    @Query('accountManagerId') accountManagerId?: number,
     @Query('pricingMode') pricingMode?: string,
   ) {
     return this.companiesService.findAll(
@@ -76,28 +76,28 @@ export class CompaniesController {
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   @ActionPermissions('company.view')
-  findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  findOne(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.companiesService.findOne(id, req.user);
   }
 
   @Put(':id')
   @Roles(UserRole.SUPER_ADMIN)
   @ActionPermissions('company.edit')
-  update(@Param('id') id: string, @Body() dto: UpdateCompanyDto) {
+  update(@Param('id') id: number, @Body() dto: UpdateCompanyDto) {
     return this.companiesService.update(id, dto);
   }
 
   @Patch(':id/status')
   @Roles(UserRole.SUPER_ADMIN)
   @ActionPermissions('company.status_update')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateCompanyStatusDto) {
+  updateStatus(@Param('id') id: number, @Body() dto: UpdateCompanyStatusDto) {
     return this.companiesService.updateStatus(id, dto.isActive);
   }
 
   @Post(':id/pricing-slabs')
   @Roles(UserRole.SUPER_ADMIN)
   @ActionPermissions('pricing.company.update')
-  updatePricingSlabs(@Param('id') id: string, @Body() slabs: PricingSlabDto[]) {
+  updatePricingSlabs(@Param('id') id: number, @Body() slabs: PricingSlabDto[]) {
     return this.companiesService.updatePricingSlabs(id, slabs);
   }
 }

@@ -34,8 +34,8 @@ export class CreateCompanyDto {
   companyCode: string;
 
   @IsOptional()
-  @IsString()
-  accountManagerId?: string;
+  @IsNumber()
+  accountManagerId?: number;
 
   @IsOptional()
   newAccountManager?: {
@@ -146,8 +146,8 @@ export class UpdateCompanyDto {
   companyName?: string;
 
   @IsOptional()
-  @IsString()
-  accountManagerId?: string;
+  @IsNumber()
+  accountManagerId?: number;
 
   @IsOptional()
   @IsString()

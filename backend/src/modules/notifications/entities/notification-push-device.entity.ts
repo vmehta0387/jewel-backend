@@ -1,12 +1,12 @@
-import { Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('notification_push_devices')
 export class NotificationPushDevice {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
-  @Column({ name: 'user_id', length: 36 })
-  userId: string;
+  @Column({ name: 'user_id', type: 'int', width: 11 })
+  userId: number;
 
   @Column({ name: 'expo_push_token', length: 255, unique: true })
   expoPushToken: string;

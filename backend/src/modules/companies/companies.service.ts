@@ -26,11 +26,11 @@ export class CompaniesService {
     private userRepo: Repository<User>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
-  ) {}
+  ) { }
 
   async create(dto: CreateCompanyDto): Promise<Company> {
     const code = dto.companyCode.toUpperCase().replace(/\s+/g, '');
-    
+
     const exists = await this.companyRepo.findOne({ where: { companyCode: code } });
     if (exists) {
       throw new ConflictException('Company code already exists');
@@ -46,14 +46,13 @@ export class CompaniesService {
       ...companyData
     } = dto as any;
 
-    let accountManagerId = companyData.accountManagerId?.trim() || null;
+    let accountManagerId: number | null = companyData.accountManagerId ? Number(companyData.accountManagerId) : null;
 
     // Create new account manager if provided
     if (newAccountManager) {
       const passwordHash = await bcrypt.hash('TempPassword123!', 10);
-      const userId = randomUUID();
+
       const newUser = this.userRepo.create({
-        id: userId,
         email: newAccountManager.email,
         passwordHash,
         firstName: newAccountManager.firstName,
@@ -62,8 +61,8 @@ export class CompaniesService {
         role: UserRole.INTERNAL_REP,
         taskPermissions: [TaskPermission.COMPANY_MANAGEMENT, TaskPermission.VIEW_REPORTS],
       });
-      await this.userRepo.save(newUser);
-      accountManagerId = userId;
+      const savedUser = await this.userRepo.save(newUser);
+      accountManagerId = savedUser.id;
     }
 
     const company = this.companyRepo.create({
@@ -96,7 +95,7 @@ export class CompaniesService {
     status?: string,
     country?: string,
     city?: string,
-    accountManagerId?: string,
+    accountManagerId?: number,
     pricingMode?: string,
     requester?: AuthUser,
   ) {
@@ -117,7 +116,7 @@ export class CompaniesService {
       query.andWhere(
         '(company.companyName LIKE :search OR company.companyCode LIKE :search OR company.city LIKE :search OR company.country LIKE :search)',
         {
-        search: `%${normalizedSearch}%`,
+          search: `%${normalizedSearch}%`,
         },
       );
     }
@@ -136,8 +135,8 @@ export class CompaniesService {
       query.andWhere('company.city LIKE :city', { city: `%${city.trim()}%` });
     }
 
-    if (accountManagerId?.trim()) {
-      query.andWhere('company.accountManagerId = :accountManagerId', { accountManagerId: accountManagerId.trim() });
+    if (accountManagerId) {
+      query.andWhere('company.accountManagerId = :accountManagerId', { accountManagerId });
     }
 
     if (requester?.role === UserRole.INTERNAL_REP) {
@@ -188,7 +187,7 @@ export class CompaniesService {
         .addSelect('COUNT(DISTINCT countUser.id)', 'userCount')
         .where('countCompany.id IN (:...companyIds)', { companyIds })
         .groupBy('countCompany.id')
-        .getRawMany<{ companyId: string; userCount: string }>();
+        .getRawMany<{ companyId: number; userCount: string }>();
       const userCountByCompany = new Map(
         userCounts.map((row) => [row.companyId, Number(row.userCount || 0)]),
       );
@@ -269,7 +268,7 @@ export class CompaniesService {
     };
   }
 
-  async findOne(id: string, requester?: AuthUser): Promise<Company> {
+  async findOne(id: number, requester?: AuthUser): Promise<Company> {
     const company = await this.companyRepo.findOne({
       where: { id },
       relations: ['accountManager', 'pricingSlabs', 'collectionPricingOverrides'],
@@ -290,10 +289,10 @@ export class CompaniesService {
     return company;
   }
 
-  async update(id: string, dto: UpdateCompanyDto): Promise<Company> {
+  async update(id: number, dto: UpdateCompanyDto): Promise<Company> {
     // Extract pricing data from DTO
     const { pricingSlabs, collectionOverrides, ...companyData } = dto as any;
-    
+
     // Use update query instead of save to ensure database is updated
     await this.companyRepo.update(id, companyData);
 
@@ -310,21 +309,20 @@ export class CompaniesService {
     return this.findOne(id);
   }
 
-  async updateStatus(id: string, isActive: boolean): Promise<Company> {
+  async updateStatus(id: number, isActive: boolean): Promise<Company> {
     const company = await this.findOne(id);
     company.isActive = isActive;
     await this.companyRepo.save(company);
     return company;
   }
 
-  async updatePricingSlabs(companyId: string, slabs: PricingSlabDto[]): Promise<void> {
+  async updatePricingSlabs(companyId: number, slabs: PricingSlabDto[]): Promise<void> {
     this.validatePricingSlabs(slabs);
     await this.slabRepo.delete({ companyId });
 
     if (slabs && slabs.length > 0) {
-      const newSlabs = slabs.map(slab => 
+      const newSlabs = slabs.map(slab =>
         this.slabRepo.create({
-          id: randomUUID(),
           companyId,
           ...slab,
         })
@@ -364,7 +362,7 @@ export class CompaniesService {
     }
   }
 
-  async calculatePrice(companyId: string, baseCost: number, collectionType?: string): Promise<number> {
+  async calculatePrice(companyId: number, baseCost: number, collectionType?: string): Promise<number> {
     const company = await this.findOne(companyId);
     let multiplier = company.defaultMultiplier;
 
@@ -407,7 +405,6 @@ export class CompaniesService {
     }
 
     const branch = this.branchRepo.create({
-      id: randomUUID(),
       companyId: company.id,
       name: mainBranchName?.trim() || `${company.companyName} Main Branch`,
       code: branchCode,
@@ -426,13 +423,12 @@ export class CompaniesService {
     await this.branchRepo.save(branch);
   }
 
-  async updateCollectionOverrides(companyId: string, overrides: any[]): Promise<void> {
+  async updateCollectionOverrides(companyId: number, overrides: any[]): Promise<void> {
     await this.collectionOverrideRepo.delete({ companyId });
 
     if (overrides && overrides.length > 0) {
-      const newOverrides = overrides.map(override => 
+      const newOverrides = overrides.map(override =>
         this.collectionOverrideRepo.create({
-          id: randomUUID(),
           companyId,
           collectionType: override.collectionType,
           multiplier: override.multiplier,

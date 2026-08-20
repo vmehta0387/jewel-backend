@@ -166,7 +166,7 @@ export class PricingService {
     dto: UpdateCompanyAdminBranchPricingDto,
   ) {
     const companyId = this.assertCompanyAdminScope(requester);
-    const normalizedBranchId = String(branchId || '').trim();
+    const normalizedBranchId = Number(branchId);
     if (!normalizedBranchId) {
       throw new BadRequestException('branchId is required');
     }
@@ -254,7 +254,7 @@ export class PricingService {
       }),
       query.excludeId
         ? this.globalBasePriceRepo.findOne({
-            where: { id: query.excludeId },
+            where: { id: Number(query.excludeId) },
           })
         : Promise.resolve(null),
     ]);
@@ -262,7 +262,7 @@ export class PricingService {
 
     const excludedReferenceValues = new Set(
       configuredRates
-        .filter((row) => !query.excludeId || row.id !== query.excludeId)
+        .filter((row) => !query.excludeId || row.id !== Number(query.excludeId))
         .map((row) => this.normalizeLookup(row.referenceValue))
         .filter((value): value is string => !!value),
     );
@@ -354,7 +354,7 @@ export class PricingService {
     dto: UpdateGlobalBasePriceDto,
     requester: AuthUser,
   ): Promise<any> {
-    const existing = await this.globalBasePriceRepo.findOne({ where: { id } });
+    const existing = await this.globalBasePriceRepo.findOne({ where: { id: Number(id) } });
     if (!existing) {
       throw new NotFoundException('Global base price not found');
     }
@@ -378,7 +378,7 @@ export class PricingService {
           unit: nextUnit,
           currency: nextCurrency,
         },
-        id,
+        Number(id),
       );
 
       if (duplicate) {
@@ -412,7 +412,7 @@ export class PricingService {
     isActive: boolean,
     requester: AuthUser,
   ): Promise<any> {
-    const existing = await this.globalBasePriceRepo.findOne({ where: { id } });
+    const existing = await this.globalBasePriceRepo.findOne({ where: { id: Number(id) } });
     if (!existing) {
       throw new NotFoundException('Global base price not found');
     }
@@ -426,7 +426,7 @@ export class PricingService {
           unit: existing.unit,
           currency: existing.currency,
         },
-        id,
+        Number(id),
       );
 
       if (duplicate) {
@@ -576,8 +576,8 @@ export class PricingService {
 
   async calculateDesignRetailPrice(params: {
     design: Pick<Design, 'totalValue' | 'collection'> | null;
-    companyId?: string;
-    branchId?: string;
+    companyId?: number;
+    branchId?: number;
   }): Promise<DesignRetailPriceResult> {
     const baseCost = this.toNumber(params.design?.totalValue ?? 0);
 
@@ -682,7 +682,7 @@ export class PricingService {
       unit: GlobalBasePriceUnit;
       currency: string;
     },
-    excludeId?: string,
+    excludeId?: number,
   ): Promise<GlobalBasePrice | null> {
     const qb = this.globalBasePriceRepo
       .createQueryBuilder('rate')
@@ -774,11 +774,11 @@ export class PricingService {
     return [DesignMasterType.DIAMOND_TYPE];
   }
 
-  private assertCompanyAdminScope(requester: AuthUser): string {
+  private assertCompanyAdminScope(requester: AuthUser): number {
     if (requester.role !== UserRole.COMPANY_ADMIN && requester.role !== UserRole.BRANCH_MANAGER) {
       throw new ForbiddenException('Only company admin or branch manager can access pricing settings');
     }
-    const companyId = String(requester.companyId || '').trim();
+    const companyId = requester.companyId;
     if (!companyId) {
       throw new ForbiddenException('Company admin must be assigned to a company');
     }
@@ -910,7 +910,7 @@ export class PricingService {
       .sort((a, b) => a.minCost - b.minCost);
   }
 
-  private async resolveCompanyMultiplier(companyId: string, baseCost: number, collection?: string): Promise<number> {
+  private async resolveCompanyMultiplier(companyId: number, baseCost: number, collection?: string): Promise<number> {
     const company = await this.companyRepo.findOne({
       where: { id: companyId },
       relations: ['pricingSlabs', 'collectionPricingOverrides'],
@@ -941,9 +941,9 @@ export class PricingService {
   }
 
   private async resolveBranchPricing(
-    branchId: string,
+    branchId: number,
     baseCost: number,
-    companyId?: string,
+    companyId?: number,
   ): Promise<{ multiplier: number; applies: boolean }> {
     const branch = await this.branchRepo.findOne({
       where: { id: branchId },

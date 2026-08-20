@@ -20,11 +20,11 @@ export interface OrderHistoryChange {
 
 @Entity('order_history')
 export class OrderHistory {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
 
   @Index('idx_order_history_order_id')
-  @Column({ name: 'order_id' })
+  @Column({ name: 'order_id', type: 'int', width: 11 })
   orderId: number;
 
   @Column({ name: 'action_type' })
@@ -37,8 +37,8 @@ export class OrderHistory {
   changes: OrderHistoryChange[] | null;
 
   @Index('idx_order_history_performed_by')
-  @Column({ name: 'performed_by', type: 'int', nullable: true })
-  performedBy: string | null;
+  @Column({ name: 'performed_by', type: 'int', width: 11, nullable: true })
+  performedBy: number | null;
 
   @Column({ name: 'performed_by_name', nullable: true })
   performedByName: string | null;

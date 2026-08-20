@@ -5,15 +5,15 @@ import { LaborHeadMaster, LaborRuleMaster } from './design-master-tables.entity'
 @Entity('design_labors')
 export class DesignLabor {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'labor_head_id', type: 'int', nullable: true })
+  @Column({ name: 'labor_head_id', type: 'int', width: 11, nullable: true })
   laborHeadId: number | null;
 
-  @Column({ name: 'labor_rule_id', type: 'int', nullable: true })
+  @Column({ name: 'labor_rule_id', type: 'int', width: 11, nullable: true })
   laborRuleId: number | null;
 
   laborHead?: string | null;

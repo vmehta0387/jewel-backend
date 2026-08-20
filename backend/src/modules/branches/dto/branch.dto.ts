@@ -29,8 +29,8 @@ export class NewBranchManagerDto {
 }
 
 export class CreateBranchDto {
-  @IsString()
-  companyId: string;
+  @IsNumber()
+  companyId: number;
 
   @IsString()
   name: string;
@@ -95,8 +95,8 @@ export class CreateBranchDto {
   shipCountry?: string;
 
   @IsOptional()
-  @IsString()
-  branchManagerId?: string;
+  @IsNumber()
+  branchManagerId?: number;
 
   @IsOptional()
   @ValidateNested()
@@ -122,8 +122,8 @@ export class CreateBranchDto {
 
 export class UpdateBranchDto {
   @IsOptional()
-  @IsString()
-  companyId?: string;
+  @IsNumber()
+  companyId?: number;
 
   @IsOptional()
   @IsString()
@@ -190,8 +190,8 @@ export class UpdateBranchDto {
   shipCountry?: string;
 
   @IsOptional()
-  @IsString()
-  branchManagerId?: string;
+  @IsNumber()
+  branchManagerId?: number;
 
   @IsOptional()
   @ValidateNested()

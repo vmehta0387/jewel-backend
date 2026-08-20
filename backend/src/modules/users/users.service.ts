@@ -31,14 +31,14 @@ import {
 } from '../permissions/entities/user-permission-action.entity';
 
 export interface UserResponse {
-  id: string;
+  id: number;
   email: string;
   firstName: string;
   lastName: string;
   userHandle: string | null;
   role: UserRole;
-  companyId: string | null;
-  branchId: string | null;
+  companyId: number | null;
+  branchId: number | null;
   phone: string | null;
   photoUrl: string | null;
   photoStoragePath: string | null;
@@ -51,17 +51,17 @@ export interface UserResponse {
     dataScope: PermissionDataScope;
   }[];
   company: {
-    id: string;
+    id: number;
     companyName: string;
     companyCode: string;
   } | null;
   managedCompanies: {
-    id: string;
+    id: number;
     companyName: string;
     companyCode: string;
   }[];
   branch: {
-    id: string;
+    id: number;
     name: string;
     code: string;
   } | null;
@@ -98,7 +98,7 @@ export class UsersService implements OnModuleInit {
     @InjectRepository(UserPermissionAction)
     private userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   private readonly allPermissions: TaskPermission[] = Object.values(TaskPermission);
   private readonly userImportHeaders = [
@@ -217,12 +217,12 @@ export class UsersService implements OnModuleInit {
       usersQuery.andWhere('user.isActive = :isActive', { isActive: false });
     }
 
-    if (query.companyId?.trim()) {
-      usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId.trim() });
+    if (query.companyId) {
+      usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId });
     }
 
-    if (query.branchId?.trim()) {
-      usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId.trim() });
+    if (query.branchId) {
+      usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId });
     }
 
     if (requester?.role === UserRole.COMPANY_ADMIN) {
@@ -298,12 +298,12 @@ export class UsersService implements OnModuleInit {
       }
     }
 
-    if (query.companyId?.trim() && requester.role === UserRole.SUPER_ADMIN) {
-      usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId.trim() });
+    if (query.companyId && requester.role === UserRole.SUPER_ADMIN) {
+      usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId });
     }
 
-    if (query.branchId?.trim() && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
-      usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId.trim() });
+    if (query.branchId && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
+      usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId });
     }
 
     const users = await usersQuery.getMany();
@@ -343,7 +343,7 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  async findOne(id: string, requester?: AuthUser): Promise<UserResponse> {
+  async findOne(id: number, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({
       where: { id },
       relations: ['company', 'branch'],
@@ -398,7 +398,6 @@ export class UsersService implements OnModuleInit {
           : this.normalizeDetailedPermissions(dto.detailedPermissions)
         : undefined;
     const user = this.userRepo.create({
-      id: randomUUID(),
       email: normalizedEmail,
       passwordHash,
       firstName: dto.firstName.trim(),
@@ -416,7 +415,7 @@ export class UsersService implements OnModuleInit {
           : this.normalizePermissions(dto.taskPermissions, dto.role),
     });
 
-    const saved = await this.userRepo.save(user);
+    const saved: any = await this.userRepo.save(user);
     if (normalizedDetailedPermissions !== undefined) {
       await this.replaceUserDetailedPermissions(saved.id, normalizedDetailedPermissions);
     }
@@ -425,7 +424,7 @@ export class UsersService implements OnModuleInit {
     return response;
   }
 
-  async update(id: string, dto: UpdateUserDto, requester?: AuthUser): Promise<UserResponse> {
+  async update(id: number, dto: UpdateUserDto, requester?: AuthUser): Promise<UserResponse> {
     await this.assertCanChangeAssignedPermissions(dto, requester);
 
     const user = await this.userRepo.findOne({ where: { id } });
@@ -550,7 +549,7 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  async updateStatus(id: string, isActive: boolean, requester?: AuthUser): Promise<UserResponse> {
+  async updateStatus(id: number, isActive: boolean, requester?: AuthUser): Promise<UserResponse> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -676,8 +675,8 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  private async getUserAdminAudience(user: User, excludedIds: Array<string | null | undefined>) {
-    const excludeSet = new Set(excludedIds.map((value) => String(value || '').trim()).filter(Boolean));
+  private async getUserAdminAudience(user: User, excludedIds: Array<number | null | undefined>) {
+    const excludeSet = new Set(excludedIds.filter((value) => value != null));
     const rows = await this.userRepo.find({
       where: [
         { role: UserRole.SUPER_ADMIN, isActive: true },
@@ -973,7 +972,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async updateBranchEmployee(
-    id: string,
+    id: number,
     dto: UpdateBranchEmployeeDto,
     requester: AuthUser,
   ): Promise<UserResponse> {
@@ -999,7 +998,7 @@ export class UsersService implements OnModuleInit {
     };
 
     if (dto.branchId !== undefined) {
-      const nextBranchId = dto.branchId.trim();
+      const nextBranchId = dto.branchId;
       if (!nextBranchId) {
         throw new BadRequestException('Branch is required');
       }
@@ -1021,7 +1020,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async updateBranchEmployeeStatus(
-    id: string,
+    id: number,
     isActive: boolean,
     requester: AuthUser,
   ): Promise<UserResponse> {
@@ -1057,11 +1056,11 @@ export class UsersService implements OnModuleInit {
 
   private async resolveScope(
     role: UserRole,
-    companyId?: string | null,
-    branchId?: string | null,
-  ): Promise<{ companyId: string | null; branchId: string | null }> {
-    const normalizedCompanyId = companyId?.trim() || null;
-    const normalizedBranchId = branchId?.trim() || null;
+    companyId?: number | null,
+    branchId?: number | null,
+  ): Promise<{ companyId: number | null; branchId: number | null }> {
+    const normalizedCompanyId = companyId || null;
+    const normalizedBranchId = branchId || null;
 
     if (role === UserRole.SUPER_ADMIN || role === UserRole.INTERNAL_REP) {
       return { companyId: null, branchId: null };
@@ -1097,21 +1096,21 @@ export class UsersService implements OnModuleInit {
     };
   }
 
-  private async ensureEmailAvailable(email: string, excludeUserId?: string): Promise<void> {
+  private async ensureEmailAvailable(email: string, excludeUserId?: number): Promise<void> {
     const existing = await this.userRepo.findOne({ where: { email } });
     if (existing && existing.id !== excludeUserId) {
       throw new ConflictException('Email already exists');
     }
   }
 
-  private async ensureUserHandleAvailable(userHandle: string, excludeUserId?: string): Promise<void> {
+  private async ensureUserHandleAvailable(userHandle: string, excludeUserId?: number): Promise<void> {
     const existing = await this.userRepo.findOne({ where: { userHandle } });
     if (existing && existing.id !== excludeUserId) {
       throw new ConflictException('User handle name alreday exit. try other please');
     }
   }
 
-  private async ensureCompanyExists(companyId: string): Promise<void> {
+  private async ensureCompanyExists(companyId: number): Promise<void> {
     const company = await this.companyRepo.findOne({ where: { id: companyId } });
     if (!company) {
       throw new NotFoundException('Company not found');
@@ -1172,7 +1171,7 @@ export class UsersService implements OnModuleInit {
   }
 
   private async replaceUserDetailedPermissions(
-    userId: string,
+    userId: number,
     permissions: { actionKey: string; dataScope: PermissionDataScope }[],
   ): Promise<void> {
     try {
@@ -1189,7 +1188,6 @@ export class UsersService implements OnModuleInit {
 
     const rows = permissions.map((permission) =>
       this.userPermissionActionRepo.create({
-        id: randomUUID(),
         userId,
         actionKey: permission.actionKey,
         dataScope: permission.dataScope,
@@ -1206,10 +1204,10 @@ export class UsersService implements OnModuleInit {
   }
 
   private async getUserDetailedPermissionsMap(
-    userIds: string[],
-  ): Promise<Map<string, { actionKey: string; dataScope: PermissionDataScope }[]>> {
+    userIds: number[],
+  ): Promise<Map<number, { actionKey: string; dataScope: PermissionDataScope }[]>> {
     const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
-    const map = new Map<string, { actionKey: string; dataScope: PermissionDataScope }[]>();
+    const map = new Map<number, { actionKey: string; dataScope: PermissionDataScope }[]>();
     uniqueUserIds.forEach((userId) => map.set(userId, []));
     if (!uniqueUserIds.length) {
       return map;
@@ -1338,8 +1336,8 @@ export class UsersService implements OnModuleInit {
     const phone = String(row.phone || '').trim() || undefined;
     const password = String(row.password || '').trim();
 
-    let companyId: string | null | undefined;
-    let branchId: string | null | undefined;
+    let companyId: number | null | undefined;
+    let branchId: number | null | undefined;
 
     if (companyCode) {
       const company = companyMap.get(companyCode);
@@ -1419,7 +1417,7 @@ export class UsersService implements OnModuleInit {
     requester: AuthUser,
   ): Promise<
     {
-      id: string;
+      id: number;
       name: string;
       code: string;
       streetAddress?: string | null;
@@ -1499,8 +1497,8 @@ export class UsersService implements OnModuleInit {
 
   private async resolveBranchEmployeeScope(
     requester: AuthUser,
-    branchId?: string,
-  ): Promise<{ companyId: string | null; branchId: string | null }> {
+    branchId?: number,
+  ): Promise<{ companyId: number | null; branchId: number | null }> {
     if (requester.role === UserRole.BRANCH_MANAGER) {
       if (!requester.companyId || !requester.branchId) {
         throw new ForbiddenException('Branch manager must be assigned to a company and branch');
@@ -1516,11 +1514,11 @@ export class UsersService implements OnModuleInit {
       throw new ForbiddenException('Company admin must be assigned to a company');
     }
 
-    if (!branchId?.trim()) {
+    if (!branchId) {
       return { companyId: requester.companyId, branchId: null };
     }
 
-    const branch = await this.branchRepo.findOne({ where: { id: branchId.trim() } });
+    const branch = await this.branchRepo.findOne({ where: { id: branchId } });
     if (!branch) {
       throw new NotFoundException('Branch not found');
     }
@@ -1531,9 +1529,9 @@ export class UsersService implements OnModuleInit {
   }
 
   private async getManagedCompaniesMap(
-    userIds: string[],
-  ): Promise<Map<string, { id: string; companyName: string; companyCode: string }[]>> {
-    const map = new Map<string, { id: string; companyName: string; companyCode: string }[]>();
+    userIds: number[],
+  ): Promise<Map<number, { id: number; companyName: string; companyCode: string }[]>> {
+    const map = new Map<number, { id: number; companyName: string; companyCode: string }[]>();
 
     if (userIds.length === 0) {
       return map;
@@ -1545,10 +1543,10 @@ export class UsersService implements OnModuleInit {
       .where('company.accountManagerId IN (:...userIds)', { userIds })
       .orderBy('company.companyName', 'ASC')
       .getRawMany<{
-        id: string;
+        id: number;
         companyName: string;
         companyCode: string;
-        accountManagerId: string;
+        accountManagerId: number;
       }>();
 
     for (const company of companies) {
@@ -1568,7 +1566,7 @@ export class UsersService implements OnModuleInit {
 
   private toResponse(
     user: User,
-    managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+    managedCompanies: { id: number; companyName: string; companyCode: string }[] = [],
     detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[] = [],
   ): UserResponse {
     return {
@@ -1590,18 +1588,18 @@ export class UsersService implements OnModuleInit {
       detailedPermissions,
       company: user.company
         ? {
-            id: user.company.id,
-            companyName: user.company.companyName,
-            companyCode: user.company.companyCode,
-          }
+          id: user.company.id,
+          companyName: user.company.companyName,
+          companyCode: user.company.companyCode,
+        }
         : null,
       managedCompanies,
       branch: user.branch
         ? {
-            id: user.branch.id,
-            name: user.branch.name,
-            code: user.branch.code,
-          }
+          id: user.branch.id,
+          name: user.branch.name,
+          code: user.branch.code,
+        }
         : null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -1610,7 +1608,7 @@ export class UsersService implements OnModuleInit {
 
   private async mapToUserResponse(
     user: User,
-    managedCompanies: { id: string; companyName: string; companyCode: string }[] = [],
+    managedCompanies: { id: number; companyName: string; companyCode: string }[] = [],
     detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[] = [],
   ): Promise<UserResponse> {
     const response = this.toResponse(user, managedCompanies, detailedPermissions);

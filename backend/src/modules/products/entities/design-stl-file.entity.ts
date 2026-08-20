@@ -13,11 +13,11 @@ import { User } from '../../users/entities/user.entity';
 @Entity('design_stl_files')
 export class DesignStlFile {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
   @Index('idx_design_stl_files_design_id')
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
   @Column({ name: 'file_name' })
   fileName: string;
@@ -29,8 +29,8 @@ export class DesignStlFile {
   notes: string | null;
 
   @Index('idx_design_stl_files_uploaded_by')
-  @Column({ name: 'uploaded_by', type: 'int', nullable: true })
-  uploadedBy: number | string | null;
+  @Column({ name: 'uploaded_by', type: 'int', width: 11, nullable: true })
+  uploadedBy: number | null;
 
   @ManyToOne(() => Design, (design) => design.stlFiles, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'design_id' })

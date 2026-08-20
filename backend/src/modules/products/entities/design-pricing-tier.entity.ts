@@ -9,10 +9,10 @@ export enum DesignPricingIncrementBy {
 @Entity('design_pricing_tiers')
 export class DesignPricingTier {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
   @Column()
   name: string;

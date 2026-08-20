@@ -14,33 +14,33 @@ import {
 @Entity('design_gemstones')
 export class DesignGemstone {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'packet_id', type: 'int', nullable: true })
+  @Column({ name: 'packet_id', type: 'int', width: 11, nullable: true })
   packetId: number | null;
 
-  @Column({ name: 'stone_id', type: 'int', nullable: true })
+  @Column({ name: 'stone_id', type: 'int', width: 11, nullable: true })
   stoneId: number | null;
 
-  @Column({ name: 'shape_id', type: 'int', nullable: true })
+  @Column({ name: 'shape_id', type: 'int', width: 11, nullable: true })
   shapeId: number | null;
 
-  @Column({ name: 'size_id', type: 'int', nullable: true })
+  @Column({ name: 'size_id', type: 'int', width: 11, nullable: true })
   sizeId: number | null;
 
-  @Column({ name: 'cut_id', type: 'int', nullable: true })
+  @Column({ name: 'cut_id', type: 'int', width: 11, nullable: true })
   cutId: number | null;
 
-  @Column({ name: 'color_id', type: 'int', nullable: true })
+  @Column({ name: 'color_id', type: 'int', width: 11, nullable: true })
   colorId: number | null;
 
-  @Column({ name: 'quality_id', type: 'int', nullable: true })
+  @Column({ name: 'quality_id', type: 'int', width: 11, nullable: true })
   qualityId: number | null;
 
-  @Column({ name: 'stone_type_id', type: 'int', nullable: true })
+  @Column({ name: 'stone_type_id', type: 'int', width: 11, nullable: true })
   stoneTypeId: number | null;
 
   stone?: string | null;

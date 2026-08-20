@@ -1,9 +1,8 @@
-import { Entity, PrimaryColumn, Column, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, BeforeInsert } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, BeforeInsert } from 'typeorm';
 import { Branch } from '../../branches/entities/branch.entity';
 import { User } from '../../users/entities/user.entity';
 import { CompanyPricingSlab } from './company-pricing-slab.entity';
 import { CollectionPricingOverride } from './collection-pricing-override.entity';
-import { randomUUID } from 'crypto';
 
 export enum ShipToType {
   MAIN_ADDRESS = 'MAIN_ADDRESS',
@@ -13,8 +12,8 @@ export enum ShipToType {
 
 @Entity('companies')
 export class Company {
-  @PrimaryColumn('varchar', { length: 36 })
-  id: string;
+  @PrimaryGeneratedColumn({ type: 'int' })
+  id: number;
 
   @Column({ name: 'company_name' })
   companyName: string;
@@ -22,8 +21,8 @@ export class Company {
   @Column({ name: 'company_code', unique: true })
   companyCode: string;
 
-  @Column({ name: 'account_manager_id', nullable: true })
-  accountManagerId: string;
+  @Column({ name: 'account_manager_id', type: 'int', width: 11, nullable: true })
+  accountManagerId: number | null;
 
   // Structured Address
   @Column({ name: 'street_address', nullable: true })
@@ -116,9 +115,6 @@ export class Company {
 
   @BeforeInsert()
   generateId() {
-    if (!this.id) {
-      this.id = randomUUID();
-    }
     this.companyCode = this.companyCode.toUpperCase().replace(/\s+/g, '');
   }
 }

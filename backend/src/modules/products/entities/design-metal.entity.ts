@@ -5,12 +5,12 @@ import { MetalCaratageMaster } from './design-master-tables.entity';
 @Entity('design_metals')
 export class DesignMetal {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'metal_caratage_id', type: 'int', nullable: true })
+  @Column({ name: 'metal_caratage_id', type: 'int', width: 11, nullable: true })
   metalCaratageId: number | null;
 
   metalCaratage?: string | null;

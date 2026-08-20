@@ -88,7 +88,7 @@ export class ProductsController {
   @Get('mobile/configurator/:id')
   @TaskPermissions()
   @ActionPermissions()
-  findMobileConfigurator(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  findMobileConfigurator(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.findMobileConfigurator(id, req.user);
   }
 
@@ -100,7 +100,7 @@ export class ProductsController {
     @Query() query: ResolveMobileDesignConfiguratorQueryDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.productsService.resolveMobileConfigurator(id, query, req.user);
+    return this.productsService.resolveMobileConfigurator(Number(id), query, req.user);
   }
 
   @Get('dashboard-summary')
@@ -133,7 +133,7 @@ export class ProductsController {
   }
 
   @Post('export/by-ids')
-  async exportDesignsByIds(@Body() body: { ids?: string[] }, @Request() req: { user: AuthUser }) {
+  async exportDesignsByIds(@Body() body: { ids?: number[] }, @Request() req: { user: AuthUser }) {
     const file = await this.productsService.exportDesignsByIds(body?.ids || [], req.user);
     return new StreamableFile(file.buffer, {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -181,7 +181,7 @@ export class ProductsController {
   @Get(':id/history')
   @TaskPermissions()
   @ActionPermissions()
-  getHistory(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  getHistory(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.getHistory(id, req.user);
   }
 
@@ -194,7 +194,7 @@ export class ProductsController {
   @Get(':id')
   @TaskPermissions()
   @ActionPermissions()
-  findOne(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  findOne(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.findOne(id, req.user);
   }
 
@@ -205,7 +205,7 @@ export class ProductsController {
 
   @Put(':id')
   update(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: UpdateProductDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -214,7 +214,7 @@ export class ProductsController {
 
   @Patch(':id/status')
   updateStatus(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: UpdateProductStatusDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -229,7 +229,7 @@ export class ProductsController {
   }
 
   @Delete('media-library/:id')
-  removeMediaLibraryItem(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  removeMediaLibraryItem(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.removeMediaLibraryItem(id, req.user);
   }
 
@@ -240,7 +240,7 @@ export class ProductsController {
   }
 
   @Get(':id/stl-file')
-  async getStlFile(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  async getStlFile(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     const file = await this.productsService.getStlFileContent(id, req.user);
     return new StreamableFile(file.buffer, {
       type: 'model/stl',
@@ -256,7 +256,7 @@ export class ProductsController {
 
   @Post(':id/stl-files')
   uploadStlFile(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: UploadStlFileDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -264,22 +264,22 @@ export class ProductsController {
   }
 
   @Post(':id/primary')
-  setPrimary(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  setPrimary(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.setPrimaryVersion(id, req.user);
   }
 
   @Post(':id/relevant-designs')
   replaceRelevantDesigns(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: ReplaceRelevantDesignsDto,
     @Request() req: { user: AuthUser },
   ) {
-    return this.productsService.replaceRelevantDesigns(id, dto.designIds, req.user);
+    return this.productsService.replaceRelevantDesigns(id, dto.designIds.map(Number), req.user);
   }
 
   @Post(':id/process-stages')
   replaceProcessStages(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: ReplaceProcessStagesDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -288,7 +288,7 @@ export class ProductsController {
 
   @Post(':id/pricing-tiers')
   replacePricingTiers(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: ReplacePricingTiersDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -297,7 +297,7 @@ export class ProductsController {
 
   @Post(':id/vendors')
   replaceVendors(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: ReplaceVendorsDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -305,7 +305,7 @@ export class ProductsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Request() req: { user: AuthUser }) {
+  remove(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.productsService.remove(id, req.user);
   }
 }

@@ -11,12 +11,12 @@ export enum DesignDurationType {
 @Entity('design_process_stages')
 export class DesignProcessStage {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'process_stage_id', type: 'int' })
+  @Column({ name: 'process_stage_id', type: 'int', width: 11 })
   processStageId: number;
 
   processStage?: string;

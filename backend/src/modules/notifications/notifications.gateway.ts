@@ -70,12 +70,12 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   handleDisconnect(@ConnectedSocket() socket: Socket) {
-    const userId = typeof socket.data?.userId === 'string' ? socket.data.userId : null;
+    const userId = typeof socket.data?.userId === 'number' ? socket.data.userId : null;
     if (!userId) return;
     void socket.leave(this.userRoom(userId));
   }
 
-  emitUnreadCount(userId: string, unreadCount: number) {
+  emitUnreadCount(userId: number, unreadCount: number) {
     if (!this.server) return;
     try {
       this.server.to(this.userRoom(userId)).emit('notification.unread_count_updated', {
@@ -100,11 +100,11 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     return null;
   }
 
-  private userRoom(userId: string) {
+  private userRoom(userId: number) {
     return `user:${userId}`;
   }
 
-  private async emitCurrentUnreadCount(socket: Socket, userId: string) {
+  private async emitCurrentUnreadCount(socket: Socket, userId: number) {
     const unreadCount = await this.notificationRepo.count({
       where: {
         recipientUserId: userId,

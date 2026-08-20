@@ -108,8 +108,8 @@ export class FindSpiffActivityQueryDto {
 
 export class CreateSpiffClaimDto {
   @IsOptional()
-  @IsString()
-  userId?: string;
+  @IsInt()
+  userId?: number;
 
   @IsOptional()
   @IsIn(['ADD', 'REMOVE', 'REDEEM'])
@@ -130,8 +130,8 @@ export class CreateSpiffClaimDto {
 }
 
 export class CreateSpiffPointAdjustmentDto {
-  @IsString()
-  userId: string;
+  @IsInt()
+  userId: number;
 
   @IsIn(['ADD', 'REMOVE', 'REDEEM'])
   action: SpiffPointAdjustmentAction;

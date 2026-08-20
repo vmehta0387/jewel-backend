@@ -5,12 +5,12 @@ import { OverheadRuleMaster } from './design-master-tables.entity';
 @Entity('design_overheads')
 export class DesignOverhead {
   @PrimaryGeneratedColumn({ type: 'int' })
-  id: number | string;
+  id: number;
 
-  @Column({ name: 'design_id', type: 'int' })
-  designId: number | string;
+  @Column({ name: 'design_id', type: 'int', width: 11 })
+  designId: number;
 
-  @Column({ name: 'overhead_rule_id', type: 'int', nullable: true })
+  @Column({ name: 'overhead_rule_id', type: 'int', width: 11, nullable: true })
   overheadRuleId: number | null;
 
   overheadHead?: string | null;

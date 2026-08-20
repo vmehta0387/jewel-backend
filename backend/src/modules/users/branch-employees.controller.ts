@@ -16,7 +16,7 @@ import {
 @UseGuards(JwtAuthGuard, RolesGuard, ActionPermissionsGuard)
 @Controller('branch-employees')
 export class BranchEmployeesController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Get('branches')
   @Roles(
@@ -49,7 +49,7 @@ export class BranchEmployeesController {
   @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   @ActionPermissions('team.employee.manage')
   update(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: UpdateBranchEmployeeDto,
     @Request() req: { user: AuthUser },
   ) {
@@ -60,7 +60,7 @@ export class BranchEmployeesController {
   @Roles(UserRole.BRANCH_MANAGER, UserRole.COMPANY_ADMIN)
   @ActionPermissions('team.employee.manage')
   updateStatus(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() dto: UpdateBranchEmployeeStatusDto,
     @Request() req: { user: AuthUser },
   ) {

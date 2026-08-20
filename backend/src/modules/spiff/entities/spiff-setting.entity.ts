@@ -8,8 +8,8 @@ export class SpiffSetting {
   @Column({ name: 'setting_value', type: 'varchar', length: 255 })
   settingValue: string;
 
-  @Column({ name: 'updated_by_id', type: 'varchar', length: 36, nullable: true })
-  updatedById: string | null;
+  @Column({ name: 'updated_by_id', type: 'int', width: 11, nullable: true })
+  updatedById: number | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

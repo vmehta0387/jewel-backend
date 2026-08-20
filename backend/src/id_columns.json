@@ -1,0 +1,962 @@
+﻿[
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\activity-events\\entities\\activity-event.entity.ts",
+        "LineNumber":  23,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\activity-events\\entities\\activity-event.entity.ts",
+        "LineNumber":  27,
+        "Line":  "  @Column({ name: \u0027user_id\u0027, length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\activity-events\\entities\\activity-event.entity.ts",
+        "LineNumber":  31,
+        "Line":  "  @Column({ name: \u0027device_id\u0027, length: 120, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\activity-events\\entities\\activity-event.entity.ts",
+        "LineNumber":  49,
+        "Line":  "  @Column({ name: \u0027entity_id\u0027, length: 120, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\activity-events\\entities\\activity-event.entity.ts",
+        "LineNumber":  59,
+        "Line":  "  @JoinColumn({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\auth\\entities\\help-request.entity.ts",
+        "LineNumber":  5,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch-pricing-slab.entity.ts",
+        "LineNumber":  7,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch-pricing-slab.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch-pricing-slab.entity.ts",
+        "LineNumber":  26,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch.entity.ts",
+        "LineNumber":  64,
+        "Line":  "  @Column({ name: \u0027branch_manager_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch.entity.ts",
+        "LineNumber":  77,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\branches\\entities\\branch.entity.ts",
+        "LineNumber":  81,
+        "Line":  "  @JoinColumn({ name: \u0027branch_manager_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\collection-pricing-override.entity.ts",
+        "LineNumber":  14,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\collection-pricing-override.entity.ts",
+        "LineNumber":  17,
+        "Line":  "  @Column({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\collection-pricing-override.entity.ts",
+        "LineNumber":  30,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company-pricing-slab.entity.ts",
+        "LineNumber":  7,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company-pricing-slab.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company-pricing-slab.entity.ts",
+        "LineNumber":  26,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company.entity.ts",
+        "LineNumber":  25,
+        "Line":  "  @Column({ name: \u0027account_manager_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\companies\\entities\\company.entity.ts",
+        "LineNumber":  90,
+        "Line":  "  @JoinColumn({ name: \u0027account_manager_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification-push-device.entity.ts",
+        "LineNumber":  5,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification-push-device.entity.ts",
+        "LineNumber":  8,
+        "Line":  "  @Column({ name: \u0027user_id\u0027, length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification-push-device.entity.ts",
+        "LineNumber":  17,
+        "Line":  "  @Column({ name: \u0027device_id\u0027, length: 128, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  20,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  23,
+        "Line":  "  @Column({ name: \u0027recipient_user_id\u0027, length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  26,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, length: 36, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  29,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, length: 36, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  47,
+        "Line":  "  @Column({ name: \u0027entity_id\u0027, length: 36, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\notifications\\entities\\notification.entity.ts",
+        "LineNumber":  72,
+        "Line":  "  @JoinColumn({ name: \u0027recipient_user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order-history.entity.ts",
+        "LineNumber":  27,
+        "Line":  "  @Column({ name: \u0027order_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order-history.entity.ts",
+        "LineNumber":  53,
+        "Line":  "  @JoinColumn({ name: \u0027order_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  27,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  31,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  35,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  39,
+        "Line":  "  @Column({ name: \u0027sales_rep_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  99,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  103,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  107,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\orders\\entities\\order.entity.ts",
+        "LineNumber":  111,
+        "Line":  "  @JoinColumn({ name: \u0027sales_rep_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\permissions\\entities\\permission-action.entity.ts",
+        "LineNumber":  9,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 160 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\permissions\\entities\\permission-module.entity.ts",
+        "LineNumber":  6,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 80 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\permissions\\entities\\user-permission-action.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\permissions\\entities\\user-permission-action.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @Column({ name: \u0027user_id\u0027, length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\permissions\\entities\\user-permission-action.entity.ts",
+        "LineNumber":  20,
+        "Line":  "  @JoinColumn({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\pricing\\entities\\global-base-price.entity.ts",
+        "LineNumber":  24,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\pricing\\entities\\pricing-rule.entity.ts",
+        "LineNumber":  11,
+        "Line":  "  @Column({ name: \u0027entity_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-finding.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-finding.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027finding_head_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-finding.entity.ts",
+        "LineNumber":  34,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-finding.entity.ts",
+        "LineNumber":  38,
+        "Line":  "  @JoinColumn({ name: \u0027finding_head_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  22,
+        "Line":  "  @Column({ name: \u0027packet_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  25,
+        "Line":  "  @Column({ name: \u0027stone_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  28,
+        "Line":  "  @Column({ name: \u0027shape_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  31,
+        "Line":  "  @Column({ name: \u0027size_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  34,
+        "Line":  "  @Column({ name: \u0027cut_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  37,
+        "Line":  "  @Column({ name: \u0027color_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  40,
+        "Line":  "  @Column({ name: \u0027quality_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  43,
+        "Line":  "  @Column({ name: \u0027stone_type_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  73,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  77,
+        "Line":  "  @JoinColumn({ name: \u0027packet_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  81,
+        "Line":  "  @JoinColumn({ name: \u0027stone_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  85,
+        "Line":  "  @JoinColumn({ name: \u0027shape_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  89,
+        "Line":  "  @JoinColumn({ name: \u0027size_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  93,
+        "Line":  "  @JoinColumn({ name: \u0027cut_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  97,
+        "Line":  "  @JoinColumn({ name: \u0027color_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  101,
+        "Line":  "  @JoinColumn({ name: \u0027quality_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-gemstone.entity.ts",
+        "LineNumber":  105,
+        "Line":  "  @JoinColumn({ name: \u0027stone_type_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-history.entity.ts",
+        "LineNumber":  17,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-history.entity.ts",
+        "LineNumber":  33,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027labor_head_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @Column({ name: \u0027labor_rule_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  34,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  38,
+        "Line":  "  @JoinColumn({ name: \u0027labor_head_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-labor.entity.ts",
+        "LineNumber":  42,
+        "Line":  "  @JoinColumn({ name: \u0027labor_rule_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  124,
+        "Line":  "  @Column({ name: \u0027jewelry_group_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  134,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_group_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  141,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_group_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  168,
+        "Line":  "  @Column({ name: \u0027metal_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  172,
+        "Line":  "  @JoinColumn({ name: \u0027metal_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  178,
+        "Line":  "  @Column({ name: \u0027metal_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  182,
+        "Line":  "  @JoinColumn({ name: \u0027metal_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  191,
+        "Line":  "  @Column({ name: \u0027metal_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  194,
+        "Line":  "  @Column({ name: \u0027metal_color_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  197,
+        "Line":  "  @Column({ name: \u0027metal_purity_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  201,
+        "Line":  "  @JoinColumn({ name: \u0027metal_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  205,
+        "Line":  "  @JoinColumn({ name: \u0027metal_color_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  209,
+        "Line":  "  @JoinColumn({ name: \u0027metal_purity_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  252,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_group_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  272,
+        "Line":  "  @Column({ name: \u0027jewelry_group_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  276,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_group_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  299,
+        "Line":  "  @Column({ name: \u0027metal_caratage_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-master-tables.entity.ts",
+        "LineNumber":  303,
+        "Line":  "  @JoinColumn({ name: \u0027metal_caratage_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-metal.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-metal.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027metal_caratage_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-metal.entity.ts",
+        "LineNumber":  44,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-metal.entity.ts",
+        "LineNumber":  48,
+        "Line":  "  @JoinColumn({ name: \u0027metal_caratage_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-overhead.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-overhead.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027overhead_rule_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-overhead.entity.ts",
+        "LineNumber":  34,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-overhead.entity.ts",
+        "LineNumber":  38,
+        "Line":  "  @JoinColumn({ name: \u0027overhead_rule_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-pricing-tier.entity.ts",
+        "LineNumber":  14,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-pricing-tier.entity.ts",
+        "LineNumber":  47,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-process-stage.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-process-stage.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @Column({ name: \u0027process_stage_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-process-stage.entity.ts",
+        "LineNumber":  45,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-process-stage.entity.ts",
+        "LineNumber":  49,
+        "Line":  "  @JoinColumn({ name: \u0027process_stage_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-relevant.entity.ts",
+        "LineNumber":  9,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-relevant.entity.ts",
+        "LineNumber":  12,
+        "Line":  "  @Column({ name: \u0027related_design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-relevant.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-relevant.entity.ts",
+        "LineNumber":  20,
+        "Line":  "  @JoinColumn({ name: \u0027related_design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-stl-file.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-stl-file.entity.ts",
+        "LineNumber":  36,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-tag.entity.ts",
+        "LineNumber":  11,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-tag.entity.ts",
+        "LineNumber":  14,
+        "Line":  "  @Column({ name: \u0027tag_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-tag.entity.ts",
+        "LineNumber":  18,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-tag.entity.ts",
+        "LineNumber":  22,
+        "Line":  "  @JoinColumn({ name: \u0027tag_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-vendor.entity.ts",
+        "LineNumber":  10,
+        "Line":  "  @Column({ name: \u0027design_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-vendor.entity.ts",
+        "LineNumber":  13,
+        "Line":  "  @Column({ name: \u0027vendor_name_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-vendor.entity.ts",
+        "LineNumber":  28,
+        "Line":  "  @JoinColumn({ name: \u0027design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design-vendor.entity.ts",
+        "LineNumber":  32,
+        "Line":  "  @JoinColumn({ name: \u0027vendor_name_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  53,
+        "Line":  "  @Column({ name: \u0027family_design_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  63,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  67,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  70,
+        "Line":  "  @Column({ name: \u0027jewelry_group_id\u0027, type: \u0027int\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  73,
+        "Line":  "  @Column({ name: \u0027collection_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  76,
+        "Line":  "  @Column({ name: \u0027jewelry_size_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  79,
+        "Line":  "  @Column({ name: \u0027stage_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  82,
+        "Line":  "  @Column({ name: \u0027diamond_spread_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  85,
+        "Line":  "  @Column({ name: \u0027diamond_type_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  88,
+        "Line":  "  @Column({ name: \u0027diamond_weight_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  91,
+        "Line":  "  @Column({ name: \u0027diamond_quality_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  94,
+        "Line":  "  @Column({ name: \u0027design_status_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  97,
+        "Line":  "  @Column({ name: \u0027metal_caratage_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  155,
+        "Line":  "  @Column({ name: \u0027ijewel_model_id\u0027, nullable: true, length: 120 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  176,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  180,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  184,
+        "Line":  "  @JoinColumn({ name: \u0027family_design_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  188,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_group_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  192,
+        "Line":  "  @JoinColumn({ name: \u0027collection_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  196,
+        "Line":  "  @JoinColumn({ name: \u0027jewelry_size_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  200,
+        "Line":  "  @JoinColumn({ name: \u0027stage_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  204,
+        "Line":  "  @JoinColumn({ name: \u0027diamond_spread_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  208,
+        "Line":  "  @JoinColumn({ name: \u0027diamond_type_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  212,
+        "Line":  "  @JoinColumn({ name: \u0027diamond_weight_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  216,
+        "Line":  "  @JoinColumn({ name: \u0027diamond_quality_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  220,
+        "Line":  "  @JoinColumn({ name: \u0027design_status_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\design.entity.ts",
+        "LineNumber":  224,
+        "Line":  "  @JoinColumn({ name: \u0027metal_caratage_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\metal-price-history.entity.ts",
+        "LineNumber":  16,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\metal-price-history.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @Column({ name: \u0027metal_name_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\metal-price-history.entity.ts",
+        "LineNumber":  39,
+        "Line":  "  @JoinColumn({ name: \u0027metal_name_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  42,
+        "Line":  "  @Column({ name: \u0027stone_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  45,
+        "Line":  "  @Column({ name: \u0027shape_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  48,
+        "Line":  "  @Column({ name: \u0027size_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  51,
+        "Line":  "  @Column({ name: \u0027cut_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  54,
+        "Line":  "  @Column({ name: \u0027color_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  57,
+        "Line":  "  @Column({ name: \u0027quality_id\u0027, type: \u0027int\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  92,
+        "Line":  "  @JoinColumn({ name: \u0027stone_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  96,
+        "Line":  "  @JoinColumn({ name: \u0027shape_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  100,
+        "Line":  "  @JoinColumn({ name: \u0027size_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  104,
+        "Line":  "  @JoinColumn({ name: \u0027cut_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  108,
+        "Line":  "  @JoinColumn({ name: \u0027color_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\products\\entities\\stone-packet.entity.ts",
+        "LineNumber":  112,
+        "Line":  "  @JoinColumn({ name: \u0027quality_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  22,
+        "Line":  "  @Column({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  25,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  28,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  31,
+        "Line":  "  @Column({ name: \u0027order_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  54,
+        "Line":  "  @JoinColumn({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  58,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  62,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-point-ledger.entity.ts",
+        "LineNumber":  66,
+        "Line":  "  @JoinColumn({ name: \u0027order_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  19,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  25,
+        "Line":  "  @Column({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  28,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  31,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  59,
+        "Line":  "  @Column({ name: \u0027giftbit_request_id\u0027, length: 150, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  68,
+        "Line":  "  @Column({ name: \u0027approved_by_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  78,
+        "Line":  "  @JoinColumn({ name: \u0027user_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  82,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  86,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-redemption-claim.entity.ts",
+        "LineNumber":  90,
+        "Line":  "  @JoinColumn({ name: \u0027approved_by_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\spiff\\entities\\spiff-setting.entity.ts",
+        "LineNumber":  11,
+        "Line":  "  @Column({ name: \u0027updated_by_id\u0027, type: \u0027varchar\u0027, length: 36, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\users\\entities\\user.entity.ts",
+        "LineNumber":  9,
+        "Line":  "  @PrimaryColumn(\u0027varchar\u0027, { length: 36 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\users\\entities\\user.entity.ts",
+        "LineNumber":  30,
+        "Line":  "  @Column({ name: \u0027company_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\users\\entities\\user.entity.ts",
+        "LineNumber":  33,
+        "Line":  "  @Column({ name: \u0027branch_id\u0027, nullable: true })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\users\\entities\\user.entity.ts",
+        "LineNumber":  46,
+        "Line":  "  @JoinColumn({ name: \u0027company_id\u0027 })"
+    },
+    {
+        "Path":  "D:\\MobeDevlopProject\\jwlApp\\jewel-backend\\backend\\src\\modules\\users\\entities\\user.entity.ts",
+        "LineNumber":  50,
+        "Line":  "  @JoinColumn({ name: \u0027branch_id\u0027 })"
+    }
+]

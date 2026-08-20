@@ -12,7 +12,7 @@ import { NotificationsService } from './notifications.service';
 @UseGuards(JwtAuthGuard)
 @Controller('notifications')
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(private readonly notificationsService: NotificationsService) { }
 
   @Get()
   findMine(@Query() query: FindNotificationsQueryDto, @Request() req: { user: AuthUser }) {
@@ -31,7 +31,7 @@ export class NotificationsController {
 
   @Patch(':id/read')
   markRead(
-    @Param('id') id: string,
+    @Param('id') id: number,
     @Body() body: MarkNotificationReadDto,
     @Request() req: { user: AuthUser },
   ) {
