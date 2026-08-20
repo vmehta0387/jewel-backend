@@ -6,6 +6,7 @@ const mysql = require('mysql2/promise');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const backendRoot = path.resolve(__dirname, '..');
+const sqlRoot = path.resolve(repoRoot, 'sql');
 
 function loadDotEnv(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -43,26 +44,26 @@ function resolveSqlFiles(args) {
   }
 
   return [
-    path.resolve(repoRoot, 'DATABASE_USER_MANAGEMENT_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_PRODUCTS_MODULE_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_GEMSTONE_PACKET_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_STONE_PACKETS_INT_ID_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_MASTER_TABLE_COLUMNS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_MASTER_ID_RELATION_GAPS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_VENDOR_NAMES_EMAIL_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_DESIGN_BARCODE_UPGRADE.sql'),
-    path.resolve(backendRoot, 'DESIGN_LEGACY_UUID_DROP_CLEANUP.sql'),
-    path.resolve(repoRoot, 'DATABASE_USER_LAST_SEEN_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_SPIFF_DECIMAL_POINTS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
-    path.resolve(backendRoot, 'METAL_PRICE_HISTORY_UPGRADE.sql'),
-    path.resolve(backendRoot, 'DESIGN_OVERHEAD_ROWS_UPGRADE.sql'),
-    path.resolve(backendRoot, 'DESIGN_MEDIA_LIBRARY_SOFT_DELETE_UPGRADE.sql'),
-    path.resolve(backendRoot, 'ORDER_COMPLETED_SALES_UPGRADE.sql'),
-    path.resolve(repoRoot, 'DATABASE_ACTIVITY_EVENTS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_USER_MANAGEMENT_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_PRODUCTS_MODULE_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_GEMSTONE_PACKET_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_STONE_PACKETS_INT_ID_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_MASTER_TABLE_COLUMNS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_MASTER_ID_RELATION_GAPS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_VENDOR_NAMES_EMAIL_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_DESIGN_BARCODE_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DESIGN_LEGACY_UUID_DROP_CLEANUP.sql'),
+    path.resolve(sqlRoot, 'DATABASE_USER_LAST_SEEN_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_DECIMAL_POINTS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
+    path.resolve(sqlRoot, 'METAL_PRICE_HISTORY_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DESIGN_OVERHEAD_ROWS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DESIGN_MEDIA_LIBRARY_SOFT_DELETE_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'ORDER_COMPLETED_SALES_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_ACTIVITY_EVENTS_UPGRADE.sql'),
   ].filter((filePath) => {
     if (fs.existsSync(filePath)) return true;
     console.warn(
