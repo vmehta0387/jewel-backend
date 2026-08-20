@@ -25,6 +25,7 @@ import NotificationPopover from '../components/NotificationPopover';
 import DesignDetailScreen from './DesignDetailScreen';
 
 import { fetchAllGroupedMasters } from '../api/masters';
+import { fetchMobileCatalogDesigns, type MobileCatalogQuery } from '../api/designs';
 import type { Design, GroupedMastersResponse } from '../types';
 import type { CatalogPresetCategory, DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';

@@ -6,7 +6,6 @@ import Button from '../../components/common/Button';
 import AlertDialog from '../../components/common/AlertDialog';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import Pagination from '../../components/common/Pagination';
-import SearchableSelect from '../../components/common/SearchableSelect';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
@@ -364,11 +363,6 @@ const formatDesignLabel = (designNo?: string | null, version?: string | null): s
   if (!safeNo) return safeVersion;
   return `${safeNo} - ${safeVersion.toUpperCase()}`;
 };
-const getBaseDesignNo = (designNo?: string | null): string =>
-  String(designNo || '')
-    .trim()
-    .toUpperCase()
-    .replace(/-V\d+$/i, '');
 const buildSelectionDescription = (options: Partial<ConfiguratorOptions>): string =>
   [
     options.diamondType ? `Type: ${options.diamondType}` : null,
@@ -556,7 +550,6 @@ export default function OrdersPage() {
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
-  const [filterSalesReps, setFilterSalesReps] = useState<SalesRepOption[]>([]);
   const [designOptions, setDesignOptions] = useState<DesignOption[]>([]);
   const [designOptionsLoading, setDesignOptionsLoading] = useState(false);
   const [designOptionsPage, setDesignOptionsPage] = useState(0);
@@ -754,16 +747,6 @@ export default function OrdersPage() {
     loadDesigns({ page: 1, search: '', reset: true });
   };
 
-  const handleDesignDropdownSearch = (search: string) => {
-    setDesignDropdownSearch(search);
-    if (designSearchDebounceRef.current) {
-      window.clearTimeout(designSearchDebounceRef.current);
-    }
-    designSearchDebounceRef.current = window.setTimeout(() => {
-      loadDesigns({ page: 1, search, reset: true });
-    }, 300);
-  };
-
   const loadMoreDesigns = () => {
     if (designOptionsLoading || designOptionsPage >= designOptionsTotalPages) return;
     loadDesigns({ page: designOptionsPage + 1, search: designDropdownSearch, reset: false });
@@ -805,21 +788,6 @@ export default function OrdersPage() {
       setSalesReps(response.data || []);
     } catch {
       setSalesReps([]);
-    }
-  };
-
-  const loadFilterSalesReps = async (companyId = filters.companyId) => {
-    try {
-      const response = await api.get('/users/lookup', {
-        params: {
-          role: 'SALES_REP',
-          status: 'ACTIVE',
-          companyId: companyId || undefined,
-        },
-      });
-      setFilterSalesReps(response.data || []);
-    } catch {
-      setFilterSalesReps([]);
     }
   };
 
@@ -1279,9 +1247,6 @@ export default function OrdersPage() {
         setViewDesign(design);
         setViewMediaUrls(uniqueMediaUrls(design?.imageUrls || []));
         setViewOrderLoading(false);
-        void loadDesignFamilyMedia(design).then((familyMedia) => {
-          setViewMediaUrls(familyMedia);
-        });
       } catch (error) {
         console.error('Failed to open deep-linked order', error);
         setViewOrder(null);
@@ -2527,7 +2492,7 @@ export default function OrdersPage() {
                                 return (
                                   <div key={key}>
                                     <label className="block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">{label}</label>
-                                    {options.length > 1 && options.length <= 4 ? (
+                                    {options.length > 1 ? (
                                       <div className="mt-1 flex flex-wrap gap-1.5">
                                         {options.map((option) => {
                                           const active = option === value;
@@ -2547,17 +2512,6 @@ export default function OrdersPage() {
                                           );
                                         })}
                                       </div>
-                                    ) : options.length > 1 ? (
-                                      <select
-                                        className="mt-1 w-full rounded-full border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                                        value={value}
-                                        disabled={resolvingConfigurator}
-                                        onChange={(event) => handleConfiguratorOptionChange(key, event.target.value)}
-                                      >
-                                        {options.map((option) => (
-                                          <option key={option} value={option}>{option}</option>
-                                        ))}
-                                      </select>
                                     ) : (
                                       <div className="mt-1 inline-flex min-h-[24px] max-w-full items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold leading-tight text-slate-900">
                                         <span className="truncate">{value || options[0] || '-'}</span>
@@ -3609,3 +3563,5 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+

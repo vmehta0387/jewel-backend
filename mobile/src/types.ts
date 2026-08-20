@@ -22,6 +22,7 @@ export type AuthUser = {
 
 export type Design = {
   id: string;
+  familyDesignId?: string | number | null;
   designNo: string;
   barcode?: string | null;
   designName?: string | null;

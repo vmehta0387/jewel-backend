@@ -1102,6 +1102,10 @@ export class FindMobileCatalogProductsQueryDto {
 
   @IsString()
   @IsOptional()
+  stone?: string;
+
+  @IsString()
+  @IsOptional()
   shape?: string;
 
   @IsString()
@@ -1126,15 +1130,20 @@ export class FindMobileCatalogProductsQueryDto {
 }
 
 export class ResolveMobileDesignConfiguratorQueryDto {
-  @IsIn(['diamondType', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'])
+  @IsIn(['diamondType', 'stone', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'])
   @IsOptional()
-  selectedKey?: 'diamondType' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
+  selectedKey?: 'diamondType' | 'stone' | 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize';
 
   // ID-based filters (preferred — exact match)
   @Type(() => Number)
   @IsNumber()
   @IsOptional()
   diamondTypeId?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  stoneId?: number;
 
   @Type(() => Number)
   @IsNumber()
@@ -1170,6 +1179,10 @@ export class ResolveMobileDesignConfiguratorQueryDto {
   @IsString()
   @IsOptional()
   diamondType?: string;
+
+  @IsString()
+  @IsOptional()
+  stone?: string;
 
   @IsString()
   @IsOptional()
