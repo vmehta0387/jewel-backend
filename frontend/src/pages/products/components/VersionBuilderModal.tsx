@@ -251,7 +251,7 @@ export const VERSION_BUILDER_DIMENSION_CONFIG: Array<{
   helper: string;
 }> = [
   { id: 'metals', label: 'Metal', helper: 'Creates one version per selected metal.' },
-  { id: 'coverages', label: 'Coverage', helper: 'Use all coverage variants for this design.' },
+  { id: 'coverages', label: 'Diamond Spread', helper: 'Use all diamond spread variants for this design.' },
   { id: 'diamondQualities', label: 'Diamond Quality', helper: 'Useful when pricing differs by quality.' },
   { id: 'caratWeights', label: 'Diamond Weight', helper: 'Optional if your design supports multiple carat weights.' },
   { id: 'sizes', label: 'Jewelry Size', helper: 'Select one or many sizes for this version batch.' },
@@ -261,7 +261,7 @@ export const VERSION_BUILDER_REQUIRED_DIMENSION_LABELS: Partial<
   Record<keyof VersionBuilderSelections, string>
 > = {
   metals: 'Metal',
-  coverages: 'Coverage',
+  coverages: 'Diamond Spread',
   diamondQualities: 'Diamond Quality',
   sizes: 'Jewelry Size',
 };
@@ -282,7 +282,7 @@ export const VERSION_BUILDER_GENERATED_COLUMNS = [
   { key: 'purity', label: 'Purity', width: 110, minWidth: 80 },
   { key: 'quality', label: 'Quality', width: 120, minWidth: 90 },
   { key: 'caratWeight', label: 'Diamond Wt', width: 130, minWidth: 100 },
-  { key: 'coverage', label: 'Coverage', width: 140, minWidth: 110 },
+  { key: 'coverage', label: 'Diamond Spread', width: 140, minWidth: 110 },
   { key: 'size', label: 'Size', width: 100, minWidth: 80 },
   { key: 'metalWeight', label: 'Metal Weight', width: 140, minWidth: 110 },
   { key: 'stoneWt', label: 'Stone Wt', width: 150, minWidth: 120 },
@@ -327,3 +327,5 @@ export default function VersionBuilderModal({ title, footer, onClose, children }
     </ProductsModal>
   );
 }
+
+

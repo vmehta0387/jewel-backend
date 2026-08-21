@@ -371,7 +371,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                     </div>
                   </div>
                   <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Coverage</label>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
                     <SmartDropdown
                       value={form.diamondSpread}
                       onChange={(value, option) => {
@@ -384,7 +384,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       }}
                       config={masterDropdownConfig(
                         'DIAMOND_SPREAD',
-                        'Select Coverage',
+                        'Select Diamond Spread',
                         toSmartDropdownOptions(masterOptions.diamondSpreads, (option) => option.aliasName || option.value),
                       )}
                     />
@@ -416,7 +416,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   </div>
                   {form.diamondSpread === 'Custom' ? (
                     <div className="xl:col-span-3">
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Coverage Custom Code</label>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread Custom Code</label>
                       <input
                         className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                         value={form.coverageCustom}
@@ -1529,3 +1529,4 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     </ProductsModal>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FocusEvent, FormEvent, Fragment, MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '../../components/common/Button';
 import SmartDropdown, { SmartDropdownOption } from '../../components/common/SmartDropdown';
 import Card from '../../components/common/Card';
@@ -1961,14 +1961,16 @@ export default function ProductsPage() {
   const singleDesignOverheadRules = useMemo(() => {
     const categoryKey = normalizeLookupKey(form.jewelryGroup);
     const categoryId = selectedJewelryGroupMasterId;
+    if (!categoryKey && !categoryId) {
+      return [];
+    }
+
     return masterOptions.overheadRules.filter((rule) => {
       const ruleCategory = normalizeLookupKey(rule.jewelryGroup);
       const ruleCategoryId = String(rule.jewelryGroupId || '');
       return (
-        !categoryKey ||
         (categoryId && ruleCategoryId && ruleCategoryId === categoryId) ||
-        !ruleCategory ||
-        ruleCategory === categoryKey
+        (!ruleCategoryId && ruleCategory && ruleCategory === categoryKey)
       );
     });
   }, [form.jewelryGroup, masterOptions.overheadRules, selectedJewelryGroupMasterId]);
@@ -2426,6 +2428,10 @@ export default function ProductsPage() {
 
   const handleJewelryGroupChange = (jewelryGroup: string, option?: SmartDropdownOption | null) => {
     mergeMasterOption('JEWELRY_GROUP', option);
+    const categoryChanged = normalizeLookupKey(form.jewelryGroup) !== normalizeLookupKey(jewelryGroup);
+    if (categoryChanged) {
+      setOverheadRows([createDefaultOverheadRow()]);
+    }
     const nextJewelrySizeOptions = masterOptions.jewelrySizes.filter(
       (option) => normalizeLookupKey(option.jewelryGroup) === normalizeLookupKey(jewelryGroup),
     );
@@ -2641,7 +2647,7 @@ export default function ProductsPage() {
       value: String(row?.value || ''),
       aliasName: row?.aliasName ?? row?.label,
       jewelryGroup: getMasterRelationValue(row?.jewelryGroup ?? row?.jewelryGroupMaster),
-      jewelryGroupId: String(row?.jewelryGroupId ?? ''),
+      jewelryGroupId: String(row?.jewelryGroupId ?? row?.jewelryGroupMaster?.id ?? ''),
       metalName: getMasterRelationValue(row?.metalName ?? row?.metalMaster),
       metalColor: getMasterRelationValue(row?.metalColor ?? row?.metalColorMaster),
       metalPurity: getMasterRelationValue(row?.metalPurity ?? row?.metalPurityMaster),
@@ -2661,7 +2667,7 @@ export default function ProductsPage() {
       value: String(option.value || ''),
       aliasName: option.aliasName as string | undefined,
       jewelryGroup: getMasterRelationValue(option.jewelryGroup ?? option.jewelryGroupMaster),
-      jewelryGroupId: String(option.jewelryGroupId ?? ''),
+      jewelryGroupId: String(option.jewelryGroupId ?? (option.jewelryGroupMaster as any)?.id ?? ''),
       metalName: getMasterRelationValue(option.metalName ?? option.metalMaster),
       metalColor: getMasterRelationValue(option.metalColor ?? option.metalColorMaster),
       metalPurity: getMasterRelationValue(option.metalPurity ?? option.metalPurityMaster),
@@ -4218,7 +4224,7 @@ export default function ProductsPage() {
               .map((cell) => `Size ${cell.size} - ${cell.purity}`)
               .join('\n');
             const remaining = cells.length > 8 ? `\n+${cells.length - 8} more` : '';
-            return `Coverage: ${coverage}\n${rows}${remaining}`;
+            return `Diamond Spread: ${coverage}\n${rows}${remaining}`;
           })
           .join('\n\n');
 
@@ -5584,7 +5590,7 @@ export default function ProductsPage() {
 
     if (!versionBuilderBaseDesign) missing.push('base style');
     if (!versionBuilderSelections.metals.length) missing.push('metal');
-    if (!versionBuilderSelections.coverages.length) missing.push('coverage');
+    if (!versionBuilderSelections.coverages.length) missing.push('diamond spread');
     if (!versionBuilderSelections.diamondQualities.length) missing.push('diamond quality');
     if (!versionBuilderSelections.sizes.length) missing.push('size');
     if (!versionBuilderGemRows.length) missing.push('stone group');
@@ -9206,7 +9212,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </div>
                     <p className="text-[11px] text-[#8c7b67]">
                       {versionBuilderGemRows.length} group{versionBuilderGemRows.length === 1 ? '' : 's'} -{' '}
-                      {versionBuilderChartCoverage || 'No coverage'} - {versionBuilderSizeChartSizes.length} selected size
+                      {versionBuilderChartCoverage || 'No diamond spread'} - {versionBuilderSizeChartSizes.length} selected size
                       {versionBuilderSizeChartSizes.length === 1 ? '' : 's'}
                     </p>
                   </div>
@@ -9748,7 +9754,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Coverage</label>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Diamond Spread</label>
                       <select
                         className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
                         value={versionBuilderBomSelection.coverage}
@@ -9903,7 +9909,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Coverage</label>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Diamond Spread</label>
                       <select
                         className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
                         value={versionBuilderGeneratedFilters.coverage}
@@ -9911,7 +9917,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           setVersionBuilderGeneratedFilters((prev) => ({ ...prev, coverage: event.target.value }))
                         }
                       >
-                        <option value="ALL">All coverages</option>
+                        <option value="ALL">All diamond spreads</option>
                         {versionBuilderSizeChartCoverages.map((coverage) => (
                           <option key={coverage} value={coverage}>
                             {coverage}
@@ -11197,3 +11203,8 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
+
+
+
+

@@ -391,7 +391,7 @@ const QuoteSummaryScreen = () => {
   const summaryStatus = statusLabel(currentStatus);
 
   const itemLine1 = useMemo(
-    () => `Metal: ${resolvedSelection.metalColor || '-'} - Coverage: ${resolvedSelection.style || '-'}`,
+    () => `Metal: ${resolvedSelection.metalColor || '-'} - Diamond Spread: ${resolvedSelection.style || '-'}`,
     [resolvedSelection.metalColor, resolvedSelection.style],
   );
   const itemLine2 = useMemo(
@@ -436,7 +436,7 @@ const QuoteSummaryScreen = () => {
         shortDescription: [
           ['Stone', resolvedSelection.shape],
           ['Metal', resolvedSelection.metalColor],
-          ['Coverage', resolvedSelection.style],
+          ['Diamond Spread', resolvedSelection.style],
           ['Dia. Weight', resolvedSelection.weight],
           ['Dia. Quality', resolvedSelection.quality],
           ['Jewelry Size', resolvedSelection.ringSize],
@@ -1410,3 +1410,4 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteSummaryScreen;
+

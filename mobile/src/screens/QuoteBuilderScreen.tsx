@@ -167,7 +167,7 @@ const buildSelectionSummaryPlain = (selection: VersionFilters) =>
   [
     ['Stone', selection.shape],
     ['Metal', selection.metalColor],
-    ['Coverage', selection.style],
+    ['Diamond Spread', selection.style],
     ['Dia. Weight', selection.weight],
     ['Dia. Quality', selection.quality],
     ['Jewelry Size', selection.ringSize],
@@ -1931,3 +1931,4 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteBuilderScreen;
+

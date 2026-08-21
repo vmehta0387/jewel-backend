@@ -89,6 +89,33 @@ const RELATION_FIELD_TYPES: Record<string, DesignMasterType> = {
   metalCaratageId: DesignMasterType.METAL_CARATAGE,
 };
 
+const MASTER_EXPORT_VALUE_HEADERS: Record<Exclude<DesignMasterType, DesignMasterType.PACKET>, string> = {
+  [DesignMasterType.JEWELRY_GROUP]: 'Jewelry Group',
+  [DesignMasterType.COLLECTION]: 'Collection',
+  [DesignMasterType.JEWELRY_SIZE]: 'Jewelry Size',
+  [DesignMasterType.TAG]: 'Tag',
+  [DesignMasterType.DESIGN_STATUS]: 'Design Status',
+  [DesignMasterType.STAGE]: 'Stage',
+  [DesignMasterType.METAL_NAME]: 'Metal Name',
+  [DesignMasterType.METAL_COLOR]: 'Metal Color',
+  [DesignMasterType.METAL_PURITY]: 'Metal Purity',
+  [DesignMasterType.METAL_CARATAGE]: 'Metal Caratage',
+  [DesignMasterType.DIAMOND_TYPE]: 'Diamond Type',
+  [DesignMasterType.DIAMOND_SPREAD]: 'Diamond Spread',
+  [DesignMasterType.DIAMOND_WEIGHT]: 'Diamond Weight',
+  [DesignMasterType.DIAMOND_QUALITY]: 'Diamond Quality',
+  [DesignMasterType.VENDOR_NAME]: 'Vendor Name',
+  [DesignMasterType.LABOR_HEAD]: 'Labor Head',
+  [DesignMasterType.LABOR_RULE]: 'Labor Rule',
+  [DesignMasterType.OVERHEAD_RULE]: 'Overhead Rule',
+  [DesignMasterType.FINDING_HEAD]: 'Finding Head',
+  [DesignMasterType.PACKET_STONE]: 'Packet Stone',
+  [DesignMasterType.PACKET_SHAPE]: 'Packet Shape',
+  [DesignMasterType.PACKET_SIZE]: 'Packet Size',
+  [DesignMasterType.PACKET_CUT]: 'Packet Cut',
+  [DesignMasterType.PACKET_COLOR]: 'Packet Color',
+  [DesignMasterType.PACKET_QUALITY]: 'Packet Quality',
+};
 const UNIQUE_SCOPE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> = {
   [DesignMasterType.COLLECTION]: ['jewelryGroupId'],
   [DesignMasterType.JEWELRY_SIZE]: ['jewelryGroupId'],
@@ -122,9 +149,87 @@ export class MasterTablesService {
       qb.andWhere(`${alias}.isActive = :isActive`, { isActive: false });
     }
     if (query.search?.trim()) {
-      qb.andWhere(`(${alias}.value LIKE :search OR ${alias}.aliasName LIKE :search)`, {
-        search: `%${query.search.trim()}%`,
-      });
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where(`${alias}.value LIKE :search`, { search })
+            .orWhere(`${alias}.aliasName LIKE :search`, { search })
+            .orWhere(`${alias}.description LIKE :search`, { search });
+
+          if (
+            masterType === DesignMasterType.COLLECTION ||
+            masterType === DesignMasterType.JEWELRY_SIZE ||
+            masterType === DesignMasterType.LABOR_RULE ||
+            masterType === DesignMasterType.OVERHEAD_RULE
+          ) {
+            where
+              .orWhere('jewelryGroupMaster.value LIKE :search', { search })
+              .orWhere('jewelryGroupMaster.aliasName LIKE :search', { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_COLOR || masterType === DesignMasterType.METAL_PURITY) {
+            where
+              .orWhere('metalMaster.value LIKE :search', { search })
+              .orWhere('metalMaster.aliasName LIKE :search', { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_PURITY) {
+            where.orWhere(`CAST(${alias}.purityPercentage AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_NAME) {
+            where
+              .orWhere(`CAST(${alias}.marketPricePerOunce AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.marketPricePerGm AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.livePricePerGm AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_CARATAGE) {
+            where
+              .orWhere('metalMaster.value LIKE :search', { search })
+              .orWhere('metalMaster.aliasName LIKE :search', { search })
+              .orWhere('metalColorMaster.value LIKE :search', { search })
+              .orWhere('metalColorMaster.aliasName LIKE :search', { search })
+              .orWhere('metalPurityMaster.value LIKE :search', { search })
+              .orWhere('metalPurityMaster.aliasName LIKE :search', { search })
+              .orWhere(`CAST(${alias}.purityPercentage AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.livePricePerGm AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.defaultWastagePercent AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.VENDOR_NAME) {
+            where.orWhere(`${alias}.email LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.FINDING_HEAD) {
+            where
+              .orWhere(`${alias}.findingNo LIKE :search`, { search })
+              .orWhere('metalCaratageMaster.value LIKE :search', { search })
+              .orWhere('metalCaratageMaster.aliasName LIKE :search', { search })
+              .orWhere(`${alias}.priceIn LIKE :search`, { search })
+              .orWhere(`${alias}.dimensions LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.pricePerUnit AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.weightPerUnit AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.LABOR_RULE) {
+            where
+              .orWhere(`${alias}.laborApplyMode LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.flatCost AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerStone AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerGram AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerGroup AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.OVERHEAD_RULE) {
+            where
+              .orWhere(`${alias}.overheadApplyMode LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePercent AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.flatAmount AS CHAR) LIKE :search`, { search });
+          }
+        }),
+      );
     }
     if (query.jewelryGroupId) {
       qb.andWhere(`${alias}.jewelryGroupId = :jewelryGroupId`, { jewelryGroupId: query.jewelryGroupId });
@@ -215,9 +320,87 @@ export class MasterTablesService {
       qb.andWhere(`${alias}.isActive = :isActive`, { isActive: false });
     }
     if (query.search?.trim()) {
-      qb.andWhere(`(${alias}.value LIKE :search OR ${alias}.aliasName LIKE :search)`, {
-        search: `%${query.search.trim()}%`,
-      });
+      const search = `%${query.search.trim()}%`;
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where(`${alias}.value LIKE :search`, { search })
+            .orWhere(`${alias}.aliasName LIKE :search`, { search })
+            .orWhere(`${alias}.description LIKE :search`, { search });
+
+          if (
+            masterType === DesignMasterType.COLLECTION ||
+            masterType === DesignMasterType.JEWELRY_SIZE ||
+            masterType === DesignMasterType.LABOR_RULE ||
+            masterType === DesignMasterType.OVERHEAD_RULE
+          ) {
+            where
+              .orWhere('jewelryGroupMaster.value LIKE :search', { search })
+              .orWhere('jewelryGroupMaster.aliasName LIKE :search', { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_COLOR || masterType === DesignMasterType.METAL_PURITY) {
+            where
+              .orWhere('metalMaster.value LIKE :search', { search })
+              .orWhere('metalMaster.aliasName LIKE :search', { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_PURITY) {
+            where.orWhere(`CAST(${alias}.purityPercentage AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_NAME) {
+            where
+              .orWhere(`CAST(${alias}.marketPricePerOunce AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.marketPricePerGm AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.livePricePerGm AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.METAL_CARATAGE) {
+            where
+              .orWhere('metalMaster.value LIKE :search', { search })
+              .orWhere('metalMaster.aliasName LIKE :search', { search })
+              .orWhere('metalColorMaster.value LIKE :search', { search })
+              .orWhere('metalColorMaster.aliasName LIKE :search', { search })
+              .orWhere('metalPurityMaster.value LIKE :search', { search })
+              .orWhere('metalPurityMaster.aliasName LIKE :search', { search })
+              .orWhere(`CAST(${alias}.purityPercentage AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.livePricePerGm AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.defaultWastagePercent AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.VENDOR_NAME) {
+            where.orWhere(`${alias}.email LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.FINDING_HEAD) {
+            where
+              .orWhere(`${alias}.findingNo LIKE :search`, { search })
+              .orWhere('metalCaratageMaster.value LIKE :search', { search })
+              .orWhere('metalCaratageMaster.aliasName LIKE :search', { search })
+              .orWhere(`${alias}.priceIn LIKE :search`, { search })
+              .orWhere(`${alias}.dimensions LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.pricePerUnit AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.weightPerUnit AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.LABOR_RULE) {
+            where
+              .orWhere(`${alias}.laborApplyMode LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.flatCost AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerStone AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerGram AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePerGroup AS CHAR) LIKE :search`, { search });
+          }
+
+          if (masterType === DesignMasterType.OVERHEAD_RULE) {
+            where
+              .orWhere(`${alias}.overheadApplyMode LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.ratePercent AS CHAR) LIKE :search`, { search })
+              .orWhere(`CAST(${alias}.flatAmount AS CHAR) LIKE :search`, { search });
+          }
+        }),
+      );
     }
     if (query.jewelryGroupId) {
       qb.andWhere(`${alias}.jewelryGroupId = :jewelryGroupId`, { jewelryGroupId: query.jewelryGroupId });
@@ -412,7 +595,7 @@ export class MasterTablesService {
 
     const repo = this.getRepository(masterType);
     const data = this.pickWritable(masterType, dto);
-    this.syncMetalCaratageDisplayValue(masterType, data);
+    await this.syncMetalCaratageDisplayValue(masterType, data);
     await this.validateBeforeSave(masterType, data);
     await this.assertUnique(repo, masterType, data);
     const row = repo.create(data);
@@ -434,10 +617,14 @@ export class MasterTablesService {
     }
 
     const data = this.pickWritable(masterType, dto);
-    this.syncMetalCaratageDisplayValue(masterType, data);
     const nextRow = { ...row, ...data };
+    await this.syncMetalCaratageDisplayValue(masterType, nextRow);
     await this.validateBeforeSave(masterType, nextRow);
     await this.assertUnique(repo, masterType, nextRow, id);
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      data.value = nextRow.value;
+      data.aliasName = nextRow.aliasName;
+    }
     Object.assign(row, data);
     (row as any).updatedBy = this.toOptionalInt(requester?.id);
     await repo.save(row);
@@ -453,6 +640,9 @@ export class MasterTablesService {
     const row = await repo.findOne({ where: { id } as any });
     if (!row) {
       throw new NotFoundException('Master record not found');
+    }
+    if (isActive && !(row as any).isActive) {
+      await this.assertUnique(repo, masterType, row as Record<string, unknown>, id);
     }
     (row as any).isActive = isActive;
     (row as any).updatedBy = this.toOptionalInt(requester?.id);
@@ -529,7 +719,7 @@ export class MasterTablesService {
         const existing = await this.findExistingByImportPayload(masterType, payload);
         const isActive = this.parseBoolean(this.readCell(rows[index], 'Is Active'), true);
         let saved: SerializedMaster;
-        if (existing) {
+        if (existing?.isActive) {
           saved = await this.update(masterType, existing.id, payload, requester);
           updated += 1;
         } else {
@@ -642,8 +832,8 @@ export class MasterTablesService {
       weight: dto.weight,
       pieces,
     });
-    const barcode = await this.resolveStonePacketBarcode(dto.barcode, existing?.id);
-    const packet = existing || packetRepo.create();
+    const barcode = await this.resolveStonePacketBarcode(dto.barcode);
+    const packet = packetRepo.create();
 
     Object.assign(packet, {
       barcode,
@@ -720,6 +910,12 @@ export class MasterTablesService {
     const packet = await packetRepo.findOne({ where: { id } });
     if (!packet) {
       throw new NotFoundException('Packet not found');
+    }
+    if (isActive && !packet.isActive) {
+      const duplicate = await packetRepo.findOne({ where: { packetName: packet.packetName, isActive: true } });
+      if (duplicate && duplicate.id !== packet.id) {
+        throw new ConflictException('Already exists/enabled save info. To enable this master, please change master info first.');
+      }
     }
     packet.isActive = isActive;
     const saved = await packetRepo.save(packet);
@@ -1017,13 +1213,17 @@ export class MasterTablesService {
     };
   }
 
+  private getMasterExportValueHeader(masterType: DesignMasterType): string {
+    return MASTER_EXPORT_VALUE_HEADERS[masterType as Exclude<DesignMasterType, DesignMasterType.PACKET>] || 'Value';
+  }
   private getImportHeaders(masterType: DesignMasterType): string[] {
     return Object.keys(this.buildTemplateRow(masterType));
   }
 
   private buildTemplateRow(masterType: DesignMasterType) {
+    const valueHeader = this.getMasterExportValueHeader(masterType);
     const base: Record<string, unknown> = {
-      Value: '',
+      [valueHeader]: '',
       Alias: '',
       Description: '',
       'Is Active': 'TRUE',
@@ -1081,46 +1281,85 @@ export class MasterTablesService {
 
   private toExportRow(masterType: DesignMasterType, row: SerializedMaster) {
     const output = this.buildTemplateRow(masterType);
-    output.Value = row.value;
+    output[this.getMasterExportValueHeader(masterType)] = row.value;
     output.Alias = row.aliasName || '';
     output.Description = row.description || '';
     output['Is Active'] = row.isActive ? 'TRUE' : 'FALSE';
-    output['Jewelry Group ID'] = row.jewelryGroupId || '';
-    output['Jewelry Group'] = (row.jewelryGroup as any)?.value || '';
-    output['Metal ID'] = row.metalId || '';
-    output.Metal = (row.metal as any)?.value || '';
-    output['Metal Color ID'] = row.metalColorId || '';
-    output['Metal Color'] = (row.metalColor as any)?.value || '';
-    output['Metal Purity ID'] = row.metalPurityId || '';
-    output['Metal Purity'] = (row.metalPurity as any)?.value || '';
-    output.Email = row.email || '';
-    output['Finding No'] = row.findingNo || '';
-    output['Metal Caratage ID'] = row.metalCaratageId || '';
-    output['Metal Caratage'] = (row.metalCaratage as any)?.value || '';
-    output['Price In'] = row.priceIn || output['Price In'] || '';
-    output['Price/Unit'] = row.pricePerUnit ?? '';
-    output.Dimensions = row.dimensions || '';
-    output['Weight/Unit'] = row.weightPerUnit ?? '';
-    output['Purity Percentage'] = row.purityPercentage ?? '';
-    output['Market Price/Ounce'] = row.marketPricePerOunce ?? '';
-    output['Market Price/Gms'] = row.marketPricePerGm ?? '';
-    output['Live Price/Gms'] = row.livePricePerGm ?? '';
-    output['Default Wastage Percent'] = row.defaultWastagePercent ?? '';
-    output['Apply Mode'] = row.laborApplyMode || '';
-    output['Flat Cost'] = row.flatCost ?? '';
-    output['Rate Per Stone'] = row.ratePerStone ?? '';
-    output['Rate Per Gram'] = row.ratePerGram ?? '';
-    output['Rate Per Group'] = row.ratePerGroup ?? '';
-    output['Overhead Apply Mode'] = row.overheadApplyMode || output['Overhead Apply Mode'] || '';
-    output['Rate Percent'] = row.ratePercent ?? '';
-    output['Flat Amount'] = row.flatAmount ?? '';
+
+    if (
+      masterType === DesignMasterType.COLLECTION ||
+      masterType === DesignMasterType.JEWELRY_SIZE ||
+      masterType === DesignMasterType.LABOR_RULE ||
+      masterType === DesignMasterType.OVERHEAD_RULE
+    ) {
+      output['Jewelry Group ID'] = row.jewelryGroupId || '';
+      output['Jewelry Group'] = (row.jewelryGroup as any)?.value || '';
+    }
+
+    if (masterType === DesignMasterType.METAL_NAME) {
+      output['Market Price/Ounce'] = row.marketPricePerOunce ?? '';
+      output['Market Price/Gms'] = row.marketPricePerGm ?? '';
+      output['Live Price/Gms'] = row.livePricePerGm ?? '';
+    }
+
+    if (
+      masterType === DesignMasterType.METAL_COLOR ||
+      masterType === DesignMasterType.METAL_PURITY ||
+      masterType === DesignMasterType.METAL_CARATAGE
+    ) {
+      output['Metal ID'] = row.metalId || '';
+      output.Metal = (row.metal as any)?.value || '';
+    }
+
+    if (masterType === DesignMasterType.METAL_PURITY) {
+      output['Purity Percentage'] = row.purityPercentage ?? '';
+    }
+
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      output['Metal Color ID'] = row.metalColorId || '';
+      output['Metal Color'] = (row.metalColor as any)?.value || '';
+      output['Metal Purity ID'] = row.metalPurityId || '';
+      output['Metal Purity'] = (row.metalPurity as any)?.value || '';
+      output['Purity Percentage'] = row.purityPercentage ?? '';
+      output['Live Price/Gms'] = row.livePricePerGm ?? '';
+      output['Default Wastage Percent'] = row.defaultWastagePercent ?? '';
+    }
+
+    if (masterType === DesignMasterType.VENDOR_NAME) {
+      output.Email = row.email || '';
+    }
+
+    if (masterType === DesignMasterType.LABOR_RULE) {
+      output['Apply Mode'] = row.laborApplyMode || '';
+      output['Flat Cost'] = row.flatCost ?? '';
+      output['Rate Per Stone'] = row.ratePerStone ?? '';
+      output['Rate Per Gram'] = row.ratePerGram ?? '';
+      output['Rate Per Group'] = row.ratePerGroup ?? '';
+    }
+
+    if (masterType === DesignMasterType.OVERHEAD_RULE) {
+      output['Overhead Apply Mode'] = row.overheadApplyMode || output['Overhead Apply Mode'] || '';
+      output['Rate Percent'] = row.ratePercent ?? '';
+      output['Flat Amount'] = row.flatAmount ?? '';
+    }
+
+    if (masterType === DesignMasterType.FINDING_HEAD) {
+      output['Finding No'] = row.findingNo || '';
+      output['Metal Caratage ID'] = row.metalCaratageId || '';
+      output['Metal Caratage'] = (row.metalCaratage as any)?.value || '';
+      output['Price In'] = row.priceIn || output['Price In'] || '';
+      output['Price/Unit'] = row.pricePerUnit ?? '';
+      output.Dimensions = row.dimensions || '';
+      output['Weight/Unit'] = row.weightPerUnit ?? '';
+    }
+
     return output;
   }
 
   private fromImportRow(masterType: DesignMasterType, row: Record<string, unknown>): Partial<SaveMasterTableDto> {
     const payload: Record<string, unknown> = {
-      value: this.readCell(row, 'Value'),
-      aliasName: this.readCell(row, 'Alias') || this.readCell(row, 'Value'),
+      value: this.readCell(row, this.getMasterExportValueHeader(masterType)) || this.readCell(row, 'Value'),
+      aliasName: this.readCell(row, 'Alias') || this.readCell(row, this.getMasterExportValueHeader(masterType)) || this.readCell(row, 'Value'),
       description: this.readCell(row, 'Description') || null,
     };
     payload.jewelryGroupId = this.toOptionalInt(this.readCell(row, 'Jewelry Group ID'));
@@ -1243,31 +1482,24 @@ export class MasterTablesService {
   }
 
   /**
-   * Metal caratage exposes aliasName as its single editable display field.
-   * Keep the canonical value in sync so lookups, uniqueness checks, existing
-   * design references, and dropdown responses all observe the same name.
+   * Metal caratage keeps value and alias in sync, while duplicate validation
+   * is enforced separately by selected metal, purity, and color.
    */
-  private syncMetalCaratageDisplayValue(
+  private async syncMetalCaratageDisplayValue(
     masterType: DesignMasterType,
     data: Record<string, unknown>,
-  ): void {
+  ): Promise<void> {
     if (masterType !== DesignMasterType.METAL_CARATAGE) {
-      return;
-    }
-
-    const hasEditableValue = Object.prototype.hasOwnProperty.call(data, 'aliasName');
-    const hasLegacyValue = Object.prototype.hasOwnProperty.call(data, 'value');
-    if (!hasEditableValue && !hasLegacyValue) {
       return;
     }
 
     const displayValue = this.optionalString(data.aliasName) || this.optionalString(data.value);
     if (!displayValue) {
-      throw new BadRequestException('aliasName is required for METAL_CARATAGE');
+      return;
     }
 
-    data.aliasName = displayValue;
     data.value = displayValue;
+    data.aliasName = displayValue;
   }
 
   private async validateBeforeSave(masterType: DesignMasterType, data: Record<string, unknown>) {
@@ -1345,17 +1577,25 @@ export class MasterTablesService {
     const alias = 'master';
     const qb = repo
       .createQueryBuilder(alias)
-      .where(`(${alias}.normalizedValue = :normalizedValue OR ${alias}.normalizedAlias = :normalizedAlias)`, {
+      .where(`${alias}.scopeKey = :scopeKey`, { scopeKey: this.optionalString(data.scopeKey) || '' })
+      .andWhere(`${alias}.isActive = :isActive`, { isActive: true });
+
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      qb.andWhere(`${alias}.metalId = :metalId`, { metalId: data.metalId })
+        .andWhere(`${alias}.metalColorId = :metalColorId`, { metalColorId: data.metalColorId })
+        .andWhere(`${alias}.metalPurityId = :metalPurityId`, { metalPurityId: data.metalPurityId });
+    } else {
+      qb.andWhere(`(${alias}.normalizedValue = :normalizedValue OR ${alias}.normalizedAlias = :normalizedAlias)`, {
         normalizedValue,
         normalizedAlias,
-      })
-      .andWhere(`${alias}.scopeKey = :scopeKey`, { scopeKey: this.optionalString(data.scopeKey) || '' });
+      });
 
-    for (const field of UNIQUE_SCOPE_FIELDS[masterType] || []) {
-      if (data[field] === undefined || data[field] === null) {
-        qb.andWhere(`${alias}.${field} IS NULL`);
-      } else {
-        qb.andWhere(`${alias}.${field} = :${field}`, { [field]: data[field] });
+      for (const field of UNIQUE_SCOPE_FIELDS[masterType] || []) {
+        if (data[field] === undefined || data[field] === null) {
+          qb.andWhere(`${alias}.${field} IS NULL`);
+        } else {
+          qb.andWhere(`${alias}.${field} = :${field}`, { [field]: data[field] });
+        }
       }
     }
 
@@ -1365,7 +1605,7 @@ export class MasterTablesService {
 
     const duplicate = await qb.getExists();
     if (duplicate) {
-      throw new ConflictException('Master record already exists');
+      throw new ConflictException('Already exists/enabled save info. To enable this master, please change master info first.');
     }
   }
 
@@ -1476,3 +1716,14 @@ export class MasterTablesService {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }
+
+
+
+
+
+
+
+
+
+
+

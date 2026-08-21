@@ -1650,11 +1650,10 @@ export default function OrdersPage() {
   const configuratorFields = useMemo(
     () => [
       { key: 'metalCaratage' as ConfiguratorKey, label: 'Metal' },
-      { key: 'style' as ConfiguratorKey, label: 'Coverage' },
+      { key: 'style' as ConfiguratorKey, label: 'Diamond Spread' },
       { key: 'quality' as ConfiguratorKey, label: 'Dia. Quality' },
       { key: 'weight' as ConfiguratorKey, label: 'Dia. Weight' },
       { key: 'ringSize' as ConfiguratorKey, label: 'Jewelry Size' },
-      { key: 'diamondType' as ConfiguratorKey, label: 'Diamond Type' },
       { key: 'shape' as ConfiguratorKey, label: 'Stones' },
     ],
     [],
@@ -2242,6 +2241,7 @@ export default function OrdersPage() {
                             type="text"
                             className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
                             value={editingDesignLabel}
+                            placeholder="Selected design"
                             disabled
                             readOnly
                           />
@@ -2440,6 +2440,7 @@ export default function OrdersPage() {
                           : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                           }`}
                         value={form.deliveryDate}
+                        placeholder="Select expected delivery date"
                         min={deliveryDateMin}
                         required
                         aria-invalid={Boolean(formErrors.deliveryDate)}
@@ -2611,6 +2612,7 @@ export default function OrdersPage() {
                         type="text"
                         className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={form.customerName}
+                        placeholder="Enter customer name"
                         onChange={(event) => setForm((prev) => ({ ...prev, customerName: event.target.value }))}
                       />
                     </div>
@@ -2620,6 +2622,7 @@ export default function OrdersPage() {
                         type="text"
                         className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={form.customerPhone}
+                        placeholder="Enter customer phone"
                         onChange={(event) => setForm((prev) => ({ ...prev, customerPhone: event.target.value }))}
                       />
                     </div>
@@ -2629,6 +2632,7 @@ export default function OrdersPage() {
                         type="email"
                         className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={form.customerEmail}
+                        placeholder="Enter customer email"
                         onChange={(event) => setForm((prev) => ({ ...prev, customerEmail: event.target.value }))}
                       />
                     </div>
@@ -2638,6 +2642,7 @@ export default function OrdersPage() {
                         type="text"
                         className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                         value={form.purchaseOrderNumber}
+                        placeholder="Enter purchase order number"
                         onChange={(event) => {
                           purchaseOrderBlurCheckRef.current = '';
                           setForm((prev) => ({ ...prev, purchaseOrderNumber: event.target.value }));
@@ -2666,6 +2671,7 @@ export default function OrdersPage() {
                               : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                               }`}
                             value={form.price}
+                            placeholder="Enter sale price"
                             required
                             min="0.01"
                             aria-invalid={Boolean(formErrors.price)}
@@ -2696,6 +2702,7 @@ export default function OrdersPage() {
                             : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                             }`}
                           value={form.quantity}
+                          placeholder="Enter no. of pcs"
                           required
                           min="1"
                           aria-invalid={Boolean(formErrors.quantity)}
@@ -2724,6 +2731,7 @@ export default function OrdersPage() {
                               : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                               }`}
                             value={formatNumberInput(formTotalAmount)}
+                            placeholder="Total amount"
                             required
                             min="0.01"
                             aria-invalid={Boolean(formErrors.totalAmount)}
@@ -2751,6 +2759,7 @@ export default function OrdersPage() {
                         <textarea
                           className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                           value={form.shortDescription}
+                          placeholder="Enter short description"
                           onChange={(event) => setForm((prev) => ({ ...prev, shortDescription: event.target.value }))}
                         />
                       </div>
@@ -2759,6 +2768,7 @@ export default function OrdersPage() {
                         <textarea
                           className="mt-1 h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                           value={form.notes}
+                          placeholder="Enter order notes"
                           onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
                         />
                       </div>
@@ -3563,5 +3573,9 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+
+
+
 
 

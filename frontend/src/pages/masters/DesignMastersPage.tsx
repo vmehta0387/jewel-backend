@@ -1708,7 +1708,6 @@ export default function DesignMastersPage() {
   const [formFlatAmount, setFormFlatAmount] = useState('');
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
-  const [metalCaratageCombinationChanged, setMetalCaratageCombinationChanged] = useState(false);
   const [selectedJewelryGroupOption, setSelectedJewelryGroupOption] = useState<MasterOption | null>(null);
   const [selectedMetalOption, setSelectedMetalOption] = useState<MasterOption | null>(null);
   const [selectedMetalColorOption, setSelectedMetalColorOption] = useState<MasterOption | null>(null);
@@ -1830,7 +1829,6 @@ export default function DesignMastersPage() {
     if (selectedType !== 'METAL_CARATAGE') return;
     const selectedMetal = selectedMetalOption;
     const selectedPurity = selectedMetalPurityOption;
-    const selectedColor = selectedMetalColorOption;
     const purityPercent =
       selectedPurity?.purityPercentage !== undefined && selectedPurity.purityPercentage !== null
         ? selectedPurity.purityPercentage
@@ -1850,37 +1848,32 @@ export default function DesignMastersPage() {
         setFormLivePricePerGm(computed);
       }
     }
-
-    const shouldSyncCaratageName = !editingRow || metalCaratageCombinationChanged;
-    if (shouldSyncCaratageName && formMetalName && formMetalPurity && formMetalColor) {
-      const computedValue = buildMetalCaratageName(
-        selectedMetal?.value || '',
-        selectedPurity?.value || '',
-        selectedColor?.value || '',
-        selectedPurity,
-      );
-      if (computedValue !== formValue) {
-        setFormValue(computedValue);
-      }
-      if (!editingRow && formAliasName.trim().length === 0 && computedValue !== formAliasName) {
-        setFormAliasName(computedValue);
-      }
-    }
   }, [
-    formAliasName,
-    editingRow,
-    formMetalColor,
     formLivePricePerGm,
-    formMetalName,
-    formMetalPurity,
     formPurityPercentage,
-    formValue,
-    metalCaratageCombinationChanged,
-    selectedMetalColorOption,
     selectedMetalOption,
     selectedMetalPurityOption,
     selectedType,
   ]);
+
+  const syncMetalCaratageNameFromSelection = useCallback((
+    metalOption: MasterOption | null,
+    purityOption: MasterOption | null,
+    colorOption: MasterOption | null,
+  ) => {
+    if (selectedType !== 'METAL_CARATAGE' || !metalOption || !purityOption || !colorOption) {
+      return;
+    }
+
+    const computedValue = buildMetalCaratageName(
+      metalOption.value || '',
+      purityOption.value || '',
+      colorOption.value || '',
+      purityOption,
+    );
+    setFormValue(computedValue);
+    setFormAliasName(computedValue);
+  }, [selectedType]);
 
   const handleMetalNameChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalName(value);
@@ -1891,17 +1884,17 @@ export default function DesignMastersPage() {
     setSelectedMetalPurityOption(null);
     if (selectedType === 'METAL_CARATAGE') {
       setFormLivePricePerGm('');
-      setMetalCaratageCombinationChanged(true);
     }
   }, [selectedType]);
 
   const handleMetalColorChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalColor(value);
-    setSelectedMetalColorOption((option as MasterOption) || null);
+    const selectedOption = (option as MasterOption) || null;
+    setSelectedMetalColorOption(selectedOption);
     if (selectedType === 'METAL_CARATAGE') {
-      setMetalCaratageCombinationChanged(true);
+      syncMetalCaratageNameFromSelection(selectedMetalOption, selectedMetalPurityOption, selectedOption);
     }
-  }, [selectedType]);
+  }, [selectedMetalOption, selectedMetalPurityOption, selectedType, syncMetalCaratageNameFromSelection]);
 
   const handleMetalPurityChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
     setFormMetalPurity(value);
@@ -1912,7 +1905,6 @@ export default function DesignMastersPage() {
       return;
     }
 
-    setMetalCaratageCombinationChanged(true);
 
     const selectedPurity = selectedOption;
     const purityPercent = selectedPurity?.purityPercentage;
@@ -1920,11 +1912,13 @@ export default function DesignMastersPage() {
       setFormPurityPercentage(String(purityPercent));
     }
 
+    syncMetalCaratageNameFromSelection(selectedMetalOption, selectedOption, selectedMetalColorOption);
+
     const basePricePerGm = selectedMetalOption?.marketPricePerGm ?? 0;
     if (basePricePerGm > 0 && purityPercent !== undefined && purityPercent !== null && purityPercent > 0) {
       setFormLivePricePerGm(((basePricePerGm * purityPercent) / 100).toFixed(2));
     }
-  }, [formMetalName, selectedMetalOption, selectedType]);
+  }, [selectedMetalColorOption, selectedMetalOption, selectedType, syncMetalCaratageNameFromSelection]);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -1994,7 +1988,6 @@ export default function DesignMastersPage() {
     setFormFlatAmount('');
     setPacketForm(defaultPacketForm);
     setPacketNameManuallyEdited(false);
-    setMetalCaratageCombinationChanged(false);
     setSelectedJewelryGroupOption(null);
     setSelectedMetalOption(null);
     setSelectedMetalColorOption(null);
@@ -2017,7 +2010,6 @@ export default function DesignMastersPage() {
     if (!canEditMaster) return;
     setEditingPacket(null);
     setEditingRow(row);
-    setMetalCaratageCombinationChanged(false);
     setFormValue(row.value || '');
     setFormAliasName(row.aliasName || row.value || '');
     setFormDescription(row.description || '');
@@ -2247,23 +2239,8 @@ export default function DesignMastersPage() {
 
     let value = formValue.trim();
     let aliasName = formAliasName.trim();
-    if (
-      selectedType === 'METAL_CARATAGE' &&
-      formMetalName &&
-      formMetalPurity &&
-      formMetalColor &&
-      (!editingRow || metalCaratageCombinationChanged)
-    ) {
-      const selectedMetalOptionForName = selectedMetalOption;
-      const selectedColorOptionForName = selectedMetalColorOption;
-      const selectedPurityOptionForName = selectedMetalPurityOption;
-      const autoValue = buildMetalCaratageName(
-        selectedMetalOptionForName?.value || '',
-        selectedPurityOptionForName?.value || '',
-        selectedColorOptionForName?.value || '',
-        selectedPurityOptionForName,
-      );
-      value = autoValue;
+    if (selectedType === 'METAL_CARATAGE') {
+      value = aliasName;
     }
     if (!value || !aliasName) {
       showAppAlert('Master name and alias name are required.');
@@ -2489,7 +2466,15 @@ export default function DesignMastersPage() {
       }
       fetchRows();
     } catch (error: any) {
-      showAppAlert(error?.response?.data?.message || 'Unable to update status.');
+      const message = error?.response?.data?.message || 'Unable to update status.';
+      showAppAlert(message);
+      if (!row.isActive && error?.response?.status === 409) {
+        if (isPacketType) {
+          openEditPacket(row as PacketRow);
+        } else {
+          openEditMaster(row as MasterRow);
+        }
+      }
     }
   };
 
@@ -2527,26 +2512,9 @@ export default function DesignMastersPage() {
     URL.revokeObjectURL(link.href);
   };
 
-  const handleDownloadTemplate = async () => {
-    if (!canImportMaster) return;
-    try {
-      const response = await api.get(
-        isPacketType ? '/products/master-tables/PACKET/export/template' : `/products/master-tables/${selectedType}/export/template`,
-        {
-          responseType: 'blob',
-        },
-      );
-      downloadBlob(
-        new Blob([response.data], {
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        }),
-        isPacketType ? 'stone-packets-import-template.xlsx' : `${selectedType.toLowerCase()}-import-template.xlsx`,
-      );
-    } catch (error) {
-      console.error(error);
-      showAppAlert('Failed to download import template.');
-    }
-  };
+  // const handleDownloadTemplate = async () => {
+  //   Template download is hidden from the master list header.
+  // };
 
   const handleExport = async () => {
     try {
@@ -2747,7 +2715,7 @@ export default function DesignMastersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {canImportMaster ? (
+            {/* {canImportMaster ? (
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
@@ -2755,7 +2723,7 @@ export default function DesignMastersPage() {
               >
                 Template
               </button>
-            ) : null}
+            ) : null} */}
             <button
               type="button"
               onClick={handleExport}
@@ -2920,10 +2888,10 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={10} />
+                    <TableLoadingRow colSpan={11} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={10} className="app-table-empty">No records found.</td>
+                      <td colSpan={11} className="app-table-empty">No records found.</td>
                     </tr>
                   ) : (
                     pagedMasterRows.map((row, index) => (
@@ -3081,11 +3049,12 @@ export default function DesignMastersPage() {
                 </tbody>
               </table>
             ) : selectedType === 'METAL_CARATAGE' ? (
-              <table className="app-table app-table-compact min-w-[1500px] w-full">
+              <table className="app-table app-table-compact min-w-[1600px] w-full">
                 <thead>
                   <tr>
                     <th className="app-table-head-cell">#</th>
                     <th className="app-table-head-cell">Metal Caratage</th>
+                    <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Metal Name</th>
                     <th className="app-table-head-cell">Metal Purity</th>
                     <th className="app-table-head-cell">Purity %</th>
@@ -3100,16 +3069,17 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={12} />
+                    <TableLoadingRow colSpan={13} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={12} className="app-table-empty">No records found.</td>
+                      <td colSpan={13} className="app-table-empty">No records found.</td>
                     </tr>
                   ) : (
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{getMasterDisplayName(row)}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metal) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.metalPurity) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
@@ -3153,11 +3123,12 @@ export default function DesignMastersPage() {
                 </tbody>
               </table>
             ) : selectedType === 'LABOR_RULE' ? (
-              <table className="app-table app-table-compact min-w-[1450px] w-full">
+              <table className="app-table app-table-compact min-w-[1550px] w-full">
                 <thead>
                   <tr>
                     <th className="app-table-head-cell">#</th>
                     <th className="app-table-head-cell">Labor Rule</th>
+                    <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Category</th>
                     <th className="app-table-head-cell">Apply Mode</th>
                     <th className="app-table-head-cell">Flat Cost</th>
@@ -3172,16 +3143,17 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={12} />
+                    <TableLoadingRow colSpan={13} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={12} className="app-table-empty">No records found.</td>
+                      <td colSpan={13} className="app-table-empty">No records found.</td>
                     </tr>
                   ) : (
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.jewelryGroup) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{row.laborApplyMode || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
@@ -3233,11 +3205,12 @@ export default function DesignMastersPage() {
                 </tbody>
               </table>
             ) : selectedType === 'OVERHEAD_RULE' ? (
-              <table className="app-table app-table-compact min-w-[1350px] w-full">
+              <table className="app-table app-table-compact min-w-[1450px] w-full">
                 <thead>
                   <tr>
                     <th className="app-table-head-cell">#</th>
                     <th className="app-table-head-cell">Overhead Rule</th>
+                    <th className="app-table-head-cell">Alias Name</th>
                     <th className="app-table-head-cell">Category</th>
                     <th className="app-table-head-cell">Apply Mode</th>
                     <th className="app-table-head-cell">Rate %</th>
@@ -3250,16 +3223,17 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={10} />
+                    <TableLoadingRow colSpan={11} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={10} className="app-table-empty">No records found.</td>
+                      <td colSpan={11} className="app-table-empty">No records found.</td>
                     </tr>
                   ) : (
                     pagedMasterRows.map((row, index) => (
                       <tr key={row.id} className="app-table-row">
                         <td className="app-table-cell text-sm text-slate-600">{pageOffset + index + 1}</td>
                         <td className="app-table-cell text-sm font-semibold text-slate-900">{row.value}</td>
+                        <td className="app-table-cell text-sm text-slate-700">{row.aliasName || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">{masterRefValue(row.jewelryGroup) || '-'}</td>
                         <td className="app-table-cell text-sm text-slate-700">
                           {getOverheadApplyModeLabel(row.overheadApplyMode)}
@@ -3574,3 +3548,18 @@ export default function DesignMastersPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
