@@ -338,6 +338,8 @@ export class ProductsService {
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private signedUrlInflightCache = new Map<string, Promise<string>>();
+  private mobileConfiguratorFamilyCache = new Map<string, { family: Design[]; expiresAt: number }>();
+  private readonly mobileConfiguratorFamilyCacheTtlMs = 30 * 1000;
   private metalNameSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
   private readonly masterImportHeaders = [
@@ -1609,7 +1611,7 @@ export class ProductsService {
       stoneInfo: summary?.stoneInfo || design.stoneInfo || null,
       totalValue: design.totalValue,
       imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-      imageUrls,
+      imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
       ijewelModelId: design.ijewelModelId,
       ijewelBaseName: design.ijewelBaseName,
       isActive: design.isActive,
@@ -1710,7 +1712,7 @@ export class ProductsService {
         version: design.version,
         totalValue: Number(design.totalValue || 0),
         displayPrice: design.displayPrice,
-        imageUrls,
+        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         createdAt: design.createdAt,
       })),
     );
@@ -1862,7 +1864,7 @@ export class ProductsService {
         metalCaratage: design.metalCaratage,
         totalValue: Number(design.totalValue || 0),
         displayPrice: design.displayPrice,
-        imageUrls,
+        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         isPrimary: design.isPrimary,
         createdAt: design.createdAt,
       })),
@@ -2121,7 +2123,7 @@ export class ProductsService {
     const selectedSeed = await this.loadMobileConfiguratorSeed(id, requester);
     const familyDesignId = selectedSeed.familyDesignId || selectedSeed.id;
     const [family, selectedId] = await Promise.all([
-      this.loadMobileConfiguratorFamily(id, requester, selectedSeed),
+      this.loadMobileConfiguratorFamily(id, requester, selectedSeed, familyDesignId),
       this.fetchMobileConfiguratorMatchIdFromDb(id, familyDesignId, query, requester),
     ]);
     const selected = family.find((design) => Number(design.id) === Number(selectedId))
@@ -2236,9 +2238,14 @@ export class ProductsService {
     return selected;
   }
 
-  private async loadMobileConfiguratorFamily(id: number, requester: AuthUser, selectedSeed?: Design): Promise<Design[]> {
+  private async loadMobileConfiguratorFamily(id: number, requester: AuthUser, selectedSeed?: Design, knownFamilyDesignId?: number): Promise<Design[]> {
     const selected = selectedSeed || await this.loadMobileConfiguratorSeed(id, requester);
-    const familyDesignId = selected.familyDesignId || selected.id;
+    const familyDesignId = knownFamilyDesignId || selected.familyDesignId || selected.id;
+    const cacheKey = this.getMobileConfiguratorFamilyCacheKey(familyDesignId, requester);
+    const cached = this.getCachedMobileConfiguratorFamily(cacheKey);
+    if (cached) {
+      return cached;
+    }
     const qb = this.designRepo
       .createQueryBuilder('design')
       .leftJoinAndSelect('design.jewelryGroupMaster', 'configJewelryGroupMaster')
@@ -2292,7 +2299,43 @@ export class ProductsService {
       design.metals = (metalsByDesign.get(designKey) || []).map((metal) => this.hydrateMetalDisplayLabels(metal));
       design.gemstones = (gemstonesByDesign.get(designKey) || []).map((gemstone) => this.hydrateGemstoneDisplayLabels(gemstone));
     }
+    this.setCachedMobileConfiguratorFamily(cacheKey, family);
     return family;
+  }
+
+  private getMobileConfiguratorFamilyCacheKey(familyDesignId: number, requester: AuthUser): string {
+    return [
+      familyDesignId,
+      requester.role || '',
+      requester.companyId || '',
+      requester.branchId || '',
+      requester.id || '',
+    ].join(':');
+  }
+
+  private getCachedMobileConfiguratorFamily(cacheKey: string): Design[] | null {
+    const cached = this.mobileConfiguratorFamilyCache.get(cacheKey);
+    if (!cached) return null;
+    if (Date.now() >= cached.expiresAt) {
+      this.mobileConfiguratorFamilyCache.delete(cacheKey);
+      return null;
+    }
+    return cached.family;
+  }
+
+  private setCachedMobileConfiguratorFamily(cacheKey: string, family: Design[]): void {
+    this.mobileConfiguratorFamilyCache.set(cacheKey, {
+      family,
+      expiresAt: Date.now() + this.mobileConfiguratorFamilyCacheTtlMs,
+    });
+    if (this.mobileConfiguratorFamilyCache.size > 500) {
+      const now = Date.now();
+      for (const [key, entry] of this.mobileConfiguratorFamilyCache.entries()) {
+        if (entry.expiresAt <= now || this.mobileConfiguratorFamilyCache.size > 400) {
+          this.mobileConfiguratorFamilyCache.delete(key);
+        }
+      }
+    }
   }
 
   private async toMobileConfiguratorResponse(
@@ -2988,7 +3031,7 @@ export class ProductsService {
         isPrimary: design.isPrimary,
         createdAt: design.createdAt,
         imageKeys: Array.isArray(design.imageUrls) ? design.imageUrls : [],
-        imageUrls,
+        imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
       };
     }));
 
@@ -6858,6 +6901,9 @@ export class ProductsService {
   }
 
 }
+
+
+
 
 
 
