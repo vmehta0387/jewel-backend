@@ -3,10 +3,16 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import api from '../../services/api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const optionalNumberId = (value?: string | number | null): number | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const BRANCH_ERROR_ORDER = [
   'companyId',
   'name',
@@ -177,7 +183,8 @@ export default function AddBranch() {
       const payload: Record<string, unknown> = {
         ...formData,
         code: formData.code.toUpperCase().replace(/\s+/g, ''),
-        branchManagerId: formData.branchManagerId || null,
+        companyId: optionalNumberId(formData.companyId),
+        branchManagerId: optionalNumberId(formData.branchManagerId),
         pricingSlabs: formData.enableSlabPricing ? slabs : [],
       };
 
@@ -214,24 +221,20 @@ export default function AddBranch() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
-              <select
-                id="companyId"
-                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
-                  errors.companyId ? 'border-red-500' : 'border-gray-300'
-                }`}
+              <SmartDropdown
                 value={formData.companyId}
-                onChange={(event) => {
+                onChange={(value) => {
                   setPendingManagerData(null);
-                  setFormData({ ...formData, companyId: event.target.value, branchManagerId: '' });
+                  setFormData({ ...formData, companyId: value, branchManagerId: '' });
                 }}
-              >
-                <option value="">Select Company</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.companyName} ({company.companyCode})
-                  </option>
-                ))}
-              </select>
+                config={{
+                  apiSubPath: '/companies/lookup',
+                  options: companies.map((company) => ({ ...company, label: `${company.companyName} (${company.companyCode})` })),
+                  placeholder: 'Select Company',
+                  valueKey: 'id',
+                  labelKey: 'label',
+                }}
+              />
               {errors.companyId && <p className="mt-1 text-sm text-red-600">{errors.companyId}</p>}
             </div>
 
@@ -389,31 +392,29 @@ export default function AddBranch() {
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Assign Existing Branch Manager</label>
-                <select
-                  id="branchManagerId"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                <SmartDropdown
                   value={managerSelectValue}
-                  disabled={!formData.companyId}
-                  onChange={(event) => {
-                    if (event.target.value === NEW_MANAGER_OPTION_VALUE) {
-                      return;
-                    }
+                  onChange={(value) => {
+                    if (value === NEW_MANAGER_OPTION_VALUE) return;
                     setPendingManagerData(null);
-                    setFormData({ ...formData, branchManagerId: event.target.value });
+                    setFormData({ ...formData, branchManagerId: value });
                   }}
-                >
-                  <option value="">None</option>
-                  {pendingManagerData && (
-                    <option value={NEW_MANAGER_OPTION_VALUE}>
-                      New: {pendingManagerData.firstName} {pendingManagerData.lastName} ({pendingManagerData.email})
-                    </option>
-                  )}
-                  {branchManagers.map((manager) => (
-                    <option key={manager.id} value={manager.id}>
-                      {manager.firstName} {manager.lastName} ({manager.email})
-                    </option>
-                  ))}
-                </select>
+                  config={{
+                    apiSubPath: '/users/lookup',
+                    extraParams: { role: 'BRANCH_MANAGER', companyId: formData.companyId, status: 'ALL' },
+                    options: [
+                      ...(pendingManagerData
+                        ? [{ id: NEW_MANAGER_OPTION_VALUE, value: NEW_MANAGER_OPTION_VALUE, label: `New: ${pendingManagerData.firstName} ${pendingManagerData.lastName} (${pendingManagerData.email})` }]
+                        : []),
+                      ...branchManagers.map((manager) => ({ ...manager, label: `${manager.firstName} ${manager.lastName} (${manager.email})` })),
+                    ],
+                    placeholder: 'None',
+                    clearLabel: 'None',
+                    valueKey: 'id',
+                    labelKey: 'label',
+                    disabled: !formData.companyId,
+                  }}
+                />
               </div>
               <Button type="button" variant="secondary" onClick={() => setShowAddManager((prev) => !prev)}>
                 {showAddManager ? 'Cancel' : '+ New Manager'}
@@ -540,4 +541,7 @@ export default function AddBranch() {
     </div>
   );
 }
+
+
+
 

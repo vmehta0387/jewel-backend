@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Button from '../../components/common/Button';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import PermissionMatrix, { DetailedPermission } from '../../components/permissions/PermissionMatrix';
@@ -13,6 +14,12 @@ import {
   UserRecord,
 } from '../../types/user.types';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
+
+const optionalNumberId = (value?: string | number | null): number | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 
 interface CompanyOption {
   id: string;
@@ -281,8 +288,8 @@ export default function EditUser() {
         userHandle: formData.userHandle.trim() || null,
         email: formData.email.trim().toLowerCase(),
         role: formData.role,
-        companyId: formData.companyId || null,
-        branchId: formData.branchId || null,
+        companyId: optionalNumberId(formData.companyId),
+        branchId: optionalNumberId(formData.branchId),
         phone: formData.phone.trim() || null,
         photoUrl: formData.photoUrl.trim() || null,
         isActive: formData.isActive,
@@ -473,41 +480,35 @@ export default function EditUser() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-              <select
-                name="role"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              <SmartDropdown
                 value={formData.role}
-                onChange={(event) => handleRoleChange(event.target.value as UserRole)}
-              >
-                  {allowedRoleOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                onChange={(value) => handleRoleChange(value as UserRole)}
+                config={{
+                  showSearch: false,
+                  options: allowedRoleOptions.map((option) => ({ id: option.value, value: option.value, label: option.label })),
+                  placeholder: 'Select Role',
+                  valueKey: 'id',
+                  labelKey: 'label',
+                }}
+              />
             </div>
 
             {roleNeedsCompany(formData.role) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Company *</label>
-                <select
-                  name="companyId"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
-                    errors.companyId ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                <SmartDropdown
                   value={formData.companyId}
-                  onChange={(event) =>
-                    setFormData({ ...formData, companyId: event.target.value, branchId: '' })
-                  }
-                  disabled={isCompanyAdmin}
-                >
-                  <option value="">Select Company</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.companyName} ({company.companyCode})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData({ ...formData, companyId: value, branchId: '' })}
+                  config={{
+                    apiSubPath: '/companies/lookup',
+                    extraParams: { status: 'ACTIVE' },
+                    options: companies.map((company) => ({ ...company, label: `${company.companyName} (${company.companyCode})` })),
+                    placeholder: 'Select Company',
+                    valueKey: 'id',
+                    labelKey: 'label',
+                    disabled: isCompanyAdmin,
+                  }}
+                />
                 {errors.companyId && <p className="mt-1 text-sm text-red-600">{errors.companyId}</p>}
               </div>
             )}
@@ -515,22 +516,20 @@ export default function EditUser() {
             {roleNeedsBranch(formData.role) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
-                <select
-                  name="branchId"
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 ${
-                    errors.branchId ? 'border-red-500' : 'border-gray-300'
-                  }`}
+                <SmartDropdown
                   value={formData.branchId}
-                  onChange={(event) => setFormData({ ...formData, branchId: event.target.value })}
-                  disabled={!formData.companyId}
-                >
-                  <option value="">Select Branch</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {branch.name} ({branch.code})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData({ ...formData, branchId: value })}
+                  config={{
+                    apiSubPath: '/branches',
+                    extraParams: { companyId: formData.companyId, status: 'ACTIVE' },
+                    responsePath: 'data',
+                    options: branches.map((branch) => ({ ...branch, label: `${branch.name} (${branch.code})` })),
+                    placeholder: 'Select Branch',
+                    valueKey: 'id',
+                    labelKey: 'label',
+                    disabled: !formData.companyId,
+                  }}
+                />
                 {errors.branchId && <p className="mt-1 text-sm text-red-600">{errors.branchId}</p>}
               </div>
             )}
@@ -571,4 +570,9 @@ export default function EditUser() {
     </div>
   );
 }
+
+
+
+
+
 

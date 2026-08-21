@@ -6,6 +6,7 @@ import Pagination from '../../components/common/Pagination';
 import StlViewer from '../../components/common/StlViewer';
 import Avatar from '../../components/common/Avatar';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
+import { MasterFormModal, PacketFormModal, buildPacketNameFromForm, buildPacketPayload, validatePacketPayload, type MasterOption as SharedMasterOption, type PacketSelectionMap } from '../masters/components/MasterFormModal';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 import { getStoredUser } from '../../utils/auth';
@@ -528,6 +529,7 @@ interface PacketForm {
   stone: string;
   shape: string;
   size: string;
+  cut: string;
   color: string;
   quality: string;
   priceIn: 'WT' | 'PCS';
@@ -583,32 +585,6 @@ const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[
     result.push(normalized);
   });
   return result;
-};
-const toPacketAbbreviation = (value: string): string => {
-  const normalized = (value || '').trim();
-  if (!normalized) return '';
-
-  const compact = normalized.replace(/[^a-zA-Z0-9]/g, '');
-  const words = normalized
-    .replace(/[^a-zA-Z0-9\\s/-]/g, ' ')
-    .split(/[\\s/-]+/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
-
-  if (words.length <= 1) {
-    return compact.slice(0, 3).toUpperCase();
-  }
-
-  return words
-    .slice(0, 3)
-    .map((entry) => entry.charAt(0).toUpperCase())
-    .join('');
-};
-const buildPacketNameFromForm = (packet: Pick<PacketForm, 'stone' | 'shape' | 'size' | 'color' | 'quality'>): string => {
-  const parts = [packet.stone, packet.shape, packet.size, packet.color, packet.quality]
-    .map((entry) => toPacketAbbreviation((entry || '').trim()))
-    .filter((entry) => entry.length > 0);
-  return parts.join('-');
 };
 const getMetalPurityDisplay = (option: MasterOption): string => {
   return (option.aliasName || option.value || '').trim();
@@ -1146,6 +1122,7 @@ const defaultPacketForm: PacketForm = {
   stone: '',
   shape: '',
   size: '',
+  cut: '',
   color: '',
   quality: '',
   priceIn: 'WT',
@@ -1732,6 +1709,7 @@ export default function ProductsPage() {
   const [packetSaving, setPacketSaving] = useState(false);
   const [packetForm, setPacketForm] = useState<PacketForm>(defaultPacketForm);
   const [packetNameManuallyEdited, setPacketNameManuallyEdited] = useState(false);
+  const [selectedPacketOptions, setSelectedPacketOptions] = useState<PacketSelectionMap>({});
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [stlItem, setStlItem] = useState<StlItem | null>(null);
@@ -2289,13 +2267,14 @@ export default function ProductsPage() {
     if (!showPacketMasterModal || packetNameManuallyEdited) {
       return;
     }
-    const computedPacketName = buildPacketNameFromForm(packetForm);
+    const computedPacketName = buildPacketNameFromForm(packetForm, selectedPacketOptions);
     if (computedPacketName && computedPacketName !== packetForm.packetName) {
       setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
     }
   }, [
     packetForm,
     packetNameManuallyEdited,
+    selectedPacketOptions,
     showPacketMasterModal,
   ]);
   const mapMediaLibraryEntry = (entry: Record<string, unknown>): MediaLibraryItem => ({
@@ -3088,6 +3067,38 @@ export default function ProductsPage() {
     inlineMasterCreatedHandlerRef.current = null;
   };
 
+  const confirmCloseInlineMasterModal = async () => {
+    if (!showInlineMasterModal) return;
+    const confirmed = await confirmAppDialog('Close this master form? Unsaved changes will be lost.', {
+      title: 'Close master form',
+      confirmLabel: 'Close',
+      cancelLabel: 'Stay',
+      variant: 'warning',
+    });
+    if (confirmed) {
+      closeInlineMasterModal();
+    }
+  };
+
+  const closePacketMasterModal = () => {
+    setShowPacketMasterModal(false);
+    setPacketForm(defaultPacketForm);
+    setPacketNameManuallyEdited(false);
+    setSelectedPacketOptions({});
+  };
+
+  const confirmClosePacketMasterModal = async () => {
+    if (!showPacketMasterModal) return;
+    const confirmed = await confirmAppDialog('Close this packet form? Unsaved changes will be lost.', {
+      title: 'Close packet form',
+      confirmLabel: 'Close',
+      cancelLabel: 'Stay',
+      variant: 'warning',
+    });
+    if (confirmed) {
+      closePacketMasterModal();
+    }
+  };
   const applyCreatedMasterSelection = (masterType: DesignMasterType, masterValue: string) => {
     if (masterType === 'JEWELRY_GROUP') {
       handleJewelryGroupChange(masterValue);
@@ -3355,7 +3366,17 @@ export default function ProductsPage() {
     }
   };
 
-  const updatePacketFormField = (key: keyof PacketForm, value: string) => {
+  const updatePacketFormField = (key: keyof PacketForm, value: string, option?: SmartDropdownOption | null) => {
+    const packetOptionKeys = new Set<keyof PacketSelectionMap>(['stone', 'shape', 'size', 'cut', 'color', 'quality']);
+    const selectedOption = (option as SharedMasterOption) || null;
+    const nextSelectedOptions = packetOptionKeys.has(key as keyof PacketSelectionMap)
+      ? { ...selectedPacketOptions, [key]: selectedOption }
+      : selectedPacketOptions;
+
+    if (nextSelectedOptions !== selectedPacketOptions) {
+      setSelectedPacketOptions(nextSelectedOptions);
+    }
+
     setPacketForm((prev) => {
       const next = { ...prev, [key]: value } as PacketForm;
       if (
@@ -3367,7 +3388,7 @@ export default function ProductsPage() {
         key !== 'sellingPrice' &&
         key !== 'weightPerPc'
       ) {
-        const computedPacketName = buildPacketNameFromForm(next);
+        const computedPacketName = buildPacketNameFromForm(next, nextSelectedOptions);
         if (computedPacketName) {
           next.packetName = computedPacketName;
         }
@@ -3380,38 +3401,16 @@ export default function ProductsPage() {
   };
 
   const regeneratePacketName = () => {
-    const computedPacketName = buildPacketNameFromForm(packetForm);
+    const computedPacketName = buildPacketNameFromForm(packetForm, selectedPacketOptions);
     setPacketForm((prev) => ({ ...prev, packetName: computedPacketName }));
     setPacketNameManuallyEdited(false);
   };
 
   const savePacketMaster = async () => {
-    const payload = {
-      barcode: packetForm.barcode.trim() || undefined,
-      packetName: packetForm.packetName.trim(),
-      stone: packetForm.stone.trim(),
-      shape: packetForm.shape.trim(),
-      size: packetForm.size.trim(),
-      color: packetForm.color.trim(),
-      quality: packetForm.quality.trim(),
-      priceIn: packetForm.priceIn,
-      sellingPrice: parseNum(packetForm.sellingPrice),
-      weightPerPc: parseNum(packetForm.weightPerPc),
-      pieces: 1,
-      weight: parseNum(packetForm.weightPerPc),
-      weightUnit: 'CTS',
-    };
-
-    if (!payload.packetName || !payload.stone || !payload.shape || !payload.size || !payload.color || !payload.quality) {
-      showAppAlert('Packet Name, Stone, Shape, Size, Color and Quality are required.');
-      return;
-    }
-    if (payload.sellingPrice < 0) {
-      showAppAlert('Selling price cannot be negative.');
-      return;
-    }
-    if (payload.weightPerPc <= 0) {
-      showAppAlert('Weight/Pc must be greater than 0.');
+    const payload = buildPacketPayload(packetForm, parseNum);
+    const validationError = validatePacketPayload(payload);
+    if (validationError) {
+      showAppAlert(validationError);
       return;
     }
 
@@ -3421,6 +3420,7 @@ export default function ProductsPage() {
       setShowPacketMasterModal(false);
       setPacketForm(defaultPacketForm);
       setPacketNameManuallyEdited(false);
+      setSelectedPacketOptions({});
 
       const createdId = response.data?.id;
       if (createdId) {
@@ -3457,6 +3457,7 @@ export default function ProductsPage() {
     void fetchMasterOptions('PACKET_SIZE');
     void fetchMasterOptions('PACKET_COLOR');
     void fetchMasterOptions('PACKET_QUALITY');
+    void fetchMasterOptions('PACKET_CUT');
   }, [showPacketMasterModal]);
 
   useEffect(() => {
@@ -10255,723 +10256,110 @@ const createDefaultVendorRow = (): VendorRow => ({
       )}
 
       {showInlineMasterModal && inlineMasterType && (
-        <Modal title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`} onClose={closeInlineMasterModal} size="max-w-3xl" zIndexClass="z-[130]">
-          <form onSubmit={saveInlineMasterFromDesign} className="space-y-4">
-            <p className="text-sm font-medium text-rose-700">* Required fields</p>
-
-            {inlineMasterType === 'FINDING_HEAD' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Finding No.*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineFindingNo}
-                    onChange={(event) => setInlineFindingNo(event.target.value)}
-                    placeholder="ACS-0001"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterValue}
-                    onChange={(event) => setInlineMasterValue(event.target.value)}
-                    placeholder={masterTypeLabelMap[inlineMasterType]}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterAliasName}
-                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Alias Name"
-                    required
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterValue}
-                    onChange={(event) => setInlineMasterValue(event.target.value)}
-                    placeholder={masterTypeLabelMap[inlineMasterType]}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineJewelryGroupId}
-                    onChange={(event) => setInlineJewelryGroupId(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {masterOptions.jewelryGroups.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterAliasName}
-                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Alias Name"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                  <textarea
-                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterDescription}
-                    onChange={(event) => setInlineMasterDescription(event.target.value)}
-                    placeholder="Description"
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType !== 'FINDING_HEAD' &&
-            inlineMasterType !== 'METAL_CARATAGE' &&
-            inlineMasterType !== 'JEWELRY_SIZE' &&
-            inlineMasterType !== 'COLLECTION' &&
-            inlineMasterType !== 'VENDOR_NAME' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterValue}
-                    onChange={(event) => setInlineMasterValue(event.target.value)}
-                    placeholder={masterTypeLabelMap[inlineMasterType]}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterAliasName}
-                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Alias Name"
-                    required
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'VENDOR_NAME' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">{masterTypeLabelMap[inlineMasterType]}*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterValue}
-                    onChange={(event) => setInlineMasterValue(event.target.value)}
-                    placeholder={masterTypeLabelMap[inlineMasterType]}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterAliasName}
-                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Alias Name"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Vendor Email</label>
-                  <input
-                    type="email"
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineVendorEmail}
-                    onChange={(event) => setInlineVendorEmail(event.target.value)}
-                    placeholder="vendor@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                  <textarea
-                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterDescription}
-                    onChange={(event) => setInlineMasterDescription(event.target.value)}
-                    placeholder="Description"
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'METAL_CARATAGE' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMetalName}
-                    onChange={(event) => setInlineMetalName(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Metal Name</option>
-                    {masterOptions.metalNames.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Purity*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMetalPurity}
-                    onChange={(event) => setInlineMetalPurity(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Metal Purity</option>
-                    {inlineMetalPurityOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {getMetalPurityDisplay(option)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Color*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMetalColor}
-                    onChange={(event) => setInlineMetalColor(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Metal Color</option>
-                    {inlineMetalColorOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.aliasName || option.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal Name*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterAliasName}
-                    onChange={(event) => setInlineMasterAliasName(event.target.value)}
-                    placeholder="Metal Name"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Wastage</label>
-                  <div className="flex">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={inlineDefaultWastagePercent}
-                      onFocus={handleNumericFieldFocus}
-                      onMouseUp={handleNumericFieldMouseUp}
-                      onChange={(event) => setInlineDefaultWastagePercent(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                      placeholder="0.00"
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Price/Gms</label>
-                  <div className="flex">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={inlinePricePerUnit}
-                      onFocus={handleNumericFieldFocus}
-                      onMouseUp={handleNumericFieldMouseUp}
-                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                      placeholder="Auto calculated (editable)"
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'FINDING_HEAD' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Metal*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMetalCaratage}
-                    onChange={(event) => setInlineMetalCaratage(event.target.value)}
-                    placeholder="Metal"
-                    required
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Price In*</label>
-                  <div className="flex flex-wrap items-center gap-4 rounded border border-slate-300 px-3 py-2 text-sm">
-                    {(['PIECES', 'GRAM', 'PAIR', 'INCHES'] as Array<'PIECES' | 'GRAM' | 'PAIR' | 'INCHES'>).map((option) => (
-                      <label key={option} className="inline-flex items-center gap-1.5 text-slate-700">
-                        <input
-                          type="radio"
-                          name="inline-finding-price-in"
-                          value={option}
-                          checked={inlinePriceIn === option}
-                          onChange={(event) => setInlinePriceIn(event.target.value as 'PIECES' | 'GRAM' | 'PAIR' | 'INCHES')}
-                        />
-                        <span>
-                          {option === 'PIECES'
-                            ? 'Pieces'
-                            : option === 'GRAM'
-                              ? 'Gram'
-                              : option === 'PAIR'
-                                ? 'Pair'
-                                : 'Inches'}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Price/Unit*</label>
-                  <div className="flex">
-                    <input
-                      className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                      value={inlinePricePerUnit}
-                      onChange={(event) => setInlinePricePerUnit(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                      placeholder="Price/Unit"
-                      required
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Dimensions</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineDimensions}
-                    onChange={(event) => setInlineDimensions(event.target.value)}
-                    placeholder="Dimensions"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Weight/Unit*</label>
-                  <input
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineWeightPerUnit}
-                    onChange={(event) => setInlineWeightPerUnit(event.target.value)}
-                    placeholder="Weight/Unit"
-                    required
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'OVERHEAD_RULE' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Category*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineJewelryGroupId}
-                    onChange={(event) => setInlineJewelryGroupId(event.target.value)}
-                    required
-                  >
-                    <option value="">Select Category</option>
-                    {masterOptions.jewelryGroups.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Apply Mode*</label>
-                  <select
-                    className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineOverheadApplyMode}
-                    onChange={(event) =>
-                      setInlineOverheadApplyMode(event.target.value as 'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT')
-                    }
-                    required
-                  >
-                    <option value="PERCENT_MATERIALS">% of Materials</option>
-                    <option value="FLAT">Flat</option>
-                  </select>
-                </div>
-                {inlineOverheadApplyMode === 'FLAT' ? (
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Flat Amount*</label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={inlineFlatAmount}
-                        onFocus={handleNumericFieldFocus}
-                        onMouseUp={handleNumericFieldMouseUp}
-                        onChange={(event) => setInlineFlatAmount(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                        placeholder="0.00"
-                        required
-                      />
-                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Rate %*</label>
-                    <div className="flex">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="w-full rounded-l border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                        value={inlineRatePercent}
-                        onFocus={handleNumericFieldFocus}
-                        onMouseUp={handleNumericFieldMouseUp}
-                        onChange={(event) => setInlineRatePercent(sanitizeNumericTextInput(event.target.value, 'decimal'))}
-                        placeholder="0.00"
-                        required
-                      />
-                      <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">%</span>
-                    </div>
-                  </div>
-                )}
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                  <textarea
-                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterDescription}
-                    onChange={(event) => setInlineMasterDescription(event.target.value)}
-                    placeholder="Description"
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            {inlineMasterType === 'METAL_CARATAGE' ? (
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                <textarea
-                  className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  value={inlineMasterDescription}
-                  onChange={(event) => setInlineMasterDescription(event.target.value)}
-                  placeholder="Description"
-                />
-              </div>
-            ) : null}
-
-            {inlineMasterType !== 'FINDING_HEAD' &&
-            inlineMasterType !== 'METAL_CARATAGE' &&
-            inlineMasterType !== 'JEWELRY_SIZE' &&
-            inlineMasterType !== 'COLLECTION' &&
-            inlineMasterType !== 'OVERHEAD_RULE' &&
-            inlineMasterType !== 'VENDOR_NAME' ? (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-                  <textarea
-                    className="h-24 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                    value={inlineMasterDescription}
-                    onChange={(event) => setInlineMasterDescription(event.target.value)}
-                    placeholder="Description"
-                  />
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-              <Button type="submit" size="sm" disabled={creatingMasterType === inlineMasterType}>
-                {creatingMasterType === inlineMasterType ? 'Saving...' : 'Save'}
-              </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={closeInlineMasterModal}>
-                Close
-              </Button>
-            </div>
-          </form>
-        </Modal>
+        <MasterFormModal
+          open={showInlineMasterModal}
+          title={`ADD NEW ${masterTypeLabelMap[inlineMasterType].toUpperCase()}`}
+          saveLabel="Save"
+          loading={creatingMasterType === inlineMasterType}
+          valueLabel={masterTypeLabelMap[inlineMasterType]}
+          formValue={inlineMasterValue}
+          formAliasName={inlineMasterAliasName}
+          formDescription={inlineMasterDescription}
+          vendorEmail={inlineVendorEmail}
+          isCategoryScopedType={inlineMasterType === 'JEWELRY_SIZE' || inlineMasterType === 'COLLECTION'}
+          isFindingType={inlineMasterType === 'FINDING_HEAD'}
+          isVendorType={inlineMasterType === 'VENDOR_NAME'}
+          isMetalNameType={inlineMasterType === 'METAL_NAME'}
+          isMetalColorType={inlineMasterType === 'METAL_COLOR'}
+          isMetalPurityType={inlineMasterType === 'METAL_PURITY'}
+          isMetalCaratageType={inlineMasterType === 'METAL_CARATAGE'}
+          isLaborRuleType={inlineMasterType === 'LABOR_RULE'}
+          isOverheadRuleType={inlineMasterType === 'OVERHEAD_RULE'}
+          findingNo={inlineFindingNo}
+          jewelryGroupId={inlineJewelryGroupId}
+          metalCaratage={inlineMetalCaratage}
+          metalName={inlineMetalName}
+          metalColor={inlineMetalColor}
+          metalPurity={inlineMetalPurity}
+          purityPercentage={String(inlineSelectedPurityOption?.purityPercentage ?? '')}
+          marketPricePerOunce=""
+          marketPricePerGm=""
+          livePricePerGm={inlinePricePerUnit}
+          defaultWastage={inlineDefaultWastagePercent}
+          metalNameOptions={masterOptions.metalNames as any}
+          metalColorOptions={inlineMetalColorOptions as any}
+          metalPurityOptions={inlineMetalPurityOptions as any}
+          priceIn={inlinePriceIn}
+          pricePerUnit={inlinePricePerUnit}
+          dimensions={inlineDimensions}
+          weightPerUnit={inlineWeightPerUnit}
+          laborApplyMode="FLAT"
+          flatCost=""
+          ratePerStone=""
+          ratePerGram=""
+          ratePerGroup=""
+          overheadApplyMode={inlineOverheadApplyMode === 'FLAT' ? 'flat' : 'per_of_materials'}
+          ratePercent={inlineRatePercent}
+          flatAmount={inlineFlatAmount}
+          jewelryGroupOptions={masterOptions.jewelryGroups as any}
+          onClose={confirmCloseInlineMasterModal}
+          onSubmit={saveInlineMasterFromDesign}
+          onChangeValue={setInlineMasterValue}
+          onChangeAliasName={setInlineMasterAliasName}
+          onChangeDescription={setInlineMasterDescription}
+          onChangeVendorEmail={setInlineVendorEmail}
+          onChangeFindingNo={setInlineFindingNo}
+          onChangeJewelryGroupId={setInlineJewelryGroupId}
+          onChangeMetalCaratage={setInlineMetalCaratage}
+          onChangeMetalName={(value, option) => {
+            const selected = option as any;
+            setInlineMetalName(String(selected?.value ?? value));
+            setInlineMetalColor('');
+            setInlineMetalPurity('');
+          }}
+          onChangeMetalColor={(value, option) => setInlineMetalColor(String((option as any)?.value ?? value))}
+          onChangeMetalPurity={(value, option) => setInlineMetalPurity(String((option as any)?.value ?? value))}
+          onChangePurityPercentage={() => undefined}
+          onChangeMarketPricePerOunce={() => undefined}
+          onChangeMarketPricePerGm={() => undefined}
+          onChangeLivePricePerGm={setInlinePricePerUnit}
+          onChangeDefaultWastage={setInlineDefaultWastagePercent}
+          onChangePriceIn={setInlinePriceIn}
+          onChangePricePerUnit={setInlinePricePerUnit}
+          onChangeDimensions={setInlineDimensions}
+          onChangeWeightPerUnit={setInlineWeightPerUnit}
+          onChangeLaborApplyMode={() => undefined}
+          onChangeFlatCost={() => undefined}
+          onChangeRatePerStone={() => undefined}
+          onChangeRatePerGram={() => undefined}
+          onChangeRatePerGroup={() => undefined}
+          onChangeOverheadApplyMode={(value) => setInlineOverheadApplyMode(value === 'flat' ? 'FLAT' : 'PERCENT_MATERIALS')}
+          onChangeRatePercent={setInlineRatePercent}
+          onChangeFlatAmount={setInlineFlatAmount}
+        />
       )}
 
       {showPacketMasterModal && (
-        <Modal title="ADD PACKET" onClose={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }} size="max-w-6xl" zIndexClass="z-[130]">
-          <div className="space-y-4">
-            <p className="text-sm font-medium text-rose-700">* Required fields</p>
-            <div className="rounded border border-slate-200 bg-slate-50 p-4">
-              <p className="mb-3 text-sm font-semibold text-slate-800">Basic Info</p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Stone*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.stone}
-                      onChange={(event) => updatePacketFormField('stone', event.target.value)}
-                    >
-                      <option value="">Select Stone</option>
-                      {!masterOptions.packetStones.some((option) => option.value === packetForm.stone) && packetForm.stone ? (
-                        <option value={packetForm.stone}>{packetForm.stone}</option>
-                      ) : null}
-                      {masterOptions.packetStones.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_STONE'}
-                      onClick={() => addMasterFromDesign('PACKET_STONE')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Shape*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.shape}
-                      onChange={(event) => updatePacketFormField('shape', event.target.value)}
-                    >
-                      <option value="">Select Shape</option>
-                      {!masterOptions.packetShapes.some((option) => option.value === packetForm.shape) && packetForm.shape ? (
-                        <option value={packetForm.shape}>{packetForm.shape}</option>
-                      ) : null}
-                      {masterOptions.packetShapes.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_SHAPE'}
-                      onClick={() => addMasterFromDesign('PACKET_SHAPE')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Size*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.size}
-                      onChange={(event) => updatePacketFormField('size', event.target.value)}
-                    >
-                      <option value="">Select Size</option>
-                      {!masterOptions.packetSizes.some((option) => option.value === packetForm.size) && packetForm.size ? (
-                        <option value={packetForm.size}>{packetForm.size}</option>
-                      ) : null}
-                      {masterOptions.packetSizes.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_SIZE'}
-                      onClick={() => addMasterFromDesign('PACKET_SIZE')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Color*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.color}
-                      onChange={(event) => updatePacketFormField('color', event.target.value)}
-                    >
-                      <option value="">Select Color</option>
-                      {!masterOptions.packetColors.some((option) => option.value === packetForm.color) && packetForm.color ? (
-                        <option value={packetForm.color}>{packetForm.color}</option>
-                      ) : null}
-                      {masterOptions.packetColors.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_COLOR'}
-                      onClick={() => addMasterFromDesign('PACKET_COLOR')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Quality*</label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.quality}
-                      onChange={(event) => updatePacketFormField('quality', event.target.value)}
-                    >
-                      <option value="">Select Quality</option>
-                      {!masterOptions.packetQualities.some((option) => option.value === packetForm.quality) && packetForm.quality ? (
-                        <option value={packetForm.quality}>{packetForm.quality}</option>
-                      ) : null}
-                      {masterOptions.packetQualities.map((option) => (
-                        <option key={option.id} value={option.value}>
-                          {option.value}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      disabled={creatingMasterType === 'PACKET_QUALITY'}
-                      onClick={() => addMasterFromDesign('PACKET_QUALITY')}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <div className="xl:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Packet Name*</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.packetName}
-                      onChange={(event) => updatePacketFormField('packetName', event.target.value)}
-                      placeholder="Packet Name"
-                    />
-                    <button
-                      type="button"
-                      className={inlineMasterAddButtonClass}
-                      title="Regenerate packet name"
-                      onClick={regeneratePacketName}
-                    >
-                      R
-                    </button>
-                  </div>
-                </div>
-                <div className="xl:col-span-2">
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Barcode</label>
-                  <input
-                    className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
-                    value={packetForm.barcode}
-                    onChange={(event) => updatePacketFormField('barcode', event.target.value.replace(/\D/g, ''))}
-                    placeholder="Auto generated if blank"
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded border border-slate-200 bg-slate-50 p-4">
-              <p className="mb-3 text-sm font-semibold text-slate-800">Purchase Weight & Price (Optional)</p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Price In</label>
-                  <div className="flex items-center gap-3 rounded border border-gray-300 bg-white px-3 py-2 text-sm">
-                    <label className="inline-flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name="packet-price-in"
-                        value="WT"
-                        checked={packetForm.priceIn === 'WT'}
-                        onChange={(event) => updatePacketFormField('priceIn', event.target.value)}
-                      />
-                      <span>Wt</span>
-                    </label>
-                    <label className="inline-flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name="packet-price-in"
-                        value="PCS"
-                        checked={packetForm.priceIn === 'PCS'}
-                        onChange={(event) => updatePacketFormField('priceIn', event.target.value)}
-                      />
-                      <span>Pcs</span>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight Unit</label>
-                  <div className="flex min-h-[38px] items-center justify-between rounded border border-gray-300 bg-white px-3 py-2 text-sm">
-                    <span className="text-slate-700">Carats</span>
-                    <span className="rounded-md bg-[#f4ede3] px-2 py-0.5 text-xs font-bold tracking-wide text-[#80632f]">
-                      CTS
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Selling Price*</label>
-                  <div className="flex">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-full rounded-l border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.sellingPrice}
-                      onChange={(event) => updatePacketFormField('sellingPrice', event.target.value)}
-                      placeholder="Price"
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">USD</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Weight/Pc.</label>
-                  <div className="flex">
-                    <input
-                      type="number"
-                      min="0.001"
-                      step="0.001"
-                      className="w-full rounded-l border border-gray-300 px-2 py-2 text-sm"
-                      value={packetForm.weightPerPc}
-                      onChange={(event) => updatePacketFormField('weightPerPc', event.target.value)}
-                      placeholder="Weight/Pc."
-                    />
-                    <span className="inline-flex items-center rounded-r border border-l-0 border-gray-300 bg-slate-100 px-3 text-xs font-semibold text-slate-600">CTS</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" onClick={savePacketMaster} disabled={packetSaving}>
-                {packetSaving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => { setShowPacketMasterModal(false); setPacketForm(defaultPacketForm); setPacketNameManuallyEdited(false); }}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </Modal>
+        <PacketFormModal
+          open={showPacketMasterModal}
+          title="ADD PACKET"
+          saveLabel="Save Packet"
+          loading={packetSaving}
+          form={packetForm}
+          masterOptions={{
+            packetStones: masterOptions.packetStones as any,
+            packetShapes: masterOptions.packetShapes as any,
+            packetSizes: masterOptions.packetSizes as any,
+            packetCuts: masterOptions.packetCuts as any,
+            packetColors: masterOptions.packetColors as any,
+            packetQualities: masterOptions.packetQualities as any,
+          }}
+          onClose={confirmClosePacketMasterModal}
+          onSubmit={savePacketMaster}
+          onChange={updatePacketFormField}
+          onRegeneratePacketName={regeneratePacketName}
+        />
       )}
-
       <DesignViewModal
         showInfoModal={modal === 'info'}
         designNo={infoModalTitleDesign?.designNo || ''}
@@ -10995,7 +10383,6 @@ const createDefaultVendorRow = (): VendorRow => ({
           </div>
         </Modal>
       )}
-
       {showStlViewerModal && detailInfo && (
         <Modal
           title={`STL FILE (${detailInfo.designNo})`}
@@ -11203,6 +10590,17 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

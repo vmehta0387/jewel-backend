@@ -875,7 +875,7 @@ export class MasterTablesService {
       }
       packet.packetName = packetName;
     }
-    if (dto.barcode !== undefined) packet.barcode = await this.resolveStonePacketBarcode(dto.barcode, packet.id);
+    if (dto.barcode !== undefined) packet.barcode = await this.resolveStonePacketBarcode(dto.barcode, packet.id, false);
     if (dto.stockType !== undefined) packet.stockType = this.optionalString(dto.stockType);
     if (dto.stoneId !== undefined || dto.stone !== undefined) packet.stoneId = await this.resolvePacketMasterId(DesignMasterType.PACKET_STONE, dto.stoneId, dto.stone, 'stone');
     if (dto.shapeId !== undefined || dto.shape !== undefined) packet.shapeId = await this.resolvePacketMasterId(DesignMasterType.PACKET_SHAPE, dto.shapeId, dto.shape, 'shape');
@@ -1090,10 +1090,10 @@ export class MasterTablesService {
     return normalized;
   }
 
-  private async resolveStonePacketBarcode(value: unknown, excludePacketId?: number): Promise<string | null> {
+  private async resolveStonePacketBarcode(value: unknown, excludePacketId?: number, autoGenerate = true): Promise<string | null> {
     const normalized = this.normalizeStonePacketBarcode(value);
     if (!normalized) {
-      return this.generateStonePacketBarcode();
+      return autoGenerate ? this.generateStonePacketBarcode() : null;
     }
 
     const existing = await this.getPacketRepository().findOne({ where: { barcode: normalized } });
@@ -1716,6 +1716,7 @@ export class MasterTablesService {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }
+
 
 
 

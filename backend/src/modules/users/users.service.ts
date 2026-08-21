@@ -32,6 +32,7 @@ import {
 
 export interface UserResponse {
   id: number;
+  label?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -260,6 +261,7 @@ export class UsersService implements OnModuleInit {
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.company', 'company')
       .leftJoinAndSelect('user.branch', 'branch')
+      .addSelect("TRIM(CONCAT(COALESCE(user.firstName, ''), ' ', COALESCE(user.lastName, '')))", 'user_lookupLabel')
       .orderBy('user.firstName', 'ASC')
       .addOrderBy('user.lastName', 'ASC');
 
@@ -306,7 +308,15 @@ export class UsersService implements OnModuleInit {
       usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId });
     }
 
-    const users = await usersQuery.getMany();
+    const { entities: users, raw } = await usersQuery.getRawAndEntities();
+    const lookupLabels = new Map<number, string>();
+    raw.forEach((row: Record<string, unknown>) => {
+      const id = Number(row.user_id);
+      const label = String(row.user_lookupLabel || '').trim();
+      if (Number.isFinite(id) && label) {
+        lookupLabels.set(id, label);
+      }
+    });
     const userIds = users.map((user) => user.id);
     const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
       this.getManagedCompaniesMap(userIds),
@@ -314,16 +324,20 @@ export class UsersService implements OnModuleInit {
     ]);
 
     return Promise.all(
-      users.map((user) =>
-        this.mapToUserResponse(
+      users.map(async (user) => {
+        const response = await this.mapToUserResponse(
           user,
           managedCompaniesMap.get(user.id) || [],
           detailedPermissionsMap.get(user.id) || [],
-        ),
-      ),
+        );
+        const fallbackLabel = `${response.firstName || ''} ${response.lastName || ''}`.trim() || response.email;
+        return {
+          ...response,
+          label: lookupLabels.get(user.id) || fallbackLabel,
+        };
+      }),
     );
   }
-
   async checkUserHandleAvailability(query: CheckUserHandleQueryDto): Promise<{
     available: boolean;
     normalizedUserHandle: string | null;
@@ -1835,3 +1849,6 @@ export class UsersService implements OnModuleInit {
     return `s3://${s3Config.bucket}/${key}`;
   }
 }
+
+
+

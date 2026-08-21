@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import FloatingErrorToast from '../../components/common/FloatingErrorToast';
 import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable, {
@@ -13,6 +14,11 @@ import api from '../../services/api';
 import { formatAddressLocation } from '../../utils/address';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const optionalNumberId = (value?: string | number | null): number | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const COMPANY_ERROR_ORDER = [
   'companyName',
   'primaryEmail',
@@ -275,7 +281,7 @@ export default function EditCompany() {
     try {
       const payload = {
         companyName: formData.companyName,
-        accountManagerId: formData.accountManagerId,
+        accountManagerId: optionalNumberId(formData.accountManagerId),
         streetAddress: formData.streetAddress,
         streetAddress2: formData.streetAddress2,
         city: formData.city,
@@ -368,7 +374,7 @@ export default function EditCompany() {
     setIsCreatingBranch(true);
     try {
       await api.post('/branches', {
-        companyId: id,
+        companyId: optionalNumberId(id),
         name: newBranchData.name.trim(),
         code: newBranchData.code.toUpperCase().replace(/\s+/g, ''),
         streetAddress: newBranchData.streetAddress.trim() || null,
@@ -426,8 +432,8 @@ export default function EditCompany() {
         email: newUserData.email.trim().toLowerCase(),
         password: newUserData.password,
         role: newUserData.role,
-        companyId: id,
-        branchId: quickRoleNeedsBranch(newUserData.role) ? newUserData.branchId : null,
+        companyId: optionalNumberId(id),
+        branchId: quickRoleNeedsBranch(newUserData.role) ? optionalNumberId(newUserData.branchId) : null,
         phone: newUserData.phone.trim() || null,
         isActive: newUserData.isActive,
       });
@@ -502,16 +508,19 @@ export default function EditCompany() {
             />
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Account Manager</label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                value={formData.accountManagerId}
-                onChange={(event) => setFormData({ ...formData, accountManagerId: event.target.value })}
-              >
-                <option value="">Select Account Manager</option>
-                {accountManagers.map((manager) => (
-                  <option key={manager.id} value={manager.id}>{manager.name}</option>
-                ))}
-              </select>
+              <SmartDropdown
+                  value={formData.accountManagerId}
+                  onChange={(value) => setFormData({ ...formData, accountManagerId: value })}
+                  config={{
+                    apiSubPath: '/users/lookup',
+                    extraParams: { role: 'INTERNAL_REP', status: 'ACTIVE' },
+                    options: accountManagers.map((manager) => ({ ...manager, label: manager.name })),
+                    placeholder: 'Select Account Manager',
+                    clearLabel: 'No Account Manager',
+                    valueKey: 'id',
+                    labelKey: 'label',
+                  }}
+                />
             </div>
           </div>
         </Card>
@@ -959,24 +968,24 @@ export default function EditCompany() {
                   />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    <SmartDropdown
                       value={newUserData.role}
-                      onChange={(event) => {
-                        const nextRole = event.target.value as QuickUserRole;
+                      onChange={(value) => {
+                        const nextRole = value as QuickUserRole;
                         setNewUserData({
                           ...newUserData,
                           role: nextRole,
                           branchId: quickRoleNeedsBranch(nextRole) ? newUserData.branchId : '',
                         });
                       }}
-                    >
-                      {QUICK_USER_ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      config={{
+                        showSearch: false,
+                        options: QUICK_USER_ROLE_OPTIONS.map((option) => ({ id: option.value, value: option.value, label: option.label })),
+                        placeholder: 'Select Role',
+                        valueKey: 'id',
+                        labelKey: 'label',
+                      }}
+                    />
                   </div>
 
                   {quickRoleNeedsBranch(newUserData.role) && (
@@ -1092,4 +1101,10 @@ export default function EditCompany() {
     </div>
   );
 }
+
+
+
+
+
+
 

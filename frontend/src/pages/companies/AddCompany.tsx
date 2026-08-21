@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import FloatingErrorToast from '../../components/common/FloatingErrorToast';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable, {
@@ -13,6 +14,11 @@ import api from '../../services/api';
 import { formatAddressLocation } from '../../utils/address';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const optionalNumberId = (value?: string | number | null): number | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
 const COMPANY_ERROR_ORDER = [
   'companyName',
   'companyCode',
@@ -429,7 +435,7 @@ export default function AddCompany() {
     try {
       const payload: any = {
         ...formData,
-        accountManagerId: formData.accountManagerId || null,
+        accountManagerId: optionalNumberId(formData.accountManagerId),
         companyCode: formData.companyCode.toUpperCase().replace(/\s+/g, ''),
         mainBranchCode: formData.mainBranchCode.toUpperCase().replace(/\s+/g, ''),
         pricingSlabs: formData.enableSlabPricing ? slabs : null,
@@ -499,14 +505,14 @@ export default function AddCompany() {
           email: draftUser.email,
           password: draftUser.password,
           role: draftUser.role,
-          companyId,
-          branchId,
+          companyId: optionalNumberId(companyId),
+          branchId: optionalNumberId(branchId),
           phone: draftUser.phone || null,
           isActive: draftUser.isActive,
         });
 
         if (draftUser.role === 'BRANCH_MANAGER' && branchId) {
-          await api.put(`/branches/${branchId}`, { branchManagerId: userResponse.data.id });
+          await api.put(`/branches/${branchId}`, { branchManagerId: optionalNumberId(userResponse.data.id) });
         }
       }
 
@@ -563,16 +569,19 @@ export default function AddCompany() {
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Account Manager</label>
               <div className="flex gap-2">
-                <select
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                <SmartDropdown
                   value={formData.accountManagerId}
-                  onChange={(e) => setFormData({ ...formData, accountManagerId: e.target.value })}
-                >
-                  <option value="">Select Account Manager</option>
-                  {accountManagers.map(mgr => (
-                    <option key={mgr.id} value={mgr.id}>{mgr.name}</option>
-                  ))}
-                </select>
+                  onChange={(value) => setFormData({ ...formData, accountManagerId: value })}
+                  config={{
+                    apiSubPath: '/users/lookup',
+                    extraParams: { role: 'INTERNAL_REP', status: 'ACTIVE' },
+                    options: accountManagers.map((manager) => ({ ...manager, label: manager.name })),
+                    placeholder: 'Select Account Manager',
+                    clearLabel: 'No Account Manager',
+                    valueKey: 'id',
+                    labelKey: 'label',
+                  }}
+                />
                 <Button type="button" variant="secondary" onClick={() => setShowAddManager(!showAddManager)}>
                   {showAddManager ? 'Cancel' : '+ Add New'}
                 </Button>
@@ -971,22 +980,28 @@ export default function AddCompany() {
                   />
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    <SmartDropdown
                       value={newUserData.role}
-                      onChange={(e) => {
-                        const nextRole = e.target.value as QuickUserRole;
+                      onChange={(value) => {
+                        const nextRole = value as QuickUserRole;
                         setNewUserData({
                           ...newUserData,
                           role: nextRole,
                           branchRef: quickRoleNeedsBranch(nextRole) ? newUserData.branchRef : '',
                         });
                       }}
-                    >
-                      <option value="COMPANY_ADMIN">Company Admin</option>
-                      <option value="BRANCH_MANAGER">Branch Manager</option>
-                      <option value="SALES_REP">Sales Rep</option>
-                    </select>
+                      config={{
+                        showSearch: false,
+                        options: [
+                          { id: 'COMPANY_ADMIN', value: 'COMPANY_ADMIN', label: 'Company Admin' },
+                          { id: 'BRANCH_MANAGER', value: 'BRANCH_MANAGER', label: 'Branch Manager' },
+                          { id: 'SALES_REP', value: 'SALES_REP', label: 'Sales Rep' },
+                        ],
+                        placeholder: 'Select Role',
+                        valueKey: 'id',
+                        labelKey: 'label',
+                      }}
+                    />
                   </div>
 
                   {quickRoleNeedsBranch(newUserData.role) && (
@@ -1257,5 +1272,11 @@ export default function AddCompany() {
     </div>
   );
 }
+
+
+
+
+
+
 
 
