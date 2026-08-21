@@ -603,6 +603,7 @@ export default function OrdersPage() {
     search: '',
     orderStatus: '',
     companyId: '',
+    branchId: '',
     salesRepId: '',
     deliveryFrom: '',
     deliveryTo: '',
@@ -631,6 +632,7 @@ export default function OrdersPage() {
     filters.search ||
     filters.orderStatus ||
     filters.companyId ||
+    filters.branchId ||
     filters.salesRepId ||
     filters.deliveryFrom ||
     filters.deliveryTo ||
@@ -670,6 +672,7 @@ export default function OrdersPage() {
           search: filters.search.trim() || undefined,
           orderStatus: filters.orderStatus || undefined,
           companyId: filters.companyId || undefined,
+          branchId: filters.branchId || undefined,
           salesRepId: filters.salesRepId || undefined,
           deliveryFrom: filters.deliveryFrom || undefined,
           deliveryTo: filters.deliveryTo || undefined,
@@ -913,6 +916,7 @@ export default function OrdersPage() {
       search: searchParams.get('search') || '',
       orderStatus: searchParams.get('orderStatus') || '',
       companyId: searchParams.get('companyId') || '',
+      branchId: searchParams.get('branchId') || '',
       salesRepId: searchParams.get('salesRepId') || '',
       deliveryFrom: searchParams.get('deliveryFrom') || '',
       deliveryTo: searchParams.get('deliveryTo') || '',
@@ -1494,6 +1498,7 @@ export default function OrdersPage() {
     try {
       const params = new URLSearchParams();
       (Object.keys(nextOptions) as ConfiguratorKey[]).forEach((optionKey) => {
+        if (optionKey === 'diamondType') return;
         const optionLabel = nextOptions[optionKey];
         if (optionLabel) {
           const rawGroup = configuratorRawOptionGroups[optionKey] || configuratorRawOptionGroups[optionKey === 'metalCaratage' ? 'metalColor' : optionKey] || [];
@@ -1879,7 +1884,7 @@ export default function OrdersPage() {
       </div>
 
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
+        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(7,minmax(0,1fr))_auto]">
           <div>
             <label className="text-xs font-semibold text-slate-600">Search</label>
             <input
@@ -1909,7 +1914,7 @@ export default function OrdersPage() {
             <label className="text-xs font-semibold text-slate-600">Company</label>
             <SmartDropdown
               value={filters.companyId}
-              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: val, salesRepId: '' })); }}
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' })); }}
               config={{
                 apiSubPath: '/companies/lookup',
                 extraParams: { limit: 200, status: 'ACTIVE' },
@@ -1922,13 +1927,30 @@ export default function OrdersPage() {
             />
           </div>
           <div>
+            <label className="text-xs font-semibold text-slate-600">Branch</label>
+            <SmartDropdown
+              value={filters.branchId}
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, branchId: val, salesRepId: '' })); }}
+              config={{
+                apiSubPath: '/branches',
+                responsePath: 'data',
+                extraParams: { companyId: filters.companyId || undefined, limit: 200, status: 'ACTIVE' },
+                valueKey: 'id',
+                labelKey: 'name',
+                placeholder: 'All Branches',
+                clearLabel: 'All Branches',
+              }}
+              className="mt-1"
+            />
+          </div>
+          <div>
             <label className="text-xs font-semibold text-slate-600">Rep Name</label>
             <SmartDropdown
               value={filters.salesRepId}
               onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: val })); }}
               config={{
                 apiSubPath: '/users/lookup',
-                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: filters.companyId || undefined },
+                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: filters.companyId || undefined, branchId: filters.branchId || undefined },
                 valueKey: 'id',
                 labelKey: 'email',
                 renderLabel: (option) => {
@@ -1970,6 +1992,7 @@ export default function OrdersPage() {
                   search: '',
                   orderStatus: '',
                   companyId: '',
+                  branchId: '',
                   salesRepId: '',
                   deliveryFrom: '',
                   deliveryTo: '',
@@ -3573,6 +3596,11 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

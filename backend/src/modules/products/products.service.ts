@@ -2151,13 +2151,13 @@ export class ProductsService {
     const scoreCases: string[] = [];
     const params: any = {};
 
-    const diamondTypeId = query.diamondTypeId ?? (query.diamondType && !isNaN(Number(query.diamondType)) ? Number(query.diamondType) : undefined);
+    const diamondTypeId = undefined;
     const styleId = query.styleId ?? (query.style && !isNaN(Number(query.style)) ? Number(query.style) : undefined);
     const weightId = query.weightId ?? (query.weight && !isNaN(Number(query.weight)) ? Number(query.weight) : undefined);
     const qualityId = query.qualityId ?? (query.quality && !isNaN(Number(query.quality)) ? Number(query.quality) : undefined);
     const ringSizeId = query.ringSizeId ?? (query.ringSize && !isNaN(Number(query.ringSize)) ? Number(query.ringSize) : undefined);
-    const shapeId = query.shapeId ?? (query.shape && query.selectedKey !== 'shape' && !isNaN(Number(query.shape)) ? Number(query.shape) : undefined);
-    const stoneId = (query as any).stoneId ?? ((query as any).stone && !isNaN(Number((query as any).stone)) ? Number((query as any).stone) : undefined) ?? (query.selectedKey === 'shape' && query.shape && !isNaN(Number(query.shape)) ? Number(query.shape) : undefined);
+    const shapeId = query.shapeId ?? (query.shape && !isNaN(Number(query.shape)) ? Number(query.shape) : undefined);
+    const stoneId = undefined;
     const metalCaratageId = query.metalCaratageId ?? (query.metalCaratage && !isNaN(Number(query.metalCaratage)) ? Number(query.metalCaratage) : undefined);
 
     if (diamondTypeId !== undefined && diamondTypeId !== null) {
@@ -2345,16 +2345,18 @@ export class ProductsService {
     requester?: AuthUser,
   ): Promise<any> {
     const wantedIds: Partial<Record<MobileConfiguratorKey, number>> = {};
-    if (query.diamondTypeId !== undefined && query.diamondTypeId !== null) wantedIds.diamondType = Number(query.diamondTypeId);
-    if ((query as any).stoneId !== undefined && (query as any).stoneId !== null) wantedIds.stone = Number((query as any).stoneId);
-    if ((query as any).stone && !isNaN(Number((query as any).stone))) wantedIds.stone = Number((query as any).stone);
-    if (query.selectedKey === 'shape' && query.shape && !query.shapeId && !isNaN(Number(query.shape))) wantedIds.stone = Number(query.shape);
     if (query.shapeId !== undefined && query.shapeId !== null) wantedIds.shape = Number(query.shapeId);
+    if (query.shape && !isNaN(Number(query.shape))) wantedIds.shape = Number(query.shape);
     if (query.styleId !== undefined && query.styleId !== null) wantedIds.style = Number(query.styleId);
+    if (query.style && !isNaN(Number(query.style))) wantedIds.style = Number(query.style);
     if (query.metalCaratageId !== undefined && query.metalCaratageId !== null) wantedIds.metalCaratage = Number(query.metalCaratageId);
+    if (query.metalCaratage && !isNaN(Number(query.metalCaratage))) wantedIds.metalCaratage = Number(query.metalCaratage);
     if (query.weightId !== undefined && query.weightId !== null) wantedIds.weight = Number(query.weightId);
+    if (query.weight && !isNaN(Number(query.weight))) wantedIds.weight = Number(query.weight);
     if (query.qualityId !== undefined && query.qualityId !== null) wantedIds.quality = Number(query.qualityId);
+    if (query.quality && !isNaN(Number(query.quality))) wantedIds.quality = Number(query.quality);
     if (query.ringSizeId !== undefined && query.ringSizeId !== null) wantedIds.ringSize = Number(query.ringSizeId);
+    if (query.ringSize && !isNaN(Number(query.ringSize))) wantedIds.ringSize = Number(query.ringSize);
 
     const wantedLabels = this.normalizeMobileConfiguratorQuery(query);
     const optionGroups = this.getMobileConfiguratorOptionGroups(family);
@@ -2672,10 +2674,10 @@ export class ProductsService {
 
   private normalizeMobileConfiguratorQuery(query: ResolveMobileDesignConfiguratorQueryDto) {
     const wanted: Partial<Record<MobileConfiguratorKey, string>> = {};
-    (['diamondType', 'stone', 'shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
-      const rawValue = key === 'stone' ? ((query as any).stone || (query.selectedKey === 'shape' ? query.shape : undefined)) : key === 'shape' || key === 'metalCaratage' ? String(query[key] || '').split(',')[0] : query[key];
+    (['shape', 'style', 'metalCaratage', 'weight', 'quality', 'ringSize'] as const).forEach((key) => {
+      const rawValue = key === 'shape' || key === 'metalCaratage' ? String(query[key] || '').split(',')[0] : query[key];
       const text = key === 'weight' ? this.toMobileCaratLabel(rawValue) : this.mobileConfiguratorText(rawValue);
-      if (text) wanted[key] = this.mobileConfiguratorDisplayValue(key, text);
+      if (text && !Number.isFinite(Number(text))) wanted[key] = this.mobileConfiguratorDisplayValue(key, text);
     });
     return wanted;
   }
@@ -6901,14 +6903,5 @@ export class ProductsService {
   }
 
 }
-
-
-
-
-
-
-
-
-
 
 

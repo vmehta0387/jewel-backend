@@ -24,6 +24,7 @@ interface DesignFormModalScope {
   buildPacketSearchOptions: (rowId: any) => any[];
   costTotals: any;
   createDefaultVendorRow: (...args: any[]) => any;
+  confirmDesignFormAction: (message: string, options?: { title?: string; confirmLabel?: string; cancelLabel?: string; variant?: any }) => Promise<boolean>;
   creatingMasterType: any;
   defaultPacketForm: any;
   editingDesignIsPrimary: any;
@@ -77,8 +78,6 @@ interface DesignFormModalScope {
   savingDesign: any;
   selectedJewelryGroupMasterId: any;
   selectedTags: any[];
-  setEditingDesignIsPrimary: StateSetter;
-  setEditingId: StateSetter;
   setFindingRows: ArrayStateSetter;
   setForm: StateSetter;
   setGemRows: ArrayStateSetter;
@@ -89,7 +88,6 @@ interface DesignFormModalScope {
   setPacketForm: StateSetter;
   setPacketNameManuallyEdited: StateSetter;
   setPrimaryGalleryItem: (index: number) => void;
-  setShowAddModal: StateSetter;
   setShowGalleryPicker: StateSetter;
   setShowPacketMasterModal: StateSetter;
   setStlItem: StateSetter;
@@ -154,6 +152,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     buildPacketSearchOptions,
     costTotals,
     createDefaultVendorRow,
+    confirmDesignFormAction,
     creatingMasterType,
     defaultPacketForm,
     editingDesignIsPrimary,
@@ -207,8 +206,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     savingDesign,
     selectedJewelryGroupMasterId,
     selectedTags,
-    setEditingDesignIsPrimary,
-    setEditingId,
     setFindingRows,
     setForm,
     setGemRows,
@@ -219,7 +216,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     setPacketForm,
     setPacketNameManuallyEdited,
     setPrimaryGalleryItem,
-    setShowAddModal,
     setShowGalleryPicker,
     setShowPacketMasterModal,
     setStlItem,
@@ -240,18 +236,40 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     vendorRows,
   } = scope;
   const skipTabFocusProps = { tabIndex: -1, 'data-autofocus-skip': 'true' };
+  const confirmCloseDesignForm = async () => {
+    const confirmed = await confirmDesignFormAction('Close this design form? Unsaved changes will be lost.', {
+      title: 'Close design form',
+      confirmLabel: 'Close',
+      cancelLabel: 'Stay',
+      variant: 'warning',
+    });
+    if (confirmed) {
+      onClose();
+    }
+  };
+  const confirmSaveDesign = async () => {
+    const confirmed = await confirmDesignFormAction(editingId ? 'Save changes to this design?' : 'Save this new design?', {
+      title: editingId ? 'Save design changes' : 'Save new design',
+      confirmLabel: 'Save',
+      cancelLabel: 'Review',
+      variant: 'warning',
+    });
+    if (confirmed) {
+      saveDesign();
+    }
+  };
 
   return (
     <ProductsModal
       title={editingId ? 'EDIT DESIGN' : 'ADD NEW DESIGN'}
       size="max-w-7xl"
-      onClose={onClose}
+      onClose={confirmCloseDesignForm}
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button type="button" onClick={() => saveDesign()} disabled={savingDesign || galleryUploading || stlUploading}>
+          <Button type="button" onClick={confirmSaveDesign} disabled={savingDesign || galleryUploading || stlUploading}>
             {savingDesign ? 'Saving...' : galleryUploading || stlUploading ? 'Uploading...' : 'Save'}
           </Button>
-          <Button type="button" variant="secondary" onClick={() => { setShowGalleryPicker(false); setShowAddModal(false); setEditingId(null); setEditingDesignIsPrimary(false); setStlRemoved(false); }}>
+          <Button type="button" variant="secondary" onClick={confirmCloseDesignForm}>
             Close
           </Button>
         </div>

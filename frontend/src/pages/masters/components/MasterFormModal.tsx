@@ -349,8 +349,14 @@ export function MasterFormModal({
       : metalPurityOptions;
   const isFlatOverheadMode = overheadApplyMode === 'flat';
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSubmit(event);
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
       <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <h2 className="text-xl font-bold tracking-tight text-slate-900">{title}</h2>
@@ -364,7 +370,7 @@ export function MasterFormModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4 overflow-y-auto p-6">
+        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
           <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
           {isFindingType ? (
@@ -997,7 +1003,7 @@ export function PacketFormModal({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
       <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-3rem)]">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <h2 className="text-xl font-bold tracking-tight text-slate-900">{title}</h2>
@@ -1229,8 +1235,4 @@ export function PacketFormModal({
     document.body,
   );
 }
-
-
-
-
 

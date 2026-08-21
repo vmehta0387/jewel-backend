@@ -188,10 +188,6 @@ export default function AddUser() {
       nextErrors.branchId = 'Branch is required for this role';
     }
 
-    if (canCustomizePermissions && formData.taskPermissions.length === 0) {
-      nextErrors.taskPermissions = 'Select at least one task permission';
-    }
-
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       focusValidationError(nextErrors);
@@ -483,7 +479,8 @@ export default function AddUser() {
                     options: companies.map((company) => ({ ...company, label: `${company.companyName} (${company.companyCode})` })),
                     placeholder: 'Select Company',
                     valueKey: 'id',
-                    labelKey: 'label',
+                    labelKey: 'companyName',
+                    renderLabel: (option) => [option.companyName, option.companyCode ? '(' + option.companyCode + ')' : ''].filter(Boolean).join(' '),
                     disabled: isCompanyAdmin,
                   }}
                 />
@@ -548,6 +545,9 @@ export default function AddUser() {
     </div>
   );
 }
+
+
+
 
 
 

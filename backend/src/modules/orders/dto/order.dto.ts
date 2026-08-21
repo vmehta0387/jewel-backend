@@ -15,7 +15,9 @@ export class CreateOrderDto {
   designId: number;
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   salesRepId?: number;
 
   @IsOptional()
@@ -83,11 +85,15 @@ export class CreateOrderDto {
 
 export class UpdateOrderDto {
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   companyId?: number;
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   branchId?: number;
 
   @IsOptional()
@@ -97,7 +103,9 @@ export class UpdateOrderDto {
   designId?: number;
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   salesRepId?: number;
 
   @IsOptional()
@@ -188,11 +196,15 @@ export class FindOrdersQueryDto {
   status?: 'ACTIVE' | 'INACTIVE' | 'ALL';
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   companyId?: number;
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   branchId?: number;
 
   @IsOptional()
@@ -202,7 +214,9 @@ export class FindOrdersQueryDto {
   designId?: number;
 
   @IsOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   salesRepId?: number;
 
   @IsOptional()
@@ -280,3 +294,4 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+

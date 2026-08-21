@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import puppeteer from 'puppeteer';
@@ -152,13 +152,7 @@ export class OrdersService implements OnModuleInit {
     const limit = query.limit || 10;
     const skip = (page - 1) * limit;
 
-    const qb = this.orderRepo
-      .createQueryBuilder('order')
-      .leftJoinAndSelect('order.company', 'company')
-      .leftJoinAndSelect('order.branch', 'branch')
-      .leftJoinAndSelect('branch.branchManager', 'branchManager')
-      .leftJoinAndSelect('order.design', 'design')
-      .leftJoinAndSelect('order.salesRep', 'salesRep');
+    const qb = this.createOrderReadQuery();
 
     this.applyScopeFilter(qb, requester, query.companyId, query.branchId);
 
@@ -232,33 +226,13 @@ export class OrdersService implements OnModuleInit {
       .select('COALESCE(SUM(order.price), 0)', 'totalAmount')
       .getRawOne<{ totalAmount: string | number | null }>();
 
-    const [data, total] = await qb
+    const { entities, raw } = await qb
       .orderBy('order.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
-    const enriched = await Promise.all(
-      data.map(async (order) => {
-        const primaryImage = Array.isArray(order.design?.imageUrls)
-          ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
-          : null;
-        const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
-
-        return {
-          ...order,
-          companyName: order.company?.companyName ?? null,
-          branchName: order.branch?.name ?? null,
-          designNo: order.design?.designNo ?? null,
-          designName: order.design?.designName ?? null,
-          designVersion: order.design?.version ?? null,
-          costPrice: await this.resolveVisibleCostPrice(order, requester),
-          salesRepName: this.getSalesRepDisplayName(order),
-          salesRepEmail: order.salesRep?.email ?? null,
-          branchManagerName: this.getBranchManagerDisplayName(order),
-          designImageUrl,
-        };
-      }),
-    );
+      .offset(skip)
+      .limit(limit)
+      .getRawAndEntities();
+    const total = await qb.clone().offset(undefined).limit(undefined).getCount();
+    const enriched = await this.buildOrderReadRows(entities, raw, requester);
 
     return {
       data: enriched,
@@ -271,34 +245,63 @@ export class OrdersService implements OnModuleInit {
   }
 
   async findOne(id: number, requester: AuthUser) {
-    const order = await this.orderRepo.findOne({
-      where: { id },
-      relations: ['company', 'branch', 'branch.branchManager', 'design', 'salesRep'],
-    });
+    const qb = this.createOrderReadQuery().where('order.id = :id', { id });
+    this.applyScopeFilter(qb, requester);
 
+    const { entities, raw } = await qb.getRawAndEntities();
+    const order = entities[0];
     if (!order) {
       throw new NotFoundException('Order not found');
     }
 
-    this.assertReadScope(order, requester);
-    const primaryImage = Array.isArray(order.design?.imageUrls)
-      ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
-      : null;
-    const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
+    return (await this.buildOrderReadRows([order], raw, requester))[0];
+  }
 
-    return {
-      ...order,
-      companyName: order.company?.companyName ?? null,
-      branchName: order.branch?.name ?? null,
-      designNo: order.design?.designNo ?? null,
-      designName: order.design?.designName ?? null,
-      designVersion: order.design?.version ?? null,
-      costPrice: await this.resolveVisibleCostPrice(order, requester),
-      salesRepName: this.getSalesRepDisplayName(order),
-      salesRepEmail: order.salesRep?.email ?? null,
-      branchManagerName: this.getBranchManagerDisplayName(order),
-      designImageUrl,
-    };
+  private createOrderReadQuery(): SelectQueryBuilder<Order> {
+    return this.orderRepo
+      .createQueryBuilder('order')
+      .leftJoinAndSelect('order.company', 'company')
+      .leftJoinAndSelect('order.branch', 'branch')
+      .leftJoinAndSelect('branch.branchManager', 'branchManager')
+      .leftJoinAndSelect('order.design', 'design')
+      .leftJoinAndSelect('order.salesRep', 'salesRep')
+      .addSelect('company.companyName', 'read_companyName')
+      .addSelect('branch.name', 'read_branchName')
+      .addSelect('design.designNo', 'read_designNo')
+      .addSelect('design.designName', 'read_designName')
+      .addSelect('design.version', 'read_designVersion')
+      .addSelect('salesRep.email', 'read_salesRepEmail')
+      .addSelect("NULLIF(TRIM(CONCAT(COALESCE(salesRep.firstName, ''), ' ', COALESCE(salesRep.lastName, ''))), '')", 'read_salesRepName')
+      .addSelect("NULLIF(TRIM(CONCAT(COALESCE(branchManager.firstName, ''), ' ', COALESCE(branchManager.lastName, ''))), '')", 'read_branchManagerName');
+  }
+
+  private async buildOrderReadRows(orders: Order[], rawRows: Record<string, unknown>[], requester: AuthUser) {
+    const rawById = new Map(rawRows.map((row) => [Number(row.order_id), row]));
+    return Promise.all(
+      orders.map(async (order) => {
+        const raw = rawById.get(Number(order.id)) || {};
+        const primaryImage = Array.isArray(order.design?.imageUrls)
+          ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
+          : null;
+        const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
+        const salesRepName = this.optionalText(raw.read_salesRepName) || this.optionalText(raw.read_salesRepEmail);
+        const branchManagerName = this.optionalText(raw.read_branchManagerName) || this.optionalText(order.branch?.branchManager?.email);
+
+        return {
+          ...order,
+          companyName: this.optionalText(raw.read_companyName),
+          branchName: this.optionalText(raw.read_branchName),
+          designNo: this.optionalText(raw.read_designNo),
+          designName: this.optionalText(raw.read_designName),
+          designVersion: this.optionalText(raw.read_designVersion),
+          costPrice: await this.resolveVisibleCostPrice(order, requester),
+          salesRepName,
+          salesRepEmail: this.optionalText(raw.read_salesRepEmail),
+          branchManagerName,
+          designImageUrl,
+        };
+      }),
+    );
   }
 
   async generateOrderPdf(id: number, requester: AuthUser): Promise<{ buffer: Buffer; fileName: string }> {
@@ -907,7 +910,7 @@ export class OrdersService implements OnModuleInit {
     const normalizedCompanyId = companyId;
     const normalizedBranchId = branchId;
 
-    if (requester.role === UserRole.SUPER_ADMIN) {
+    if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
       return { companyId: normalizedCompanyId || null, branchId: normalizedBranchId || null };
     }
 
@@ -933,7 +936,7 @@ export class OrdersService implements OnModuleInit {
     const normalizedCompanyId = companyId;
     const normalizedBranchId = branchId;
 
-    if (requester.role === UserRole.SUPER_ADMIN) {
+    if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
       if (normalizedCompanyId) {
         qb.andWhere('order.companyId = :companyId', { companyId: normalizedCompanyId });
       }
@@ -1353,7 +1356,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   private assertReadScope(order: Order, requester: AuthUser): void {
-    if (requester.role === UserRole.SUPER_ADMIN) {
+    if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
       return;
     }
 
@@ -1601,7 +1604,7 @@ export class OrdersService implements OnModuleInit {
   }
 
   private assertDesignScope(design: Design, requester: AuthUser, scope: { companyId: number | null; branchId: number | null }) {
-    if (requester.role === UserRole.SUPER_ADMIN) {
+    if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
       return;
     }
 
@@ -1641,27 +1644,30 @@ export class OrdersService implements OnModuleInit {
   private async resolveVisibleCostPrice(order: Order, requester: AuthUser): Promise<number | null> {
     if (!order.design) return null;
 
-    const pricing = await this.calculateOrderPrice({
-      design: order.design,
-      companyId: order.companyId != null ? order.companyId : undefined,
-      branchId: order.branchId != null ? order.branchId : undefined,
-    });
+    try {
+      const pricing = await this.calculateOrderPrice({
+        design: order.design,
+        companyId: order.companyId != null ? order.companyId : undefined,
+        branchId: order.branchId != null ? order.branchId : undefined,
+      });
 
-    if (requester.role === UserRole.SUPER_ADMIN) {
-      return this.roundMoney(pricing.baseCost);
-    }
+      if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
+        return this.roundMoney(pricing.baseCost);
+      }
 
-    if (requester.role === UserRole.COMPANY_ADMIN) {
-      return pricing.companyPrice;
-    }
+      if (requester.role === UserRole.COMPANY_ADMIN) {
+        return pricing.companyPrice;
+      }
 
-    if (requester.role === UserRole.BRANCH_MANAGER) {
-      return pricing.finalPrice;
+      if (requester.role === UserRole.BRANCH_MANAGER) {
+        return pricing.finalPrice;
+      }
+    } catch (error: any) {
+      this.logger.warn(`Order ${order.id} cost price skipped: ${error?.message || error}`);
     }
 
     return null;
   }
-
   private toNumber(value: unknown): number {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -2145,3 +2151,9 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
+
+
+
+
+
+

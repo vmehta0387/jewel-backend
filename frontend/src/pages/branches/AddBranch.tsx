@@ -232,7 +232,8 @@ export default function AddBranch() {
                   options: companies.map((company) => ({ ...company, label: `${company.companyName} (${company.companyCode})` })),
                   placeholder: 'Select Company',
                   valueKey: 'id',
-                  labelKey: 'label',
+                  labelKey: 'companyName',
+                  renderLabel: (option) => [option.companyName, option.companyCode ? '(' + option.companyCode + ')' : ''].filter(Boolean).join(' '),
                 }}
               />
               {errors.companyId && <p className="mt-1 text-sm text-red-600">{errors.companyId}</p>}
@@ -541,6 +542,7 @@ export default function AddBranch() {
     </div>
   );
 }
+
 
 
 

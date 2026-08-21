@@ -7351,6 +7351,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     buildPacketSearchOptions,
     costTotals,
     createDefaultVendorRow,
+    confirmDesignFormAction: confirmAppDialog,
     creatingMasterType,
     defaultPacketForm,
     editingDesignIsPrimary,
@@ -10590,6 +10591,8 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
+
 
 
 

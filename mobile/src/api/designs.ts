@@ -219,6 +219,7 @@ export const resolveMobileDesignConfigurator = (
 ) => {
   const params = new URLSearchParams();
   Object.entries(options).forEach(([key, value]) => {
+    if (key === 'diamondType' || key === 'diamondTypeId' || key === 'stone' || key === 'stoneId') return;
     if (value === undefined || value === null || value === '') return;
     params.set(key, String(value));
   });
@@ -249,7 +250,7 @@ export const buildConfiguratorResolveQuery = (
 
   // Carry over other current selections as labels for existing string-based screens.
   (Object.keys(current) as (keyof MobileConfiguratorOptions)[]).forEach((k) => {
-    if (k === key) return;
+    if (k === key || k === 'diamondType') return;
     const cur = current[k];
     if (!cur) return;
     (query as any)[k] = cur;
@@ -272,3 +273,4 @@ export const fetchAllDesigns = async (token: string, limit = 500) => {
 
   return rows;
 };
+
