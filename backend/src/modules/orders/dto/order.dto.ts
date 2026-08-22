@@ -3,9 +3,11 @@ import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID,
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 
 export class CreateOrderDto {
+  @Type(() => Number)
   @IsNumber()
   companyId: number;
 
+  @Type(() => Number)
   @IsNumber()
   branchId: number;
 
@@ -294,4 +296,5 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+
 

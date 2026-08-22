@@ -196,10 +196,10 @@ interface CompletedShippingForm {
 type OrderSaveType = 'QUOTE' | 'ORDER';
 
 interface OrderSavePayload {
-  companyId: string;
-  branchId: string;
-  salesRepId: string;
-  designId: string;
+  companyId: number;
+  branchId: number;
+  salesRepId?: number;
+  designId: number;
   deliveryDate?: string;
   orderType?: OrderSaveType;
   price: number;
@@ -1031,7 +1031,7 @@ export default function OrdersPage() {
   }, [form.designId, form.companyId, form.branchId, showAddModal, editingOrderId, priceManuallyEdited, designDetail]);
 
   const confirmPurchaseOrderReuse = async (payload: {
-    companyId: string;
+    companyId: number;
     branchId?: string;
     purchaseOrderNumber: string;
   }) => {
@@ -1149,10 +1149,10 @@ export default function OrdersPage() {
     try {
       setSavingOrder(true);
       const payload: OrderSavePayload = {
-        companyId: form.companyId,
-        branchId: form.branchId,
-        salesRepId: form.salesRepId,
-        designId: form.designId,
+        companyId: Number(form.companyId),
+        branchId: Number(form.branchId),
+        salesRepId: form.salesRepId ? Number(form.salesRepId) : undefined,
+        designId: Number(form.designId),
         deliveryDate: form.deliveryDate || undefined,
         price: Number(form.price || 0),
         quantity: Number(form.quantity || 1),
@@ -1165,8 +1165,8 @@ export default function OrdersPage() {
       };
 
       const canContinue = await confirmPurchaseOrderReuse({
-        companyId: payload.companyId,
-        branchId: payload.branchId,
+        companyId: String(payload.companyId),
+        branchId: payload.branchId !== undefined && payload.branchId !== null ? String(payload.branchId) : undefined,
         purchaseOrderNumber: payload.purchaseOrderNumber,
       });
       if (!canContinue) return;
@@ -3596,6 +3596,11 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
 

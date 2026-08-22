@@ -2201,11 +2201,7 @@ export default function ProductsPage() {
     if (inlineMasterValue !== computedValue) {
       setInlineMasterValue(computedValue);
     }
-    if (inlineMasterAliasName !== computedValue) {
-      setInlineMasterAliasName(computedValue);
-    }
   }, [
-    inlineMasterAliasName,
     inlineMasterType,
     inlineMasterValue,
     inlineMetalColor,
@@ -3206,8 +3202,9 @@ export default function ProductsPage() {
     setShowInlineMasterModal(true);
   };
 
-  const saveInlineMasterFromDesign = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const saveInlineMasterFromDesign = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
     if (!inlineMasterType) return;
 
     let value = inlineMasterValue.trim();
@@ -3223,7 +3220,7 @@ export default function ProductsPage() {
       const computed = `${purityToken}-${inlineMetalColor}-${inlineMetalName}`.trim();
       if (computed) {
         value = computed;
-        aliasName = computed;
+        aliasName = aliasName || computed;
       }
     }
 
@@ -10305,6 +10302,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           jewelryGroupOptions={masterOptions.jewelryGroups as any}
           onClose={confirmCloseInlineMasterModal}
           onSubmit={saveInlineMasterFromDesign}
+          onSave={() => void saveInlineMasterFromDesign()}
           onChangeValue={setInlineMasterValue}
           onChangeAliasName={setInlineMasterAliasName}
           onChangeDescription={setInlineMasterDescription}
@@ -10357,6 +10355,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           }}
           onClose={confirmClosePacketMasterModal}
           onSubmit={savePacketMaster}
+          onSave={() => void savePacketMaster()}
           onChange={updatePacketFormField}
           onRegeneratePacketName={regeneratePacketName}
         />

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import api from '../../services/api';
 
+const SMART_DROPDOWN_OPEN_EVENT = 'smart-dropdown-open';
+let smartDropdownInstanceId = 0;
+
 export interface SmartDropdownOption {
   id?: string | number;
   value?: string | number;
@@ -110,7 +113,14 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const requestVersionRef = useRef(0);
+  const instanceIdRef = useRef(++smartDropdownInstanceId);
   const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0, maxHeight: 320 });
+
+  const apiRequestKey = useMemo(
+    () => JSON.stringify({ apiSubPath: merged.apiSubPath, extraParams: merged.extraParams || {} }),
+    [merged.apiSubPath, merged.extraParams],
+  );
 
   const normalizedLocalOptions = useMemo(
     () => (merged.options || []).map((option) => ({ ...option })),
@@ -201,6 +211,7 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
   const fetchOptions = useCallback(
     async (nextPage = 1, nextSearch = search) => {
       if (!merged.apiSubPath) return;
+      const requestVersion = ++requestVersionRef.current;
       setLoading(true);
       if (!merged.pagination || nextPage === 1) {
         setHasLoadedOptions(false);
@@ -221,32 +232,57 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
           : Array.isArray((response.data as any)?.data)
             ? (response.data as any).data
             : [];
+        if (requestVersion !== requestVersionRef.current) return;
         setApiOptions((prev) => (merged.pagination && nextPage > 1 ? [...prev, ...rows] : rows));
         setPage(nextPage);
         const total = Number((response.data as any)?.total || 0);
         setHasMore(Boolean(merged.pagination && (total ? nextPage * merged.limit < total : rows.length >= merged.limit)));
       } finally {
-        setHasLoadedOptions(true);
-        setLoading(false);
+        if (requestVersion === requestVersionRef.current) {
+          setHasLoadedOptions(true);
+          setLoading(false);
+        }
       }
     },
     [merged, search],
   );
 
   useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
+    if (!isApiMode) return;
+    requestVersionRef.current += 1;
+    setApiOptions([]);
+    setPage(1);
+    setHasMore(false);
+    setHasLoadedOptions(false);
+    setLoading(false);
+  }, [apiRequestKey, isApiMode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleOutsideClick(event: PointerEvent) {
       const target = event.target as Node;
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(target) &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(target)
-      ) {
+      if (containerRef.current?.contains(target) || dropdownRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsOpen(false);
+    }
+
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', handleOutsideClick, true);
+  }, [isOpen]);
+
+  useEffect(() => {
+    function handleDropdownOpen(event: Event) {
+      const openedInstanceId = (event as CustomEvent<number>).detail;
+      if (openedInstanceId !== instanceIdRef.current) {
         setIsOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+
+    window.addEventListener(SMART_DROPDOWN_OPEN_EVENT, handleDropdownOpen);
+    return () => window.removeEventListener(SMART_DROPDOWN_OPEN_EVENT, handleDropdownOpen);
   }, []);
 
   useLayoutEffect(() => {
@@ -295,6 +331,15 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     const nextOpen = !isOpen;
     setIsOpen(nextOpen);
     if (nextOpen) {
+      if (isApiMode) {
+        requestVersionRef.current += 1;
+        setApiOptions([]);
+        setPage(1);
+        setHasMore(false);
+        setHasLoadedOptions(false);
+        setLoading(true);
+      }
+      window.dispatchEvent(new CustomEvent(SMART_DROPDOWN_OPEN_EVENT, { detail: instanceIdRef.current }));
       updateDropdownPosition();
       setSearch('');
       window.setTimeout(() => inputRef.current?.focus(), 50);
@@ -319,6 +364,15 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
       if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
         event.preventDefault();
         setIsOpen(true);
+        if (isApiMode) {
+          requestVersionRef.current += 1;
+          setApiOptions([]);
+          setPage(1);
+          setHasMore(false);
+          setHasLoadedOptions(false);
+          setLoading(true);
+        }
+        window.dispatchEvent(new CustomEvent(SMART_DROPDOWN_OPEN_EVENT, { detail: instanceIdRef.current }));
         updateDropdownPosition();
         setSearch('');
         setActiveIndex(selectedMenuIndex);

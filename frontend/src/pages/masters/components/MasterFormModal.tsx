@@ -1,4 +1,4 @@
-import { FormEvent } from 'react';
+import { FormEvent, MouseEvent, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Button from '../../../components/common/Button';
 import SmartDropdown, { SmartDropdownOption } from '../../../components/common/SmartDropdown';
@@ -92,6 +92,7 @@ export interface MasterFormModalProps {
   jewelryGroupOptions: MasterOption[];
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSave?: () => void;
   onChangeValue: (value: string) => void;
   onChangeAliasName: (value: string) => void;
   onChangeDescription: (value: string) => void;
@@ -130,6 +131,7 @@ export interface PacketFormModalProps {
   masterOptions: PacketMasterOptions;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSave?: () => void;
   onChange: (key: keyof PacketForm, value: string, option?: SmartDropdownOption | null) => void;
   onRegeneratePacketName: () => void;
 }
@@ -255,6 +257,26 @@ function getMetalPurityDisplay(option: MasterOption): string {
   return (option.aliasName || option.label || option.value || '').trim();
 }
 
+function getJoinedMasterDisplay(value?: JoinedMasterRef | string | null): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return String(value.value ?? value.name ?? value.label ?? value.id ?? '');
+}
+
+function matchesSelectedMetal(option: MasterOption, selectedMetal: string): boolean {
+  const selected = selectedMetal.trim().toLowerCase();
+  if (!selected) return true;
+
+  const candidates = [
+    option.metalId,
+    option.metal,
+    option.metal && typeof option.metal !== 'string' ? option.metal.id : undefined,
+    getJoinedMasterDisplay(option.metal),
+  ];
+
+  return candidates.some((candidate) => String(candidate ?? '').trim().toLowerCase() === selected);
+}
+
 export function MasterFormModal({
   open,
   title,
@@ -303,6 +325,7 @@ export function MasterFormModal({
   jewelryGroupOptions,
   onClose,
   onSubmit,
+  onSave,
   onChangeValue,
   onChangeAliasName,
   onChangeDescription,
@@ -331,28 +354,49 @@ export function MasterFormModal({
   onChangeRatePercent,
   onChangeFlatAmount,
 }: MasterFormModalProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+
   if (!open) {
     return null;
   }
 
-  const filteredMetalColors =
-    metalName.trim().length > 0
-      ? metalColorOptions.filter(
-          (option) => optionId(option.metalId) === metalName,
-        )
-      : metalColorOptions;
-  const filteredMetalPurities =
-    metalName.trim().length > 0
-      ? metalPurityOptions.filter(
-          (option) => optionId(option.metalId) === metalName,
-        )
-      : metalPurityOptions;
+  const selectedMetalOption = metalNameOptions.find(
+    (option) =>
+      optionId(option.id) === metalName ||
+      String(option.value ?? '').trim().toLowerCase() === metalName.trim().toLowerCase(),
+  );
+  const selectedMetalId = optionId(selectedMetalOption?.id || metalName);
+  const filteredMetalColors = metalColorOptions.filter((option) => matchesSelectedMetal(option, metalName));
+  const filteredMetalPurities = metalPurityOptions.filter((option) => matchesSelectedMetal(option, metalName));
   const isFlatOverheadMode = overheadApplyMode === 'flat';
+
+  const stopSaveEvent = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation?.();
+  };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     event.stopPropagation();
+
+    if (onSave) {
+      onSave();
+      return;
+    }
+
     onSubmit(event);
+  };
+
+  const handleSaveClick = (event: MouseEvent<HTMLButtonElement>) => {
+    stopSaveEvent(event);
+
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) {
+      return;
+    }
+
+    onSave?.();
   };
 
   return createPortal(
@@ -370,7 +414,7 @@ export function MasterFormModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
           <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
           {isFindingType ? (
@@ -888,7 +932,7 @@ export function MasterFormModal({
                       onChange={onChangeMetalPurity}
                       config={{
                         apiSubPath: '/products/master-tables/METAL_PURITY/dropdown',
-                        extraParams: metalName ? { metalId: metalName } : undefined,
+                        extraParams: selectedMetalId ? { metalId: selectedMetalId } : undefined,
                         options: filteredMetalPurities.map((option) => ({
                           ...option,
                           label: getMetalPurityDisplay(option),
@@ -906,7 +950,7 @@ export function MasterFormModal({
                       onChange={onChangeMetalColor}
                       config={{
                         apiSubPath: '/products/master-tables/METAL_COLOR/dropdown',
-                        extraParams: metalName ? { metalId: metalName } : undefined,
+                        extraParams: selectedMetalId ? { metalId: selectedMetalId } : undefined,
                         options: filteredMetalColors,
                         placeholder: 'Select Metal Color',
                         valueKey: 'id',
@@ -972,7 +1016,13 @@ export function MasterFormModal({
           ) : null}
 
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button type="submit" size="sm" disabled={loading}>
+            <Button
+              type={onSave ? 'button' : 'submit'}
+              size="sm"
+              disabled={loading}
+              onMouseDown={onSave ? stopSaveEvent : undefined}
+              onClick={onSave ? handleSaveClick : undefined}
+            >
               {loading ? 'Saving...' : saveLabel}
             </Button>
             <Button type="button" size="sm" variant="secondary" onClick={onClose}>
@@ -995,12 +1045,44 @@ export function PacketFormModal({
   masterOptions,
   onClose,
   onSubmit,
+  onSave,
   onChange,
   onRegeneratePacketName,
 }: PacketFormModalProps) {
+  const formRef = useRef<HTMLFormElement>(null);
+
   if (!open) {
     return null;
   }
+
+  const stopSaveEvent = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.nativeEvent.stopImmediatePropagation?.();
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (onSave) {
+      onSave();
+      return;
+    }
+
+    onSubmit(event);
+  };
+
+  const handleSaveClick = (event: MouseEvent<HTMLButtonElement>) => {
+    stopSaveEvent(event);
+
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) {
+      return;
+    }
+
+    onSave?.();
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-900/55 p-4 backdrop-blur-sm sm:p-6" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
@@ -1017,7 +1099,7 @@ export function PacketFormModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4 overflow-y-auto p-6">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 overflow-y-auto p-6">
           <p className="text-sm font-medium text-rose-700">* Required fields</p>
 
           <div className="rounded border border-slate-200 bg-slate-50 p-4">
@@ -1222,7 +1304,13 @@ export function PacketFormModal({
           </div>
 
           <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-            <Button type="submit" size="sm" disabled={loading}>
+            <Button
+              type={onSave ? 'button' : 'submit'}
+              size="sm"
+              disabled={loading}
+              onMouseDown={onSave ? stopSaveEvent : undefined}
+              onClick={onSave ? handleSaveClick : undefined}
+            >
               {loading ? 'Saving...' : saveLabel}
             </Button>
             <Button type="button" size="sm" variant="secondary" onClick={onClose}>

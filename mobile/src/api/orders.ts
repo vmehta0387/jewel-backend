@@ -115,9 +115,9 @@ export const fetchPricePreview = (
   );
 
 export type CreateOrderPayload = {
-  companyId: string;
-  branchId: string;
-  designId: string;
+  companyId: number;
+  branchId: number;
+  designId: number;
   quantity: number;
   price: number;
   deliveryDate?: string;
@@ -134,16 +134,23 @@ export type CreateOrderPayload = {
   status?: string;
 };
 
+const normalizeOrderPayload = (payload: CreateOrderPayload | Partial<CreateOrderPayload>) => ({
+  ...payload,
+  companyId: payload.companyId !== undefined && payload.companyId !== null && payload.companyId !== '' ? Number(payload.companyId) : payload.companyId,
+  branchId: payload.branchId !== undefined && payload.branchId !== null && payload.branchId !== '' ? Number(payload.branchId) : payload.branchId,
+  designId: payload.designId !== undefined && payload.designId !== null && payload.designId !== '' ? Number(payload.designId) : payload.designId,
+});
+
 export const createOrder = (token: string, payload: CreateOrderPayload) =>
   apiRequest<Order>('/orders', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizeOrderPayload(payload)),
   }, token);
 
 export const updateOrder = (token: string, id: string, payload: Partial<CreateOrderPayload>) =>
   apiRequest<Order>(`/orders/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizeOrderPayload(payload)),
   }, token);
 
 export const updateOrderActiveStatus = (token: string, id: string, isActive: boolean) =>
