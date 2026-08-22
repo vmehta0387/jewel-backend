@@ -43,6 +43,7 @@ export class OrdersService implements OnModuleInit {
       { name: 'ship_via', type: 'VARCHAR(50) NULL' },
       { name: 'tracking_no', type: 'VARCHAR(120) NULL' },
       { name: 'invoice_no', type: 'VARCHAR(120) NULL' },
+      { name: 'selected_options', type: 'JSON NULL' },
     ];
     for (const col of columns) {
       try {
@@ -367,7 +368,7 @@ export class OrdersService implements OnModuleInit {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const selectedSalesRep = await this.resolveOrderSalesRep(dto.salesRepId, {
+      const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
       });
@@ -394,6 +395,7 @@ export class OrdersService implements OnModuleInit {
         quantity: dto.quantity ?? 1,
         price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
         shortDescription: dto.shortDescription?.trim() || null,
+        selectedOptions: this.normalizeSelectedOptions(dto.selectedOptions),
         customerName: dto.customerName?.trim() || null,
         customerPhone: dto.customerPhone?.trim() || null,
         customerEmail: dto.customerEmail?.trim() || null,
@@ -437,6 +439,21 @@ export class OrdersService implements OnModuleInit {
     throw new BadRequestException('Unable to generate unique order number. Please retry.');
   }
 
+  private async resolveCreateOrderSalesRep(
+    salesRepId: number | undefined,
+    requester: AuthUser,
+    scope: { companyId: number | null; branchId: number | null },
+  ): Promise<User | null> {
+    if (salesRepId) {
+      return this.resolveOrderSalesRep(salesRepId, scope);
+    }
+
+    if (requester.role === UserRole.SALES_REP) {
+      return this.resolveOrderSalesRep(requester.id, scope);
+    }
+
+    throw new BadRequestException('Sales rep is required');
+  }
   private async resolveOrderSalesRep(
     salesRepId: number | undefined,
     scope: { companyId: number | null; branchId: number | null },
@@ -538,7 +555,7 @@ export class OrdersService implements OnModuleInit {
       order.branchId = effectiveBranchId ?? null;
     }
     if (dto.salesRepId !== undefined) {
-      const selectedSalesRep = await this.resolveOrderSalesRep(dto.salesRepId, {
+      const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
       });
@@ -558,6 +575,9 @@ export class OrdersService implements OnModuleInit {
     order.price = dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice;
     if (dto.shortDescription !== undefined) {
       order.shortDescription = dto.shortDescription?.trim() || null;
+    }
+    if (dto.selectedOptions !== undefined) {
+      order.selectedOptions = this.normalizeSelectedOptions(dto.selectedOptions);
     }
     if (dto.customerName !== undefined) {
       order.customerName = dto.customerName?.trim() || null;
@@ -1463,6 +1483,7 @@ export class OrdersService implements OnModuleInit {
       'quantity',
       'price',
       'shortDescription',
+      'selectedOptions',
       'customerName',
       'customerPhone',
       'customerEmail',
@@ -1491,6 +1512,7 @@ export class OrdersService implements OnModuleInit {
       quantity: order.quantity ?? null,
       price: this.normalizeAuditValue(order.price),
       shortDescription: order.shortDescription ?? null,
+      selectedOptions: this.normalizeSelectedOptions(order.selectedOptions),
       customerName: order.customerName ?? null,
       customerPhone: order.customerPhone ?? null,
       customerEmail: order.customerEmail ?? null,
@@ -1754,6 +1776,26 @@ export class OrdersService implements OnModuleInit {
     return order.branch?.branchManager?.email?.trim() || null;
   }
 
+  private normalizeSelectedOptions(value: unknown): Record<string, { id: number | null; label: string }> | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return null;
+    }
+
+    const normalized: Record<string, { id: number | null; label: string }> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, raw]) => {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+      const option = raw as { id?: unknown; label?: unknown; value?: unknown; name?: unknown };
+      const label = String(option.label ?? option.value ?? option.name ?? '').trim();
+      if (!label) return;
+      const numericId = Number(option.id);
+      normalized[key] = {
+        id: option.id !== undefined && option.id !== null && option.id !== '' && Number.isFinite(numericId) ? numericId : null,
+        label,
+      };
+    });
+
+    return Object.keys(normalized).length ? normalized : null;
+  }
   private optionalText(value: unknown): string | null {
     if (typeof value !== 'string') return null;
     const trimmed = value.trim();
@@ -2151,6 +2193,9 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
+
+
+
 
 
 

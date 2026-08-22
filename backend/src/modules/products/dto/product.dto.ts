@@ -1120,6 +1120,14 @@ export class FindMobileCatalogProductsQueryDto {
   @IsOptional()
   diamondType?: string;
 
+  @IsString()
+  @IsOptional()
+  jewelrySize?: string;
+
+  @IsString()
+  @IsOptional()
+  metalCaratage?: string;
+
   @IsIn(['ALL', 'UNDER_2000', 'BETWEEN_2000_5000', 'ABOVE_5000'])
   @IsOptional()
   priceBand?: 'ALL' | 'UNDER_2000' | 'BETWEEN_2000_5000' | 'ABOVE_5000';
@@ -1770,3 +1778,4 @@ export class UpdateDesignMasterStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+

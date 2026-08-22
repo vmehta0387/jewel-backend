@@ -82,6 +82,15 @@ const formatDateLocal = (value?: string | null) => {
   });
 };
 
+const selectionFromSelectedOptions = (order?: Order | null) => ({
+  shape: order?.selectedOptions?.shape?.label,
+  metalColor: order?.selectedOptions?.metalCaratage?.label,
+  style: order?.selectedOptions?.style?.label,
+  weight: order?.selectedOptions?.weight?.label,
+  quality: order?.selectedOptions?.quality?.label,
+  ringSize: order?.selectedOptions?.ringSize?.label,
+});
+
 const parseSelectionFromSummaryText = (value?: string | null) => {
   const text = String(value || '').trim();
   if (!text) return {};
@@ -195,10 +204,18 @@ const OrderDetailScreen = () => {
     }
   }, [route.params.orderId, token]);
 
-  const parsedSelection = useMemo(
-    () => parseSelectionFromSummaryText(order?.shortDescription),
-    [order?.shortDescription],
-  );
+  const parsedSelection = useMemo(() => {
+    const fromOptions = selectionFromSelectedOptions(order);
+    const fromText = parseSelectionFromSummaryText(order?.shortDescription);
+    return {
+      shape: fromOptions.shape || fromText.shape,
+      metalColor: fromOptions.metalColor || fromText.metalColor,
+      style: fromOptions.style || fromText.style,
+      weight: fromOptions.weight || fromText.weight,
+      quality: fromOptions.quality || fromText.quality,
+      ringSize: fromOptions.ringSize || fromText.ringSize,
+    };
+  }, [order]);
 
   const gemstoneRows = useMemo(() => designDetails?.gemstones || [], [designDetails?.gemstones]);
   const gemstoneTotalWeight = useMemo(
@@ -900,4 +917,5 @@ const styles = StyleSheet.create({
 });
 
 export default OrderDetailScreen;
+
 

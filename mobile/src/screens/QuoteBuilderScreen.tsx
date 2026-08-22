@@ -21,16 +21,18 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { createOrder, updateOrder } from '../api/orders';
+import { fetchUserLookup, type LookupUser } from '../api/users';
 import {
   fetchMobileDesignConfigurator,
   resolveMobileDesignConfigurator,
+  buildConfiguratorResolveQuery,
+  type MobileConfiguratorOptionGroups,
   type MobileConfiguratorResponse,
-  type MobileConfiguratorResolveQuery,
 } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
-import type { Design, Order } from '../types';
+import type { Design, Order, SelectedDesignOptions, SelectedMasterOption } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
@@ -52,6 +54,8 @@ type VersionFilters = {
 
 type FilterKey = keyof VersionFilters;
 type VersionOptionGroups = Record<FilterKey, string[]>;
+type RawOptionGroups = Pick<MobileConfiguratorOptionGroups, 'shape' | 'style' | 'metalCaratage' | 'weight' | 'quality' | 'ringSize'>;
+type RawOptionKey = keyof RawOptionGroups;
 type CustomerFieldErrors = Partial<Record<'name' | 'phone' | 'email', string>>;
 type DropdownLayout = {
   top: number;
@@ -85,6 +89,11 @@ const formatQuoteDate = (value?: string | Date | null) => {
 const compact = (value?: string | number | null) => String(value ?? '').trim();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const THEME_ACTION_COLOR = '#BE9851';
+
+const getUserDisplayName = (user?: Pick<LookupUser, 'firstName' | 'lastName' | 'email'> | null) => {
+  const fullName = [user?.firstName, user?.lastName].map(compact).filter(Boolean).join(' ').trim();
+  return fullName || compact(user?.email) || 'Unnamed sales rep';
+};
 
 const uniqueValues = (values: Array<string | number | null | undefined>) =>
   Array.from(new Set(values.map(compact).filter(Boolean)));
@@ -206,39 +215,62 @@ const emptyOptionGroups = (): VersionOptionGroups => ({
   ringSize: [],
 });
 
+const emptyRawOptionGroups = (): RawOptionGroups => ({
+  shape: [],
+  style: [],
+  metalCaratage: [],
+  weight: [],
+  quality: [],
+  ringSize: [],
+});
+
+const findSelectedOption = (
+  groups: RawOptionGroups,
+  key: RawOptionKey,
+  label?: string | null,
+  fallback?: SelectedMasterOption,
+): SelectedMasterOption | undefined => {
+  const cleanLabel = compact(label);
+  const fallbackLabel = compact(fallback?.label);
+  const option = groups[key].find((item) => item.label === cleanLabel)
+    || groups[key].find((item) => item.id !== null && item.id === fallback?.id)
+    || groups[key].find((item) => item.label === fallbackLabel);
+  if (option) return option;
+  if (fallbackLabel && (!cleanLabel || fallbackLabel === cleanLabel)) return fallback;
+  if (cleanLabel) return { id: null, label: cleanLabel };
+  return undefined;
+};
+
+const selectionLabelsFromOptions = (options?: SelectedDesignOptions | null): Partial<VersionFilters> => ({
+  shape: options?.shape?.label,
+  style: options?.style?.label,
+  metalColor: options?.metalCaratage?.label,
+  weight: options?.weight?.label,
+  quality: options?.quality?.label,
+  ringSize: options?.ringSize?.label,
+});
+
 const filtersFromConfigurator = (response: MobileConfiguratorResponse): VersionFilters => ({
-  shape: firstStone(response.selectedOptions?.shape || response.optionGroups.shape?.[0]),
-  style: response.selectedOptions?.style || response.optionGroups.style?.[0] || '',
-  metalColor: firstMetal(response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage?.[0]),
-  weight: response.selectedOptions?.weight || response.optionGroups.weight?.[0] || '',
-  quality: response.selectedOptions?.quality || response.optionGroups.quality?.[0] || '',
-  ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize?.[0] || '',
+  shape: firstStone(response.selectedOptionLabels?.shape || response.optionGroupLabels.shape?.[0]),
+  style: response.selectedOptionLabels?.style || response.optionGroupLabels.style?.[0] || '',
+  metalColor: firstMetal(response.selectedOptionLabels?.metalCaratage || response.optionGroupLabels.metalCaratage?.[0]),
+  weight: response.selectedOptionLabels?.weight || response.optionGroupLabels.weight?.[0] || '',
+  quality: response.selectedOptionLabels?.quality || response.optionGroupLabels.quality?.[0] || '',
+  ringSize: response.selectedOptionLabels?.ringSize || response.optionGroupLabels.ringSize?.[0] || '',
 });
 
 const optionGroupsFromConfigurator = (
   response: MobileConfiguratorResponse,
   selected: VersionFilters,
 ): VersionOptionGroups => ({
-  shape: splitStoneOptions([...(response.optionGroups.shape || []), selected.shape]),
-  style: uniqueValues([...(response.optionGroups.style || []), selected.style]),
-  metalColor: splitMetalOptions([...(response.optionGroups.metalCaratage || []), selected.metalColor]),
-  weight: uniqueValues([...(response.optionGroups.weight || []), selected.weight]),
-  quality: uniqueValues([...(response.optionGroups.quality || []), selected.quality]),
-  ringSize: uniqueValues([...(response.optionGroups.ringSize || []), selected.ringSize]),
+  shape: splitStoneOptions([...(response.optionGroupLabels.shape || []), selected.shape]),
+  style: uniqueValues([...(response.optionGroupLabels.style || []), selected.style]),
+  metalColor: splitMetalOptions([...(response.optionGroupLabels.metalCaratage || []), selected.metalColor]),
+  weight: uniqueValues([...(response.optionGroupLabels.weight || []), selected.weight]),
+  quality: uniqueValues([...(response.optionGroupLabels.quality || []), selected.quality]),
+  ringSize: uniqueValues([...(response.optionGroupLabels.ringSize || []), selected.ringSize]),
 });
 
-const configuratorQueryFromFilters = (
-  filters: VersionFilters,
-  selectedKey?: FilterKey,
-): MobileConfiguratorResolveQuery => ({
-  shape: filters.shape,
-  style: filters.style,
-  metalCaratage: filters.metalColor,
-  weight: filters.weight,
-  quality: filters.quality,
-  ringSize: filters.ringSize,
-  selectedKey: selectedKey === 'metalColor' ? 'metalCaratage' : selectedKey,
-});
 
 const QuoteBuilderScreen = () => {
   const route = useRoute<QuoteRoute>();
@@ -276,10 +308,15 @@ const QuoteBuilderScreen = () => {
   const [loadingFamily, setLoadingFamily] = useState(false);
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [approvalConfirmVisible, setApprovalConfirmVisible] = useState(false);
+  const [salesReps, setSalesReps] = useState<LookupUser[]>([]);
+  const [selectedSalesRepId, setSelectedSalesRepId] = useState('');
+  const [salesRepPickerVisible, setSalesRepPickerVisible] = useState(false);
+  const [loadingSalesReps, setLoadingSalesReps] = useState(false);
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
   const [optionGroups, setOptionGroups] = useState<VersionOptionGroups>(() => emptyOptionGroups());
+  const [rawOptionGroups, setRawOptionGroups] = useState<RawOptionGroups>(() => emptyRawOptionGroups());
   const [priceByDesignId, setPriceByDesignId] = useState<Record<string, number>>({});
 
   const [shape, setShape] = useState(firstStone(draft.selection?.shape));
@@ -306,6 +343,7 @@ const QuoteBuilderScreen = () => {
   const [dropdownKey, setDropdownKey] = useState<FilterKey | null>(null);
   const [dropdownLayout, setDropdownLayout] = useState<DropdownLayout | null>(null);
   const [dropdownSearch, setDropdownSearch] = useState('');
+  const requiresSalesRepSelection = user?.role === 'BRANCH_MANAGER';
 
   useEffect(() => {
     const draftKey = draft.orderId || draft.designId;
@@ -320,6 +358,7 @@ const QuoteBuilderScreen = () => {
     setPurchaseOrderError(false);
     setNotes(draft.notes || '');
     setEditingOrderId(draft.orderId || null);
+    setSelectedSalesRepId(draft.salesRepId || '');
   }, [
     draft.orderId,
     draft.purchaseOrderNumber,
@@ -327,8 +366,42 @@ const QuoteBuilderScreen = () => {
     draft.customerPhone,
     draft.customerEmail,
     draft.notes,
+    draft.salesRepId,
   ]);
 
+  useEffect(() => {
+    if (!token || !requiresSalesRepSelection || !companyId || !branchId) {
+      setSalesReps([]);
+      setSalesRepPickerVisible(false);
+      return;
+    }
+
+    let active = true;
+    setLoadingSalesReps(true);
+    fetchUserLookup(token, {
+      role: 'SALES_REP',
+      status: 'ACTIVE',
+      companyId: String(companyId),
+      branchId: String(branchId),
+    })
+      .then((rows) => {
+        if (!active) return;
+        setSalesReps(rows);
+        setSelectedSalesRepId((current) => current || rows[0]?.id || '');
+      })
+      .catch((err: any) => {
+        if (!active) return;
+        setSalesReps([]);
+        setError(err?.message || 'Unable to load sales reps for this branch.');
+      })
+      .finally(() => {
+        if (active) setLoadingSalesReps(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [branchId, companyId, requiresSalesRepSelection, token]);
   const focusCustomerField = useCallback((field: keyof CustomerFieldErrors) => {
     activeCustomerFieldRef.current = field;
     const scrollToField = () => {
@@ -407,6 +480,14 @@ const QuoteBuilderScreen = () => {
     const design = response.selectedDesign;
     setFamilyDesigns([design]);
     setOptionGroups(optionGroupsFromConfigurator(response, selected));
+    setRawOptionGroups({
+      shape: response.optionGroups.shape || [],
+      style: response.optionGroups.style || [],
+      metalCaratage: response.optionGroups.metalCaratage || [],
+      weight: response.optionGroups.weight || [],
+      quality: response.optionGroups.quality || [],
+      ringSize: response.optionGroups.ringSize || [],
+    });
     setPriceByDesignId({
       [design.id]: Number(design.displayPrice ?? design.totalValue ?? draft.unitPrice ?? 0),
     });
@@ -424,12 +505,13 @@ const QuoteBuilderScreen = () => {
         const response = draft.configurator || await fetchMobileDesignConfigurator(token, draft.designId);
         if (active) {
           applyConfiguratorResponse(response, {
-            shape: draft.selection?.shape,
-            style: draft.selection?.style,
-            metalColor: draft.selection?.metalColor,
-            weight: draft.selection?.weight,
-            quality: draft.selection?.quality,
-            ringSize: draft.selection?.ringSize,
+            ...selectionLabelsFromOptions(draft.selectedOptions),
+            shape: draft.selection?.shape || draft.selectedOptions?.shape?.label,
+            style: draft.selection?.style || draft.selectedOptions?.style?.label,
+            metalColor: draft.selection?.metalColor || draft.selectedOptions?.metalCaratage?.label,
+            weight: draft.selection?.weight || draft.selectedOptions?.weight?.label,
+            quality: draft.selection?.quality || draft.selectedOptions?.quality?.label,
+            ringSize: draft.selection?.ringSize || draft.selectedOptions?.ringSize?.label,
           });
         }
       } catch {
@@ -437,6 +519,7 @@ const QuoteBuilderScreen = () => {
           setFamilyDesigns([]);
           setActiveDesignId(null);
           setOptionGroups(emptyOptionGroups());
+          setRawOptionGroups(emptyRawOptionGroups());
         }
       } finally {
         if (active) setLoadingFamily(false);
@@ -457,6 +540,7 @@ const QuoteBuilderScreen = () => {
     draft.selection?.weight,
     draft.selection?.quality,
     draft.selection?.ringSize,
+    draft.selectedOptions,
     applyConfiguratorResponse,
   ]);
 
@@ -514,6 +598,15 @@ const QuoteBuilderScreen = () => {
 
   const selectionSummary = useMemo(() => buildSelectionSummaryPlain(selection), [selection]);
 
+  const selectedOrderOptions = useMemo<SelectedDesignOptions>(() => ({
+    shape: findSelectedOption(rawOptionGroups, 'shape', shape, draft.selectedOptions?.shape),
+    style: findSelectedOption(rawOptionGroups, 'style', style, draft.selectedOptions?.style),
+    metalCaratage: findSelectedOption(rawOptionGroups, 'metalCaratage', metalColor, draft.selectedOptions?.metalCaratage),
+    weight: findSelectedOption(rawOptionGroups, 'weight', weight, draft.selectedOptions?.weight),
+    quality: findSelectedOption(rawOptionGroups, 'quality', quality, draft.selectedOptions?.quality),
+    ringSize: findSelectedOption(rawOptionGroups, 'ringSize', ringSize, draft.selectedOptions?.ringSize),
+  }), [draft.selectedOptions, metalColor, quality, rawOptionGroups, ringSize, shape, style, weight]);
+
   const setSelectionField = useCallback((key: FilterKey, value: string) => {
     switch (key) {
       case 'shape':
@@ -552,7 +645,17 @@ const QuoteBuilderScreen = () => {
         const response = await resolveMobileDesignConfigurator(
           token,
           draft.designId,
-          configuratorQueryFromFilters(nextSelection, selectedKey),
+          buildConfiguratorResolveQuery(
+            selectedKey === 'metalColor' ? 'metalCaratage' : selectedKey,
+            rawOptionGroups[selectedKey === 'metalColor' ? 'metalCaratage' : selectedKey].find((option) => option.label === selectedValue) || selectedValue,
+            {
+              style: rawOptionGroups.style.find((option) => option.label === nextSelection.style) || nextSelection.style,
+              metalCaratage: rawOptionGroups.metalCaratage.find((option) => option.label === nextSelection.metalColor) || nextSelection.metalColor,
+              weight: rawOptionGroups.weight.find((option) => option.label === nextSelection.weight) || nextSelection.weight,
+              quality: rawOptionGroups.quality.find((option) => option.label === nextSelection.quality) || nextSelection.quality,
+              ringSize: rawOptionGroups.ringSize.find((option) => option.label === nextSelection.ringSize) || nextSelection.ringSize,
+            },
+          ),
         );
         applyConfiguratorResponse(response);
       } catch {
@@ -561,7 +664,7 @@ const QuoteBuilderScreen = () => {
         setLoadingFamily(false);
       }
     },
-    [token, selection, setSelectionField, draft.designId, applyConfiguratorResponse],
+    [token, selection, setSelectionField, draft.designId, applyConfiguratorResponse, rawOptionGroups],
   );
 
   const filteredDropdownOptions = useMemo(() => {
@@ -766,6 +869,8 @@ const QuoteBuilderScreen = () => {
     && !saving
     && !sending
     && !loadingFamily
+    && !loadingSalesReps
+    && (!requiresSalesRepSelection || Boolean(selectedSalesRepId))
     && !isOrderLocked,
   );
 
@@ -828,11 +933,13 @@ const QuoteBuilderScreen = () => {
         designId: activeDesign?.id || draft.designId,
         price: Number(displayPrice || draft.unitPrice || 0),
         shortDescription: selectionSummary || undefined,
+        selectedOptions: selectedOrderOptions,
         purchaseOrderNumber: purchaseOrderNumber.trim() || undefined,
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
         customerEmail: customerEmail.trim() || undefined,
         notes: notes.trim() || undefined,
+        salesRepId: requiresSalesRepSelection ? selectedSalesRepId : undefined,
         status: effectiveStatus,
       };
 
@@ -881,11 +988,13 @@ const QuoteBuilderScreen = () => {
         quantity: 1,
         price: Number(displayPrice || draft.unitPrice || 0),
         shortDescription: payload.shortDescription,
+        selectedOptions: payload.selectedOptions,
         purchaseOrderNumber: payload.purchaseOrderNumber,
         customerName: payload.customerName,
         customerPhone: payload.customerPhone,
         customerEmail: payload.customerEmail,
         notes: payload.notes,
+        salesRepId: payload.salesRepId,
         status: payload.status,
       });
       if (String(created.status || '').toUpperCase() !== effectiveStatus) {
@@ -912,11 +1021,15 @@ const QuoteBuilderScreen = () => {
       displayPrice,
       draft.unitPrice,
       selectionSummary,
+      selectedOrderOptions,
       purchaseOrderNumber,
       customerName,
       customerPhone,
       customerEmail,
       notes,
+      requiresSalesRepSelection,
+      selectedSalesRepId,
+      loadingSalesReps,
       isOrderLocked,
       user,
     ],
@@ -985,6 +1098,7 @@ const QuoteBuilderScreen = () => {
   const headerDate = formatQuoteDate(order?.createdAt || draft.createdAt);
   const preparedFor = customerName.trim() || '-';
   const quoteNo = order?.orderNumber || draft.orderNumber || '...';
+  const selectedSalesRep = salesReps.find((rep) => rep.id === selectedSalesRepId) || null;
   const itemMetaLine = [toMetalShortCode(metalColor), style, quality].filter(Boolean).join(' - ');
   const itemMetaLine2 = [
     `Size ${ringSize || '-'}`,
@@ -1106,6 +1220,35 @@ const QuoteBuilderScreen = () => {
               <Text style={styles.poErrorText}>Purchase order number is required.</Text>
             ) : null}
           </View>
+
+          {requiresSalesRepSelection ? (
+            <View style={styles.salesRepSection}>
+              <View style={styles.fieldLabelRow}>
+                <Text style={styles.blockLabel}>SALES REP</Text>
+                <View style={styles.requiredPill}>
+                  <Text style={styles.requiredPillText}>REQUIRED</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.salesRepSelect}
+                activeOpacity={0.9}
+                onPress={() => setSalesRepPickerVisible(true)}
+                disabled={loadingSalesReps || !salesReps.length}
+              >
+                <Text style={[styles.salesRepSelectText, !selectedSalesRep ? styles.salesRepSelectPlaceholder : null]} numberOfLines={1}>
+                  {loadingSalesReps
+                    ? 'Loading sales reps...'
+                    : selectedSalesRep
+                      ? getUserDisplayName(selectedSalesRep)
+                      : 'Select sales rep'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color="#7D746A" />
+              </TouchableOpacity>
+              {!loadingSalesReps && !salesReps.length ? (
+                <Text style={styles.poErrorText}>No active sales reps found for this branch.</Text>
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={styles.itemCard}>
             <View style={styles.itemHeader}>
@@ -1274,6 +1417,39 @@ const QuoteBuilderScreen = () => {
         </View>
       </View>
       {renderDropdownOverlay()}
+      <Modal
+        visible={salesRepPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSalesRepPickerVisible(false)}
+      >
+        <Pressable style={styles.pickerOverlay} onPress={() => setSalesRepPickerVisible(false)}>
+          <Pressable style={styles.pickerCard} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Select Sales Rep</Text>
+            <ScrollView style={styles.pickerList} nestedScrollEnabled>
+              {salesReps.map((rep) => {
+                const selected = rep.id === selectedSalesRepId;
+                return (
+                  <TouchableOpacity
+                    key={rep.id}
+                    style={[styles.pickerOption, selected ? styles.pickerOptionActive : null]}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      setSelectedSalesRepId(rep.id);
+                      setSalesRepPickerVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerOptionText, selected ? styles.pickerOptionTextActive : null]} numberOfLines={1}>
+                      {getUserDisplayName(rep)}
+                    </Text>
+                    {selected ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Modal
         visible={approvalConfirmVisible}
         transparent
@@ -1520,7 +1696,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  itemCard: {
+  salesRepSection: {
+    marginBottom: 9,
+  },
+  salesRepSelect: {
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: '#D7C8B2',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  salesRepSelectText: {
+    flex: 1,
+    marginRight: 8,
+    color: '#2E2721',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  salesRepSelectPlaceholder: {
+    color: '#A29587',
+    fontWeight: '700',
+  },  itemCard: {
     borderWidth: 1,
     borderColor: '#FFFFFF',
     borderRadius: 13,
@@ -1769,7 +1969,62 @@ const styles = StyleSheet.create({
     right: 10,
     top: 11,
   },
-  confirmOverlay: {
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(31, 26, 21, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 12,
+    paddingBottom: Platform.OS === 'ios' ? 86 : 76,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: 360,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E6DCCD',
+    padding: 10,
+    shadowColor: '#201810',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 18,
+  },
+  pickerTitle: {
+    paddingHorizontal: 4,
+    paddingBottom: 9,
+    color: '#2A241F',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  pickerList: {
+    maxHeight: 300,
+  },
+  pickerOption: {
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    marginBottom: 6,
+    backgroundColor: '#F8F6F2',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerOptionActive: {
+    backgroundColor: THEME_ACTION_COLOR,
+  },
+  pickerOptionText: {
+    flex: 1,
+    marginRight: 8,
+    color: '#2A241F',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  pickerOptionTextActive: {
+    color: '#FFFFFF',
+  },  confirmOverlay: {
     flex: 1,
     backgroundColor: 'rgba(31, 26, 21, 0.18)',
     alignItems: 'center',
@@ -1931,4 +2186,10 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteBuilderScreen;
+
+
+
+
+
+
 

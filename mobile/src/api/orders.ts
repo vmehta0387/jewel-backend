@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 import { API_BASE_URL } from '../config';
-import type { OrdersResponse, Order } from '../types';
+import type { OrdersResponse, Order, SelectedDesignOptions } from '../types';
 
 export type OrderPeriod = 'TODAY' | 'WEEKLY' | 'MONTHLY' | 'ANNUALLY';
 export type OrderStatusGroup = 'FULFILLED' | 'COMPLETED';
@@ -115,9 +115,10 @@ export const fetchPricePreview = (
   );
 
 export type CreateOrderPayload = {
-  companyId: number;
-  branchId: number;
-  designId: number;
+  companyId: number | string;
+  branchId: number | string;
+  designId: number | string;
+  salesRepId?: number | string;
   quantity: number;
   price: number;
   deliveryDate?: string;
@@ -126,6 +127,7 @@ export type CreateOrderPayload = {
   trackingNo?: string;
   invoiceNo?: string;
   shortDescription?: string;
+  selectedOptions?: SelectedDesignOptions | null;
   purchaseOrderNumber?: string;
   customerName?: string;
   customerPhone?: string;
@@ -139,6 +141,7 @@ const normalizeOrderPayload = (payload: CreateOrderPayload | Partial<CreateOrder
   companyId: payload.companyId !== undefined && payload.companyId !== null && payload.companyId !== '' ? Number(payload.companyId) : payload.companyId,
   branchId: payload.branchId !== undefined && payload.branchId !== null && payload.branchId !== '' ? Number(payload.branchId) : payload.branchId,
   designId: payload.designId !== undefined && payload.designId !== null && payload.designId !== '' ? Number(payload.designId) : payload.designId,
+  salesRepId: payload.salesRepId !== undefined && payload.salesRepId !== null && payload.salesRepId !== '' ? Number(payload.salesRepId) : payload.salesRepId,
 });
 
 export const createOrder = (token: string, payload: CreateOrderPayload) =>
@@ -158,3 +161,5 @@ export const updateOrderActiveStatus = (token: string, id: string, isActive: boo
     method: 'PATCH',
     body: JSON.stringify({ isActive }),
   }, token);
+
+

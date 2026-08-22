@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createOrder, fetchOrder, getOrderPdfUrl, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
 import { useAuth } from '../context/AuthContext';
-import type { Design, Order } from '../types';
+import type { Design, Order, SelectedDesignOptions } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
 import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
@@ -168,6 +168,23 @@ const sanitizeSelection = (selection?: QuoteSummaryPayload['selection'] | null):
   ringSize: isLikelyRingSize(selection?.ringSize) ? compact(selection?.ringSize).replace(/^ring size\s*/i, '').replace(/^size\s*/i, '') : undefined,
 });
 
+const selectionFromSelectedOptions = (options?: SelectedDesignOptions | null): QuoteSummaryPayload['selection'] => sanitizeSelection({
+  shape: options?.shape?.label,
+  metalColor: options?.metalCaratage?.label,
+  style: options?.style?.label,
+  weight: options?.weight?.label,
+  quality: options?.quality?.label,
+  ringSize: options?.ringSize?.label,
+});
+
+const selectedOptionsFromSelection = (selection?: QuoteSummaryPayload['selection'] | null): SelectedDesignOptions => ({
+  shape: compact(selection?.shape) ? { id: null, label: compact(selection?.shape) } : undefined,
+  metalCaratage: compact(selection?.metalColor) ? { id: null, label: compact(selection?.metalColor) } : undefined,
+  style: compact(selection?.style) ? { id: null, label: compact(selection?.style) } : undefined,
+  weight: compact(selection?.weight) ? { id: null, label: compact(selection?.weight) } : undefined,
+  quality: compact(selection?.quality) ? { id: null, label: compact(selection?.quality) } : undefined,
+  ringSize: compact(selection?.ringSize) ? { id: null, label: compact(selection?.ringSize) } : undefined,
+});
 const parseSelectionFromSummaryText = (value?: string | null): QuoteSummaryPayload['selection'] => {
   const text = compact(value);
   if (!text) return {};
@@ -283,6 +300,7 @@ const mergeOrderIntoSummary = (base: QuoteSummaryPayload, order: Order): QuoteSu
   purchaseOrderNumber: compact(order.purchaseOrderNumber) || base.purchaseOrderNumber,
   branchName: compact(order.branchName) || base.branchName,
   notes: compact(order.notes) || base.notes,
+  selectedOptions: order.selectedOptions || base.selectedOptions || null,
 });
 
 const QuoteSummaryScreen = () => {
@@ -296,15 +314,16 @@ const QuoteSummaryScreen = () => {
   const [orderNumber, setOrderNumber] = useState(summary.orderNumber);
   const [currentStatus, setCurrentStatus] = useState(normalizeStatus(summary.status));
   const [resolvedSelection, setResolvedSelection] = useState<QuoteSummaryPayload['selection']>(() => {
+    const fromOptions = selectionFromSelectedOptions(summary.selectedOptions);
     const fromText = parseSelectionFromSummaryText(summary.shortDescription);
     const fromPayload = sanitizeSelection(summary.selection);
     return {
-      shape: fromText.shape || fromPayload.shape,
-      metalColor: fromText.metalColor || fromPayload.metalColor,
-      style: fromText.style || fromPayload.style,
-      weight: fromText.weight || fromPayload.weight,
-      quality: fromText.quality || fromPayload.quality,
-      ringSize: fromText.ringSize || fromPayload.ringSize,
+      shape: fromOptions.shape || fromText.shape || fromPayload.shape,
+      metalColor: fromOptions.metalColor || fromText.metalColor || fromPayload.metalColor,
+      style: fromOptions.style || fromText.style || fromPayload.style,
+      weight: fromOptions.weight || fromText.weight || fromPayload.weight,
+      quality: fromOptions.quality || fromText.quality || fromPayload.quality,
+      ringSize: fromOptions.ringSize || fromText.ringSize || fromPayload.ringSize,
     };
   });
   const [sending, setSending] = useState(false);
@@ -336,6 +355,7 @@ const QuoteSummaryScreen = () => {
       if (!token || !summary.orderId) return;
       try {
         const order = await fetchOrder(token, summary.orderId);
+        const parsedFromOptions = selectionFromSelectedOptions(order.selectedOptions);
         const parsedFromOrder = parseSelectionFromSummaryText(order.shortDescription);
 
         let parsedFromDesign: QuoteSummaryPayload['selection'] = {};
@@ -366,15 +386,16 @@ const QuoteSummaryScreen = () => {
         setCurrentStatus(normalizeStatus(order.status || summary.status));
         setResolvedSelection((prev) => {
           const fromPrev = sanitizeSelection(prev);
+          const fromOptions = sanitizeSelection(parsedFromOptions);
           const fromOrder = sanitizeSelection(parsedFromOrder);
           const fromDesign = sanitizeSelection(parsedFromDesign);
           return {
-            shape: fromOrder.shape || fromDesign.shape || fromPrev.shape,
-            metalColor: fromOrder.metalColor || fromDesign.metalColor || fromPrev.metalColor,
-            style: fromOrder.style || fromDesign.style || fromPrev.style,
-            weight: fromOrder.weight || fromDesign.weight || fromPrev.weight,
-            quality: fromOrder.quality || fromDesign.quality || fromPrev.quality,
-            ringSize: fromOrder.ringSize || fromDesign.ringSize || fromPrev.ringSize,
+            shape: fromOptions.shape || fromOrder.shape || fromDesign.shape || fromPrev.shape,
+            metalColor: fromOptions.metalColor || fromOrder.metalColor || fromDesign.metalColor || fromPrev.metalColor,
+            style: fromOptions.style || fromOrder.style || fromDesign.style || fromPrev.style,
+            weight: fromOptions.weight || fromOrder.weight || fromDesign.weight || fromPrev.weight,
+            quality: fromOptions.quality || fromOrder.quality || fromDesign.quality || fromPrev.quality,
+            ringSize: fromOptions.ringSize || fromOrder.ringSize || fromDesign.ringSize || fromPrev.ringSize,
           };
         });
       } catch {
@@ -433,6 +454,7 @@ const QuoteSummaryScreen = () => {
 
       const payload = {
         designId: displaySummary.designId,
+        selectedOptions: displaySummary.selectedOptions || selectedOptionsFromSelection(resolvedSelection),
         shortDescription: [
           ['Stone', resolvedSelection.shape],
           ['Metal', resolvedSelection.metalColor],
@@ -501,6 +523,7 @@ const QuoteSummaryScreen = () => {
           quantity: 1,
           price: retailPrice,
           shortDescription: payload.shortDescription,
+          selectedOptions: payload.selectedOptions,
           purchaseOrderNumber: payload.purchaseOrderNumber,
           customerName: payload.customerName,
           customerPhone: payload.customerPhone,
@@ -690,6 +713,7 @@ const QuoteSummaryScreen = () => {
       imageUrl: displaySummary.imageUrl || null,
       unitPrice: retailPrice,
       shortDescription: displaySummary.shortDescription || undefined,
+      selectedOptions: displaySummary.selectedOptions || selectedOptionsFromSelection(resolvedSelection),
       selection: sanitizeSelection(resolvedSelection),
       purchaseOrderNumber: displaySummary.purchaseOrderNumber || undefined,
       customerName: displaySummary.customerName || undefined,
@@ -1410,4 +1434,5 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteSummaryScreen;
+
 

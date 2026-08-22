@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import type { SelectedDesignOptions } from '../types';
 
 export type CartSelection = {
   diamondType?: string;
@@ -19,6 +20,7 @@ export type CartItem = {
   unitPrice: number;
   quantity: number;
   shortDescription?: string;
+  selectedOptions?: SelectedDesignOptions | null;
   selection?: CartSelection;
 };
 
@@ -38,19 +40,20 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 
-const normalize = (value?: string | null) => String(value || '').trim().toLowerCase();
+const normalize = (value?: string | number | null) => String(value ?? '').trim().toLowerCase();
 
 const buildSignature = (item: AddCartItemInput) => {
   const selection = item.selection || {};
+  const selectedOptions = item.selectedOptions || {};
   return [
     item.designId,
-    normalize(selection.diamondType),
-    normalize(selection.shape),
-    normalize(selection.style),
-    normalize(selection.metalColor),
-    normalize(selection.weight),
-    normalize(selection.quality),
-    normalize(selection.ringSize),
+    normalize(selectedOptions.diamondType?.id ?? selectedOptions.diamondType?.label ?? selection.diamondType),
+    normalize(selectedOptions.shape?.id ?? selectedOptions.shape?.label ?? selection.shape),
+    normalize(selectedOptions.style?.id ?? selectedOptions.style?.label ?? selection.style),
+    normalize(selectedOptions.metalCaratage?.id ?? selectedOptions.metalCaratage?.label ?? selection.metalColor),
+    normalize(selectedOptions.weight?.id ?? selectedOptions.weight?.label ?? selection.weight),
+    normalize(selectedOptions.quality?.id ?? selectedOptions.quality?.label ?? selection.quality),
+    normalize(selectedOptions.ringSize?.id ?? selectedOptions.ringSize?.label ?? selection.ringSize),
   ].join('|');
 };
 
@@ -122,3 +125,5 @@ export const useCart = () => {
   }
   return context;
 };
+
+

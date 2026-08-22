@@ -31,7 +31,7 @@ import SpiffRewardsScreen from '../screens/SpiffRewardsScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import PricingScreen from '../screens/PricingScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
-import type { BranchEmployee, UserRole } from '../types';
+import type { BranchEmployee, SelectedDesignOptions, UserRole } from '../types';
 import type { MobileConfiguratorResponse } from '../api/designs';
 import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
 import { hasActionPermission, hasAnyActionPermission } from '../utils/permissions';
@@ -57,9 +57,11 @@ export type QuoteBuilderDraft = {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  salesRepId?: string;
   purchaseOrderNumber?: string;
   notes?: string;
   configurator?: MobileConfiguratorResponse;
+  selectedOptions?: SelectedDesignOptions | null;
   selection?: {
     diamondType?: string;
     shape?: string;
@@ -82,6 +84,7 @@ export type QuoteSummaryPayload = {
   designName?: string | null;
   imageUrl?: string | null;
   price: number;
+  selectedOptions?: SelectedDesignOptions | null;
   selection: {
     shape?: string;
     metalColor?: string;
@@ -585,3 +588,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 252, 245, 0.95)',
   },
 });
+
+

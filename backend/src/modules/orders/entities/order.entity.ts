@@ -59,6 +59,9 @@ export class Order {
   @Column({ name: 'short_description', type: 'text', nullable: true })
   shortDescription: string | null;
 
+  @Column({ name: 'selected_options', type: 'json', nullable: true })
+  selectedOptions: Record<string, { id: number | null; label: string }> | null;
+
   @Column({ name: 'customer_name', type: 'varchar', length: 255, nullable: true })
   customerName: string | null;
 

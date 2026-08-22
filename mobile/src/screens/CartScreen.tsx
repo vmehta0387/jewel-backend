@@ -112,6 +112,8 @@ const CartScreen = () => {
           designId: item.designId,
           quantity: item.quantity,
           price: Number(item.unitPrice || 0),
+          shortDescription: item.shortDescription || undefined,
+          selectedOptions: item.selectedOptions || null,
           deliveryDate: normalizedExpectedDeliveryDate || undefined,
           purchaseOrderNumber: purchaseOrderNumber.trim() || undefined,
           customerName: customerName.trim() || undefined,
@@ -740,4 +742,5 @@ const styles = StyleSheet.create({
 });
 
 export default CartScreen;
+
 

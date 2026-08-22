@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsObject, IsString, IsUUID, Max, Min } from 'class-validator';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
 
 export class CreateOrderDto {
@@ -47,6 +47,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   shortDescription?: string;
+
+  @IsOptional()
+  @IsObject()
+  selectedOptions?: Record<string, { id?: number | null; label?: string }>;
 
   @IsOptional()
   @IsString()
@@ -129,6 +133,10 @@ export class UpdateOrderDto {
   @IsOptional()
   @IsString()
   shortDescription?: string;
+
+  @IsOptional()
+  @IsObject()
+  selectedOptions?: Record<string, { id?: number | null; label?: string }>;
 
   @IsOptional()
   @IsString()
@@ -255,10 +263,12 @@ export class FindOrdersQueryDto {
 }
 
 export class FindPurchaseOrderUsageQueryDto {
+  @Type(() => Number)
   @IsNumber()
   companyId: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   branchId?: number;
 
@@ -266,6 +276,7 @@ export class FindPurchaseOrderUsageQueryDto {
   purchaseOrderNumber: string;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   excludeOrderId?: number;
 }
@@ -296,5 +307,7 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+
+
 
 

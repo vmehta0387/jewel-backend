@@ -443,6 +443,7 @@ const OrdersScreen = () => {
         designName: getOrderDesignName(order) || null,
         imageUrl: order.designImageUrl || null,
         price: Number(order.price || 0),
+        selectedOptions: order.selectedOptions || null,
         selection: parseSelectionFromSummaryText(order.shortDescription),
         customerName: order.customerName || undefined,
         customerPhone: order.customerPhone || undefined,
@@ -477,6 +478,7 @@ const OrdersScreen = () => {
             imageUrl: order.designImageUrl || null,
             unitPrice: Number(order.price || 0),
             shortDescription: order.shortDescription || undefined,
+            selectedOptions: order.selectedOptions || null,
             selection: parseSelectionFromSummaryText(order.shortDescription),
             purchaseOrderNumber: order.purchaseOrderNumber || undefined,
             customerName: order.customerName || undefined,
@@ -1948,4 +1950,5 @@ const styles = StyleSheet.create({
 });
 
 export default OrdersScreen;
+
 

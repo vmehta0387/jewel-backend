@@ -70,6 +70,21 @@ export type Design = {
   }>;
 };
 
+export type SelectedMasterOption = {
+  id: number | null;
+  label: string;
+};
+
+export type SelectedDesignOptions = Partial<{
+  diamondType: SelectedMasterOption;
+  shape: SelectedMasterOption;
+  style: SelectedMasterOption;
+  metalCaratage: SelectedMasterOption;
+  weight: SelectedMasterOption;
+  quality: SelectedMasterOption;
+  ringSize: SelectedMasterOption;
+}>;
+
 export type DesignListResponse = {
   data: Design[];
   total: number;
@@ -106,6 +121,7 @@ export type Order = {
   trackingNo?: string | null;
   invoiceNo?: string | null;
   shortDescription?: string | null;
+  selectedOptions?: SelectedDesignOptions | null;
   notes?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
@@ -238,3 +254,4 @@ export type GroupedMastersResponse = {
   packetColors: MasterOption[];
   packetQualities: MasterOption[];
 };
+

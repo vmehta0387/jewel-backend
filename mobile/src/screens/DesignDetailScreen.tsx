@@ -43,6 +43,8 @@ import {
   fetchDesign,
   fetchMobileDesignConfigurator,
   resolveMobileDesignConfigurator,
+  buildConfiguratorResolveQuery,
+  type MobileConfiguratorOptionGroups,
   type MobileConfiguratorResponse,
 } from '../api/designs';
 import { fetchPricePreview } from '../api/orders';
@@ -71,6 +73,7 @@ type VersionFilters = {
 
 type FilterKey = keyof VersionFilters;
 type VersionOptionGroups = Record<FilterKey, string[]>;
+type RawOptionGroups = MobileConfiguratorOptionGroups;
 type DropdownLayout = {
   top: number;
   left: number;
@@ -285,6 +288,16 @@ const getFilterValuesFromDesign = (design: Design): VersionFilters => {
   };
 };
 
+const emptyRawOptionGroups = (): RawOptionGroups => ({
+  diamondType: [],
+  shape: [],
+  style: [],
+  metalCaratage: [],
+  weight: [],
+  quality: [],
+  ringSize: [],
+});
+
 const emptyVersionFilters = (): VersionFilters => ({
   diamondType: '',
   shape: '',
@@ -488,6 +501,7 @@ const DesignDetailScreen = ({
     quality: [],
     ringSize: [],
   });
+  const [rawOptionGroups, setRawOptionGroups] = useState<RawOptionGroups>(() => emptyRawOptionGroups());
   const [priceByDesignId, setPriceByDesignId] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [resolvingSelection, setResolvingSelection] = useState(false);
@@ -537,13 +551,13 @@ const DesignDetailScreen = ({
   const applyConfiguratorResponse = useCallback(
     (response: MobileConfiguratorResponse, preservedOptions: Partial<VersionFilters> = {}) => {
       const responseSelectedOptions = {
-        diamondType: response.selectedOptions?.diamondType || response.optionGroups.diamondType[0] || '',
-        shape: splitStoneOptions([response.selectedOptions?.shape || response.optionGroups.shape[0]])[0] || '',
-        style: response.selectedOptions?.style || response.optionGroups.style[0] || '',
-        metalCaratage: firstMetal(response.selectedOptions?.metalCaratage || response.optionGroups.metalCaratage[0]),
-        weight: response.selectedOptions?.weight || response.optionGroups.weight[0] || '',
-        quality: response.selectedOptions?.quality || response.optionGroups.quality[0] || '',
-        ringSize: response.selectedOptions?.ringSize || response.optionGroups.ringSize[0] || '',
+        diamondType: response.selectedOptionLabels?.diamondType || response.optionGroupLabels.diamondType[0] || '',
+        shape: splitStoneOptions([response.selectedOptionLabels?.shape || response.optionGroupLabels.shape[0]])[0] || '',
+        style: response.selectedOptionLabels?.style || response.optionGroupLabels.style[0] || '',
+        metalCaratage: firstMetal(response.selectedOptionLabels?.metalCaratage || response.optionGroupLabels.metalCaratage[0]),
+        weight: response.selectedOptionLabels?.weight || response.optionGroupLabels.weight[0] || '',
+        quality: response.selectedOptionLabels?.quality || response.optionGroupLabels.quality[0] || '',
+        ringSize: response.selectedOptionLabels?.ringSize || response.optionGroupLabels.ringSize[0] || '',
       };
       const selectedOptions = {
         ...responseSelectedOptions,
@@ -552,7 +566,8 @@ const DesignDetailScreen = ({
         ),
       } as VersionFilters;
       setFamilyDesigns([response.selectedDesign]);
-      setOptionGroups(mergeOptionGroupsWithSelection(response.optionGroups, selectedOptions));
+      setOptionGroups(mergeOptionGroupsWithSelection(response.optionGroupLabels, selectedOptions));
+      setRawOptionGroups(response.optionGroups);
       applyActiveDesignSelection(response.selectedDesign, selectedOptions);
     },
     [applyActiveDesignSelection],
@@ -901,10 +916,21 @@ const DesignDetailScreen = ({
       setError(null);
 
       try {
-        const response = await resolveMobileDesignConfigurator(token, designId, {
-          ...nextFilters,
-          selectedKey,
-        });
+        const response = await resolveMobileDesignConfigurator(
+          token,
+          designId,
+          buildConfiguratorResolveQuery(
+            selectedKey,
+            rawOptionGroups[selectedKey].find((option) => option.label === selectedValue) || selectedValue,
+            {
+              style: rawOptionGroups.style.find((option) => option.label === nextFilters.style) || nextFilters.style,
+              metalCaratage: rawOptionGroups.metalCaratage.find((option) => option.label === nextFilters.metalCaratage) || nextFilters.metalCaratage,
+              weight: rawOptionGroups.weight.find((option) => option.label === nextFilters.weight) || nextFilters.weight,
+              quality: rawOptionGroups.quality.find((option) => option.label === nextFilters.quality) || nextFilters.quality,
+              ringSize: rawOptionGroups.ringSize.find((option) => option.label === nextFilters.ringSize) || nextFilters.ringSize,
+            },
+          ),
+        );
         if (resolveRequestSeqRef.current !== requestId) return;
         const selectedDesign = await loadStoneCountForDesign(response.selectedDesign);
         if (resolveRequestSeqRef.current !== requestId) return;
@@ -938,8 +964,13 @@ const DesignDetailScreen = ({
       setSelectedFeatureValue,
       applyConfiguratorResponse,
       loadPriceForDesign,
+      rawOptionGroups,
     ],
   );
+
+  const findRawOption = useCallback((key: keyof RawOptionGroups, label: string) => (
+    rawOptionGroups[key].find((option) => option.label === label) || { id: null, label }
+  ), [rawOptionGroups]);
 
   const handleOpenQuoteBuilder = useCallback(() => {
     if (!activeDesign) return;
@@ -962,9 +993,28 @@ const DesignDetailScreen = ({
         imageUrl: activeImage || null,
         unitPrice: Math.round(Number(displayPrice || 0)),
         shortDescription,
+        selectedOptions: {
+          diamondType: findRawOption('diamondType', selectedDiamondType),
+          shape: findRawOption('shape', selectedShape),
+          style: findRawOption('style', selectedStyle),
+          metalCaratage: findRawOption('metalCaratage', selectedMetalCaratage),
+          weight: findRawOption('weight', selectedWeight),
+          quality: findRawOption('quality', selectedQuality),
+          ringSize: findRawOption('ringSize', selectedRingSize),
+        },
         configurator: {
           selectedDesign: activeDesign,
           selectedOptions: {
+            diamondType: findRawOption('diamondType', selectedDiamondType),
+            shape: findRawOption('shape', selectedShape),
+            style: findRawOption('style', selectedStyle),
+            metalCaratage: findRawOption('metalCaratage', selectedMetalCaratage),
+            weight: findRawOption('weight', selectedWeight),
+            quality: findRawOption('quality', selectedQuality),
+            ringSize: findRawOption('ringSize', selectedRingSize),
+          },
+          optionGroups: rawOptionGroups,
+          selectedOptionLabels: {
             diamondType: selectedDiamondType,
             shape: selectedShape,
             style: selectedStyle,
@@ -973,7 +1023,7 @@ const DesignDetailScreen = ({
             quality: selectedQuality,
             ringSize: selectedRingSize,
           },
-          optionGroups,
+          optionGroupLabels: optionGroups,
         },
         selection: {
           diamondType: selectedDiamondType,
@@ -997,7 +1047,9 @@ const DesignDetailScreen = ({
     activeImage,
     displayPrice,
     navigation,
+    findRawOption,
     optionGroups,
+    rawOptionGroups,
     selectedDiamondType,
     selectedMetalCaratage,
     selectedQuality,
@@ -1312,7 +1364,7 @@ const DesignDetailScreen = ({
   const specRows = useMemo(
     () =>
       [
-        { label: 'Design No.', value: compact(activeDesign?.designNo) },
+        { label: 'Design No.', value: compact(activeDesign?.designNo), wide: true },
         { label: 'QR Code No.', value: compact(activeDesign?.barcode) },
         { label: 'Metal', value: toMetalCaratageLabel(selectedMetalCaratage) },
         { label: 'Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
@@ -1701,18 +1753,6 @@ const DesignDetailScreen = ({
                 </View>
               </View>
             ) : null}
-
-            {diamondTypeOptions.length > 1 ? (
-              <OptionSection
-                title="DIAMOND TYPE"
-                options={diamondTypeOptions}
-                selected={selectedDiamondType}
-                onSelect={(value) => {
-                  resolveVersionSelection('diamondType', value);
-                }}
-              />
-            ) : null}
-
           </View>
           ) : null}
 
@@ -1722,15 +1762,23 @@ const DesignDetailScreen = ({
             {resolvingSelection
               ? renderSpecSkeleton()
               : specRows.map((row, index) => (
-                  <View key={`spec-${row.label}`} style={[styles.specRow, index === specRows.length - 1 ? styles.specRowLast : null]}>
-                    <Text style={styles.specLabel}>{row.label}</Text>
+                  <View
+                    key={`spec-${row.label}`}
+                    style={[
+                      styles.specRow,
+                      row.wide ? styles.specRowWide : null,
+                      index === specRows.length - 1 ? styles.specRowLast : null,
+                    ]}
+                  >
+                    <Text style={[styles.specLabel, row.wide ? styles.specLabelWide : null]}>{row.label}</Text>
                     <Text
                       style={[
                         styles.specValue,
+                        row.wide ? styles.specValueWide : null,
                         row.highlight ? styles.specValueHighlight : null,
                         row.multiline ? styles.specValueMultiline : null,
                       ]}
-                      numberOfLines={row.multiline ? 2 : 1}
+                      numberOfLines={row.wide || row.multiline ? undefined : 1}
                     >
                       {row.value}
                     </Text>
@@ -2371,7 +2419,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#38312A',
     fontWeight: '600',
-    textAlign: 'left',
+    textAlign: 'right',
   },
   inlineDropdownOptionTextActive: {
     color: '#FFFFFF',
@@ -2389,7 +2437,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8F8378',
     fontWeight: '600',
-    textAlign: 'left',
+    textAlign: 'right',
   },
   specCard: {
     marginTop: 10,
@@ -2426,10 +2474,20 @@ const styles = StyleSheet.create({
   specRowLast: {
     borderBottomWidth: 0,
   },
+  specRowWide: {
+    minHeight: 48,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 7,
+  },
   specLabel: {
     flex: 0.9,
     fontSize: 13,
     color: '#6D665D',
+  },
+  specLabelWide: {
+    flex: 0,
   },
   specValue: {
     flex: 1.15,
@@ -2441,6 +2499,14 @@ const styles = StyleSheet.create({
   },
   specValueHighlight: {
     color: '#B2874A',
+  },
+  specValueWide: {
+    flex: 0,
+    marginLeft: 0,
+    marginTop: 3,
+    lineHeight: 17,
+    textAlign: 'right',
+    alignSelf: 'stretch',
   },
   specValueMultiline: {
     lineHeight: 16,
@@ -2648,4 +2714,7 @@ const styles = StyleSheet.create({
 });
 
 export default DesignDetailScreen;
+
+
+
 

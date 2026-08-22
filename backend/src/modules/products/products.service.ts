@@ -1681,17 +1681,22 @@ export class ProductsService {
     const limit = Math.min(Math.max(query.limit || 3, 1), 10);
     const qb = this.designRepo
       .createQueryBuilder('design')
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'mobileTrendingJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'mobileTrendingCollectionMaster')
       .select([
         'design.id',
         'design.designNo',
         'design.barcode',
         'design.designName',
-        'design.jewelryGroup',
-        'design.collection',
+        'design.familyDesignId',
         'design.version',
         'design.totalValue',
         'design.imageUrls',
         'design.createdAt',
+        'mobileTrendingJewelryGroupMaster.id',
+        'mobileTrendingJewelryGroupMaster.value',
+        'mobileTrendingCollectionMaster.id',
+        'mobileTrendingCollectionMaster.value',
       ])
       .where('design.isActive = :isActive', { isActive: true })
       .andWhere('design.isPrimary = :isPrimary', { isPrimary: true })
@@ -1700,7 +1705,8 @@ export class ProductsService {
 
     this.applyScopeFilter(qb, requester);
 
-    const designs = await this.applyMobileCatalogRetailPricing(await qb.getMany(), requester);
+    const rawDesigns = (await qb.getMany()).map((design) => this.hydrateDesignDisplayLabels(design));
+    const designs = await this.applyMobileCatalogRetailPricing(rawDesigns, requester);
     const data = await Promise.all(
       designs.map(async (design) => ({
         id: design.id,
@@ -1718,6 +1724,13 @@ export class ProductsService {
     );
 
     return { data };
+  }
+
+  private parseMobileCatalogFilterId(value?: string | null): number | null {
+    const text = String(value || '').trim();
+    if (!/^\d+$/.test(text)) return null;
+    const id = Number(text);
+    return Number.isFinite(id) && id > 0 ? id : null;
   }
 
   async findMobileCatalog(
@@ -1751,28 +1764,23 @@ export class ProductsService {
     const limit = Math.min(Math.max(1, Math.trunc(query.limit || 20)), 50);
     const qb = this.designRepo
       .createQueryBuilder('design')
-      .select([
-        'design.id',
-        'design.designNo',
-        'design.designName',
-        'design.jewelryGroup',
-        'design.collection',
-        'design.version',
-        'design.jewelrySize',
-        'design.diamondSpread',
-        'design.diamondType',
-        'design.diamondWeight',
-        'design.diamondQuality',
-        'design.totalValue',
-        'design.imageUrls',
-        'design.isPrimary',
-        'design.createdAt',
-      ])
+      .leftJoinAndSelect('design.jewelryGroupMaster', 'mobileCatalogJewelryGroupMaster')
+      .leftJoinAndSelect('design.collectionMaster', 'mobileCatalogCollectionMaster')
+      .leftJoinAndSelect('design.jewelrySizeMaster', 'mobileCatalogJewelrySizeMaster')
+      .leftJoinAndSelect('design.diamondSpreadMaster', 'mobileCatalogDiamondSpreadMaster')
+      .leftJoinAndSelect('design.diamondTypeMaster', 'mobileCatalogDiamondTypeMaster')
+      .leftJoinAndSelect('design.diamondWeightMaster', 'mobileCatalogDiamondWeightMaster')
+      .leftJoinAndSelect('design.diamondQualityMaster', 'mobileCatalogDiamondQualityMaster')
+      .leftJoinAndSelect('design.metalCaratageMaster', 'mobileCatalogMetalCaratageMaster')
       .where('design.isActive = :isActive', { isActive: true })
       .andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
-
     this.applyScopeFilter(qb, requester);
-    this.applyMobileCategoryFilter(qb, query.category);
+    const categoryId = this.parseMobileCatalogFilterId(query.category);
+    if (categoryId) {
+      qb.andWhere('design.jewelryGroupId = :categoryId', { categoryId });
+    } else {
+      this.applyMobileCategoryFilter(qb, query.category);
+    }
 
     const search = query.search?.trim();
     if (search) {
@@ -1782,35 +1790,68 @@ export class ProductsService {
             .where('design.designNo LIKE :search', { search: `%${search}%` })
             .orWhere('design.barcode LIKE :search', { search: `%${search}%` })
             .orWhere('design.designName LIKE :search', { search: `%${search}%` })
-            .orWhere('design.jewelryGroup LIKE :search', { search: `%${search}%` })
-            .orWhere('design.collection LIKE :search', { search: `%${search}%` })
-            .orWhere('design.diamondType LIKE :search', { search: `%${search}%` })
-            .orWhere('design.diamondSpread LIKE :search', { search: `%${search}%` })
-            .orWhere('design.diamondQuality LIKE :search', { search: `%${search}%` });
+            .orWhere('mobileCatalogJewelryGroupMaster.value LIKE :search', { search: `%${search}%` })
+            .orWhere('mobileCatalogCollectionMaster.value LIKE :search', { search: `%${search}%` })
+            .orWhere('mobileCatalogDiamondTypeMaster.value LIKE :search', { search: `%${search}%` })
+            .orWhere('mobileCatalogDiamondSpreadMaster.value LIKE :search', { search: `%${search}%` })
+            .orWhere('mobileCatalogDiamondQualityMaster.value LIKE :search', { search: `%${search}%` });
         }),
       );
     }
 
     if (query.collection?.trim()) {
-      qb.andWhere('design.collection = :collection', { collection: query.collection.trim() });
+      const collectionId = this.parseMobileCatalogFilterId(query.collection);
+      if (collectionId) qb.andWhere('design.collectionId = :collectionId', { collectionId });
+      else qb.andWhere('mobileCatalogCollectionMaster.value = :collection', { collection: query.collection.trim() });
     }
 
     if (query.diamondType?.trim()) {
-      qb.andWhere('design.diamondType = :diamondType', { diamondType: query.diamondType.trim() });
+      const diamondTypeId = this.parseMobileCatalogFilterId(query.diamondType);
+      if (diamondTypeId) qb.andWhere('design.diamondTypeId = :diamondTypeId', { diamondTypeId });
+      else qb.andWhere('mobileCatalogDiamondTypeMaster.value = :diamondType', { diamondType: query.diamondType.trim() });
+    }
+
+    if (query.jewelrySize?.trim()) {
+      const jewelrySizeId = this.parseMobileCatalogFilterId(query.jewelrySize);
+      if (jewelrySizeId) qb.andWhere('design.jewelrySizeId = :jewelrySizeId', { jewelrySizeId });
+      else qb.andWhere('mobileCatalogJewelrySizeMaster.value = :jewelrySize', { jewelrySize: query.jewelrySize.trim() });
+    }
+
+    if (query.metalCaratage?.trim()) {
+      const metalCaratageId = this.parseMobileCatalogFilterId(query.metalCaratage);
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM design_metals dm_metal
+          LEFT JOIN metal_caratages mc_metal ON mc_metal.id = dm_metal.metal_caratage_id
+          WHERE dm_metal.design_id = design.id
+            AND (
+              (:metalCaratageId IS NOT NULL AND dm_metal.metal_caratage_id = :metalCaratageId)
+              OR (:metalCaratageId IS NULL AND LOWER(mc_metal.value) = LOWER(:metalCaratage))
+              OR (:metalCaratageId IS NULL AND LOWER(mc_metal.alias_name) = LOWER(:metalCaratage))
+            )
+        )`,
+        { metalCaratageId, metalCaratage: query.metalCaratage.trim() },
+      );
     }
 
     if (query.shape?.trim()) {
+      const shapeId = this.parseMobileCatalogFilterId(query.shape);
       qb.andWhere(
         `EXISTS (
           SELECT 1
           FROM design_gemstones dg_shape
+          LEFT JOIN packet_shapes ps_shape ON ps_shape.id = dg_shape.shape_id
           WHERE dg_shape.design_id = design.id
-            AND LOWER(dg_shape.shape) = LOWER(:shape)
+            AND (
+              (:shapeId IS NOT NULL AND dg_shape.shape_id = :shapeId)
+              OR (:shapeId IS NULL AND LOWER(ps_shape.value) = LOWER(:shape))
+              OR (:shapeId IS NULL AND LOWER(ps_shape.alias_name) = LOWER(:shape))
+            )
         )`,
-        { shape: query.shape.trim() },
+        { shapeId, shape: query.shape.trim() },
       );
     }
-
     const useRetailPricing = this.shouldApplyMobileCatalogRetailPricing(requester);
     const priceBand = query.priceBand || 'ALL';
     if (!useRetailPricing && priceBand === 'UNDER_2000') {
@@ -1848,7 +1889,9 @@ export class ProductsService {
     }
 
     const data = await Promise.all(
-      rows.map(async (design) => ({
+      rows.map(async (design) => {
+        this.hydrateDesignDisplayLabels(design);
+        return {
         id: design.id,
         designNo: design.designNo,
         designName: design.designName,
@@ -1867,7 +1910,8 @@ export class ProductsService {
         imageUrls: await this.resolveGalleryUrls(design.imageUrls || []),
         isPrimary: design.isPrimary,
         createdAt: design.createdAt,
-      })),
+        };
+      }),
     );
 
     return {
@@ -2056,6 +2100,8 @@ export class ProductsService {
       this.mobileCatalogCategories.map(async (category) => {
         const qb = this.designRepo
           .createQueryBuilder('design')
+          .leftJoin('design.jewelryGroupMaster', 'mobileCategoryJewelryGroupMaster')
+          .leftJoin('design.collectionMaster', 'mobileCategoryCollectionMaster')
           .innerJoin(
             Design,
             'familyPrimary',
@@ -2083,8 +2129,8 @@ export class ProductsService {
             category.hints.forEach((hint, index) => {
               const param = `${category.id}Hint${index}`;
               const condition = [
-                `LOWER(design.jewelryGroup) LIKE :${param}`,
-                `LOWER(design.collection) LIKE :${param}`,
+                `LOWER(mobileCategoryJewelryGroupMaster.value) LIKE :${param}`,
+                `LOWER(mobileCategoryCollectionMaster.value) LIKE :${param}`,
                 `LOWER(design.designName) LIKE :${param}`,
                 `LOWER(design.designNo) LIKE :${param}`,
               ].join(' OR ');
@@ -2737,7 +2783,7 @@ export class ProductsService {
     );
 
     if (!categoryConfig) {
-      qb.andWhere('LOWER(design.jewelryGroup) = :category', { category: lower });
+      qb.andWhere('LOWER(mobileCatalogJewelryGroupMaster.value) = :category', { category: lower });
       return;
     }
 
@@ -2746,8 +2792,8 @@ export class ProductsService {
         categoryConfig.hints.forEach((hint, index) => {
           const param = `mobileCategoryHint${index}`;
           const condition = [
-            `LOWER(design.jewelryGroup) LIKE :${param}`,
-            `LOWER(design.collection) LIKE :${param}`,
+            `LOWER(mobileCatalogJewelryGroupMaster.value) LIKE :${param}`,
+            `LOWER(mobileCatalogCollectionMaster.value) LIKE :${param}`,
             `LOWER(design.designName) LIKE :${param}`,
             `LOWER(design.designNo) LIKE :${param}`,
           ].join(' OR ');
@@ -6903,5 +6949,6 @@ export class ProductsService {
   }
 
 }
+
 
 

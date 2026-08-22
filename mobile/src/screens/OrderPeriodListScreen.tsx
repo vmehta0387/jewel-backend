@@ -170,6 +170,7 @@ const OrderPeriodListScreen = () => {
         designName: designName(order) || null,
         imageUrl: order.designImageUrl || null,
         price: Number(order.price || 0),
+        selectedOptions: order.selectedOptions || null,
         selection: parseSelection(order.shortDescription),
         customerName: order.customerName || undefined,
         customerPhone: order.customerPhone || undefined,
@@ -407,3 +408,4 @@ const styles = StyleSheet.create({
 });
 
 export default OrderPeriodListScreen;
+
