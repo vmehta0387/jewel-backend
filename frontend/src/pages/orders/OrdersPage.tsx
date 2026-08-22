@@ -1032,7 +1032,7 @@ export default function OrdersPage() {
 
   const confirmPurchaseOrderReuse = async (payload: {
     companyId: number;
-    branchId?: string;
+    branchId?: number;
     purchaseOrderNumber: string;
   }) => {
     const poNumber = payload.purchaseOrderNumber.trim();
@@ -1077,8 +1077,8 @@ export default function OrdersPage() {
     if (purchaseOrderBlurCheckRef.current === checkKey) return;
     purchaseOrderBlurCheckRef.current = checkKey;
     await confirmPurchaseOrderReuse({
-      companyId: form.companyId,
-      branchId: form.branchId || undefined,
+      companyId: Number(form.companyId),
+      branchId: form.branchId ? Number(form.branchId) : undefined,
       purchaseOrderNumber: poNumber,
     });
   };
@@ -1165,8 +1165,8 @@ export default function OrdersPage() {
       };
 
       const canContinue = await confirmPurchaseOrderReuse({
-        companyId: String(payload.companyId),
-        branchId: payload.branchId !== undefined && payload.branchId !== null ? String(payload.branchId) : undefined,
+        companyId: payload.companyId,
+        branchId: payload.branchId !== undefined && payload.branchId !== null ? Number(payload.branchId) : undefined,
         purchaseOrderNumber: payload.purchaseOrderNumber,
       });
       if (!canContinue) return;
@@ -3596,6 +3596,8 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+
 
 
 
