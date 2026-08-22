@@ -20,7 +20,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { createOrder, updateOrder } from '../api/orders';
+import { createOrder, fetchPurchaseOrderUsage, updateOrder } from '../api/orders';
 import { fetchUserLookup, type LookupUser } from '../api/users';
 import {
   fetchMobileDesignConfigurator,
@@ -32,10 +32,10 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type { Design, Order, SelectedDesignOptions, SelectedMasterOption } from '../types';
 import type { DesignsStackParamList } from '../navigation/RootNavigator';
 import type { NotificationFeedEntry } from '../utils/appNotifications';
-import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 import { canEditOrderByStatus, getOrderSubmitStatus, normalizeOrderStatus } from '../utils/orderLifecycle';
 import { diffChanges } from '../utils/changeDiff';
 import { trackOrderChanged, trackOrderCreated } from '../utils/activityEvents';
@@ -312,6 +312,7 @@ const QuoteBuilderScreen = () => {
   const [selectedSalesRepId, setSelectedSalesRepId] = useState('');
   const [salesRepPickerVisible, setSalesRepPickerVisible] = useState(false);
   const [loadingSalesReps, setLoadingSalesReps] = useState(false);
+  const [poReuseConfirm, setPoReuseConfirm] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
 
   const [familyDesigns, setFamilyDesigns] = useState<Design[]>([]);
   const [activeDesignId, setActiveDesignId] = useState<string | null>(null);
@@ -336,6 +337,7 @@ const QuoteBuilderScreen = () => {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const lastPoBlurCheckRef = useRef('');
+  const poReuseResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [dropdownOptions, setDropdownOptions] = useState<string[]>([]);
@@ -910,6 +912,45 @@ const QuoteBuilderScreen = () => {
     return true;
   }, [customerEmail, customerName, customerPhone, purchaseOrderNumber]);
 
+
+  const resolvePoReuseConfirmation = useCallback((confirmed: boolean) => {
+    const resolve = poReuseResolveRef.current;
+    poReuseResolveRef.current = null;
+    setPoReuseConfirm({ visible: false, message: '' });
+    resolve?.(confirmed);
+  }, []);
+
+  const confirmPurchaseOrderReuseInApp = useCallback(async (poOverride?: string) => {
+    const normalizedPo = (poOverride ?? purchaseOrderNumber).trim();
+    if (!token || !companyId || !normalizedPo) return true;
+
+    try {
+      const usage = await fetchPurchaseOrderUsage(token, {
+        companyId,
+        branchId,
+        purchaseOrderNumber: normalizedPo,
+        excludeOrderId: order?.id || editingOrderId,
+      });
+      const count = Number(usage.count || 0);
+      if (count <= 0) return true;
+
+      const examples = (usage.orders || [])
+        .slice(0, 3)
+        .map((entry) => [entry.orderNumber, entry.status].map(compact).filter(Boolean).join(' - '))
+        .filter(Boolean)
+        .join('\n');
+      const message = `This PO has already been used for ${count} item(s). Do you want to continue with the same PO number?${examples ? `\n\n${examples}` : ''}`;
+
+      return new Promise<boolean>((resolve) => {
+        poReuseResolveRef.current = resolve;
+        setPoReuseConfirm({ visible: true, message });
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Unable to verify purchase order usage.');
+      return true;
+    }
+  }, [branchId, companyId, editingOrderId, order?.id, purchaseOrderNumber, token]);
+
   const persistOrder = useCallback(
     async (nextStatus: 'QUOTE' | 'PENDING_APPROVAL') => {
       if (!token || !companyId || !branchId) return null;
@@ -917,14 +958,7 @@ const QuoteBuilderScreen = () => {
         setError('This order cannot be changed in its current status.');
         return null;
       }
-      if (!(await confirmPurchaseOrderReuse({
-        token,
-        companyId,
-        branchId,
-        purchaseOrderNumber,
-        excludeOrderId: order?.id || editingOrderId,
-        onError: setError,
-      }))) {
+      if (!(await confirmPurchaseOrderReuseInApp())) {
         return null;
       }
       const effectiveStatus = getOrderSubmitStatus(nextStatus, user?.role);
@@ -1030,6 +1064,7 @@ const QuoteBuilderScreen = () => {
       requiresSalesRepSelection,
       selectedSalesRepId,
       loadingSalesReps,
+      confirmPurchaseOrderReuseInApp,
       isOrderLocked,
       user,
     ],
@@ -1041,15 +1076,8 @@ const QuoteBuilderScreen = () => {
     const checkKey = [companyId, order?.id || editingOrderId || '', poNumber.toLowerCase()].join('|');
     if (lastPoBlurCheckRef.current === checkKey) return;
     lastPoBlurCheckRef.current = checkKey;
-    await confirmPurchaseOrderReuse({
-      token,
-      companyId,
-      branchId,
-      purchaseOrderNumber: poNumber,
-      excludeOrderId: order?.id || editingOrderId,
-      onError: setError,
-    });
-  }, [branchId, companyId, editingOrderId, order?.id, purchaseOrderNumber, token]);
+    await confirmPurchaseOrderReuseInApp(poNumber);
+  }, [companyId, confirmPurchaseOrderReuseInApp, editingOrderId, order?.id, purchaseOrderNumber, token]);
 
   const handleSave = useCallback(async () => {
     if (!canPersist) return;
@@ -1491,6 +1519,15 @@ const QuoteBuilderScreen = () => {
           </View>
         </View>
       </Modal>
+      <ConfirmDialog
+        visible={poReuseConfirm.visible}
+        title="PO Already Used"
+        message={poReuseConfirm.message}
+        confirmText="Continue"
+        cancelText="Cancel"
+        onCancel={() => resolvePoReuseConfirmation(false)}
+        onConfirm={() => resolvePoReuseConfirmation(true)}
+      />
       <NotificationPopover
         visible={notificationsVisible}
         onClose={() => setNotificationsVisible(false)}
@@ -2186,6 +2223,10 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteBuilderScreen;
+
+
+
+
 
 
 

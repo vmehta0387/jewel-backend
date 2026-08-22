@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { Order } from '../orders/entities/order.entity';
+import { User } from '../users/entities/user.entity';
 import {
   FindActivityEventsQueryDto,
   RecordActivityEventDto,
@@ -75,7 +77,48 @@ export class ActivityEventsService {
       qb.andWhere('activityEvent.entity_id = :entityId', { entityId: query.entityId.trim() });
     }
 
-    const [data, total] = await qb.getManyAndCount();
+    const [events, total] = await qb.getManyAndCount();
+    const userIds = Array.from(new Set(events.map((event) => event.userId).filter(Boolean)));
+    const orderIds = Array.from(new Set(
+      events
+        .filter((event) => String(event.entityType || '').toUpperCase() === 'ORDER' && event.entityId)
+        .map((event) => Number(event.entityId)),
+    ));
+
+    const users: User[] = userIds.length
+      ? await this.activityEventRepo.manager.getRepository(User).find({
+          select: ['id', 'firstName', 'lastName', 'email'],
+          where: { id: In(userIds) },
+        })
+      : [];
+    const orders: Order[] = orderIds.length
+      ? await this.activityEventRepo.manager
+          .getRepository(Order)
+          .createQueryBuilder('order')
+          .leftJoinAndSelect('order.design', 'design')
+          .where('order.id IN (:...orderIds)', { orderIds })
+          .getMany()
+      : [];
+
+    const usersById = new Map<number, User>(users.map((user) => [Number(user.id), user]));
+    const ordersById = new Map<number, Order>(orders.map((order) => [Number(order.id), order]));
+    const data = events.map((event) => {
+      const user = usersById.get(Number(event.userId));
+      const order = String(event.entityType || '').toUpperCase() === 'ORDER' && event.entityId
+        ? ordersById.get(Number(event.entityId))
+        : null;
+      const userName = [user?.firstName, user?.lastName].map((part) => this.optionalText(part, 120)).filter(Boolean).join(' ');
+      return {
+        ...event,
+        userName: this.optionalText(userName, 255),
+        userEmail: this.optionalText(user?.email, 255),
+        entityLabel: this.optionalText(order?.orderNumber, 120),
+        entityStatus: this.optionalText(order?.status, 80),
+        designId: order?.designId != null ? Number(order.designId) : null,
+        designNo: this.optionalText(order?.design?.designNo, 120),
+      };
+    });
+
     return {
       data,
       total,
@@ -149,3 +192,6 @@ export class ActivityEventsService {
     return String(value).slice(0, MAX_STRING_LENGTH);
   }
 }
+
+
+

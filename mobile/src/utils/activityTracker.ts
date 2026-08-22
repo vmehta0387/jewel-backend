@@ -26,6 +26,7 @@ type TokenGetter = () => string | null | undefined;
 type ActivityContextGetter = () => {
   userId?: string | number | null;
   deviceId?: string | null;
+  deviceType?: string | null;
 };
 
 const MAX_QUEUE = 100;
@@ -82,6 +83,10 @@ export const trackActivity = (
   payload: Omit<Partial<ActivityEvent>, 'id' | 'module' | 'event' | 'createdAt'> = {},
 ) => {
   const context = getActivityContext();
+  const data = sanitizeData({
+    ...(payload.data || {}),
+    ...(context.deviceType ? { deviceType: context.deviceType } : {}),
+  });
 
   queue.push({
     id: createId(),
@@ -93,7 +98,7 @@ export const trackActivity = (
     entityType: payload.entityType,
     entityId: payload.entityId,
     changes: sanitizeChanges(payload.changes),
-    data: sanitizeData(payload.data),
+    data,
     createdAt: new Date().toISOString(),
   });
 
@@ -120,3 +125,6 @@ export const flushActivityEvents = async () => {
     if (queue.length > 0) scheduleFlush();
   }
 };
+
+
+

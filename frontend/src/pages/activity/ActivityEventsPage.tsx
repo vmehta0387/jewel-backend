@@ -28,8 +28,8 @@ const emptyFilters: Filters = {
   entityId: '',
 };
 
-const fieldClassName = 'w-full rounded-lg border border-[#dfd3c4] bg-white px-3 py-2 text-right text-sm text-slate-900 outline-none transition focus:border-[#b98e45] focus:ring-2 focus:ring-[#b98e45]/15';
-const labelClassName = 'mb-1.5 block text-right text-xs font-bold uppercase tracking-[0.12em] text-[#7e6f61]';
+const fieldClassName = 'w-full rounded-lg border border-[#dfd3c4] bg-white px-3 py-2 text-left text-sm text-slate-900 outline-none transition focus:border-[#b98e45] focus:ring-2 focus:ring-[#b98e45]/15';
+const labelClassName = 'mb-1.5 block text-left text-xs font-bold uppercase tracking-[0.12em] text-[#7e6f61]';
 
 const formatDateTime = (value: string) => {
   const date = new Date(value);
@@ -69,6 +69,32 @@ const summarizeData = (value: Record<string, unknown> | null) => {
   return Object.entries(value).slice(0, 4);
 };
 
+const getUserTitle = (item: ActivityEventItem) => item.userName || item.userEmail || `User ${item.userId}`;
+const getUserSubtext = (item: ActivityEventItem) => item.userName ? item.userEmail || '' : '';
+const getRecordTitle = (item: ActivityEventItem) => item.entityLabel || formatLabel(item.entityType);
+const getRecordSubtext = (item: ActivityEventItem) => {
+  const parts = [item.entityStatus ? `Status: ${formatLabel(item.entityStatus)}` : '', item.designNo ? `Design: ${item.designNo}` : '']
+    .filter(Boolean);
+  if (parts.length) return parts.join(' | ');
+  return item.entityId ? `ID ${item.entityId}` : '';
+};
+
+const formatDeviceType = (value: unknown) => {
+  const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (text === 'ios') return 'iOS';
+  if (text === 'android') return 'Android';
+  if (text === 'web') return 'Web';
+  return text ? formatLabel(text) : '';
+};
+
+const getDeviceType = (item: ActivityEventItem) => {
+  const data = item.data || {};
+  const explicitType = formatDeviceType(data.deviceType || data.platform || data.os || data.source);
+  if (explicitType) return explicitType;
+  if (item.deviceId?.startsWith('mobile-')) return 'Mobile device';
+  return item.deviceId ? 'Device' : 'Not recorded';
+};
+
 const toIsoBoundary = (value: string, endOfDay = false) => {
   if (!value) return undefined;
   return `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`;
@@ -92,7 +118,6 @@ function FilterField({
       <span className={labelClassName}>{label}</span>
       <input
         className={fieldClassName}
-        style={{ textAlign: 'right' }}
         type={type}
         placeholder={placeholder}
         value={value}
@@ -107,7 +132,7 @@ export default function ActivityEventsPage() {
   const [filters, setFilters] = useState<Filters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<Filters>(emptyFilters);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
+  const [limit] = useState(DEFAULT_LIMIT);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -170,13 +195,12 @@ export default function ActivityEventsPage() {
 
   const rangeStart = total ? (page - 1) * limit + 1 : 0;
   const rangeEnd = total ? Math.min(page * limit, total) : 0;
-  const filteredCount = Object.values(appliedFilters).filter((value) => value.trim()).length;
   const visibleUsers = new Set(events.map((item) => item.userId).filter(Boolean)).size;
   const visibleModules = new Set(events.map((item) => item.module).filter(Boolean)).size;
   const visibleChanges = events.reduce((sum, item) => sum + (item.changes?.length || 0), 0);
 
   return (
-    <div className="space-y-6 text-right">
+    <div className="space-y-6 text-left">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Activity Tracking</h1>
@@ -190,19 +214,19 @@ export default function ActivityEventsPage() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-[#e4dacd] bg-white px-5 py-4 shadow-[0_18px_45px_-36px_rgba(28,21,15,0.35)]">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8a7a67]">Records found</p>
-          <p className="mt-2 text-right text-2xl font-bold text-[#251d17]">{total}</p>
+          <p className="mt-2 text-left text-2xl font-bold text-[#251d17]">{total}</p>
         </div>
         <div className="rounded-2xl border border-[#e4dacd] bg-white px-5 py-4 shadow-[0_18px_45px_-36px_rgba(28,21,15,0.35)]">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8a7a67]">Users on page</p>
-          <p className="mt-2 text-right text-2xl font-bold text-[#251d17]">{visibleUsers}</p>
+          <p className="mt-2 text-left text-2xl font-bold text-[#251d17]">{visibleUsers}</p>
         </div>
         <div className="rounded-2xl border border-[#e4dacd] bg-white px-5 py-4 shadow-[0_18px_45px_-36px_rgba(28,21,15,0.35)]">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8a7a67]">Areas touched</p>
-          <p className="mt-2 text-right text-2xl font-bold text-[#251d17]">{visibleModules}</p>
+          <p className="mt-2 text-left text-2xl font-bold text-[#251d17]">{visibleModules}</p>
         </div>
         <div className="rounded-2xl border border-[#e4dacd] bg-white px-5 py-4 shadow-[0_18px_45px_-36px_rgba(28,21,15,0.35)]">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8a7a67]">Field changes</p>
-          <p className="mt-2 text-right text-2xl font-bold text-[#251d17]">{visibleChanges}</p>
+          <p className="mt-2 text-left text-2xl font-bold text-[#251d17]">{visibleChanges}</p>
         </div>
       </div>
 
@@ -224,25 +248,8 @@ export default function ActivityEventsPage() {
           <FilterField label="Record type" placeholder="Example: Order" value={filters.entityType} onChange={(value) => updateFilter('entityType', value)} />
           <FilterField label="Record ID" placeholder="Specific record number" value={filters.entityId} onChange={(value) => updateFilter('entityId', value)} />
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <label>
-              <span className="sr-only">Rows per page</span>
-              <select
-                style={{ textAlign: 'right' }}
-                value={limit}
-                onChange={(event) => setLimit(Number(event.target.value))}
-                className="rounded-lg border border-[#dfd3c4] bg-white px-3 py-2 text-right text-sm text-slate-800 outline-none focus:border-[#b98e45] focus:ring-2 focus:ring-[#b98e45]/15"
-              >
-                <option value={10}>10 rows per page</option>
-                <option value={20}>20 rows per page</option>
-                <option value={50}>50 rows per page</option>
-                <option value={100}>100 rows per page</option>
-              </select>
-            </label>
-            <span className="text-sm text-slate-500">{filteredCount ? `${filteredCount} filter${filteredCount > 1 ? 's' : ''} active` : 'No filters active'}</span>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap justify-start gap-2">
             <Button type="button" variant="secondary" onClick={clearFilters}>Clear</Button>
             <Button type="button" onClick={applyFilters}>Apply</Button>
           </div>
@@ -267,9 +274,9 @@ export default function ActivityEventsPage() {
           <div className="rounded-xl border border-dashed border-[#e4d7c6] bg-[#fcfaf6] px-4 py-12 text-center text-sm text-[#8a7f72]">Loading activity...</div>
         ) : events.length ? (
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-right text-sm">
+            <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-left text-sm">
               <thead>
-                <tr className="text-right text-xs font-bold uppercase tracking-[0.16em] text-[#8a7a67]">
+                <tr className="text-left text-xs font-bold uppercase tracking-[0.16em] text-[#8a7a67]">
                   <th className="border-b border-[#eadfce] px-4 py-3">When</th>
                   <th className="border-b border-[#eadfce] px-4 py-3">Person</th>
                   <th className="border-b border-[#eadfce] px-4 py-3">Activity</th>
@@ -283,11 +290,11 @@ export default function ActivityEventsPage() {
                   <tr key={item.id} className="align-top text-[#40362e] transition hover:bg-[#fffaf2]">
                     <td className="whitespace-nowrap border-b border-[#f0e7dc] px-4 py-4 font-medium text-[#251d17]">{formatDateTime(item.createdAt)}</td>
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
-                      <p className="font-semibold text-[#251d17]">User</p>
-                      <p className="mt-1 break-all font-mono text-xs text-slate-500">{item.userId}</p>
+                      <p className="font-semibold text-[#251d17]">{getUserTitle(item)}</p>
+                      {getUserSubtext(item) ? <p className="mt-1 break-all text-xs text-slate-500">{getUserSubtext(item)}</p> : null}
                     </td>
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div className="flex flex-wrap justify-start gap-2">
                         <span className="rounded-full bg-[#f3eadc] px-2.5 py-1 text-xs font-bold text-[#7a5c2d]">{formatLabel(item.module)}</span>
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{formatLabel(item.event)}</span>
                       </div>
@@ -296,21 +303,22 @@ export default function ActivityEventsPage() {
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
                       {item.entityType || item.entityId ? (
                         <div>
-                          <p className="font-semibold text-[#251d17]">{formatLabel(item.entityType)}</p>
-                          <p className="mt-1 break-all font-mono text-xs text-slate-500">{item.entityId || 'No record ID'}</p>
+                          <p className="font-semibold text-[#251d17]">{getRecordTitle(item)}</p>
+                          {getRecordSubtext(item) ? <p className="mt-1 break-all text-xs text-slate-500">{getRecordSubtext(item)}</p> : null}
                         </div>
                       ) : (
                         <span className="text-slate-500">No record linked</span>
                       )}
                     </td>
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
-                      <p className="break-all font-mono text-xs text-slate-600">{item.deviceId || 'Not recorded'}</p>
+                      <p className="font-semibold text-[#251d17]">{getDeviceType(item)}</p>
+                      {item.deviceId ? <p className="mt-1 break-all font-mono text-xs text-slate-500">{item.deviceId}</p> : null}
                     </td>
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
                       {item.changes?.length ? (
                         <details className="mb-3 rounded-lg border border-[#eadfce] bg-[#fffdf9] px-3 py-2" open={item.changes.length <= 2}>
                           <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.1em] text-[#7a5c2d]">Changes ({item.changes.length})</summary>
-                          <div className="mt-2 space-y-2 text-right">
+                          <div className="mt-2 space-y-2 text-left">
                             {item.changes.map((change, index) => (
                               <div key={`${change.field}-${index}`} className="rounded-md bg-[#f8f1e8] p-2">
                                 <p className="text-xs font-bold text-[#251d17]">{formatLabel(change.field)}</p>
@@ -324,7 +332,7 @@ export default function ActivityEventsPage() {
                       {item.data ? (
                         <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                           <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.1em] text-slate-600">More details</summary>
-                          <div className="mt-2 space-y-1.5 text-right">
+                          <div className="mt-2 space-y-1.5 text-left">
                             {summarizeData(item.data).map(([key, value]) => (
                               <p key={key} className="text-xs text-slate-600"><span className="font-semibold text-slate-800">{formatLabel(key)}:</span> {formatValue(value)}</p>
                             ))}
@@ -349,6 +357,13 @@ export default function ActivityEventsPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
 

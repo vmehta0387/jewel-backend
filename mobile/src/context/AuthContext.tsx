@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
@@ -154,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     configureActivityContext(() => ({
       userId: user?.id,
       deviceId,
+      deviceType: Platform.OS,
     }));
   }, [deviceId, user?.id]);
 
@@ -352,3 +353,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+

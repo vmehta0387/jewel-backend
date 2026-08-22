@@ -7,12 +7,18 @@ export type ActivityEventChange = {
 export type ActivityEventItem = {
   id: string;
   userId: string;
+  userName?: string | null;
+  userEmail?: string | null;
   deviceId: string | null;
   module: string;
   event: string;
   screen: string | null;
   entityType: string | null;
   entityId: string | null;
+  entityLabel?: string | null;
+  entityStatus?: string | null;
+  designId?: string | number | null;
+  designNo?: string | null;
   changes: ActivityEventChange[] | null;
   data: Record<string, unknown> | null;
   createdAt: string;
@@ -37,3 +43,4 @@ export type ActivityEventsResponse = {
   page: number;
   totalPages: number;
 };
+
