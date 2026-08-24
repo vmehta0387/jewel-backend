@@ -223,7 +223,10 @@ export class BranchesService {
       branch.code = nextCode;
     }
 
-    if (dto.companyId !== undefined) branch.companyId = dto.companyId;
+    if (dto.companyId !== undefined) {
+      branch.companyId = dto.companyId;
+      (branch as Partial<Branch>).company = undefined;
+    }
     if (dto.name !== undefined) branch.name = dto.name;
     if (dto.streetAddress !== undefined) branch.streetAddress = dto.streetAddress;
     if (dto.streetAddress2 !== undefined) branch.streetAddress2 = dto.streetAddress2;
@@ -462,3 +465,4 @@ export class BranchesService {
     }
   }
 }
+

@@ -32,6 +32,7 @@ export interface SmartDropdownConfig {
   clearLabel?: string;
   disabled?: boolean;
   renderLabel?: (option: SmartDropdownOption) => ReactNode;
+  getOptionDisabled?: (option: SmartDropdownOption) => boolean;
 }
 
 interface SmartDropdownProps {
@@ -153,7 +154,13 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
       return label.includes(needle) || optionValue.includes(needle);
     });
   }, [allOptions, isApiMode, merged.labelKey, merged.serverSearch, merged.showSearch, merged.valueKey, search]);
-  const menuOptions = filteredOptions;
+  const menuOptions = useMemo(
+    () => filteredOptions.map((option) => ({
+      ...option,
+      disabled: Boolean(option.disabled || merged.getOptionDisabled?.(option)),
+    })),
+    [filteredOptions, merged],
+  );
   const selectedMenuIndex = useMemo(() => {
     const index = filteredOptions.findIndex((option) => optionMatchesValue(option, value, merged.valueKey));
     return index >= 0 ? index : 0;
@@ -549,3 +556,4 @@ export default function SmartDropdown({ value, onChange, config, className = '' 
     </div>
   );
 }
+

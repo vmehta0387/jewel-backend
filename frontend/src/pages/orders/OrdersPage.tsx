@@ -605,10 +605,13 @@ export default function OrdersPage() {
     companyId: '',
     branchId: '',
     salesRepId: '',
+    statusGroup: '',
     deliveryFrom: '',
     deliveryTo: '',
     createdFrom: '',
     createdTo: '',
+    completedFrom: '',
+    completedTo: '',
   });
   const designSearchDebounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const designRequestSeqRef = useRef(0);
@@ -617,6 +620,7 @@ export default function OrdersPage() {
   const listTableColumnCount = canViewCostPrice ? 14 : 13;
   const canSelectOrderCompany = isSuperAdmin;
   const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
+  const effectiveCompanyFilterId = filters.companyId || (isCompanyAdmin ? currentUser?.companyId || '' : '');
   const roleScopedDefaultForm = useMemo(
     () => ({
       ...defaultForm,
@@ -634,10 +638,13 @@ export default function OrdersPage() {
     filters.companyId ||
     filters.branchId ||
     filters.salesRepId ||
+    filters.statusGroup ||
     filters.deliveryFrom ||
     filters.deliveryTo ||
     filters.createdFrom ||
-    filters.createdTo,
+    filters.createdTo ||
+    filters.completedFrom ||
+    filters.completedTo,
   );
   const formTotalAmount = useMemo(
     () => calculateTotalAmount(form.price, form.quantity),
@@ -674,10 +681,13 @@ export default function OrdersPage() {
           companyId: filters.companyId || undefined,
           branchId: filters.branchId || undefined,
           salesRepId: filters.salesRepId || undefined,
+          statusGroup: filters.statusGroup || undefined,
           deliveryFrom: filters.deliveryFrom || undefined,
           deliveryTo: filters.deliveryTo || undefined,
           createdFrom: filters.createdFrom || undefined,
           createdTo: filters.createdTo || undefined,
+          completedFrom: filters.completedFrom || undefined,
+          completedTo: filters.completedTo || undefined,
         },
       });
       const payload = response.data || {};
@@ -918,10 +928,13 @@ export default function OrdersPage() {
       companyId: searchParams.get('companyId') || '',
       branchId: searchParams.get('branchId') || '',
       salesRepId: searchParams.get('salesRepId') || '',
+      statusGroup: searchParams.get('statusGroup') || '',
       deliveryFrom: searchParams.get('deliveryFrom') || '',
       deliveryTo: searchParams.get('deliveryTo') || '',
       createdFrom: searchParams.get('createdFrom') || '',
       createdTo: searchParams.get('createdTo') || '',
+      completedFrom: searchParams.get('completedFrom') || '',
+      completedTo: searchParams.get('completedTo') || '',
     };
     let nextShowInactive = false;
 
@@ -932,7 +945,12 @@ export default function OrdersPage() {
       nextFilters.createdFrom = today;
       nextFilters.createdTo = today;
     } else if (view === 'active') {
+      nextFilters.statusGroup = nextFilters.statusGroup || 'NON_COMPLETED';
       nextShowInactive = false;
+    } else if (view === 'orders-trend') {
+      nextFilters.statusGroup = nextFilters.statusGroup || 'NON_COMPLETED';
+    } else if (view === 'sales-trend' || view === 'sales-this-week') {
+      nextFilters.statusGroup = nextFilters.statusGroup || 'COMPLETED';
     }
 
     setPage(1);
@@ -1884,7 +1902,7 @@ export default function OrdersPage() {
       </div>
 
       <Card>
-        <div className="mb-4 grid gap-3 md:grid-cols-[repeat(7,minmax(0,1fr))_auto]">
+        <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[repeat(10,minmax(0,1fr))_auto]">
           <div>
             <label className="text-xs font-semibold text-slate-600">Search</label>
             <input
@@ -1899,7 +1917,7 @@ export default function OrdersPage() {
             <label className="text-xs font-semibold text-slate-600">Status</label>
             <SmartDropdown
               value={filters.orderStatus}
-              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, orderStatus: val })); }}
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, orderStatus: val, statusGroup: val ? '' : prev.statusGroup })); }}
               config={{
                 options: orderStatusOptions.map(status => ({ id: status, value: status })),
                 valueKey: 'id',
@@ -1911,21 +1929,42 @@ export default function OrdersPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-600">Company</label>
+            <label className="text-xs font-semibold text-slate-600">Status Group</label>
             <SmartDropdown
-              value={filters.companyId}
-              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' })); }}
+              value={filters.statusGroup}
+              onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, statusGroup: val, orderStatus: val ? '' : prev.orderStatus })); }}
               config={{
-                apiSubPath: '/companies/lookup',
-                extraParams: { limit: 200, status: 'ACTIVE' },
+                options: [
+                  { id: 'NON_COMPLETED', value: 'Active / Not Completed' },
+                  { id: 'COMPLETED', value: 'Completed Sales' },
+                  { id: 'FULFILLED', value: 'Fulfilled' },
+                ],
                 valueKey: 'id',
-                labelKey: 'companyName',
-                placeholder: 'All Companies',
-                clearLabel: 'All Companies',
+                labelKey: 'value',
+                placeholder: 'All Groups',
+                clearLabel: 'All Groups',
               }}
               className="mt-1"
             />
           </div>
+          {canSelectOrderCompany ? (
+            <div>
+              <label className="text-xs font-semibold text-slate-600">Company</label>
+              <SmartDropdown
+                value={filters.companyId}
+                onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' })); }}
+                config={{
+                  apiSubPath: '/companies/lookup',
+                  extraParams: { limit: 200, status: 'ACTIVE' },
+                  valueKey: 'id',
+                  labelKey: 'companyName',
+                  placeholder: 'All Companies',
+                  clearLabel: 'All Companies',
+                }}
+                className="mt-1"
+              />
+            </div>
+          ) : null}
           <div>
             <label className="text-xs font-semibold text-slate-600">Branch</label>
             <SmartDropdown
@@ -1934,7 +1973,7 @@ export default function OrdersPage() {
               config={{
                 apiSubPath: '/branches',
                 responsePath: 'data',
-                extraParams: { companyId: filters.companyId || undefined, limit: 200, status: 'ACTIVE' },
+                extraParams: { companyId: effectiveCompanyFilterId || undefined, limit: 200, status: 'ACTIVE' },
                 valueKey: 'id',
                 labelKey: 'name',
                 placeholder: 'All Branches',
@@ -1950,7 +1989,7 @@ export default function OrdersPage() {
               onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: val })); }}
               config={{
                 apiSubPath: '/users/lookup',
-                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: filters.companyId || undefined, branchId: filters.branchId || undefined },
+                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: effectiveCompanyFilterId || undefined, branchId: filters.branchId || undefined },
                 valueKey: 'id',
                 labelKey: 'email',
                 renderLabel: (option) => {
@@ -1981,6 +2020,42 @@ export default function OrdersPage() {
               onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, deliveryTo: event.target.value })); }}
             />
           </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Created From</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.createdFrom}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, createdFrom: event.target.value })); }}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Created To</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.createdTo}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, createdTo: event.target.value })); }}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Completed From</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.completedFrom}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, completedFrom: event.target.value })); }}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Completed To</label>
+            <input
+              type="date"
+              className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              value={filters.completedTo}
+              onChange={(event) => { setPage(1); setFilters((prev) => ({ ...prev, completedTo: event.target.value })); }}
+            />
+          </div>
           <div className="flex items-end">
             <Button
               variant="secondary"
@@ -1994,10 +2069,13 @@ export default function OrdersPage() {
                   companyId: '',
                   branchId: '',
                   salesRepId: '',
+                  statusGroup: '',
                   deliveryFrom: '',
                   deliveryTo: '',
                   createdFrom: '',
                   createdTo: '',
+                  completedFrom: '',
+                  completedTo: '',
                 });
               }}
             >
@@ -2356,35 +2434,37 @@ export default function OrdersPage() {
                   </fieldset>
 
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(220px,0.75fr)]">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700">Company*</label>
-                      <SmartDropdown
-                        value={form.companyId}
-                        onChange={(val) => {
-                          setPriceManuallyEdited(false);
-                          setForm((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' }));
-                          setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined, salesRepId: undefined }));
-                        }}
-                        config={{
-                          apiSubPath: '/companies/lookup',
-                          extraParams: { limit: 200, status: 'ACTIVE' },
-                          valueKey: 'id',
-                          labelKey: 'companyName',
-                          placeholder: 'Select Company',
-                          disabled: !canSelectOrderCompany,
-                          options: form.companyId ? companies.filter(c => c.id === form.companyId).map(c => ({ id: c.id, companyName: c.companyName })) : [],
-                        }}
-                        className={`mt-1 ${formErrors.companyId
-                          ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
-                          : ''
-                          } ${!canSelectOrderCompany ? 'appearance-none bg-none' : ''}`}
-                      />
-                      {formErrors.companyId && (
-                        <p id="company-error" className="mt-1 text-xs font-medium text-rose-600">
-                          {formErrors.companyId}
-                        </p>
-                      )}
-                    </div>
+                    {canSelectOrderCompany ? (
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">Company*</label>
+                        <SmartDropdown
+                          value={form.companyId}
+                          onChange={(val) => {
+                            setPriceManuallyEdited(false);
+                            setForm((prev) => ({ ...prev, companyId: val, branchId: '', salesRepId: '' }));
+                            setFormErrors((prev) => ({ ...prev, companyId: undefined, branchId: undefined, salesRepId: undefined }));
+                          }}
+                          config={{
+                            apiSubPath: '/companies/lookup',
+                            extraParams: { limit: 200, status: 'ACTIVE' },
+                            valueKey: 'id',
+                            labelKey: 'companyName',
+                            placeholder: 'Select Company',
+                            options: form.companyId ? companies.filter(c => c.id === form.companyId).map(c => ({ id: c.id, companyName: c.companyName })) : [],
+                          }}
+                          className={`mt-1 ${formErrors.companyId
+                            ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
+                            : ''
+                            }`}
+                        />
+                        {formErrors.companyId && (
+                          <p id="company-error" className="mt-1 text-xs font-medium text-rose-600">
+                            {formErrors.companyId}
+                          </p>
+                        )}
+                      </div>
+
+                    ) : null}
 
                     <div>
                       <label className="text-sm font-medium text-slate-700">Branch*</label>
@@ -3596,21 +3676,4 @@ export default function OrdersPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

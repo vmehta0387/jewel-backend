@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
@@ -21,12 +21,14 @@ const optionalNumberId = (value?: string | number | null): number | null => {
 };
 const COMPANY_ERROR_ORDER = [
   'companyName',
+  'newManagerDraft',
   'primaryEmail',
   'shipStreetAddress',
   'defaultMultiplier',
   'slabs',
   'collections',
 ];
+const NEW_MANAGER_ERROR_ORDER = ['newManagerFirstName', 'newManagerLastName', 'newManagerEmail'];
 const NEW_BRANCH_ERROR_ORDER = ['newBranchName', 'newBranchCode', 'newBranchEmail', 'newBranchMultiplier'];
 const NEW_USER_ERROR_ORDER = [
   'newUserFirstName',
@@ -98,8 +100,12 @@ export default function EditCompany() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreatingBranch, setIsCreatingBranch] = useState(false);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [pendingNavigationPath, setPendingNavigationPath] = useState<string | null>(null);
   const [showCreateBranchForm, setShowCreateBranchForm] = useState(false);
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
+  const [showAddManager, setShowAddManager] = useState(false);
+  const [newManager, setNewManager] = useState({ firstName: '', lastName: '', email: '', phone: '' });
+  const [pendingManagerData, setPendingManagerData] = useState<any>(null);
   const [accountManagers, setAccountManagers] = useState<any[]>([]);
   const [companyBranches, setCompanyBranches] = useState<any[]>([]);
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
@@ -118,6 +124,8 @@ export default function EditCompany() {
     phone: '',
     branchMultiplier: 1,
   });
+  const initialCompanySnapshotRef = useRef<string>('');
+
   const [newUserData, setNewUserData] = useState({
     firstName: '',
     lastName: '',
@@ -128,6 +136,25 @@ export default function EditCompany() {
     branchId: '',
     isActive: true,
   });
+
+
+  const currentCompanySnapshot = useMemo(() => JSON.stringify({
+    formData,
+    slabs,
+    collectionOverrides,
+    pendingManagerData,
+  }), [collectionOverrides, formData, pendingManagerData, slabs]);
+
+  const hasUnsavedCompanyChanges = Boolean(initialCompanySnapshotRef.current && currentCompanySnapshot !== initialCompanySnapshotRef.current);
+
+  const rememberCompanySnapshot = (nextFormData = formData, nextSlabs = slabs, nextCollectionOverrides = collectionOverrides, nextPendingManagerData = pendingManagerData) => {
+    initialCompanySnapshotRef.current = JSON.stringify({
+      formData: nextFormData,
+      slabs: nextSlabs,
+      collectionOverrides: nextCollectionOverrides,
+      pendingManagerData: nextPendingManagerData,
+    });
+  };
 
   useEffect(() => {
     fetchCompany();
@@ -231,6 +258,9 @@ export default function EditCompany() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.companyName.trim()) newErrors.companyName = 'Company name is required';
+    if (showAddManager) {
+      newErrors.newManagerDraft = 'Please click Add Manager to save the entered account manager details, or cancel this section before updating the company.';
+    }
     if (formData.primaryEmail && !EMAIL_REGEX.test(formData.primaryEmail)) {
       newErrors.primaryEmail = 'Invalid email format';
     }
@@ -269,9 +299,7 @@ export default function EditCompany() {
     return true;
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
+  const saveCompany = async (nextPath: string) => {
     if (!validateForm()) {
       return;
     }
@@ -302,16 +330,35 @@ export default function EditCompany() {
         enableCollectionPricing: formData.enableCollectionPricing,
         pricingSlabs: formData.enableSlabPricing ? slabs : null,
         collectionOverrides: formData.enableCollectionPricing ? collectionOverrides : null,
-      };
+      } as any;
+
+      if (pendingManagerData) {
+        payload.newAccountManager = pendingManagerData;
+        delete payload.accountManagerId;
+      }
 
       await api.put(`/companies/${id}`, payload);
-      navigate('/companies');
+      rememberCompanySnapshot(formData, slabs, collectionOverrides, null);
+      navigate(nextPath);
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Network error. Please try again.' });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await saveCompany('/companies');
+  };
+
+  const handleOpenFullForm = (path: string) => {
+    if (!hasUnsavedCompanyChanges) {
+      navigate(path);
+      return;
+    }
+    setPendingNavigationPath(path);
   };
 
   const validateBranchCreation = () => {
@@ -337,6 +384,43 @@ export default function EditCompany() {
     return Object.keys(nextErrors).length === 0;
   };
 
+  const validateNewManager = () => {
+    const nextErrors: Record<string, string> = {};
+
+    if (!newManager.firstName.trim()) nextErrors.newManagerFirstName = 'First name is required';
+    if (!newManager.lastName.trim()) nextErrors.newManagerLastName = 'Last name is required';
+    if (!newManager.email.trim()) {
+      nextErrors.newManagerEmail = 'Email is required';
+    } else if (!EMAIL_REGEX.test(newManager.email)) {
+      nextErrors.newManagerEmail = 'Invalid email format';
+    }
+
+    setErrors((prev) => {
+      const updated = { ...prev };
+      [...NEW_MANAGER_ERROR_ORDER, 'newManagerDraft'].forEach((key) => delete updated[key]);
+      return { ...updated, ...nextErrors };
+    });
+
+    focusFirstError(nextErrors, NEW_MANAGER_ERROR_ORDER);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const addPendingManager = () => {
+    if (!validateNewManager()) return;
+
+    const tempId = `temp-${Date.now()}`;
+    const fullName = `${newManager.firstName.trim()} ${newManager.lastName.trim()}`;
+    setAccountManagers((prev) => [...prev, { id: tempId, name: fullName }]);
+    setFormData((prev) => ({ ...prev, accountManagerId: tempId }));
+    setPendingManagerData({
+      firstName: newManager.firstName.trim(),
+      lastName: newManager.lastName.trim(),
+      email: newManager.email.trim().toLowerCase(),
+      phone: newManager.phone.trim() || undefined,
+    });
+    setNewManager({ firstName: '', lastName: '', email: '', phone: '' });
+    setShowAddManager(false);
+  };
   const validateUserCreation = () => {
     const nextErrors: Record<string, string> = {};
 
@@ -487,6 +571,52 @@ export default function EditCompany() {
           })}
         />
 
+        {pendingNavigationPath && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/40 px-4">
+            <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
+              <h2 className="text-lg font-semibold text-gray-900">Unsaved Company Changes</h2>
+              <p className="mt-2 text-sm text-gray-600">
+                Save your company changes before opening the full form, discard them, or stay on this page.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const nextPath = pendingNavigationPath;
+                    setPendingNavigationPath(null);
+                    void saveCompany(nextPath);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const nextPath = pendingNavigationPath;
+                    setPendingNavigationPath(null);
+                    navigate(nextPath);
+                  }}
+                  disabled={isSubmitting}
+                >
+                  Discard Changes
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setPendingNavigationPath(null)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
         <Card title="Company Information">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div ref={(element) => { fieldRefs.current.companyName = element; }}>
@@ -508,9 +638,15 @@ export default function EditCompany() {
             />
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Account Manager</label>
-              <SmartDropdown
+              <div className="flex gap-2">
+                <SmartDropdown
                   value={formData.accountManagerId}
-                  onChange={(value) => setFormData({ ...formData, accountManagerId: value })}
+                  onChange={(value) => {
+                    setFormData({ ...formData, accountManagerId: value });
+                    if (!String(value).startsWith('temp-')) {
+                      setPendingManagerData(null);
+                    }
+                  }}
                   config={{
                     apiSubPath: '/users/lookup',
                     extraParams: { role: 'INTERNAL_REP', status: 'ACTIVE' },
@@ -521,6 +657,58 @@ export default function EditCompany() {
                     labelKey: 'label',
                   }}
                 />
+                <Button type="button" variant="secondary" onClick={() => setShowAddManager((prev) => !prev)}>
+                  {showAddManager ? 'Cancel' : '+ Add New'}
+                </Button>
+              </div>
+
+              {showAddManager && (
+                <div
+                  id="newManagerDraft"
+                  tabIndex={-1}
+                  className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {errors.newManagerDraft && (
+                    <p className="text-sm text-red-600">{errors.newManagerDraft}</p>
+                  )}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Input
+                      id="newManagerFirstName"
+                      label="First Name *"
+                      value={newManager.firstName}
+                      onChange={(event) => setNewManager({ ...newManager, firstName: event.target.value })}
+                      placeholder="John"
+                      error={errors.newManagerFirstName}
+                    />
+                    <Input
+                      id="newManagerLastName"
+                      label="Last Name *"
+                      value={newManager.lastName}
+                      onChange={(event) => setNewManager({ ...newManager, lastName: event.target.value })}
+                      placeholder="Doe"
+                      error={errors.newManagerLastName}
+                    />
+                    <Input
+                      id="newManagerEmail"
+                      label="Email *"
+                      type="email"
+                      value={newManager.email}
+                      onChange={(event) => setNewManager({ ...newManager, email: event.target.value })}
+                      placeholder="john.doe@company.com"
+                      error={errors.newManagerEmail}
+                    />
+                    <Input
+                      label="Phone"
+                      value={newManager.phone}
+                      onChange={(event) => setNewManager({ ...newManager, phone: event.target.value })}
+                      placeholder="+1-555-0100"
+                    />
+                  </div>
+                  <Button type="button" size="sm" onClick={addPendingManager}>
+                    Add Manager
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </Card>
@@ -763,7 +951,7 @@ export default function EditCompany() {
                 <Button type="button" size="sm" onClick={() => setShowCreateBranchForm((prev) => !prev)}>
                   {showCreateBranchForm ? 'Cancel' : '+ Quick Add Branch'}
                 </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(`/branches/add?companyId=${id}`)}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => handleOpenFullForm(`/branches/add?companyId=${id}`)}>
                   Open Full Branch Form
                 </Button>
               </div>
@@ -917,7 +1105,7 @@ export default function EditCompany() {
                 <Button type="button" size="sm" onClick={() => setShowCreateUserForm((prev) => !prev)}>
                   {showCreateUserForm ? 'Cancel' : '+ Quick Add User'}
                 </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(`/users/add?companyId=${id}`)}>
+                <Button type="button" size="sm" variant="secondary" onClick={() => handleOpenFullForm(`/users/add?companyId=${id}`)}>
                   Open Full User Form
                 </Button>
               </div>
@@ -1101,10 +1289,4 @@ export default function EditCompany() {
     </div>
   );
 }
-
-
-
-
-
-
 

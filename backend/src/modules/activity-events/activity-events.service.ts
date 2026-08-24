@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Order } from '../orders/entities/order.entity';
+import { Design } from '../products/entities/design.entity';
 import { User } from '../users/entities/user.entity';
 import {
   FindActivityEventsQueryDto,
@@ -84,6 +85,11 @@ export class ActivityEventsService {
         .filter((event) => String(event.entityType || '').toUpperCase() === 'ORDER' && event.entityId)
         .map((event) => Number(event.entityId)),
     ));
+    const designIds = Array.from(new Set(
+      events
+        .filter((event) => String(event.entityType || '').toUpperCase() === 'DESIGN' && event.entityId)
+        .map((event) => Number(event.entityId)),
+    ));
 
     const users: User[] = userIds.length
       ? await this.activityEventRepo.manager.getRepository(User).find({
@@ -99,23 +105,34 @@ export class ActivityEventsService {
           .where('order.id IN (:...orderIds)', { orderIds })
           .getMany()
       : [];
+    const designs: Design[] = designIds.length
+      ? await this.activityEventRepo.manager.getRepository(Design).find({
+          select: ['id', 'designNo', 'designName'],
+          where: { id: In(designIds) },
+        })
+      : [];
 
     const usersById = new Map<number, User>(users.map((user) => [Number(user.id), user]));
     const ordersById = new Map<number, Order>(orders.map((order) => [Number(order.id), order]));
+    const designsById = new Map<number, Design>(designs.map((design) => [Number(design.id), design]));
     const data = events.map((event) => {
       const user = usersById.get(Number(event.userId));
-      const order = String(event.entityType || '').toUpperCase() === 'ORDER' && event.entityId
+      const entityType = String(event.entityType || '').toUpperCase();
+      const order = entityType === 'ORDER' && event.entityId
         ? ordersById.get(Number(event.entityId))
+        : null;
+      const design = entityType === 'DESIGN' && event.entityId
+        ? designsById.get(Number(event.entityId))
         : null;
       const userName = [user?.firstName, user?.lastName].map((part) => this.optionalText(part, 120)).filter(Boolean).join(' ');
       return {
         ...event,
         userName: this.optionalText(userName, 255),
         userEmail: this.optionalText(user?.email, 255),
-        entityLabel: this.optionalText(order?.orderNumber, 120),
+        entityLabel: this.optionalText(order?.orderNumber || design?.designNo, 120),
         entityStatus: this.optionalText(order?.status, 80),
-        designId: order?.designId != null ? Number(order.designId) : null,
-        designNo: this.optionalText(order?.design?.designNo, 120),
+        designId: order?.designId != null ? Number(order.designId) : design?.id != null ? Number(design.id) : null,
+        designNo: this.optionalText(order?.design?.designNo || design?.designNo, 120),
       };
     });
 

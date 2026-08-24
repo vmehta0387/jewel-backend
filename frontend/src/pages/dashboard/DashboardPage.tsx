@@ -326,6 +326,7 @@ function MiniLineChart({ values }: { values: number[] }) {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const user = useMemo(() => getStoredUser(), []);
+  const canViewCompanyTotals = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
   const canViewGoldPrice = user
     ? hasAnyActionPermission(user, [
         'dashboard.price_activity.view',
@@ -453,15 +454,33 @@ export default function DashboardPage() {
     }
   };
 
-  const openOrdersView = (view: 'received-today' | 'due-today' | 'sales-this-week' | 'last-7-days' | 'active') => {
+  const openOrdersView = (view: 'received-today' | 'due-today' | 'sales-this-week' | 'orders-trend' | 'sales-trend' | 'active') => {
     if (view === 'sales-this-week') {
       const week = getCurrentWeekRange();
-      navigate(`/orders?view=sales-this-week&createdFrom=${week.start}&createdTo=${week.end}`);
+      navigate(`/orders?view=sales-this-week&completedFrom=${week.start}&completedTo=${week.end}&statusGroup=COMPLETED`);
       return;
     }
-    if (view === 'last-7-days') {
+    if (view === 'orders-trend') {
       const range = getLastSevenDaysRange();
-      navigate(`/orders?view=last-7-days&createdFrom=${range.start}&createdTo=${range.end}`);
+      navigate(`/orders?view=orders-trend&createdFrom=${range.start}&createdTo=${range.end}&statusGroup=NON_COMPLETED`);
+      return;
+    }
+    if (view === 'sales-trend') {
+      const range = getLastSevenDaysRange();
+      navigate(`/orders?view=sales-trend&completedFrom=${range.start}&completedTo=${range.end}&statusGroup=COMPLETED`);
+      return;
+    }
+    if (view === 'active') {
+      navigate('/orders?view=active&statusGroup=NON_COMPLETED');
+      return;
+    }
+    const today = toDateParam(new Date());
+    if (view === 'received-today') {
+      navigate(`/orders?view=received-today&createdFrom=${today}&createdTo=${today}`);
+      return;
+    }
+    if (view === 'due-today') {
+      navigate(`/orders?view=due-today&deliveryFrom=${today}&deliveryTo=${today}`);
       return;
     }
     navigate(`/orders?view=${view}`);
@@ -887,7 +906,8 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
+        {canViewCompanyTotals ? (
+          <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <button type="button" onClick={() => navigate('/companies')} className="flex w-full items-start justify-between gap-6 text-left">
             <div>
               <p className="text-sm font-bold tracking-wider text-indigo-700">
@@ -903,6 +923,7 @@ export default function DashboardPage() {
             </span>
           </button>
         </Card>
+        ) : null}
         
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white relative group">
           <button type="button" onClick={() => navigate('/branches')} className="flex w-full items-start justify-between gap-6 text-left">
@@ -1048,7 +1069,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
-          <button type="button" onClick={() => openOrdersView('last-7-days')} className="block w-full text-left">
+          <button type="button" onClick={() => openOrdersView('orders-trend')} className="block w-full text-left">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-sm font-bold tracking-wider text-indigo-700">
@@ -1070,7 +1091,7 @@ export default function DashboardPage() {
         </Card>
         
         <Card className="glass-panel overflow-hidden rounded-2xl px-6 py-6 hover-lift border-t border-l border-white">
-          <button type="button" onClick={() => openOrdersView('last-7-days')} className="block w-full text-left">
+          <button type="button" onClick={() => openOrdersView('sales-trend')} className="block w-full text-left">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-sm font-bold tracking-wider text-indigo-700">

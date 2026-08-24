@@ -196,6 +196,18 @@ export class OrdersService implements OnModuleInit {
       });
     }
 
+    if (query.completedFrom?.trim()) {
+      qb.andWhere('DATE(order.completedAt) >= :completedFrom', {
+        completedFrom: query.completedFrom.trim(),
+      });
+    }
+
+    if (query.completedTo?.trim()) {
+      qb.andWhere('DATE(order.completedAt) <= :completedTo', {
+        completedTo: query.completedTo.trim(),
+      });
+    }
+
     this.applyCreatedPeriodFilter(qb, query.period);
 
     if (query.search?.trim()) {
@@ -220,6 +232,10 @@ export class OrdersService implements OnModuleInit {
       });
     } else if (query.statusGroup === 'COMPLETED') {
       qb.andWhere('order.status = :completedStatus', { completedStatus: OrderStatus.COMPLETED });
+    } else if (query.statusGroup === 'NON_COMPLETED') {
+      qb.andWhere('order.status IN (:...nonCompletedStatuses)', {
+        nonCompletedStatuses: [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL, OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION],
+      });
     }
 
     const totalAmountRaw = await qb
@@ -716,38 +732,62 @@ export class OrdersService implements OnModuleInit {
     this.applyScopeFilter(baseQuery, requester);
     baseQuery.andWhere('order.isActive = :isActive', { isActive: true });
 
-    const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED];
+    const completedStatus = OrderStatus.COMPLETED;
+    const nonCompletedStatuses = [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL, OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION];
 
-    // Dashboard placed-order totals exclude quotes/pending/cancelled and use the
-    // order creation date, so a completed order created today is counted today.
+    const todayRange = 'CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)';
+    const yesterdayRange = 'DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.createdAt < CURRENT_DATE';
+    const weekStart = 'DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY)';
+    const weekEnd = 'DATE_ADD(DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY), INTERVAL 7 DAY)';
+    const completedTodayRange = 'CURRENT_DATE AND order.completedAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)';
+    const completedYesterdayRange = 'DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.completedAt < CURRENT_DATE';
+    const completedThisMonthRange = "DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.completedAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH)";
+    const completedLastMonthRange = "DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) AND order.completedAt < DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')";
+
     const summaryRow = await baseQuery.clone()
-      .select('COUNT(*)', 'activeOrders')
+      .select('COUNT(CASE WHEN order.status IN (:...nonCompletedStatuses) THEN 1 END)', 'activeOrders')
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.createdAt >= ${todayRange} THEN 1 ELSE 0 END), 0)`,
+        'ordersReceivedToday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.createdAt >= ${yesterdayRange} THEN 1 ELSE 0 END), 0)`,
+        'ordersReceivedYesterday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.deliveryDate IS NOT NULL AND DATE(order.deliveryDate) = CURRENT_DATE THEN 1 ELSE 0 END), 0)`,
+        'ordersDueToday',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${weekStart} AND order.completedAt < ${weekEnd} THEN order.price ELSE 0 END), 0)`,
+        'salesThisWeek',
+      )
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedTodayRange} THEN order.price ELSE 0 END), 0)`,
         'salesToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_SUB(CURRENT_DATE, INTERVAL 1 DAY) AND order.createdAt < CURRENT_DATE THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedYesterdayRange} THEN order.price ELSE 0 END), 0)`,
         'salesYesterday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedThisMonthRange} THEN order.price ELSE 0 END), 0)`,
         'salesThisMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_SUB(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) AND order.createdAt < DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedLastMonthRange} THEN order.price ELSE 0 END), 0)`,
         'salesLastMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= CURRENT_DATE AND order.createdAt < DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY) THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedTodayRange} THEN 1 ELSE 0 END), 0)`,
         'ordersToday',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) AND order.createdAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') AND order.createdAt < DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-%m-01'), INTERVAL 1 MONTH) THEN 1 ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus AND order.completedAt >= ${completedThisMonthRange} THEN 1 ELSE 0 END), 0)`,
         'ordersThisMonth',
       )
       .addSelect(
-        `COALESCE(SUM(CASE WHEN order.status IN (:...fulfilledStatuses) THEN order.price ELSE 0 END), 0)`,
+        `COALESCE(SUM(CASE WHEN order.status = :completedStatus THEN order.price ELSE 0 END), 0)`,
         'branchRevenueTotal',
       )
       .addSelect(`SUM(CASE WHEN order.status = :quoteStatus THEN 1 ELSE 0 END)`, 'quoteCount')
@@ -761,13 +801,17 @@ export class OrdersService implements OnModuleInit {
         pendingStatus: OrderStatus.PENDING_APPROVAL,
         approvedStatus: OrderStatus.APPROVED,
         productionStatus: OrderStatus.IN_PRODUCTION,
-        fulfilledStatuses,
-        completedStatus: OrderStatus.COMPLETED,
+        completedStatus,
+        nonCompletedStatuses,
         cancelledStatus: OrderStatus.CANCELLED,
       })
       .getRawOne();
 
     const activeOrders = this.toNumber(summaryRow?.activeOrders ?? 0);
+    const ordersReceivedToday = this.toNumber(summaryRow?.ordersReceivedToday ?? 0);
+    const ordersReceivedYesterday = this.toNumber(summaryRow?.ordersReceivedYesterday ?? 0);
+    const ordersDueToday = this.toNumber(summaryRow?.ordersDueToday ?? 0);
+    const salesThisWeek = this.toNumber(summaryRow?.salesThisWeek ?? 0);
     const salesToday = this.toNumber(summaryRow?.salesToday ?? 0);
     const salesYesterday = this.toNumber(summaryRow?.salesYesterday ?? 0);
     const salesThisMonth = this.toNumber(summaryRow?.salesThisMonth ?? 0);
@@ -803,19 +847,22 @@ export class OrdersService implements OnModuleInit {
 
     return {
       activeOrders,
+      ordersReceivedToday,
+      ordersDueToday,
+      salesThisWeek: this.roundMoney(salesThisWeek),
       salesToday,
       todayTrend: calcTrend(salesToday, salesYesterday),
       salesThisMonth,
       monthlyTrend: calcTrend(salesThisMonth, salesLastMonth),
       ordersToday,
       ordersThisMonth,
+      receivedTrend: calcTrend(ordersReceivedToday, ordersReceivedYesterday),
       pipeline,
       branchRevenueTotal,
       branchSalesRepCount,
       pendingApprovalOrders,
     };
   }
-
   async getPeriodSummary(requester: AuthUser) {
     const fulfilledStatuses = [OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED];
     const countExpr = (condition: string) =>
@@ -866,10 +913,26 @@ export class OrdersService implements OnModuleInit {
     startDate.setDate(startDate.getDate() - 6);
     startDate.setHours(0, 0, 0, 0);
 
-    const qb = this.orderRepo
+    const nonCompletedStatuses = [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL, OrderStatus.APPROVED, OrderStatus.IN_PRODUCTION];
+
+    const ordersQb = this.orderRepo
+      .createQueryBuilder('order')
+      .select('DATE(order.createdAt)', 'date')
+      .addSelect('COUNT(*)', 'orders')
+      .where('order.createdAt >= :startDate AND order.createdAt <= :endDate', {
+        startDate,
+        endDate,
+      })
+      .andWhere('order.isActive = :isActive', { isActive: true })
+      .andWhere('order.status IN (:...nonCompletedStatuses)', { nonCompletedStatuses })
+      .groupBy('date')
+      .orderBy('date', 'ASC');
+
+    this.applyScopeFilter(ordersQb, requester);
+
+    const salesQb = this.orderRepo
       .createQueryBuilder('order')
       .select('DATE(order.completedAt)', 'date')
-      .addSelect('COUNT(*)', 'orders')
       .addSelect('SUM(order.price)', 'sales')
       .where('order.completedAt >= :startDate AND order.completedAt <= :endDate', {
         startDate,
@@ -880,34 +943,35 @@ export class OrdersService implements OnModuleInit {
       .groupBy('date')
       .orderBy('date', 'ASC');
 
-    this.applyScopeFilter(qb, requester);
+    this.applyScopeFilter(salesQb, requester);
 
-    const rows = await qb.getRawMany();
+    const [orderRows, salesRows] = await Promise.all([ordersQb.getRawMany(), salesQb.getRawMany()]);
     const byDate = new Map<string, { orders: number; sales: number }>();
-    rows.forEach((row: any) => {
-      const raw = row.date;
-      let dateKey = '';
-      if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
-        dateKey = raw.toISOString().slice(0, 10);
-      } else if (typeof raw === 'string') {
+    const readDateKey = (raw: unknown) => {
+      if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+      if (typeof raw === 'string') {
         const trimmed = raw.trim();
-        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-          dateKey = trimmed.slice(0, 10);
-        } else {
-          const parsed = new Date(trimmed);
-          if (!Number.isNaN(parsed.getTime())) {
-            dateKey = parsed.toISOString().slice(0, 10);
-          }
-        }
+        if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+        const parsed = new Date(trimmed);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
       }
+      return '';
+    };
 
-      if (!dateKey) {
-        return;
-      }
-      byDate.set(dateKey, {
-        orders: this.toNumber(row.orders),
-        sales: this.toNumber(row.sales),
-      });
+    orderRows.forEach((row: any) => {
+      const dateKey = readDateKey(row.date);
+      if (!dateKey) return;
+      const current = byDate.get(dateKey) || { orders: 0, sales: 0 };
+      current.orders = this.toNumber(row.orders);
+      byDate.set(dateKey, current);
+    });
+
+    salesRows.forEach((row: any) => {
+      const dateKey = readDateKey(row.date);
+      if (!dateKey) return;
+      const current = byDate.get(dateKey) || { orders: 0, sales: 0 };
+      current.sales = this.toNumber(row.sales);
+      byDate.set(dateKey, current);
     });
 
     const points = [];
@@ -925,7 +989,6 @@ export class OrdersService implements OnModuleInit {
 
     return { points };
   }
-
   private resolveScope(requester: AuthUser, companyId?: number, branchId?: number) {
     const normalizedCompanyId = companyId;
     const normalizedBranchId = branchId;

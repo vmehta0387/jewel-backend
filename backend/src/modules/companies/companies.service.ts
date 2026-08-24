@@ -50,7 +50,7 @@ export class CompaniesService {
 
     // Create new account manager if provided
     if (newAccountManager) {
-      const passwordHash = await bcrypt.hash('TempPassword123!', 10);
+      const passwordHash = await bcrypt.hash(randomUUID(), 10);
 
       const newUser = this.userRepo.create({
         email: newAccountManager.email,
@@ -291,7 +291,22 @@ export class CompaniesService {
 
   async update(id: number, dto: UpdateCompanyDto): Promise<Company> {
     // Extract pricing data from DTO
-    const { pricingSlabs, collectionOverrides, ...companyData } = dto as any;
+    const { pricingSlabs, collectionOverrides, newAccountManager, ...companyData } = dto as any;
+
+    if (newAccountManager) {
+      const passwordHash = await bcrypt.hash(randomUUID(), 10);
+      const newUser = this.userRepo.create({
+        email: newAccountManager.email,
+        passwordHash,
+        firstName: newAccountManager.firstName,
+        lastName: newAccountManager.lastName,
+        phone: newAccountManager.phone,
+        role: UserRole.INTERNAL_REP,
+        taskPermissions: [TaskPermission.COMPANY_MANAGEMENT, TaskPermission.VIEW_REPORTS],
+      });
+      const savedUser = await this.userRepo.save(newUser);
+      companyData.accountManagerId = savedUser.id;
+    }
 
     // Use update query instead of save to ensure database is updated
     await this.companyRepo.update(id, companyData);

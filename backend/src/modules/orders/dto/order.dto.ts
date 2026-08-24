@@ -238,8 +238,8 @@ export class FindOrdersQueryDto {
   includeStatusCounts?: 'true' | 'false';
 
   @IsOptional()
-  @IsIn(['FULFILLED', 'COMPLETED'])
-  statusGroup?: 'FULFILLED' | 'COMPLETED';
+  @IsIn(['FULFILLED', 'COMPLETED', 'NON_COMPLETED'])
+  statusGroup?: 'FULFILLED' | 'COMPLETED' | 'NON_COMPLETED';
 
   @IsOptional()
   @IsIn(['TODAY', 'WEEKLY', 'MONTHLY', 'ANNUALLY'])
@@ -260,6 +260,14 @@ export class FindOrdersQueryDto {
   @IsOptional()
   @IsString()
   createdTo?: string;
+
+  @IsOptional()
+  @IsString()
+  completedFrom?: string;
+
+  @IsOptional()
+  @IsString()
+  completedTo?: string;
 }
 
 export class FindPurchaseOrderUsageQueryDto {

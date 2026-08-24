@@ -69,14 +69,17 @@ const summarizeData = (value: Record<string, unknown> | null) => {
   return Object.entries(value).slice(0, 4);
 };
 
+const getTextDetail = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : '';
+const getDesignNo = (item: ActivityEventItem) => item.designNo || getTextDetail(item.data?.designNo) || getTextDetail(item.data?.designNumber);
 const getUserTitle = (item: ActivityEventItem) => item.userName || item.userEmail || `User ${item.userId}`;
 const getUserSubtext = (item: ActivityEventItem) => item.userName ? item.userEmail || '' : '';
-const getRecordTitle = (item: ActivityEventItem) => item.entityLabel || formatLabel(item.entityType);
+const getRecordTitle = (item: ActivityEventItem) => item.entityLabel || getDesignNo(item) || formatLabel(item.entityType);
 const getRecordSubtext = (item: ActivityEventItem) => {
-  const parts = [item.entityStatus ? `Status: ${formatLabel(item.entityStatus)}` : '', item.designNo ? `Design: ${item.designNo}` : '']
+  const designNo = getDesignNo(item);
+  const parts = [item.entityStatus ? `Status: ${formatLabel(item.entityStatus)}` : '', designNo && item.entityLabel !== designNo ? `Design: ${designNo}` : '']
     .filter(Boolean);
   if (parts.length) return parts.join(' | ');
-  return item.entityId ? `ID ${item.entityId}` : '';
+  return item.entityId && !designNo ? `ID ${item.entityId}` : '';
 };
 
 const formatDeviceType = (value: unknown) => {

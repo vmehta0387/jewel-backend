@@ -25,7 +25,6 @@ import { useAuth } from '../context/AuthContext';
 import type { Design, Order, SelectedDesignOptions } from '../types';
 import type { QuoteBuilderDraft, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import { getDesignFamilyKey } from '../utils/designFamily';
-import { confirmPurchaseOrderReuse } from '../utils/purchaseOrderUsage';
 import { canApproveOrderByStatus, canEditOrderByStatus, getOrderSubmitStatus } from '../utils/orderLifecycle';
 import { diffChanges } from '../utils/changeDiff';
 import { trackOrderChanged, trackOrderCreated } from '../utils/activityEvents';
@@ -473,17 +472,6 @@ const QuoteSummaryScreen = () => {
         notes: displaySummary.notes || undefined,
         status: targetStatus,
       };
-
-      if (!(await confirmPurchaseOrderReuse({
-        token,
-        companyId: user.companyId,
-        branchId: user.branchId,
-        purchaseOrderNumber: payload.purchaseOrderNumber,
-        excludeOrderId: orderId,
-        onError: setError,
-      }))) {
-        return;
-      }
 
       let nextOrderId = orderId;
       let nextOrderNumber = orderNumber;

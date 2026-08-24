@@ -150,6 +150,14 @@ export class UpdateCompanyDto {
   accountManagerId?: number;
 
   @IsOptional()
+  newAccountManager?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+  };
+
+  @IsOptional()
   @IsString()
   streetAddress?: string;
 
@@ -214,3 +222,4 @@ export class UpdateCompanyStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
+

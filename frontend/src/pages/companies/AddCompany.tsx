@@ -249,7 +249,7 @@ export default function AddCompany() {
     }
 
     if (showAddManager) {
-      newErrors.newManagerDraft = 'First add/cancel new manager detail with company';
+      newErrors.newManagerDraft = 'Please click Add Manager to save the entered account manager details, or cancel this section before creating the company.';
     }
     if (showCreateUserForm) {
       newErrors.newUserDraft = 'First add/cancel new user detail with company';
@@ -1272,11 +1272,4 @@ export default function AddCompany() {
     </div>
   );
 }
-
-
-
-
-
-
-
 

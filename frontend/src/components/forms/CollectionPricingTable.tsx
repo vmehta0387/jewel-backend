@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import Button from '../common/Button';
+import SmartDropdown, { type SmartDropdownOption } from '../common/SmartDropdown';
 
 export interface CollectionOverride {
   collectionType: string;
@@ -10,11 +12,11 @@ interface Props {
   setOverrides: (overrides: CollectionOverride[]) => void;
 }
 
-const collectionTypes = [
-  { value: 'ENGAGEMENT', label: 'Engagement Rings' },
-  { value: 'ETERNITY', label: 'Eternity Rings' },
-  { value: 'FLORAL', label: 'Floral Collection' },
-  { value: 'WEDDING_BANDS', label: 'Wedding Bands' },
+const fallbackCollectionTypes: SmartDropdownOption[] = [
+  { value: 'ENGAGEMENT', label: 'ENGAGEMENT' },
+  { value: 'ETERNITY', label: 'ETERNITY' },
+  { value: 'FLORAL', label: 'FLORAL' },
+  { value: 'WEDDING_BANDS', label: 'WEDDING_BANDS' },
 ];
 
 export function validateCollectionOverrides(overrides: CollectionOverride[]): string | null {
@@ -48,6 +50,11 @@ export function validateCollectionOverrides(overrides: CollectionOverride[]): st
 }
 
 export default function CollectionPricingTable({ overrides, setOverrides }: Props) {
+  const selectedCollectionTypes = useMemo(
+    () => new Set(overrides.map((override) => override.collectionType).filter(Boolean)),
+    [overrides],
+  );
+
   const addOverride = () => {
     setOverrides([...overrides, { collectionType: '', multiplier: '' }]);
   };
@@ -81,19 +88,24 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
             <tbody>
               {overrides.map((override, idx) => (
                 <tr key={idx} className="app-table-row">
-                  <td className="app-table-cell">
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
+                  <td className="app-table-cell min-w-[14rem]">
+                    <SmartDropdown
                       value={override.collectionType}
-                      onChange={(e) => updateOverride(idx, 'collectionType', e.target.value)}
-                    >
-                      <option value="">Select Collection Type</option>
-                      {collectionTypes.map((type) => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateOverride(idx, 'collectionType', value)}
+                      config={{
+                        apiSubPath: '/products/master-tables/COLLECTION/dropdown',
+                        extraParams: { status: 'ACTIVE' },
+                        options: fallbackCollectionTypes,
+                        placeholder: 'Select Collection Type',
+                        clearLabel: 'Clear Collection Type',
+                        valueKey: 'value',
+                        labelKey: 'value',
+                        getOptionDisabled: (option) => {
+                          const optionValue = String(option.value ?? '');
+                          return selectedCollectionTypes.has(optionValue) && override.collectionType !== optionValue;
+                        },
+                      }}
+                    />
                   </td>
                   <td className="app-table-cell">
                     <input
@@ -130,5 +142,4 @@ export default function CollectionPricingTable({ overrides, setOverrides }: Prop
     </div>
   );
 }
-
 
