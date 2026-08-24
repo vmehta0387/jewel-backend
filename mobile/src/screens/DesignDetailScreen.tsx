@@ -469,7 +469,6 @@ const DesignDetailScreen = ({
   const keyboardHeightRef = useRef(0);
   const keyboardRestoreScrollYRef = useRef<number | null>(null);
   const keyboardManualScrollRef = useRef(false);
-  const lastImageTapAtRef = useRef(0);
   const lastViewerTapAtRef = useRef(0);
   const pinchRef = useRef<PinchGestureHandler>(null);
   const panRef = useRef<PanGestureHandler>(null);
@@ -826,17 +825,7 @@ const DesignDetailScreen = ({
 
   const handleMediaPress = useCallback(
     (uri: string) => {
-      if (isVideoMedia(uri)) {
-        openImageViewer(uri);
-        return;
-      }
-      const now = Date.now();
-      if (now - lastImageTapAtRef.current <= 320) {
-        lastImageTapAtRef.current = 0;
-        openImageViewer(uri);
-        return;
-      }
-      lastImageTapAtRef.current = now;
+      openImageViewer(uri);
     },
     [openImageViewer],
   );
@@ -2714,7 +2703,4 @@ const styles = StyleSheet.create({
 });
 
 export default DesignDetailScreen;
-
-
-
 

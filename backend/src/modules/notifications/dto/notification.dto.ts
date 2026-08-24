@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { UserRole } from '../../../common/enums/user-role.enum';
+import { IsArray, IsBoolean, IsEnum, IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export type NotificationSectionFilter = 'ALERTS' | 'UPDATES';
 
@@ -96,4 +97,33 @@ export class SendCustomNotificationDto {
   @Transform(({ value }) => parseBooleanQuery(value))
   @IsBoolean()
   channelPush?: boolean = true;
+
+  @IsOptional()
+  @IsIn(['ALL', 'FILTERED', 'SELECTED'])
+  targetMode?: 'ALL' | 'FILTERED' | 'SELECTED' = 'ALL';
+
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  companyId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  branchId?: number;
+
+  @IsOptional()
+  @IsString()
+  userSearch?: string;
+
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsNumber({}, { each: true })
+  selectedUserIds?: number[];
 }
+

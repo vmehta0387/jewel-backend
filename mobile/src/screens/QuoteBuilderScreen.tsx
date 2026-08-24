@@ -337,6 +337,7 @@ const QuoteBuilderScreen = () => {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(draft.orderId || null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const lastPoBlurCheckRef = useRef('');
+  const confirmedPoReuseKeyRef = useRef('');
   const poReuseResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const [dropdownVisible, setDropdownVisible] = useState(false);
@@ -924,6 +925,9 @@ const QuoteBuilderScreen = () => {
     const normalizedPo = (poOverride ?? purchaseOrderNumber).trim();
     if (!token || !companyId || !normalizedPo) return true;
 
+    const checkKey = [companyId, order?.id || editingOrderId || '', normalizedPo.toLowerCase()].join('|');
+    if (confirmedPoReuseKeyRef.current === checkKey) return true;
+
     try {
       const usage = await fetchPurchaseOrderUsage(token, {
         companyId,
@@ -942,7 +946,12 @@ const QuoteBuilderScreen = () => {
       const message = `This PO has already been used for ${count} item(s). Do you want to continue with the same PO number?${examples ? `\n\n${examples}` : ''}`;
 
       return new Promise<boolean>((resolve) => {
-        poReuseResolveRef.current = resolve;
+        poReuseResolveRef.current = (confirmed) => {
+          if (confirmed) {
+            confirmedPoReuseKeyRef.current = checkKey;
+          }
+          resolve(confirmed);
+        };
         setPoReuseConfirm({ visible: true, message });
       });
     } catch (err: any) {
@@ -956,9 +965,6 @@ const QuoteBuilderScreen = () => {
       if (!token || !companyId || !branchId) return null;
       if (isOrderLocked) {
         setError('This order cannot be changed in its current status.');
-        return null;
-      }
-      if (!(await confirmPurchaseOrderReuseInApp())) {
         return null;
       }
       const effectiveStatus = getOrderSubmitStatus(nextStatus, user?.role);
@@ -1070,18 +1076,11 @@ const QuoteBuilderScreen = () => {
     ],
   );
 
-  const handlePurchaseOrderBlur = useCallback(async () => {
-    const poNumber = purchaseOrderNumber.trim();
-    if (!token || !companyId || !poNumber) return;
-    const checkKey = [companyId, order?.id || editingOrderId || '', poNumber.toLowerCase()].join('|');
-    if (lastPoBlurCheckRef.current === checkKey) return;
-    lastPoBlurCheckRef.current = checkKey;
-    await confirmPurchaseOrderReuseInApp(poNumber);
-  }, [companyId, confirmPurchaseOrderReuseInApp, editingOrderId, order?.id, purchaseOrderNumber, token]);
 
   const handleSave = useCallback(async () => {
     if (!canPersist) return;
     if (!validateCustomerDetails()) return;
+    if (!(await confirmPurchaseOrderReuseInApp())) return;
     setSaving(true);
     setError(null);
     try {
@@ -1096,7 +1095,7 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [canPersist, navigation, persistOrder, validateCustomerDetails]);
+  }, [canPersist, confirmPurchaseOrderReuseInApp, navigation, persistOrder, validateCustomerDetails]);
 
   const handleSendForApproval = useCallback(async () => {
     if (!canPersist) return;
@@ -1107,6 +1106,7 @@ const QuoteBuilderScreen = () => {
 
   const handleConfirmSendForApproval = useCallback(async () => {
     setApprovalConfirmVisible(false);
+    if (!(await confirmPurchaseOrderReuseInApp())) return;
     setSending(true);
     setError(null);
     try {
@@ -1121,7 +1121,7 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSending(false);
     }
-  }, [navigation, persistOrder]);
+  }, [confirmPurchaseOrderReuseInApp, navigation, persistOrder]);
 
   const headerDate = formatQuoteDate(order?.createdAt || draft.createdAt);
   const preparedFor = customerName.trim() || '-';
@@ -1232,6 +1232,7 @@ const QuoteBuilderScreen = () => {
               onChangeText={(value) => {
                 setPurchaseOrderNumber(value);
                 lastPoBlurCheckRef.current = '';
+                confirmedPoReuseKeyRef.current = '';
                 if (value.trim()) {
                   setPurchaseOrderError(false);
                   if (error === 'Purchase order number is required.') {
@@ -1239,7 +1240,6 @@ const QuoteBuilderScreen = () => {
                   }
                 }
               }}
-              onEndEditing={handlePurchaseOrderBlur}
               placeholder="PO-2024-LJ-0092"
               placeholderTextColor="#A69582"
               style={[styles.poInput, purchaseOrderError ? styles.poInputError : null]}
@@ -2223,14 +2223,4 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteBuilderScreen;
-
-
-
-
-
-
-
-
-
-
 

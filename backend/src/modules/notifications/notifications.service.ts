@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
@@ -292,16 +292,47 @@ export class NotificationsService {
     const title = this.normalizeText(dto.title);
     const message = this.normalizeText(dto.message);
     if (!title || !message) {
-      throw new NotFoundException('Title and message are required');
+      throw new BadRequestException('Title and message are required');
     }
 
-    const recipients = await this.userRepo.find({
-      where: {
-        isActive: true,
-      },
-      select: ['id'],
-    });
-    const recipientIds = recipients.map((user) => user.id).filter((id) => id !== requester.id);
+    const targetMode = dto.targetMode || 'ALL';
+    const usersQuery = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoin('user.company', 'company')
+      .leftJoin('user.branch', 'branch')
+      .where('user.isActive = :isActive', { isActive: true })
+      .andWhere('user.id != :requesterId', { requesterId: requester.id });
+
+    if (targetMode === 'SELECTED') {
+      const selectedUserIds = Array.from(new Set((dto.selectedUserIds || []).filter((id) => Number.isFinite(Number(id)))));
+      if (!selectedUserIds.length) {
+        throw new BadRequestException('Select at least one user');
+      }
+      usersQuery.andWhere('user.id IN (:...selectedUserIds)', { selectedUserIds });
+    } else if (targetMode === 'FILTERED') {
+      if (dto.role) {
+        usersQuery.andWhere('user.role = :role', { role: dto.role });
+      }
+      if (dto.companyId) {
+        usersQuery.andWhere('user.companyId = :companyId', { companyId: dto.companyId });
+      }
+      if (dto.branchId) {
+        usersQuery.andWhere('user.branchId = :branchId', { branchId: dto.branchId });
+      }
+      const search = this.optionalText(dto.userSearch);
+      if (search) {
+        usersQuery.andWhere(
+          '(user.firstName LIKE :search OR user.lastName LIKE :search OR user.email LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search)',
+          { search: `%${search}%` },
+        );
+      }
+    }
+
+    const recipients = await usersQuery.select(['user.id']).getMany();
+    const recipientIds = recipients.map((user) => user.id);
+    if (!recipientIds.length) {
+      throw new BadRequestException('No matching users found');
+    }
 
     const entityType = dto.activityType === 'GENERAL' ? null : dto.activityType;
     const entityId = dto.activityType === 'GENERAL' ? null : dto.activityRecordId ?? null;
@@ -326,6 +357,14 @@ export class NotificationsService {
         generatedByUserId: requester.id,
         activityType: dto.activityType,
         activityRecordId: entityId,
+        targetMode,
+        filters: {
+          role: dto.role || null,
+          companyId: dto.companyId || null,
+          branchId: dto.branchId || null,
+          userSearch: dto.userSearch || null,
+          selectedUserIds: targetMode === 'SELECTED' ? recipientIds : undefined,
+        },
       },
     });
 
@@ -486,4 +525,5 @@ export class NotificationsService {
     return normalized.length ? normalized : null;
   }
 }
+
 

@@ -363,7 +363,7 @@ const BranchDashboardScreen = () => {
 
       if (designsRes.status === 'fulfilled') {
         const chosen = (designsRes.value.data || []).slice(0, 3).map((design) => ({
-          id: design.id,
+          id: String(design.id),
           title: design.designName || design.designNo || 'Jewelry design',
           subtitle: `${design.jewelryGroup || 'Jewelry'} - ${design.collection || design.version || 'Catalog'}`,
           price: Number(design.displayPrice ?? design.totalValue ?? 0),
@@ -919,14 +919,15 @@ const BranchDashboardScreen = () => {
                     style={styles.trendingCard}
                     activeOpacity={0.9}
                     onPress={() => {
-                      if (item.id.startsWith('fallback-')) {
+                      const designId = String(item.id || '');
+                      if (designId.startsWith('fallback-')) {
                         navigation.navigate('DesignsTab', { screen: 'CatalogCategories' });
                         return;
                       }
 
                       navigation.navigate('DesignsTab', {
                         screen: 'DesignDetail',
-                        params: { designId: item.id },
+                        params: { designId },
                       });
                     }}
                   >
@@ -1706,3 +1707,4 @@ const styles = StyleSheet.create({
 });
 
 export default BranchDashboardScreen;
+

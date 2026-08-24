@@ -42,6 +42,12 @@ export interface SendCustomNotificationPayload {
   activityRecordId?: number;
   priority?: NotificationPriority;
   channelPush?: boolean;
+  targetMode?: 'ALL' | 'FILTERED' | 'SELECTED';
+  role?: string;
+  companyId?: number;
+  branchId?: number;
+  userSearch?: string;
+  selectedUserIds?: number[];
 }
 
 export interface SendCustomNotificationResponse {
