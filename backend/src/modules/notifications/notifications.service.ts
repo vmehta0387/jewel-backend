@@ -8,6 +8,7 @@ import { User } from '../users/entities/user.entity';
 import {
   FindNotificationsQueryDto,
   RegisterPushDeviceDto,
+  SendCustomNotificationDto,
   UnregisterPushDeviceDto,
 } from './dto/notification.dto';
 import { NotificationPushDevice } from './entities/notification-push-device.entity';
@@ -287,6 +288,53 @@ export class NotificationsService {
     return saved;
   }
 
+  async sendCustomNotification(requester: AuthUser, dto: SendCustomNotificationDto) {
+    const title = this.normalizeText(dto.title);
+    const message = this.normalizeText(dto.message);
+    if (!title || !message) {
+      throw new NotFoundException('Title and message are required');
+    }
+
+    const recipients = await this.userRepo.find({
+      where: {
+        isActive: true,
+      },
+      select: ['id'],
+    });
+    const recipientIds = recipients.map((user) => user.id).filter((id) => id !== requester.id);
+
+    const entityType = dto.activityType === 'GENERAL' ? null : dto.activityType;
+    const entityId = dto.activityType === 'GENERAL' ? null : dto.activityRecordId ?? null;
+    const actionUrl =
+      dto.activityType === 'ORDER' && entityId
+        ? `/orders?open=${entityId}`
+        : dto.activityType === 'DESIGN' && entityId
+          ? `/products?open=${entityId}`
+          : null;
+
+    const saved = await this.createForUsers(recipientIds, {
+      type: `CUSTOM_${dto.activityType}`,
+      priority: dto.priority || NotificationPriority.P1,
+      title,
+      message,
+      entityType,
+      entityId,
+      actionUrl,
+      channelInApp: true,
+      channelPush: dto.channelPush ?? true,
+      metadata: {
+        generatedByUserId: requester.id,
+        activityType: dto.activityType,
+        activityRecordId: entityId,
+      },
+    });
+
+    return {
+      success: true,
+      targetUsers: recipientIds.length,
+      createdNotifications: saved.length,
+    };
+  }
   private async sendPushForNotifications(notifications: Notification[]) {
     const pushNotifications = notifications.filter(
       (item) => item.channelPush && !item.isRead && this.isSupportedExpoTokenValue(item.recipientUserId),
@@ -438,3 +486,4 @@ export class NotificationsService {
     return normalized.length ? normalized : null;
   }
 }
+

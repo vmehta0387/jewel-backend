@@ -72,3 +72,28 @@ export class UnregisterPushDeviceDto {
   @IsString()
   expoPushToken!: string;
 }
+
+export class SendCustomNotificationDto {
+  @IsString()
+  title!: string;
+
+  @IsString()
+  message!: string;
+
+  @IsIn(['GENERAL', 'ORDER', 'DESIGN'])
+  activityType!: 'GENERAL' | 'ORDER' | 'DESIGN';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  activityRecordId?: number;
+
+  @IsOptional()
+  @IsIn(['P0', 'P1', 'P2'])
+  priority?: 'P0' | 'P1' | 'P2';
+
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  channelPush?: boolean = true;
+}

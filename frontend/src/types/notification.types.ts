@@ -27,3 +27,26 @@ export interface NotificationListResponse {
   totalPages: number;
 }
 
+
+export type CustomNotificationActivityType = 'GENERAL' | 'ORDER' | 'DESIGN';
+
+export interface CustomNotificationRecordOption {
+  id: number;
+  label: string;
+}
+
+export interface SendCustomNotificationPayload {
+  title: string;
+  message: string;
+  activityType: CustomNotificationActivityType;
+  activityRecordId?: number;
+  priority?: NotificationPriority;
+  channelPush?: boolean;
+}
+
+export interface SendCustomNotificationResponse {
+  success: boolean;
+  targetUsers: number;
+  createdNotifications: number;
+}
+

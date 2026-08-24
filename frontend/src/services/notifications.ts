@@ -1,5 +1,7 @@
 import api from './api';
 import type {
+  SendCustomNotificationPayload,
+  SendCustomNotificationResponse,
   NotificationItem,
   NotificationListResponse,
 } from '../types/notification.types';
@@ -45,3 +47,10 @@ export const markAllNotificationsRead = async () => {
   const response = await api.patch<{ unreadCount: number }>('/notifications/read-all', {});
   return response.data;
 };
+
+
+export const sendCustomNotification = async (payload: SendCustomNotificationPayload) => {
+  const response = await api.post<SendCustomNotificationResponse>('/notifications/custom/send', payload);
+  return response.data;
+};
+

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import CustomNotificationModal from './CustomNotificationModal';
 import {
   fetchNotificationsWithFilters,
   markAllNotificationsRead,
@@ -15,6 +16,7 @@ import {
   getNotificationToneClasses,
   resolveNotificationPath,
 } from '../../utils/notifications';
+import { getStoredUser } from '../../utils/auth';
 
 type NotificationFilter = 'ALL' | 'UNREAD' | 'ALERTS' | 'UPDATES';
 
@@ -42,6 +44,9 @@ export default function NotificationsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [counts, setCounts] = useState<NotificationCounts>({ all: 0, unread: 0, alerts: 0, updates: 0 });
   const [processingIds, setProcessingIds] = useState<Record<string, boolean>>({});
+  const [customNotificationOpen, setCustomNotificationOpen] = useState(false);
+  const user = getStoredUser();
+  const canSendCustomNotification = user?.role === 'SUPER_ADMIN' || user?.role === 'INTERNAL_REP';
 
   const backendSection = useMemo(() => {
     if (filter === 'ALERTS') return 'ALERTS' as const;
@@ -183,6 +188,11 @@ export default function NotificationsPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {canSendCustomNotification ? (
+            <Button type="button" variant="secondary" onClick={() => setCustomNotificationOpen(true)}>
+              Custom Notification
+            </Button>
+          ) : null}
           <Button type="button" variant="secondary" onClick={() => void refreshAll()}>
             Refresh
           </Button>
@@ -362,6 +372,16 @@ export default function NotificationsPage() {
           )}
         </div>
       </Card>
+
+      <CustomNotificationModal
+        open={customNotificationOpen}
+        onClose={() => setCustomNotificationOpen(false)}
+        onSent={() => {
+          broadcastNotificationsChanged();
+          void refreshAll();
+        }}
+      />
     </div>
   );
 }
+

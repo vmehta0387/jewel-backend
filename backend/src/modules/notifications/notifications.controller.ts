@@ -1,10 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { UserRole } from '../../common/enums/user-role.enum';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   FindNotificationsQueryDto,
   MarkNotificationReadDto,
   RegisterPushDeviceDto,
+  SendCustomNotificationDto,
   UnregisterPushDeviceDto,
 } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
@@ -46,5 +50,12 @@ export class NotificationsController {
   @Post('push/unregister')
   unregisterPushDevice(@Body() body: UnregisterPushDeviceDto, @Request() req: { user: AuthUser }) {
     return this.notificationsService.unregisterPushDevice(req.user, body);
+  }
+
+  @Post('custom/send')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
+  sendCustomNotification(@Body() body: SendCustomNotificationDto, @Request() req: { user: AuthUser }) {
+    return this.notificationsService.sendCustomNotification(req.user, body);
   }
 }
