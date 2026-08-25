@@ -23,6 +23,7 @@ import { fetchDesign } from '../api/designs';
 import type { Design, Order } from '../types';
 import type { OrdersStackParamList } from '../navigation/RootNavigator';
 import { canApproveOrderByStatus, canEditOrderByStatus, canRejectOrderByStatus } from '../utils/orderLifecycle';
+import { hasActionPermission } from '../utils/permissions';
 import { trackOrderChanged, trackOrderViewed } from '../utils/activityEvents';
 
 const formatStatusLabel = (value?: string | null) =>
@@ -153,7 +154,11 @@ const OrderDetailScreen = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canApproveReject = canApproveOrderByStatus(order?.status, user?.role) || canRejectOrderByStatus(order?.status, user?.role);
+  const canUpdateOrderStatus = user?.role === 'BRANCH_MANAGER'
+    ? hasActionPermission(user, 'mobile.order.status_update')
+    : true;
+  const canApproveReject = canUpdateOrderStatus
+    && (canApproveOrderByStatus(order?.status, user?.role) || canRejectOrderByStatus(order?.status, user?.role));
   const shouldShowSalesRep = Boolean(user && user.role !== 'SALES_REP');
   const canEditCurrentOrder = canEditOrderByStatus(order?.status, user?.role);
   const minimumDeliveryDate = useMemo(() => {
@@ -269,9 +274,9 @@ const OrderDetailScreen = () => {
 
   const handleManagerAction = async (nextStatus: 'APPROVED' | 'CANCELLED') => {
     if (!token || !order) return;
-    const allowed = nextStatus === 'APPROVED'
+    const allowed = canUpdateOrderStatus && (nextStatus === 'APPROVED'
       ? canApproveOrderByStatus(order.status, user?.role)
-      : canRejectOrderByStatus(order.status, user?.role);
+      : canRejectOrderByStatus(order.status, user?.role));
     if (!allowed) {
       setError('This status action is not allowed for your role.');
       return;

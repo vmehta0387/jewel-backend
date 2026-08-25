@@ -10,6 +10,7 @@ import { Company } from '../companies/entities/company.entity';
 import { Branch } from '../branches/entities/branch.entity';
 import { Design } from '../products/entities/design.entity';
 import { User } from '../users/entities/user.entity';
+import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
@@ -87,6 +88,7 @@ export class OrdersService implements OnModuleInit {
     @InjectRepository(Branch) private readonly branchRepo: Repository<Branch>,
     @InjectRepository(Design) private readonly designRepo: Repository<Design>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectRepository(UserPermissionAction) private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly spiffService: SpiffService,
     private readonly notificationsService: NotificationsService,
     private readonly pricingService: PricingService,
@@ -390,8 +392,11 @@ export class OrdersService implements OnModuleInit {
       });
       const { orderNumber } = await this.getNextOrderNumber();
       const requestedStatus = dto.orderType === 'ORDER' ? undefined : dto.status;
-      const computedStatus = await this.resolveCreateStatus(requestedStatus, requester);
-      this.assertOrderStatusChangeAllowed({ status: OrderStatus.QUOTE, salesRepId: selectedSalesRep?.id || requester.id }, requester, computedStatus);
+      const createStatusUser = requester.role === UserRole.BRANCH_MANAGER ? requester : selectedSalesRep || requester;
+      const computedStatus = await this.resolveCreateStatus(requestedStatus, createStatusUser);
+      if (!this.isAutoApprovedCreateStatus(computedStatus, createStatusUser)) {
+        await this.assertOrderStatusChangeAllowed({ status: OrderStatus.QUOTE, salesRepId: selectedSalesRep?.id || requester.id }, requester, computedStatus);
+      }
       const shippingFields = {
         shipDate: dto.shipDate?.trim() || null,
         shipVia: dto.shipVia?.trim() || null,
@@ -498,8 +503,10 @@ export class OrdersService implements OnModuleInit {
       return requestedStatus;
     }
 
-    if (requester.role === UserRole.SALES_REP) {
-      return OrderStatus.PENDING_APPROVAL;
+    if (requester.role === UserRole.SALES_REP || requester.role === UserRole.BRANCH_MANAGER) {
+      return await this.hasAutoApprovalPermission(requester.id)
+        ? OrderStatus.APPROVED
+        : OrderStatus.PENDING_APPROVAL;
     }
 
     if (this.isOrderApprover(requester)) {
@@ -507,6 +514,30 @@ export class OrdersService implements OnModuleInit {
     }
 
     return OrderStatus.QUOTE;
+  }
+
+  private isAutoApprovedCreateStatus(status: OrderStatus, user: Pick<AuthUser | User, 'role'>): boolean {
+    return status === OrderStatus.APPROVED
+      && (user.role === UserRole.SALES_REP || user.role === UserRole.BRANCH_MANAGER);
+  }
+
+  private async hasAutoApprovalPermission(userId: number | string): Promise<boolean> {
+    return this.hasOrderActionPermission(userId, 'order.require_approval');
+  }
+
+  private async hasMobileStatusUpdatePermission(userId: number | string): Promise<boolean> {
+    return this.hasOrderActionPermission(userId, 'mobile.order.status_update');
+  }
+
+  private async hasOrderActionPermission(userId: number | string, actionKey: string): Promise<boolean> {
+    const row = await this.userPermissionActionRepo.findOne({
+      where: {
+        userId: Number(userId),
+        actionKey,
+      },
+      select: ['id'],
+    });
+    return Boolean(row);
   }
 
   async update(id: number, dto: UpdateOrderDto, requester: AuthUser) {
@@ -623,19 +654,22 @@ export class OrdersService implements OnModuleInit {
       order.invoiceNo = dto.invoiceNo?.trim() || null;
     }
     if (dto.orderType === 'QUOTE') {
-      this.assertOrderStatusChangeAllowed(order, requester, OrderStatus.QUOTE);
+      await this.assertOrderStatusChangeAllowed(order, requester, OrderStatus.QUOTE);
       order.status = OrderStatus.QUOTE;
       order.completedAt = null;
     } else if (dto.orderType === 'ORDER' && order.status === OrderStatus.QUOTE) {
       const selectedSalesRep = order.salesRepId
         ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
         : null;
-      const nextStatus = await this.resolveCreateStatus(undefined, selectedSalesRep || requester);
-      this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
+      const createStatusUser = requester.role === UserRole.BRANCH_MANAGER ? requester : selectedSalesRep || requester;
+      const nextStatus = await this.resolveCreateStatus(undefined, createStatusUser);
+      if (!this.isAutoApprovedCreateStatus(nextStatus, createStatusUser)) {
+        await this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
+      }
       order.status = nextStatus;
       order.completedAt = order.status === OrderStatus.COMPLETED ? new Date() : null;
     } else if (dto.status !== undefined) {
-      this.assertOrderStatusChangeAllowed(order, requester, dto.status);
+      await this.assertOrderStatusChangeAllowed(order, requester, dto.status);
       if (dto.status === OrderStatus.COMPLETED) {
         this.assertCompletedShippingFields(order);
       }
@@ -1470,7 +1504,6 @@ export class OrdersService implements OnModuleInit {
 
   private isOrderApprover(requester: Pick<AuthUser, 'role'>): boolean {
     return [
-      UserRole.BRANCH_MANAGER,
       UserRole.COMPANY_ADMIN,
       UserRole.SUPER_ADMIN,
       UserRole.INTERNAL_REP,
@@ -1491,11 +1524,11 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
-  private assertOrderStatusChangeAllowed(
+  private async assertOrderStatusChangeAllowed(
     order: Pick<Order, 'status' | 'salesRepId'>,
     requester: AuthUser,
     nextStatus: OrderStatus,
-  ): void {
+  ): Promise<void> {
     if (order.status === nextStatus) {
       if (order.status === OrderStatus.CANCELLED) {
         throw new ForbiddenException('Cancelled orders cannot be changed');
@@ -1514,21 +1547,24 @@ export class OrdersService implements OnModuleInit {
       throw new ForbiddenException('Only super admin can change completed orders');
     }
 
-    if (nextStatus === OrderStatus.APPROVED && !this.isOrderApprover(requester)) {
-      throw new ForbiddenException('Only branch managers, company admins, internal reps and super admin can approve orders');
+    const branchManagerCanUpdateStatus = requester.role === UserRole.BRANCH_MANAGER
+      && await this.hasMobileStatusUpdatePermission(requester.id);
+
+    if (nextStatus === OrderStatus.APPROVED && !this.isOrderApprover(requester) && !branchManagerCanUpdateStatus) {
+      throw new ForbiddenException('Only permitted branch managers, company admins, internal reps and super admin can approve orders');
     }
 
     if ([OrderStatus.IN_PRODUCTION, OrderStatus.COMPLETED].includes(nextStatus) && !this.isPowerOrderUser(requester)) {
       throw new ForbiddenException('Only internal reps and super admin can move orders to production or completed');
     }
 
-    if (nextStatus === OrderStatus.CANCELLED && !this.canCancelOrder(order, requester)) {
+    if (nextStatus === OrderStatus.CANCELLED && !this.canCancelOrder(order, requester, branchManagerCanUpdateStatus)) {
       throw new ForbiddenException('You are not allowed to cancel this order');
     }
   }
 
-  private canCancelOrder(order: Pick<Order, 'status' | 'salesRepId'>, requester: AuthUser): boolean {
-    if (this.isPowerOrderUser(requester) || this.isOrderApprover(requester)) {
+  private canCancelOrder(order: Pick<Order, 'status' | 'salesRepId'>, requester: AuthUser, branchManagerCanUpdateStatus = false): boolean {
+    if (this.isPowerOrderUser(requester) || this.isOrderApprover(requester) || branchManagerCanUpdateStatus) {
       return true;
     }
     return requester.role === UserRole.SALES_REP

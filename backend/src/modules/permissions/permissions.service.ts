@@ -49,7 +49,6 @@ const HIDDEN_PERMISSION_ACTIONS = new Set([
   'mobile.order.view',
   'mobile.order.create',
   'mobile.order.edit',
-  'mobile.order.status_update',
   'mobile.order.approve',
   'mobile.order.reject',
   'mobile.order.price_preview',

@@ -6797,7 +6797,7 @@ export class ProductsService {
 
 
   private isDesignBarcode(value?: string | null): boolean {
-    return /^[A-Z]{3}\d{4}$/.test(String(value || '').trim().toUpperCase());
+    return /^\d{7}$/.test(String(value || '').trim());
   }
 
   private async ensureDesignBarcodes(designs: Design[]): Promise<void> {
@@ -6854,11 +6854,8 @@ export class ProductsService {
   }
 
   private async generateDesignBarcode(): Promise<string> {
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      const prefix = Array.from({ length: 3 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
-      const suffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      const candidate = `${prefix}${suffix}`;
+      const candidate = Math.floor(Math.random() * 10000000).toString().padStart(7, '0');
       const existing = await this.designRepo.findOne({ where: { barcode: candidate } });
       if (!existing) {
         return candidate;

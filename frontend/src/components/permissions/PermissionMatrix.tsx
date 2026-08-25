@@ -4,7 +4,6 @@ import api from '../../services/api';
 import AlertDialog from '../common/AlertDialog';
 
 type DataScope = 'NONE' | 'OWN' | 'BRANCH' | 'COMPANY' | 'ALL';
-type PlatformFilter = 'all' | 'web' | 'mobile';
 export type DetailedPermission = {
   actionKey: string;
   dataScope: Exclude<DataScope, 'NONE' | 'ALL'>;
@@ -127,7 +126,6 @@ const HIDDEN_PERMISSION_ACTIONS = new Set([
   'mobile.order.view',
   'mobile.order.create',
   'mobile.order.edit',
-  'mobile.order.status_update',
   'mobile.order.approve',
   'mobile.order.reject',
   'mobile.order.price_preview',
@@ -279,14 +277,14 @@ const MODULES: PermissionModule[] = [
       { key: 'order.status_update', label: 'Update status', description: 'Change order status.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS' },
       { key: 'order.approve', label: 'Approve order', description: 'Approve pending orders.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'order.reject', label: 'Reject order', description: 'Reject or cancel pending orders.', group: 'Approvals', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
-      { key: 'order.require_approval', label: 'Require Branch Manager approval', description: 'If enabled, orders created by this sales rep require Branch Manager approval (Pending). If disabled, orders go directly to In Production.', group: 'Approvals', platform: 'both', legacyPermission: 'ORDER_ENTRIES' },
+      { key: 'order.require_approval', label: 'Auto approval', description: 'If enabled, orders created by this sales rep are approved automatically. If disabled, orders require manual approval.', group: 'Approvals', platform: 'both', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'order.price_preview', label: 'Preview price', description: 'Calculate retail price previews.', group: 'Pricing', platform: 'web', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'order.price_override', label: 'Override price', description: 'Manually override order price.', group: 'Pricing', platform: 'web', legacyPermission: 'ORDER_ENTRIES', sensitive: true },
       { key: 'order.cost_price.view', label: 'View cost price', description: 'See design/order cost price.', group: 'Pricing', platform: 'web', sensitive: true },
       { key: 'mobile.order.view', label: 'View mobile orders', description: 'Open mobile order list and detail screens.', group: 'Order Access', platform: 'mobile', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'mobile.order.create', label: 'Create mobile order', description: 'Create orders from mobile app.', group: 'Order Entries', platform: 'mobile', legacyPermission: 'ORDER_ENTRIES' },
       { key: 'mobile.order.edit', label: 'Edit mobile order', description: 'Update order details from mobile.', group: 'Order Entries', platform: 'mobile', legacyPermission: 'ORDER_ENTRIES' },
-      { key: 'mobile.order.status_update', label: 'Update mobile status', description: 'Change order status from mobile.', group: 'Approvals', platform: 'mobile', legacyPermission: 'ORDER_APPROVALS' },
+      { key: 'mobile.order.status_update', label: 'Update status', description: 'Change order status from mobile.', group: 'Approvals', platform: 'mobile', legacyPermission: 'ORDER_APPROVALS' },
       { key: 'mobile.order.approve', label: 'Approve mobile order', description: 'Approve orders from mobile.', group: 'Approvals', platform: 'mobile', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'mobile.order.reject', label: 'Reject mobile order', description: 'Reject pending mobile orders.', group: 'Approvals', platform: 'mobile', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'mobile.order.price_preview', label: 'Preview mobile price', description: 'See retail price previews in mobile.', group: 'Pricing', platform: 'mobile', legacyPermission: 'ORDER_ENTRIES' },
@@ -458,22 +456,56 @@ const MODULES: PermissionModule[] = [
   },
 ];
 
-const filterPermissionCatalog = (modules: PermissionModule[]) =>
+const SALES_REP_PERMISSION_ACTIONS = new Set([
+  'order.require_approval',
+]);
+
+const BRANCH_MANAGER_PERMISSION_ACTIONS = new Set([
+  'order.require_approval',
+  'mobile.order.status_update',
+]);
+
+const COMPANY_ADMIN_HIDDEN_PERMISSION_ACTIONS = new Set([
+  'company.view',
+  'company.create',
+  'company.edit',
+  'company.status_update',
+]);
+
+const isPlatformAllowedForRole = (role: UserRole, platform?: PermissionAction['platform']) => {
+  if (!platform || platform === 'both') return true;
+  if (role === 'BRANCH_MANAGER' || role === 'SALES_REP') return platform === 'mobile';
+  return platform === 'web';
+};
+
+const isActionAllowedForRole = (role: UserRole, action: PermissionAction) => {
+  if (role === 'SALES_REP') {
+    return SALES_REP_PERMISSION_ACTIONS.has(action.key);
+  }
+
+  if (role === 'BRANCH_MANAGER') {
+    return BRANCH_MANAGER_PERMISSION_ACTIONS.has(action.key);
+  }
+
+  if (role === 'COMPANY_ADMIN' && COMPANY_ADMIN_HIDDEN_PERMISSION_ACTIONS.has(action.key)) {
+    return false;
+  }
+
+  return isPlatformAllowedForRole(role, action.platform);
+};
+
+const filterPermissionCatalog = (modules: PermissionModule[], role: UserRole) =>
   modules
     .filter((module) => !HIDDEN_PERMISSION_MODULES.has(module.key))
     .map((module) => ({
       ...module,
-      actions: module.actions.filter((action) => !HIDDEN_PERMISSION_ACTIONS.has(action.key)),
+      actions: module.actions.filter((action) =>
+        !HIDDEN_PERMISSION_ACTIONS.has(action.key) && isActionAllowedForRole(role, action),
+      ),
     }))
     .filter((module) => module.actions.length > 0);
 
 const selectedSet = (value: TaskPermission[]) => new Set(value);
-
-const PLATFORM_FILTER_OPTIONS: Array<{ value: PlatformFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'web', label: 'Web' },
-  { value: 'mobile', label: 'Mobile' },
-];
 
 const ACTION_TREE: Record<string, string[]> = {
   'dashboard.price_activity.view': [
@@ -534,6 +566,52 @@ const getActionKeysFromLegacyPermissions = (
 
 const supportsScope = (action: PermissionAction) => !NO_SCOPE_ACTIONS.has(action.key);
 
+const mergePermissionCatalog = (
+  localModules: PermissionModule[],
+  remoteModules: PermissionModule[],
+): PermissionModule[] => {
+  if (remoteModules.length === 0) return localModules;
+
+  const remoteModuleMap = new Map(remoteModules.map((module) => [module.key, module]));
+
+  const mergedModules = localModules.map((localModule) => {
+    const remoteModule = remoteModuleMap.get(localModule.key);
+    if (!remoteModule) return localModule;
+
+    const localActionKeys = new Set(localModule.actions.map((action) => action.key));
+    const remoteActionMap = new Map(remoteModule.actions.map((action) => [action.key, action]));
+    const mergedActions = localModule.actions.map((localAction) => ({
+      ...localAction,
+      ...remoteActionMap.get(localAction.key),
+    }));
+
+    remoteModule.actions.forEach((remoteAction) => {
+      if (!localActionKeys.has(remoteAction.key)) {
+        mergedActions.push(remoteAction);
+      }
+    });
+
+    return {
+      ...localModule,
+      ...remoteModule,
+      defaultScopeByRole: {
+        ...localModule.defaultScopeByRole,
+        ...remoteModule.defaultScopeByRole,
+      },
+      actions: mergedActions,
+    };
+  });
+
+  const localModuleKeys = new Set(localModules.map((module) => module.key));
+  remoteModules.forEach((remoteModule) => {
+    if (!localModuleKeys.has(remoteModule.key)) {
+      mergedModules.push(remoteModule);
+    }
+  });
+
+  return mergedModules;
+};
+
 export default function PermissionMatrix({
   value,
   detailedValue,
@@ -548,13 +626,12 @@ export default function PermissionMatrix({
   const [selectedModuleId, setSelectedModuleId] = useState('dashboard');
   const [moduleSearch, setModuleSearch] = useState('');
   const [actionSearch, setActionSearch] = useState('');
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Set<string>>(() => new Set());
   const [expandedSelectedTreeKeys, setExpandedSelectedTreeKeys] = useState<Set<string>>(() => new Set(Object.keys(ACTION_TREE)));
   const [pendingTreeRemoval, setPendingTreeRemoval] = useState<{ childKey: string; parentKey: string; parentLabel: string } | null>(null);
   const [remoteModules, setRemoteModules] = useState<PermissionModule[]>([]);
-  const rawCatalogModules = remoteModules.length > 0 ? remoteModules : MODULES;
-  const catalogModules = useMemo(() => filterPermissionCatalog(rawCatalogModules), [rawCatalogModules]);
+  const rawCatalogModules = useMemo(() => mergePermissionCatalog(MODULES, remoteModules), [remoteModules]);
+  const catalogModules = useMemo(() => filterPermissionCatalog(rawCatalogModules, role), [rawCatalogModules, role]);
   
   const [dataScopes, setDataScopes] = useState<Record<string, DataScope>>({});
   const [selectedActions, setSelectedActions] = useState<Set<string>>(() =>
@@ -656,10 +733,6 @@ export default function PermissionMatrix({
     return mod.actions.filter((a) => selectedActions.has(a.key)).length;
   };
 
-  const matchesPlatformFilter = (action: PermissionAction) => {
-    if (platformFilter === 'all') return true;
-    return action.platform === platformFilter || action.platform === 'both';
-  };
 
   const isChildActionLocked = (action: PermissionAction, actionSet = selectedActions) => {
     const parentKey = CHILD_ACTION_PARENT[action.key];
@@ -714,20 +787,6 @@ export default function PermissionMatrix({
     });
   };
 
-  const PlatformToggle = () => (
-    <div className="platform-toggle" role="group" aria-label="Filter actions by platform">
-      {PLATFORM_FILTER_OPTIONS.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className={platformFilter === option.value ? 'active' : ''}
-          onClick={() => setPlatformFilter(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
 
   const addAction = (key: string) => {
     if (!canEdit || selectedActions.has(key)) return;
@@ -781,7 +840,6 @@ export default function PermissionMatrix({
     const needle = actionSearch.trim().toLowerCase();
     
     mod.actions.forEach((a) => {
-      if (!matchesPlatformFilter(a)) return;
       if (needle && !`${a.label} ${a.group}`.toLowerCase().includes(needle)) return;
       addActionWithChildren(a, next);
     });
@@ -890,9 +948,9 @@ export default function PermissionMatrix({
       if (selectedActions.has(a.key)) return false;
       const parentKey = CHILD_ACTION_PARENT[a.key];
       if (parentKey && selectedActions.has(parentKey)) return false;
-      return matchesPlatformFilter(a) && (!needle || `${a.label} ${a.group}`.toLowerCase().includes(needle));
+      return !needle || `${a.label} ${a.group}`.toLowerCase().includes(needle);
     });
-  }, [selectedModuleId, actionSearch, moduleMap, platformFilter, selectedActions]);
+  }, [selectedModuleId, actionSearch, moduleMap, selectedActions]);
 
   const visibleActions = useMemo(() => {
     return filteredActions.filter((action) => {
@@ -904,10 +962,10 @@ export default function PermissionMatrix({
   // Allowed groups list (Column 3)
   const allowedGroups = useMemo(() => {
     return catalogModules.map((m) => {
-      const active = m.actions.filter((a) => selectedActions.has(a.key) && matchesPlatformFilter(a));
+      const active = m.actions.filter((a) => selectedActions.has(a.key));
       return { module: m, actions: active };
     }).filter((g) => g.actions.length > 0);
-  }, [catalogModules, selectedActions, platformFilter]);
+  }, [catalogModules, selectedActions]);
 
   return (
     <div className="permission-matrix-container">
@@ -1777,7 +1835,6 @@ export default function PermissionMatrix({
                 <p className="column-copy">Drag cards or tap + to allow.</p>
               </div>
               <div className="column-head-actions">
-                <PlatformToggle />
                 <button 
                   type="button" 
                   className="btn btn-sm btn-outline-primary"
@@ -1877,7 +1934,6 @@ export default function PermissionMatrix({
                 <p className="column-copy">Review the actions assigned to this user.</p>
               </div>
               <div className="column-head-actions">
-                <PlatformToggle />
                 <button 
                   type="button" 
                   className="btn btn-sm btn-outline-danger"

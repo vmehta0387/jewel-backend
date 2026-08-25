@@ -205,7 +205,6 @@ export class AuthService implements OnModuleInit {
       const mobileAllowedRoles: UserRole[] = [
         UserRole.SALES_REP,
         UserRole.BRANCH_MANAGER,
-        UserRole.COMPANY_ADMIN,
       ];
       if (!mobileAllowedRoles.includes(user.role)) {
         throw new UnauthorizedException('This role is not allowed in the mobile app');
@@ -218,7 +217,6 @@ export class AuthService implements OnModuleInit {
         UserRole.SUPER_ADMIN,
         UserRole.INTERNAL_REP,
         UserRole.COMPANY_ADMIN,
-        UserRole.BRANCH_MANAGER,
       ];
       if (!adminAllowedRoles.includes(user.role)) {
         throw new UnauthorizedException('This role is not allowed in the admin portal');

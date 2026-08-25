@@ -64,6 +64,7 @@ function resolveSqlFiles(args) {
     path.resolve(sqlRoot, 'DESIGN_MEDIA_LIBRARY_SOFT_DELETE_UPGRADE.sql'),
     path.resolve(sqlRoot, 'ORDER_COMPLETED_SALES_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_ACTIVITY_EVENTS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'USER_PERMISSION_ACTIONS_UPGRADE.sql'),
   ].filter((filePath) => {
     if (fs.existsSync(filePath)) return true;
     console.warn(

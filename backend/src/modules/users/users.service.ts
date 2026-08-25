@@ -1171,10 +1171,17 @@ export class UsersService implements OnModuleInit {
     if (key.startsWith('design.') || key.startsWith('version.') || key.startsWith('catalog.') || key.startsWith('master.')) {
       return TaskPermission.DESIGN_ENTRIES;
     }
+    if (
+      key.includes('approval') ||
+      key.includes('approve') ||
+      key.includes('reject') ||
+      key.includes('status_update')
+    ) {
+      return TaskPermission.ORDER_APPROVALS;
+    }
     if (key.startsWith('order.') || key.startsWith('mobile.order.') || key.startsWith('spiff.') || key.startsWith('mobile.spiff.')) {
       return TaskPermission.ORDER_ENTRIES;
     }
-    if (key.includes('approval')) return TaskPermission.ORDER_APPROVALS;
     if (key.startsWith('pricing.') || key.startsWith('mobile.pricing.') || key.includes('price_activity')) {
       return TaskPermission.PRICING_CONFIGURATION;
     }
@@ -1192,7 +1199,7 @@ export class UsersService implements OnModuleInit {
       await this.userPermissionActionRepo.delete({ userId });
     } catch (error) {
       if (this.isMissingPermissionTableError(error)) {
-        return;
+        throw new BadRequestException('Detailed permission table is missing. Run the user permission actions database upgrade before saving permissions.');
       }
       throw error;
     }
@@ -1211,7 +1218,7 @@ export class UsersService implements OnModuleInit {
       await this.userPermissionActionRepo.save(rows);
     } catch (error) {
       if (this.isMissingPermissionTableError(error)) {
-        return;
+        throw new BadRequestException('Detailed permission table is missing. Run the user permission actions database upgrade before saving permissions.');
       }
       throw error;
     }

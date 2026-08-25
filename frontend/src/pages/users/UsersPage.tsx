@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
+import SmartDropdown from '../../components/common/SmartDropdown';
 import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Avatar from '../../components/common/Avatar';
+import PermissionMatrix from '../../components/permissions/PermissionMatrix';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
-import { UserRole } from '../../types/auth.types';
-import { TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
+import { TaskPermission, UserRole } from '../../types/auth.types';
+import { ALLOWED_TASK_PERMISSIONS_BY_ROLE, DEFAULT_TASK_PERMISSIONS_BY_ROLE, TASK_PERMISSION_LABELS, USER_ROLE_OPTIONS, UserRecord } from '../../types/user.types';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 type StatusFilter = 'ALL' | 'ACTIVE' | 'INACTIVE';
@@ -32,6 +35,11 @@ export default function UsersPage() {
   const canEditUser = Boolean(currentUser && hasActionPermission(currentUser, 'user.edit'));
   const canUpdateUserStatus = Boolean(currentUser && hasActionPermission(currentUser, 'user.status_update'));
   const canImportUsers = Boolean(currentUser && hasActionPermission(currentUser, 'user.import'));
+  const canManageUserPermissions = Boolean(
+    currentUser
+      && hasActionPermission(currentUser, 'user.edit')
+      && hasActionPermission(currentUser, 'user.permissions.manage'),
+  );
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -40,10 +48,31 @@ export default function UsersPage() {
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [role, setRole] = useState<RoleFilter>('ALL');
   const [page, setPage] = useState(1);
+  const [permissionUser, setPermissionUser] = useState<UserRecord | null>(null);
+  const [permissionDraft, setPermissionDraft] = useState<{
+    taskPermissions: TaskPermission[];
+    detailedPermissions: NonNullable<UserRecord['detailedPermissions']>;
+  } | null>(null);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const roleOptions = isCompanyAdmin
     ? USER_ROLE_OPTIONS.filter((option) => option.value === 'BRANCH_MANAGER' || option.value === 'SALES_REP')
     : USER_ROLE_OPTIONS;
+  const roleFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'All Roles' },
+      ...roleOptions,
+    ],
+    [roleOptions],
+  );
+  const statusFilterOptions = useMemo(
+    () => [
+      { value: 'ALL', label: 'All Status' },
+      { value: 'ACTIVE', label: 'Active' },
+      { value: 'INACTIVE', label: 'Inactive' },
+    ],
+    [],
+  );
 
   const pageSize = 15;
   const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
@@ -114,6 +143,58 @@ export default function UsersPage() {
     }
   }, [isCompanyAdmin, role]);
 
+  const openPermissionPopup = (user: UserRecord) => {
+    setPermissionUser(user);
+    setPermissionDraft({
+      taskPermissions: user.taskPermissions || [],
+      detailedPermissions: user.detailedPermissions || [],
+    });
+  };
+
+  const closePermissionPopup = () => {
+    if (savingPermissions) return;
+    setPermissionUser(null);
+    setPermissionDraft(null);
+  };
+
+  const savePermissionPopup = async () => {
+    if (!permissionUser || !permissionDraft || !canManageUserPermissions) return;
+    setSavingPermissions(true);
+    try {
+      const allowedPermissions = ALLOWED_TASK_PERMISSIONS_BY_ROLE[permissionUser.role] || [];
+      const normalizedPermissions = permissionDraft.taskPermissions.filter((permission) =>
+        allowedPermissions.includes(permission),
+      );
+      const payload = {
+        firstName: permissionUser.firstName,
+        lastName: permissionUser.lastName,
+        userHandle: permissionUser.userHandle || null,
+        email: permissionUser.email,
+        role: permissionUser.role,
+        companyId: permissionUser.companyId ? Number(permissionUser.companyId) : null,
+        branchId: permissionUser.branchId ? Number(permissionUser.branchId) : null,
+        phone: permissionUser.phone || null,
+        photoUrl: permissionUser.photoUrl || null,
+        isActive: permissionUser.isActive,
+        taskPermissions: normalizedPermissions,
+        detailedPermissions: permissionDraft.detailedPermissions,
+      };
+      await api.put(`/users/${permissionUser.id}`, payload);
+      setUsers((prev) => prev.map((user) => user.id === permissionUser.id
+        ? { ...user, taskPermissions: normalizedPermissions, detailedPermissions: permissionDraft.detailedPermissions }
+        : user,
+      ));
+      showAppAlert('Permissions saved successfully.', { variant: 'success' });
+      setPermissionUser(null);
+      setPermissionDraft(null);
+      fetchUsers();
+    } catch (error: any) {
+      const message = error?.response?.data?.message;
+      showAppAlert(Array.isArray(message) ? message.join(', ') : message || 'Failed to save permissions.', { variant: 'error' });
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     try {
       await api.patch(`/users/${id}/status`, { isActive: !currentStatus });
@@ -316,11 +397,23 @@ export default function UsersPage() {
           </span>
         ),
       },
-      ...(canEditUser || canUpdateUserStatus ? [{
+      {
         key: 'actions',
         label: 'Actions',
         render: (_: unknown, row: UserRecord) => (
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openPermissionPopup(row)}
+              className="app-table-icon-action"
+              title="View permissions"
+              aria-label={`View permissions for ${row.firstName} ${row.lastName}`}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3.25L5.75 5.6v5.2c0 4.05 2.58 7.84 6.25 9.15 3.67-1.31 6.25-5.1 6.25-9.15V5.6L12 3.25Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                <path d="M9 12.1l2 2 4-4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
             {canEditUser ? (
               <button
                 type="button"
@@ -345,10 +438,11 @@ export default function UsersPage() {
             ) : null}
           </div>
         ),
-      }] : []),
+      },
     ],
-    [canEditUser, canUpdateUserStatus, navigate],
+    [canEditUser, canUpdateUserStatus, navigate, savingPermissions],
   );
+
 
   return (
     <div>
@@ -395,28 +489,29 @@ export default function UsersPage() {
               placeholder="Search by name, email, company, or branch"
             />
           </div>
-          <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+          <SmartDropdown
             value={role}
-            onChange={(event) => setRole(event.target.value as RoleFilter)}
-          >
-            <option value="ALL">All Roles</option>
-            {roleOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+            onChange={(value) => setRole((value || 'ALL') as RoleFilter)}
+            config={{
+              options: roleFilterOptions,
+              valueKey: 'value',
+              labelKey: 'label',
+              placeholder: 'All Roles',
+              showSearch: false,
+            }}
+          />
+          <SmartDropdown
             value={status}
-            onChange={(event) => setStatus(event.target.value as StatusFilter)}
-          >
-            <option value="ALL">All Status</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-          <div className="flex gap-2">
+            onChange={(value) => setStatus((value || 'ALL') as StatusFilter)}
+            config={{
+              options: statusFilterOptions,
+              valueKey: 'value',
+              labelKey: 'label',
+              placeholder: 'All Status',
+              showSearch: false,
+            }}
+          />
+          <div className="flex items-center gap-2">
             <Button type="submit" size="sm">
               Search
             </Button>
@@ -443,6 +538,47 @@ export default function UsersPage() {
           <div className="text-center py-12 text-gray-500">No users found for selected filters.</div>
         ) : null}
       </Card>
+      {permissionUser ? createPortal((
+        <div className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-slate-900/45 px-4 py-8 sm:py-10" role="dialog" aria-modal="true">
+          <div className="flex max-h-[calc(100vh-5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Permissions</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {permissionUser.firstName} {permissionUser.lastName}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {canManageUserPermissions ? (
+                  <Button type="button" size="sm" onClick={savePermissionPopup} disabled={savingPermissions}>
+                    {savingPermissions ? 'Saving...' : 'Save'}
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  onClick={closePermissionPopup}
+                  aria-label="Close permissions popup"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 overflow-y-auto p-4">
+              <PermissionMatrix
+                value={permissionDraft?.taskPermissions || []}
+                detailedValue={permissionDraft?.detailedPermissions || []}
+                allowedPermissions={ALLOWED_TASK_PERMISSIONS_BY_ROLE[permissionUser.role] || []}
+                defaultPermissions={DEFAULT_TASK_PERMISSIONS_BY_ROLE[permissionUser.role] || []}
+                role={permissionUser.role}
+                canEdit={canManageUserPermissions}
+                onChange={(taskPermissions) => setPermissionDraft((prev) => prev ? { ...prev, taskPermissions } : prev)}
+                onDetailedChange={(detailedPermissions) => setPermissionDraft((prev) => prev ? { ...prev, detailedPermissions } : prev)}
+              />
+            </div>
+          </div>
+        </div>
+      ), document.body) : null}
       {dialogNode}
     </div>
   );

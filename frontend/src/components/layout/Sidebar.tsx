@@ -206,10 +206,10 @@ export default function Sidebar({
 
   return (
     <div
-      className={`fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-slate-800/50 bg-slate-950 text-slate-300 shadow-2xl transition-[width,transform] duration-300 ease-in-out ${
+      className={`fixed left-0 top-0 z-50 flex h-screen w-[205px] flex-col border-r border-slate-800/50 bg-slate-950 text-slate-300 shadow-2xl transition-[width,transform] duration-300 ease-in-out ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       } ${
-        collapsed ? 'lg:w-20' : 'lg:w-64'
+        collapsed ? 'lg:w-20' : 'lg:w-[205px]'
       } lg:translate-x-0`}
       style={{
         background: 'linear-gradient(180deg, #171311 0%, #221b17 100%)',

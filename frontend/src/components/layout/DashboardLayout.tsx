@@ -30,7 +30,7 @@ export default function DashboardLayout() {
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
       
-      <div className={`flex flex-col min-h-screen transition-all duration-300 ease-out ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
+      <div className={`flex flex-col min-h-screen transition-all duration-300 ease-out ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-[205px]'}`}>
         <Header
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
         />
