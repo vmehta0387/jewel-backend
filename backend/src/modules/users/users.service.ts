@@ -24,6 +24,7 @@ import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-employee.dto';
 import { CheckUserHandleQueryDto, CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import {
   PermissionDataScope,
@@ -99,6 +100,7 @@ export class UsersService implements OnModuleInit {
     @InjectRepository(UserPermissionAction)
     private userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly notificationsService: NotificationsService,
+    private readonly permissionsService: PermissionsService,
   ) { }
 
   private readonly allPermissions: TaskPermission[] = Object.values(TaskPermission);
@@ -137,7 +139,16 @@ export class UsersService implements OnModuleInit {
       TaskPermission.ORDER_ENTRIES,
       TaskPermission.VIEW_REPORTS,
     ],
-    [UserRole.INTERNAL_REP]: [],
+    [UserRole.INTERNAL_REP]: [
+      TaskPermission.COMPANY_MANAGEMENT,
+      TaskPermission.BRANCH_MANAGEMENT,
+      TaskPermission.USER_MANAGEMENT,
+      TaskPermission.DESIGN_ENTRIES,
+      TaskPermission.ORDER_ENTRIES,
+      TaskPermission.ORDER_APPROVALS,
+      TaskPermission.PRICING_CONFIGURATION,
+      TaskPermission.VIEW_REPORTS,
+    ],
   };
 
   private readonly allowedPermissionsByRole: Record<UserRole, TaskPermission[]> = {
@@ -165,9 +176,12 @@ export class UsersService implements OnModuleInit {
     ],
     [UserRole.INTERNAL_REP]: [
       TaskPermission.COMPANY_MANAGEMENT,
+      TaskPermission.BRANCH_MANAGEMENT,
+      TaskPermission.USER_MANAGEMENT,
       TaskPermission.DESIGN_ENTRIES,
       TaskPermission.ORDER_ENTRIES,
       TaskPermission.ORDER_APPROVALS,
+      TaskPermission.PRICING_CONFIGURATION,
       TaskPermission.VIEW_REPORTS,
     ],
   };
@@ -405,12 +419,16 @@ export class UsersService implements OnModuleInit {
     const scopedOrg = await this.resolveScope(dto.role, dto.companyId, dto.branchId);
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    const defaultAssignment =
+      dto.detailedPermissions === undefined && dto.taskPermissions === undefined
+        ? await this.resolveRoleDefaultPermissionAssignment(dto.role)
+        : null;
     const normalizedDetailedPermissions =
       dto.detailedPermissions !== undefined
         ? dto.role === UserRole.SUPER_ADMIN
           ? []
           : this.normalizeDetailedPermissions(dto.detailedPermissions)
-        : undefined;
+        : defaultAssignment?.detailedPermissions;
     const user = this.userRepo.create({
       email: normalizedEmail,
       passwordHash,
@@ -426,7 +444,7 @@ export class UsersService implements OnModuleInit {
       taskPermissions:
         normalizedDetailedPermissions !== undefined
           ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role)
-          : this.normalizePermissions(dto.taskPermissions, dto.role),
+          : this.normalizePermissions(defaultAssignment?.taskPermissions ?? dto.taskPermissions, dto.role),
     });
 
     const saved: any = await this.userRepo.save(user);
@@ -509,18 +527,24 @@ export class UsersService implements OnModuleInit {
     user.companyId = scopedOrg.companyId;
     user.branchId = scopedOrg.branchId;
 
+    const defaultAssignment =
+      dto.detailedPermissions === undefined && dto.taskPermissions === undefined && previousRole !== nextRole
+        ? await this.resolveRoleDefaultPermissionAssignment(nextRole)
+        : null;
     const normalizedDetailedPermissions =
       dto.detailedPermissions !== undefined
         ? nextRole === UserRole.SUPER_ADMIN
           ? []
           : this.normalizeDetailedPermissions(dto.detailedPermissions)
-        : undefined;
+        : defaultAssignment?.detailedPermissions;
     const permissionsInput =
       dto.taskPermissions !== undefined
         ? dto.taskPermissions
-        : dto.role !== undefined
-          ? []
-          : user.taskPermissions || [];
+        : defaultAssignment
+          ? defaultAssignment.taskPermissions
+          : dto.role !== undefined
+            ? undefined
+            : user.taskPermissions || [];
     user.taskPermissions =
       normalizedDetailedPermissions !== undefined
         ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, nextRole)
@@ -1260,6 +1284,25 @@ export class UsersService implements OnModuleInit {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions');
   }
 
+  private async resolveRoleDefaultPermissionAssignment(role: UserRole): Promise<{
+    taskPermissions: TaskPermission[];
+    detailedPermissions?: { actionKey: string; dataScope: PermissionDataScope }[];
+  }> {
+    const defaultProfile = await this.permissionsService.getRoleDefault(role);
+    if (!defaultProfile) {
+      return { taskPermissions: this.normalizePermissions(undefined, role) };
+    }
+
+    const detailedPermissions = this.normalizeDetailedPermissions(defaultProfile.detailedPermissions || []);
+    const taskPermissions = detailedPermissions.length > 0
+      ? this.deriveLegacyPermissionsFromDetailed(detailedPermissions, role)
+      : this.normalizePermissions(defaultProfile.taskPermissions, role);
+
+    return {
+      taskPermissions,
+      detailedPermissions: detailedPermissions.length > 0 ? detailedPermissions : undefined,
+    };
+  }
   private normalizePermissions(
     permissions: TaskPermission[] | undefined,
     role: UserRole,

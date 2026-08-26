@@ -77,3 +77,32 @@ ON DUPLICATE KEY UPDATE
   `sensitive` = VALUES(`sensitive`),
   sort_order = VALUES(sort_order),
   is_active = VALUES(is_active);
+
+CREATE TABLE IF NOT EXISTS role_permission_defaults (
+  id INT(11) NOT NULL AUTO_INCREMENT,
+  role ENUM('SUPER_ADMIN', 'COMPANY_ADMIN', 'BRANCH_MANAGER', 'SALES_REP', 'INTERNAL_REP') NOT NULL,
+  name VARCHAR(160) NOT NULL DEFAULT 'Default',
+  task_permissions JSON NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_role_permission_defaults_role (role),
+  KEY idx_role_permission_defaults_active (is_active)
+);
+
+CREATE TABLE IF NOT EXISTS role_default_permission_actions (
+  id INT(11) NOT NULL AUTO_INCREMENT,
+  default_id INT(11) NOT NULL,
+  action_key VARCHAR(160) NOT NULL,
+  data_scope ENUM('OWN', 'BRANCH', 'COMPANY') NOT NULL DEFAULT 'OWN',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_role_default_permission_action (default_id, action_key),
+  KEY idx_role_default_permission_actions_default (default_id),
+  KEY idx_role_default_permission_actions_action (action_key),
+  CONSTRAINT fk_role_default_permission_actions_default
+    FOREIGN KEY (default_id) REFERENCES role_permission_defaults (id)
+    ON DELETE CASCADE
+);

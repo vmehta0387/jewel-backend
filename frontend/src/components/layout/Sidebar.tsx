@@ -14,7 +14,8 @@ type MenuIconName =
   | 'masters'
   | 'orders'
   | 'activity'
-  | 'spiff';
+  | 'spiff'
+  | 'permissions';
 
 interface NavigationItem {
   name: string;
@@ -62,6 +63,7 @@ const navigation: NavigationItem[] = [
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES', actionPermission: 'master.view' },
   { name: 'Orders', path: '/orders', icon: 'orders' },
+  { name: 'Default Permissions', path: '/permissions/defaults', icon: 'permissions', allowedRoles: ['SUPER_ADMIN'] },
   { name: 'Activity', path: '/activity-events', icon: 'activity', allowedRoles: ['SUPER_ADMIN'] },
   { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES', actionPermission: 'spiff.view' },
 ];
@@ -160,11 +162,17 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
         <path d="M12 3l2.6 5.2L20 9l-4 4 .9 5.6L12 16l-4.9 2.6L8 13 4 9l5.4-.8L12 3z" />
       </>
     );
+  } else if (name === 'permissions') {
+    iconBody = (
+      <>
+        <path d="M12 3l7 3v5c0 4.4-2.8 8.4-7 10-4.2-1.6-7-5.6-7-10V6l7-3z" />
+        <path d="M9 12l2 2 4-5" />
+      </>
+    );
   }
-
   return (
     <span
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-300 ${
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
         isActive
           ? 'bg-[#b98e45] text-white shadow-sm ring-1 ring-[#d7be94]'
           : 'bg-transparent text-[#b7aa98] group-hover:bg-[#3b3027] group-hover:text-white'
@@ -251,8 +259,8 @@ export default function Sidebar({
                 key={item.path}
                 to={item.path}
                 onClick={() => onCloseMobile?.()}
-                className={`group relative flex items-center gap-3.5 rounded-xl px-3.5 py-2.5 transition-all duration-200 ${
-                  collapsed ? 'lg:justify-center lg:p-2.5' : ''
+                className={`group relative grid w-full max-w-full grid-cols-[36px_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl px-3.5 py-2.5 transition-all duration-200 ${
+                  collapsed ? 'lg:flex lg:justify-center lg:p-2.5' : ''
                 } ${
                   isActive
                     ? 'bg-[#2f261f] text-white font-semibold border border-[#4a3a2d]'
@@ -261,7 +269,7 @@ export default function Sidebar({
                 title={collapsed ? item.name : undefined}
               >
                 <MenuIcon name={item.icon} isActive={isActive} />
-                <span className={`whitespace-nowrap text-[0.9rem] tracking-wide ${collapsed ? 'lg:hidden' : ''}`}>
+                <span className={`block min-w-0 truncate text-[0.9rem] tracking-wide ${collapsed ? 'lg:hidden' : ''}`}>
                   {item.name}
                 </span>
                 {collapsed ? (

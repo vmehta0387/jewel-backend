@@ -1,8 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { TaskPermission } from '../../common/enums/task-permission.enum';
+import { UserRole } from '../../common/enums/user-role.enum';
 import { PermissionAction } from './entities/permission-action.entity';
 import { PermissionModule } from './entities/permission-module.entity';
+import { RoleDefaultPermissionAction } from './entities/role-default-permission-action.entity';
+import { RolePermissionDefault } from './entities/role-permission-default.entity';
+import { PermissionDataScope } from './entities/user-permission-action.entity';
+import { UpdateRolePermissionDefaultDto } from './dto/role-permission-default.dto';
 
 const HIDDEN_PERMISSION_MODULES = new Set([
   'design',
@@ -69,6 +75,10 @@ export class PermissionsService {
     private readonly moduleRepo: Repository<PermissionModule>,
     @InjectRepository(PermissionAction)
     private readonly actionRepo: Repository<PermissionAction>,
+    @InjectRepository(RolePermissionDefault)
+    private readonly roleDefaultRepo: Repository<RolePermissionDefault>,
+    @InjectRepository(RoleDefaultPermissionAction)
+    private readonly roleDefaultActionRepo: Repository<RoleDefaultPermissionAction>,
   ) {}
 
   async getMatrix() {
@@ -81,7 +91,7 @@ export class PermissionsService {
         this.actionRepo.find({ where: { isActive: true }, order: { sortOrder: 'ASC', label: 'ASC' } }),
       ]);
     } catch (error) {
-      if (this.isMissingPermissionTableError(error)) {
+      if (this.isMissingPermissionCatalogTableError(error)) {
         return { modules: [] };
       }
       throw error;
@@ -119,9 +129,133 @@ export class PermissionsService {
     };
   }
 
-  private isMissingPermissionTableError(error: unknown): boolean {
+  async listRoleDefaults() {
+    try {
+      const defaults = await this.roleDefaultRepo.find({ order: { role: 'ASC' } });
+      const actionMap = await this.getRoleDefaultActionMap(defaults.map((item) => item.id));
+      return defaults.map((item) => this.toRoleDefaultResponse(item, actionMap.get(item.id) || []));
+    } catch (error) {
+      if (this.isMissingRoleDefaultTableError(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getRoleDefault(role: UserRole) {
+    const defaultProfile = await this.findRoleDefault(role);
+    if (!defaultProfile) {
+      return null;
+    }
+
+    const actions = await this.roleDefaultActionRepo.find({ where: { defaultId: defaultProfile.id }, order: { actionKey: 'ASC' } });
+    return this.toRoleDefaultResponse(defaultProfile, actions);
+  }
+
+  async upsertRoleDefault(role: UserRole, dto: UpdateRolePermissionDefaultDto) {
+    let defaultProfile = await this.findRoleDefault(role);
+    if (!defaultProfile) {
+      defaultProfile = this.roleDefaultRepo.create({ role, name: dto.name?.trim() || 'Default', isActive: true });
+    }
+
+    defaultProfile.name = dto.name?.trim() || defaultProfile.name || 'Default';
+    defaultProfile.taskPermissions = this.normalizeTaskPermissions(dto.taskPermissions || []);
+    defaultProfile.isActive = dto.isActive ?? true;
+
+    const saved = await this.roleDefaultRepo.save(defaultProfile);
+    const detailedPermissions = this.normalizeDetailedPermissions(dto.detailedPermissions || []);
+
+    await this.roleDefaultActionRepo.delete({ defaultId: saved.id });
+    if (detailedPermissions.length > 0) {
+      await this.roleDefaultActionRepo.save(
+        detailedPermissions.map((permission) => this.roleDefaultActionRepo.create({
+          defaultId: saved.id,
+          actionKey: permission.actionKey,
+          dataScope: permission.dataScope,
+        })),
+      );
+    }
+
+    return this.toRoleDefaultResponse(saved, detailedPermissions as RoleDefaultPermissionAction[]);
+  }
+
+  async requireRoleDefault(role: UserRole) {
+    const defaultProfile = await this.getRoleDefault(role);
+    if (!defaultProfile) {
+      throw new NotFoundException('Role default permissions not found');
+    }
+    return defaultProfile;
+  }
+
+  private async findRoleDefault(role: UserRole) {
+    try {
+      return await this.roleDefaultRepo.findOne({ where: { role, isActive: true } });
+    } catch (error) {
+      if (this.isMissingRoleDefaultTableError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private async getRoleDefaultActionMap(defaultIds: number[]) {
+    const actionMap = new Map<number, RoleDefaultPermissionAction[]>();
+    if (defaultIds.length === 0) {
+      return actionMap;
+    }
+
+    const actions = await this.roleDefaultActionRepo.find({ where: { defaultId: In(defaultIds) }, order: { actionKey: 'ASC' } });
+    actions.forEach((action) => {
+      const bucket = actionMap.get(action.defaultId) || [];
+      bucket.push(action);
+      actionMap.set(action.defaultId, bucket);
+    });
+    return actionMap;
+  }
+
+  private normalizeTaskPermissions(permissions: TaskPermission[]) {
+    const allowed = new Set(Object.values(TaskPermission));
+    return Array.from(new Set((permissions || []).filter((permission) => allowed.has(permission))));
+  }
+
+  private normalizeDetailedPermissions(permissions: Array<{ actionKey: string; dataScope?: PermissionDataScope }>) {
+    const unique = new Map<string, { actionKey: string; dataScope: PermissionDataScope }>();
+    (permissions || []).forEach((permission) => {
+      const actionKey = String(permission.actionKey || '').trim();
+      if (!actionKey) return;
+      unique.set(actionKey, {
+        actionKey,
+        dataScope: permission.dataScope || PermissionDataScope.OWN,
+      });
+    });
+    return Array.from(unique.values());
+  }
+
+  private toRoleDefaultResponse(defaultProfile: RolePermissionDefault, actions: Array<{ actionKey: string; dataScope: PermissionDataScope }>) {
+    return {
+      id: defaultProfile.id,
+      role: defaultProfile.role,
+      name: defaultProfile.name,
+      isActive: defaultProfile.isActive,
+      taskPermissions: defaultProfile.taskPermissions || [],
+      detailedPermissions: actions.map((action) => ({
+        actionKey: action.actionKey,
+        dataScope: action.dataScope,
+      })),
+      createdAt: defaultProfile.createdAt,
+      updatedAt: defaultProfile.updatedAt,
+    };
+  }
+
+  private isMissingPermissionCatalogTableError(error: unknown): boolean {
     const code = (error as { code?: string })?.code;
     const message = String((error as { message?: string })?.message || '').toLowerCase();
     return code === 'ER_NO_SUCH_TABLE' || message.includes('permission_modules') || message.includes('permission_actions');
+  }
+
+  private isMissingRoleDefaultTableError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    const message = String((error as { message?: string })?.message || '').toLowerCase();
+    return code === 'ER_NO_SUCH_TABLE' || message.includes('role_permission_defaults') || message.includes('role_default_permission_actions');
   }
 }

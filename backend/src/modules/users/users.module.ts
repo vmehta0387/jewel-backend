@@ -11,12 +11,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PermissionModule as PermissionModuleEntity } from '../permissions/entities/permission-module.entity';
 import { PermissionAction } from '../permissions/entities/permission-action.entity';
 import { UserPermissionAction } from '../permissions/entities/user-permission-action.entity';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Company, Branch, PermissionModuleEntity, PermissionAction, UserPermissionAction]),
     AuthModule,
     NotificationsModule,
+    PermissionsModule,
   ],
   controllers: [UsersController, BranchEmployeesController],
   providers: [UsersService],

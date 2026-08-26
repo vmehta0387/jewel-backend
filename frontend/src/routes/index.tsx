@@ -15,6 +15,7 @@ import OrdersPage from '../pages/orders/OrdersPage';
 import SpiffPage from '../pages/spiff/SpiffPage';
 import NotificationsPage from '../pages/notifications/NotificationsPage';
 import ActivityEventsPage from '../pages/activity/ActivityEventsPage';
+import RoleDefaultPermissionsPage from '../pages/permissions/RoleDefaultPermissionsPage';
 import ProtectedRoute from '../components/auth/ProtectedRoute';
 import UsersPage from '../pages/users/UsersPage';
 import AddUser from '../pages/users/AddUser';
@@ -123,6 +124,10 @@ export const router = createBrowserRouter([
           },
           {
             children: [{ path: '/notifications', element: <NotificationsPage /> }],
+          },
+          {
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN']} />,
+            children: [{ path: '/permissions/defaults', element: <RoleDefaultPermissionsPage /> }],
           },
           {
             element: <ProtectedRoute allowedRoles={['SUPER_ADMIN']} />,

@@ -630,6 +630,7 @@ export default function PermissionMatrix({
   const [expandedSelectedTreeKeys, setExpandedSelectedTreeKeys] = useState<Set<string>>(() => new Set(Object.keys(ACTION_TREE)));
   const [pendingTreeRemoval, setPendingTreeRemoval] = useState<{ childKey: string; parentKey: string; parentLabel: string } | null>(null);
   const [remoteModules, setRemoteModules] = useState<PermissionModule[]>([]);
+  const [loadingRoleDefaults, setLoadingRoleDefaults] = useState(false);
   const rawCatalogModules = useMemo(() => mergePermissionCatalog(MODULES, remoteModules), [remoteModules]);
   const catalogModules = useMemo(() => filterPermissionCatalog(rawCatalogModules, role), [rawCatalogModules, role]);
   
@@ -866,22 +867,48 @@ export default function PermissionMatrix({
     emitSelectionChange(next);
   };
 
-  const resetToRoleDefaults = () => {
-    if (!canEdit) return;
-    setDataScopes({});
-    const defaults = defaultPermissions.filter((p) => allowed.has(p));
-    onChange(defaults);
-    if (onDetailedChange) {
-      onDetailedChange(
-        Array.from(getActionKeysFromLegacyPermissions(new Set(defaults), catalogModules))
-          .filter((key) => actionMap.has(key))
-          .sort()
-          .map((actionKey) => ({
-            actionKey,
-            dataScope: toPersistedScope(scopeFor(actionMap.get(actionKey)!)),
-          })),
-      );
+  const applyRoleDefaultSelection = (
+    taskPermissions: TaskPermission[],
+    detailedPermissions: DetailedPermission[] = [],
+  ) => {
+    const visibleActionKeys = new Set(catalogModules.flatMap((module) => module.actions.map((action) => action.key)));
+    const nextScopes: Record<string, DataScope> = {};
+    const nextActions = detailedPermissions.length > 0
+      ? new Set(detailedPermissions.map((permission) => {
+          nextScopes[permission.actionKey] = permission.dataScope;
+          return permission.actionKey;
+        }))
+      : getActionKeysFromLegacyPermissions(new Set(taskPermissions.filter((p) => allowed.has(p))), catalogModules);
+
+    const normalizedActions = normalizeTreeSelection(
+      new Set(Array.from(nextActions).filter((key) => visibleActionKeys.has(key))),
+    );
+    const normalizedScopes = Object.fromEntries(
+      Object.entries(nextScopes).filter(([key]) => normalizedActions.has(key)),
+    ) as Record<string, DataScope>;
+
+    setDataScopes(normalizedScopes);
+    setSelectedActions(normalizedActions);
+    emitSelectionChange(normalizedActions, normalizedScopes);
+  };
+
+  const resetToRoleDefaults = async () => {
+    if (!canEdit || loadingRoleDefaults) return;
+    setLoadingRoleDefaults(true);
+    try {
+      const response = await api.get(`/permissions/role-defaults/${role}`);
+      const savedDefault = response.data;
+      if (savedDefault && (savedDefault.detailedPermissions?.length || savedDefault.taskPermissions?.length)) {
+        applyRoleDefaultSelection(savedDefault.taskPermissions || [], savedDefault.detailedPermissions || []);
+        return;
+      }
+    } catch {
+      // Use the local role defaults when no server-side default is available to this screen.
+    } finally {
+      setLoadingRoleDefaults(false);
     }
+
+    applyRoleDefaultSelection(defaultPermissions.filter((p) => allowed.has(p)));
   };
 
   const handleDragStart = (e: React.DragEvent, key: string) => {
@@ -1751,10 +1778,10 @@ export default function PermissionMatrix({
               type="button" 
               className="btn btn-sm btn-outline-primary"
               onClick={resetToRoleDefaults}
-              disabled={!canEdit}
+              disabled={!canEdit || loadingRoleDefaults}
             >
               <i className="bi bi-arrow-counterclockwise me-1" />
-              Role Defaults
+              {loadingRoleDefaults ? 'Loading...' : 'Role Defaults'}
             </button>
           </div>
         </div>
