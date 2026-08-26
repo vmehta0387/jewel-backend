@@ -101,29 +101,302 @@ ALTER TABLE design_masters
     'PACKET_QUALITY'
   ) NOT NULL;
 
-ALTER TABLE design_masters
-  ADD COLUMN IF NOT EXISTS jewelry_group_id VARCHAR(36) NULL AFTER scope_key,
-  ADD COLUMN IF NOT EXISTS jewelry_group VARCHAR(255) NULL AFTER jewelry_group_id,
-  ADD COLUMN IF NOT EXISTS vendor_email VARCHAR(255) NULL AFTER description,
-  ADD COLUMN IF NOT EXISTS finding_no VARCHAR(100) NULL AFTER vendor_email,
-  ADD COLUMN IF NOT EXISTS metal_caratage VARCHAR(100) NULL AFTER finding_no,
-  ADD COLUMN IF NOT EXISTS price_in ENUM('PIECES','GRAM','PAIR','INCHES') NULL AFTER metal_caratage,
-  ADD COLUMN IF NOT EXISTS price_per_unit DECIMAL(12,2) NULL AFTER price_in,
-  ADD COLUMN IF NOT EXISTS dimensions VARCHAR(255) NULL AFTER price_per_unit,
-  ADD COLUMN IF NOT EXISTS weight_per_unit DECIMAL(12,3) NULL AFTER dimensions,
-  ADD COLUMN IF NOT EXISTS metal_name VARCHAR(120) NULL AFTER weight_per_unit,
-  ADD COLUMN IF NOT EXISTS metal_color VARCHAR(120) NULL AFTER metal_name,
-  ADD COLUMN IF NOT EXISTS metal_purity VARCHAR(120) NULL AFTER metal_color,
-  ADD COLUMN IF NOT EXISTS purity_percentage DECIMAL(8,3) NULL AFTER metal_purity,
-  ADD COLUMN IF NOT EXISTS market_price_per_ounce DECIMAL(12,2) NULL AFTER purity_percentage,
-  ADD COLUMN IF NOT EXISTS market_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_ounce,
-  ADD COLUMN IF NOT EXISTS live_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_gm,
-  ADD COLUMN IF NOT EXISTS default_wastage_percent DECIMAL(8,3) NULL AFTER live_price_per_gm,
-  ADD COLUMN IF NOT EXISTS labor_apply_mode VARCHAR(32) NULL AFTER default_wastage_percent,
-  ADD COLUMN IF NOT EXISTS flat_cost DECIMAL(12,2) NULL AFTER labor_apply_mode,
-  ADD COLUMN IF NOT EXISTS rate_per_stone DECIMAL(12,2) NULL AFTER flat_cost,
-  ADD COLUMN IF NOT EXISTS rate_per_gram DECIMAL(12,2) NULL AFTER rate_per_stone,
-  ADD COLUMN IF NOT EXISTS rate_per_group DECIMAL(12,2) NULL AFTER rate_per_gram,
-  ADD COLUMN IF NOT EXISTS overhead_apply_mode VARCHAR(32) NULL AFTER rate_per_group,
-  ADD COLUMN IF NOT EXISTS rate_percent DECIMAL(8,3) NULL AFTER overhead_apply_mode,
-  ADD COLUMN IF NOT EXISTS flat_amount DECIMAL(12,2) NULL AFTER rate_percent;
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'jewelry_group_id'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN jewelry_group_id VARCHAR(36) NULL AFTER scope_key', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'jewelry_group'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN jewelry_group VARCHAR(255) NULL AFTER jewelry_group_id', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'vendor_email'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN vendor_email VARCHAR(255) NULL AFTER description', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'finding_no'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN finding_no VARCHAR(100) NULL AFTER vendor_email', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'metal_caratage'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN metal_caratage VARCHAR(100) NULL AFTER finding_no', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'price_in'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN price_in ENUM(''PIECES'',''GRAM'',''PAIR'',''INCHES'') NULL AFTER metal_caratage', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'price_per_unit'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN price_per_unit DECIMAL(12,2) NULL AFTER price_in', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'dimensions'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN dimensions VARCHAR(255) NULL AFTER price_per_unit', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'weight_per_unit'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN weight_per_unit DECIMAL(12,3) NULL AFTER dimensions', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'metal_name'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN metal_name VARCHAR(120) NULL AFTER weight_per_unit', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'metal_color'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN metal_color VARCHAR(120) NULL AFTER metal_name', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'metal_purity'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN metal_purity VARCHAR(120) NULL AFTER metal_color', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'purity_percentage'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN purity_percentage DECIMAL(8,3) NULL AFTER metal_purity', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'market_price_per_ounce'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN market_price_per_ounce DECIMAL(12,2) NULL AFTER purity_percentage', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'market_price_per_gm'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN market_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_ounce', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'live_price_per_gm'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN live_price_per_gm DECIMAL(12,4) NULL AFTER market_price_per_gm', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'default_wastage_percent'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN default_wastage_percent DECIMAL(8,3) NULL AFTER live_price_per_gm', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'labor_apply_mode'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN labor_apply_mode VARCHAR(32) NULL AFTER default_wastage_percent', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'flat_cost'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN flat_cost DECIMAL(12,2) NULL AFTER labor_apply_mode', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'rate_per_stone'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN rate_per_stone DECIMAL(12,2) NULL AFTER flat_cost', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'rate_per_gram'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN rate_per_gram DECIMAL(12,2) NULL AFTER rate_per_stone', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'rate_per_group'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN rate_per_group DECIMAL(12,2) NULL AFTER rate_per_gram', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'overhead_apply_mode'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN overhead_apply_mode VARCHAR(32) NULL AFTER rate_per_group', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'rate_percent'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN rate_percent DECIMAL(8,3) NULL AFTER overhead_apply_mode', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists := (
+  SELECT COUNT(*)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'design_masters'
+    AND COLUMN_NAME = 'flat_amount'
+);
+SET @ddl := IF(@col_exists = 0, 'ALTER TABLE design_masters ADD COLUMN flat_amount DECIMAL(12,2) NULL AFTER rate_percent', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

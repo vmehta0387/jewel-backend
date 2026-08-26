@@ -74,6 +74,175 @@ function resolveSqlFiles(args) {
   });
 }
 
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
+
+  for (const char of sql) {
+    current += char;
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      quote = char;
+      continue;
+    }
+
+    if (char === ';') {
+      const statement = current.trim();
+      if (statement) statements.push(statement.slice(0, -1).trim());
+      current = '';
+    }
+  }
+
+  const last = current.trim();
+  if (last) statements.push(last);
+  return statements;
+}
+
+function stripSqlComments(statement) {
+  return statement
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+    .trim();
+}
+
+function splitAlterClauses(clausesSql) {
+  const clauses = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
+  let parenDepth = 0;
+
+  for (const char of clausesSql) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      current += char;
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '\'' || char === '"' || char === '`') {
+      current += char;
+      quote = char;
+      continue;
+    }
+
+    if (char === '(') parenDepth += 1;
+    if (char === ')' && parenDepth > 0) parenDepth -= 1;
+
+    if (char === ',' && parenDepth === 0) {
+      const clause = current.trim();
+      if (clause) clauses.push(clause);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  const last = current.trim();
+  if (last) clauses.push(last);
+  return clauses;
+}
+
+function expandMysqlCompatibleStatements(statement) {
+  const cleaned = stripSqlComments(statement);
+  if (!/\bIF\s+NOT\s+EXISTS\b/i.test(cleaned)) return [statement];
+
+  const alterMatch = cleaned.match(/^ALTER\s+TABLE\s+(`?[\w]+`?)\s+([\s\S]+)$/i);
+  if (alterMatch) {
+    const [, tableName, clausesSql] = alterMatch;
+    const clauses = splitAlterClauses(clausesSql);
+    const expanded = [];
+
+    for (const clause of clauses) {
+      if (/^ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/i.test(clause)) {
+        expanded.push({
+          sql: `ALTER TABLE ${tableName} ${clause.replace(/^ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\b/i, 'ADD COLUMN')}`,
+          ignoreErrorCodes: ['ER_DUP_FIELDNAME'],
+        });
+        continue;
+      }
+
+      if (/^ADD\s+(UNIQUE\s+)?(KEY|INDEX)\s+IF\s+NOT\s+EXISTS\b/i.test(clause)) {
+        expanded.push({
+          sql: `ALTER TABLE ${tableName} ${clause.replace(/^ADD\s+(UNIQUE\s+)?(KEY|INDEX)\s+IF\s+NOT\s+EXISTS\b/i, (_match, uniquePrefix = '', keyWord) => `ADD ${uniquePrefix || ''}${keyWord}`)}`,
+          ignoreErrorCodes: ['ER_DUP_KEYNAME'],
+        });
+        continue;
+      }
+
+      expanded.push(`ALTER TABLE ${tableName} ${clause}`);
+    }
+
+    return expanded;
+  }
+
+  if (/^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/i.test(cleaned)) {
+    return [
+      {
+        sql: cleaned.replace(/^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\b/i, (_match, uniquePrefix = '') => `CREATE ${uniquePrefix || ''}INDEX`),
+        ignoreErrorCodes: ['ER_DUP_KEYNAME'],
+      },
+    ];
+  }
+
+  return [statement];
+}
+
+async function runSqlFile(connection, sql) {
+  const statements = splitSqlStatements(sql);
+
+  for (const statement of statements) {
+    const expandedStatements = expandMysqlCompatibleStatements(statement);
+
+    for (const expandedStatement of expandedStatements) {
+      const sqlText =
+        typeof expandedStatement === 'string'
+          ? expandedStatement
+          : expandedStatement.sql;
+      const ignoreErrorCodes =
+        typeof expandedStatement === 'string'
+          ? []
+          : expandedStatement.ignoreErrorCodes;
+
+      try {
+        await connection.query(sqlText);
+      } catch (error) {
+        if (!ignoreErrorCodes.includes(error.code)) throw error;
+      }
+    }
+  }
+}
+
 async function main() {
   loadDotEnv(path.resolve(backendRoot, '.env'));
 
@@ -111,7 +280,7 @@ async function main() {
       const sql = fs.readFileSync(filePath, 'utf8');
       const label = path.relative(repoRoot, filePath);
       console.log(`Applying ${label} ...`);
-      await connection.query(sql);
+      await runSqlFile(connection, sql);
       console.log(`Applied ${label}`);
     }
     console.log('All SQL upgrades completed successfully.');
