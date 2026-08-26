@@ -57,6 +57,8 @@ function resolveSqlFiles(args) {
     path.resolve(sqlRoot, 'DATABASE_USER_LAST_SEEN_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_SPIFF_DECIMAL_POINTS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_LEDGER_UPDATED_AT_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_SPIFF_CANCEL_REVERSAL_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_SPIFF_SETTINGS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_SPIFF_COLLATION_FIX.sql'),
     path.resolve(sqlRoot, 'METAL_PRICE_HISTORY_UPGRADE.sql'),
@@ -294,3 +296,5 @@ main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
 });
+
+

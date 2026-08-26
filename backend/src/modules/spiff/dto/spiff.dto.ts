@@ -108,6 +108,7 @@ export class FindSpiffActivityQueryDto {
 
 export class CreateSpiffClaimDto {
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   userId?: number;
 
@@ -130,6 +131,7 @@ export class CreateSpiffClaimDto {
 }
 
 export class CreateSpiffPointAdjustmentDto {
+  @Type(() => Number)
   @IsInt()
   userId: number;
 
@@ -172,3 +174,4 @@ export class UpdateSpiffConfigDto {
   @Max(100000)
   pointsPerDollar: number;
 }
+

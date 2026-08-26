@@ -1,11 +1,11 @@
 -- SPIFF rewards and gift-card redemption flow
 
 CREATE TABLE IF NOT EXISTS spiff_point_ledger (
-  id VARCHAR(36) NOT NULL,
-  user_id VARCHAR(36) NOT NULL,
-  company_id VARCHAR(36) NULL,
-  branch_id VARCHAR(36) NULL,
-  order_id VARCHAR(36) NULL,
+  id INT NOT NULL AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  company_id INT NULL,
+  branch_id INT NULL,
+  order_id INT NULL,
   event_type ENUM('QUOTE_CREATED','ORDER_PLACED','ORDER_VALUE_BONUS','FAST_CLOSE_BONUS','ORDER_CANCELLED_REVERSAL','MANUAL_ADJUSTMENT') NOT NULL,
   event_key VARCHAR(150) NULL,
   points DECIMAL(12,2) NOT NULL,
@@ -22,11 +22,11 @@ CREATE TABLE IF NOT EXISTS spiff_point_ledger (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
-  id VARCHAR(36) NOT NULL,
+  id INT NOT NULL AUTO_INCREMENT,
   claim_number VARCHAR(30) NOT NULL,
-  user_id VARCHAR(36) NOT NULL,
-  company_id VARCHAR(36) NULL,
-  branch_id VARCHAR(36) NULL,
+  user_id INT NOT NULL,
+  company_id INT NULL,
+  branch_id INT NULL,
   requested_points DECIMAL(12,2) NOT NULL,
   requested_amount_cents INT NOT NULL,
   conversion_rate_points_per_dollar INT NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
   giftbit_request_id VARCHAR(150) NULL,
   giftbit_link_url TEXT NULL,
   giftbit_response JSON NULL,
-  approved_by_id VARCHAR(36) NULL,
+  approved_by_id INT NULL,
   approved_at DATETIME NULL,
   fulfilled_at DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -50,3 +50,5 @@ CREATE TABLE IF NOT EXISTS spiff_redemption_claims (
   KEY idx_spiff_redemption_claims_status (status),
   KEY idx_spiff_redemption_claims_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+

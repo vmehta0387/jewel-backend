@@ -518,6 +518,10 @@ export class ProductsService {
 
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
     const isPrimary = await this.resolvePrimaryVersionFlag(baseDesignNo, version, scope);
+    const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
+    if (isPrimary) {
+      await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
+    }
 
     const globalRateMaps = await this.getGlobalRateMaps();
     const metalCaratageRates = await this.getMetalCaratageRateMap();
@@ -564,7 +568,7 @@ export class ProductsService {
       designNo,
       familyDesignId,
       barcode,
-      designName: this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo),
+      designName: resolvedDesignName,
       version,
       companyId: scope.companyId,
       branchId: scope.branchId,
@@ -3276,9 +3280,16 @@ export class ProductsService {
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
     const shouldSyncFamilyName = design.isPrimary && dto.designName !== undefined;
     if (dto.designName !== undefined) {
+      if (design.isPrimary && nextRequestedDesignName) {
+        await this.assertUniqueDesignName(nextRequestedDesignName, scope.companyId, id);
+      }
       design.designName = design.isPrimary ? nextRequestedDesignName : design.designName;
     } else if (!this.optionalText(design.designName)) {
-      design.designName = this.buildDefaultDesignName(designJewelryGroup, designNo);
+      const fallbackDesignName = this.buildDefaultDesignName(designJewelryGroup, designNo);
+      if (design.isPrimary) {
+        await this.assertUniqueDesignName(fallbackDesignName, scope.companyId, id);
+      }
+      design.designName = fallbackDesignName;
     }
     design.companyId = scope.companyId;
     design.branchId = scope.branchId;
@@ -4113,6 +4124,37 @@ export class ProductsService {
     }
   }
 
+  private async assertUniqueDesignName(
+    designName: string | null,
+    companyId: number | null,
+    excludeId?: string | number,
+  ): Promise<void> {
+    const normalizedDesignName = this.optionalText(designName);
+    if (!normalizedDesignName) {
+      return;
+    }
+
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select('design.id')
+      .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName })
+      .andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+
+    if (companyId) {
+      qb.andWhere('design.companyId = :companyId', { companyId });
+    } else {
+      qb.andWhere('design.companyId IS NULL');
+    }
+
+    if (excludeId !== undefined && excludeId !== null) {
+      qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
+    }
+
+    const existing = await qb.getRawOne<{ id: string | number }>();
+    if (existing) {
+      throw new BadRequestException('Design Name already exists.');
+    }
+  }
   private async resolvePrimaryVersionFlag(
     baseDesignNo: string,
     version: string,
@@ -6946,6 +6988,4 @@ export class ProductsService {
   }
 
 }
-
-
 

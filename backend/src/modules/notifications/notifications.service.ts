@@ -60,6 +60,7 @@ export class NotificationsService {
     const qb = this.notificationRepo
       .createQueryBuilder('notification')
       .where('notification.recipient_user_id = :userId', { userId: requester.id })
+      .andWhere('notification.channel_in_app = :channelInApp', { channelInApp: true })
       .andWhere('notification.type != :hiddenType', {
         hiddenType: DESIGN_UPDATED_NOTIFICATION_TYPE,
       })
@@ -109,6 +110,7 @@ export class NotificationsService {
         where: {
           recipientUserId: requester.id,
           isRead: false,
+          channelInApp: true,
           type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
         },
       }),
@@ -123,6 +125,7 @@ export class NotificationsService {
         where: {
           recipientUserId: requester.id,
           isRead: false,
+          channelInApp: true,
           type: Not(DESIGN_UPDATED_NOTIFICATION_TYPE),
         },
       }),
@@ -154,6 +157,7 @@ export class NotificationsService {
         readAt: new Date(),
       })
       .where('recipient_user_id = :userId', { userId: requester.id })
+      .andWhere('channel_in_app = :channelInApp', { channelInApp: true })
       .andWhere('is_read = :isRead', { isRead: false })
       .execute();
 
@@ -525,5 +529,6 @@ export class NotificationsService {
     return normalized.length ? normalized : null;
   }
 }
+
 
 

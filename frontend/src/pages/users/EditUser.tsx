@@ -187,6 +187,7 @@ export default function EditUser() {
 
     if (!formData.firstName.trim()) nextErrors.firstName = 'First name is required';
     if (!formData.lastName.trim()) nextErrors.lastName = 'Last name is required';
+    if (!formData.userHandle.trim()) nextErrors.userHandle = 'User handle is required';
     if (!formData.email.trim()) nextErrors.email = 'Email is required';
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       nextErrors.email = 'Invalid email format';
@@ -281,7 +282,7 @@ export default function EditUser() {
       const payload: Record<string, unknown> = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
-        userHandle: formData.userHandle.trim() || null,
+        userHandle: formData.userHandle.trim(),
         email: formData.email.trim().toLowerCase(),
         role: formData.role,
         companyId: optionalNumberId(formData.companyId),
@@ -387,12 +388,13 @@ export default function EditUser() {
             />
             <Input
               name="userHandle"
-              label="User Handle"
+              label="User Handle *"
               value={formData.userHandle}
               onChange={(event) => setFormData({ ...formData, userHandle: event.target.value })}
               onBlur={() => void validateUserHandleAvailability()}
               placeholder="For Global Spiff's Leaderboard. Avoid using real name"
               error={errors.userHandle}
+              required
             />
             <Input
               name="email"
@@ -567,6 +569,8 @@ export default function EditUser() {
     </div>
   );
 }
+
+
 
 
 

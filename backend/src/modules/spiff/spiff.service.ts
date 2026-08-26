@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -170,16 +170,20 @@ export class SpiffService {
 
       companyPointsQb.groupBy('ledger.companyId').orderBy('points', 'DESC');
       const companyPointRows = await companyPointsQb.getRawMany();
-      const companyIds = companyPointRows
-        .map((row) => String(row.companyId || '').trim())
-        .filter((id) => id.length > 0);
+      const companyIds = Array.from(
+        new Set(
+          companyPointRows
+            .map((row) => this.toPositiveIntOrNull(row.companyId))
+            .filter((id): id is number => id !== null),
+        ),
+      );
 
       const companies = companyIds.length
         ? await this.companyRepo.find({ where: { id: In(companyIds) } })
         : [];
-      const companyById = new Map(companies.map((company) => [company.id, company]));
+      const companyById = new Map(companies.map((company) => [Number(company.id), company]));
 
-      const companyOrdersAgg = new Map<string, { totalOrders: number; totalGmv: number }>();
+      const companyOrdersAgg = new Map<number, { totalOrders: number; totalGmv: number }>();
       if (companyIds.length > 0) {
         const companyOrdersQb = this.orderRepo
           .createQueryBuilder('ord')
@@ -196,8 +200,8 @@ export class SpiffService {
         companyOrdersQb.groupBy('ord.companyId');
         const companyOrderRows = await companyOrdersQb.getRawMany();
         companyOrderRows.forEach((row) => {
-          const companyId = String(row.companyId || '').trim();
-          if (!companyId) return;
+          const companyId = this.toPositiveIntOrNull(row.companyId);
+          if (companyId === null) return;
           companyOrdersAgg.set(companyId, {
             totalOrders: this.toNumber(row.totalOrders),
             totalGmv: this.roundMoney(this.toNumber(row.totalGmv)),
@@ -205,7 +209,7 @@ export class SpiffService {
         });
       }
 
-      const topRepByCompany = new Map<string, { userId: number; points: number }>();
+      const topRepByCompany = new Map<number, { userId: number; points: number }>();
       if (companyIds.length > 0) {
         const topRepQb = this.ledgerRepo
           .createQueryBuilder('ledger')
@@ -229,9 +233,9 @@ export class SpiffService {
 
         const topRepRows = await topRepQb.getRawMany();
         for (const row of topRepRows) {
-          const companyId = row.companyId;
-          const userId = row.userId;
-          if (!companyId || !userId || topRepByCompany.has(companyId)) {
+          const companyId = this.toPositiveIntOrNull(row.companyId);
+          const userId = this.toPositiveIntOrNull(row.userId);
+          if (companyId === null || userId === null || topRepByCompany.has(companyId)) {
             continue;
           }
           topRepByCompany.set(companyId, {
@@ -247,17 +251,20 @@ export class SpiffService {
       const topRepUsers = topRepUserIds.length
         ? await this.userRepo.find({ where: { id: In(topRepUserIds) } })
         : [];
-      const topRepUserById = new Map(topRepUsers.map((user) => [user.id, user]));
+      const topRepUserById = new Map(topRepUsers.map((user) => [Number(user.id), user]));
 
       const entries = companyPointRows.slice(0, limit).map((row, index) => {
-        const companyId = row.companyId;
-        const company = companyById.get(companyId);
-        const orderAgg = companyOrdersAgg.get(companyId) || { totalOrders: 0, totalGmv: 0 };
-        const topRepInfo = topRepByCompany.get(companyId);
+        const companyId = this.toPositiveIntOrNull(row.companyId);
+        const responseCompanyId = String(row.companyId || '').trim();
+        const company = companyId === null ? null : companyById.get(companyId);
+        const orderAgg = companyId === null
+          ? { totalOrders: 0, totalGmv: 0 }
+          : companyOrdersAgg.get(companyId) || { totalOrders: 0, totalGmv: 0 };
+        const topRepInfo = companyId === null ? null : topRepByCompany.get(companyId);
         const topRepUser = topRepInfo ? topRepUserById.get(topRepInfo.userId) : null;
         return {
           rank: index + 1,
-          entityId: companyId,
+          entityId: responseCompanyId,
           name: company?.companyName || 'Unknown company',
           subtitle: company?.companyCode || null,
           points: this.toNumber(row.points),
@@ -295,31 +302,40 @@ export class SpiffService {
         }
 
         const globalRepRows = await globalRepQb.getRawMany();
-        const repUserIds = globalRepRows
-          .slice(0, repLimit)
-          .map((row) => String(row.userId || '').trim())
-          .filter((id) => id.length > 0);
+        const repUserIds = Array.from(
+          new Set(
+            globalRepRows
+              .slice(0, repLimit)
+              .map((row) => this.toPositiveIntOrNull(row.userId))
+              .filter((id): id is number => id !== null),
+          ),
+        );
         const repUsers = repUserIds.length
           ? await this.userRepo.find({ where: { id: In(repUserIds) } })
           : [];
-        const repUserById = new Map(repUsers.map((user) => [user.id, user]));
+        const repUserById = new Map(repUsers.map((user) => [Number(user.id), user]));
 
         const repCompanyIds = Array.from(
-          new Set(repUsers.map((user) => String(user.companyId || '').trim()).filter(Boolean)),
+          new Set(
+            repUsers
+              .map((user) => this.toPositiveIntOrNull(user.companyId))
+              .filter((id): id is number => id !== null),
+          ),
         );
         const repCompanies = repCompanyIds.length
           ? await this.companyRepo.find({ where: { id: In(repCompanyIds) } })
           : [];
-        const repCompanyById = new Map(repCompanies.map((company) => [company.id, company]));
+        const repCompanyById = new Map(repCompanies.map((company) => [Number(company.id), company]));
 
         globalRepEntries = globalRepRows.slice(0, repLimit).map((row, index) => {
-          const userId = row.userId;
-          const repUser = repUserById.get(userId);
+          const userId = this.toPositiveIntOrNull(row.userId);
+          const responseUserId = String(row.userId || '').trim();
+          const repUser = userId === null ? null : repUserById.get(userId);
           const repCompany = repUser?.companyId ? repCompanyById.get(repUser.companyId) : null;
 
           return {
             rank: index + 1,
-            userId,
+            userId: responseUserId,
             name: this.getSpiffUserDisplayName(repUser) || 'Unknown rep',
             companyName: repCompany?.companyName || null,
             role: repUser?.role || null,
@@ -370,26 +386,27 @@ export class SpiffService {
 
     const rows = await qb.getRawMany();
     const userIds = rows
-      .map((row) => row.userId)
-      .filter((id) => id.length > 0);
+      .map((row) => this.toPositiveIntOrNull(row.userId))
+      .filter((id): id is number => id !== null);
     const users = userIds.length
       ? await this.userRepo.find({ where: { id: In(userIds) } })
       : [];
-    const userById = new Map(users.map((user) => [user.id, user]));
+    const userById = new Map(users.map((user) => [Number(user.id), user]));
 
     const entries = rows.slice(0, limit).map((row, index) => {
-      const userId = row.userId;
-      const user = userById.get(userId);
+      const userId = this.toPositiveIntOrNull(row.userId);
+      const responseUserId = String(row.userId || '').trim();
+      const user = userId === null ? null : userById.get(userId);
       return {
         rank: index + 1,
-        entityId: userId,
+        entityId: responseUserId,
         name: this.getSpiffUserDisplayName(user) || 'Unknown rep',
         subtitle: user?.role || null,
         points: this.toNumber(row.points),
       };
     });
 
-    const myIndex = rows.findIndex((row) => row.userId === requester.id);
+    const myIndex = rows.findIndex((row) => this.toPositiveIntOrNull(row.userId) === requester.id);
     const myRank = myIndex >= 0
       ? {
         rank: myIndex + 1,
@@ -694,7 +711,7 @@ export class SpiffService {
     const actionLabel = action === 'ADD' ? 'Added' : action === 'REDEEM' ? 'Redeemed' : 'Removed';
     const note = this.optionalText(dto.note) || `${actionLabel} by ${actorName || requester.email || 'admin'}`;
 
-    await this.createLedgerEntryIfMissing({
+    const ledgerEntry = await this.createLedgerEntryIfMissing({
       userId: targetUser.id,
       companyId: targetUser.companyId || null,
       branchId: targetUser.branchId || null,
@@ -712,6 +729,10 @@ export class SpiffService {
         targetUserName: targetName || targetUser.email,
       },
     });
+
+    if (action === 'ADD' && signedPoints > 0 && ledgerEntry) {
+      await this.safeNotifySpiffPointsGiven(ledgerEntry, targetUser, requester);
+    }
 
     return {
       adjustment: {
@@ -1321,16 +1342,16 @@ export class SpiffService {
     eventKey: string;
     note: string;
     metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  }): Promise<SpiffPointLedger | null> {
     const points = this.roundPoints(this.toNumber(input.points));
     if (points === 0) {
-      return;
+      return null;
     }
 
     if (input.eventKey) {
       const exists = await this.ledgerRepo.exist({ where: { eventKey: input.eventKey } });
       if (exists) {
-        return;
+        return null;
       }
     }
 
@@ -1347,14 +1368,61 @@ export class SpiffService {
     });
 
     try {
-      await this.ledgerRepo.save(row);
+      return await this.ledgerRepo.save(row);
     } catch (error: any) {
-      const isDuplicate =
-        error?.code === 'ER_DUP_ENTRY' ||
-        String(error?.message || '').includes('Duplicate entry');
+      const message = String(error?.message || '');
+      const isDuplicate = error?.code === 'ER_DUP_ENTRY' || message.includes('Duplicate entry');
+      const needsLegacyId = error?.code === 'ER_NO_DEFAULT_FOR_FIELD'
+        || message.includes("Field 'id' doesn't have a default value");
+
+      if (needsLegacyId) {
+        (row as any).id = randomUUID();
+        return await this.ledgerRepo.save(row);
+      }
       if (!isDuplicate) {
         throw error;
       }
+      return null;
+    }
+  }
+
+  private async safeNotifySpiffPointsGiven(
+    ledgerEntry: SpiffPointLedger,
+    targetUser: User,
+    requester: AuthUser,
+  ): Promise<void> {
+    try {
+      const points = this.roundPoints(this.toNumber(ledgerEntry.points));
+      if (points <= 0 || targetUser.role !== UserRole.SALES_REP) return;
+
+      const actorName = [requester.firstName, requester.lastName].filter(Boolean).join(' ').trim()
+        || requester.email
+        || 'Admin';
+
+      await this.notificationsService.createForUser({
+        userId: targetUser.id,
+        companyId: targetUser.companyId || null,
+        branchId: targetUser.branchId || null,
+        type: 'SPIFF_POINTS_GIVEN',
+        priority: NotificationPriority.P1,
+        title: 'SPIFF reward received',
+        message: `${actorName} gave you ${points.toLocaleString('en-US', { maximumFractionDigits: 2 })} SPIFF points.`,
+        entityType: 'SPIFF_LEDGER',
+        entityId: Number(ledgerEntry.id) || null,
+        actionUrl: null,
+        channelInApp: false,
+        channelPush: true,
+        metadata: {
+          ledgerId: ledgerEntry.id,
+          points,
+          eventType: ledgerEntry.eventType,
+          adjustedByUserId: requester.id,
+        },
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `SPIFF point push notification skipped for ledger ${ledgerEntry?.id || '-'}: ${error?.message || 'unknown error'}`,
+      );
     }
   }
 
@@ -2031,3 +2099,9 @@ export class SpiffService {
     return Math.round(value * 100) / 100;
   }
 }
+
+
+
+
+
+
