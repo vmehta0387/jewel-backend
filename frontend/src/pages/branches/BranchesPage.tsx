@@ -25,6 +25,12 @@ export default function BranchesPage() {
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [statusBranch, setStatusBranch] = useState<any | null>(null);
+  const [targetBranchId, setTargetBranchId] = useState('');
+  const [unlinkUsers, setUnlinkUsers] = useState(false);
+  const [branchMoveOptions, setBranchMoveOptions] = useState<any[]>([]);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [statusError, setStatusError] = useState('');
 
   const pageSize = 15;
   const showingFrom = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -83,6 +89,59 @@ export default function BranchesPage() {
     setSearchTerm('');
   };
 
+  const closeStatusConfirm = () => {
+    if (savingStatus) return;
+    setStatusBranch(null);
+    setTargetBranchId('');
+    setUnlinkUsers(false);
+    setBranchMoveOptions([]);
+    setStatusError('');
+  };
+
+  const openBranchDisableConfirm = async (branch: any) => {
+    setStatusBranch(branch);
+    setTargetBranchId('');
+    setUnlinkUsers(false);
+    setStatusError('');
+    try {
+      const response = await api.get('/branches', {
+        params: { companyId: branch.companyId || branch.company?.id, status: 'ACTIVE', limit: 200 },
+      });
+      const options = (response.data?.data || []).filter((item: any) => item.id !== branch.id);
+      setBranchMoveOptions(options);
+    } catch (error) {
+      console.error(error);
+      setBranchMoveOptions([]);
+    }
+  };
+
+  const updateBranchStatus = async (branch: any, isActive: boolean) => {
+    const assignedUsers = Number(branch.userCount || 0);
+    if (!isActive && assignedUsers > 0 && !targetBranchId && !unlinkUsers) {
+      setStatusError('Select another branch to move users, or confirm unlinking them from this branch.');
+      return;
+    }
+
+    setSavingStatus(true);
+    setStatusError('');
+    try {
+      await api.patch(`/branches/${branch.id}/status`, {
+        isActive,
+        targetBranchId: !isActive && targetBranchId ? Number(targetBranchId) : undefined,
+        unlinkUsers: !isActive && unlinkUsers,
+      });
+      setStatusBranch(null);
+      setTargetBranchId('');
+      setUnlinkUsers(false);
+      setBranchMoveOptions([]);
+      fetchBranches();
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      setStatusError(Array.isArray(message) ? message.join(', ') : message || 'Failed to update branch status');
+    } finally {
+      setSavingStatus(false);
+    }
+  };
   const columns = [
     {
       key: 'serialNumber',
@@ -157,13 +216,12 @@ export default function BranchesPage() {
             Edit
           </button>
           <button
-            onClick={async () => {
-              try {
-                await api.patch(`/branches/${row.id}/status`, { isActive: !row.isActive });
-                fetchBranches();
-              } catch (error) {
-                console.error(error);
+            onClick={() => {
+              if (row.isActive) {
+                void openBranchDisableConfirm(row);
+                return;
               }
+              void updateBranchStatus(row, true);
             }}
             className={`app-table-action ${
               row.isActive
@@ -212,6 +270,61 @@ export default function BranchesPage() {
         </form>
       </Card>
 
+      {statusBranch && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-900/45 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl">
+            <div className="border-b px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">Disable Branch</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                {statusBranch.name} has {Number(statusBranch.userCount || 0)} assigned user{Number(statusBranch.userCount || 0) === 1 ? '' : 's'}.
+              </p>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              {statusError && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{statusError}</div>}
+              {Number(statusBranch.userCount || 0) > 0 ? (
+                <>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Move users to another branch
+                    <select
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-primary-500"
+                      value={targetBranchId}
+                      onChange={(event) => {
+                        setTargetBranchId(event.target.value);
+                        if (event.target.value) setUnlinkUsers(false);
+                      }}
+                    >
+                      <option value="">Select active branch</option>
+                      {branchMoveOptions.map((branch) => (
+                        <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={unlinkUsers}
+                      onChange={(event) => {
+                        setUnlinkUsers(event.target.checked);
+                        if (event.target.checked) setTargetBranchId('');
+                      }}
+                      className="mt-1 h-4 w-4 text-primary-600"
+                    />
+                    <span>Unlink these users from this branch instead of moving them.</span>
+                  </label>
+                </>
+              ) : (
+                <p className="text-sm text-gray-600">No users are assigned to this branch.</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 py-4">
+              <Button type="button" variant="secondary" onClick={closeStatusConfirm} disabled={savingStatus}>Cancel</Button>
+              <Button type="button" variant="danger" onClick={() => updateBranchStatus(statusBranch, false)} disabled={savingStatus}>
+                {savingStatus ? 'Disabling...' : 'Disable Branch'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">Branch Directory</h2>
@@ -231,3 +344,8 @@ export default function BranchesPage() {
     </div>
   );
 }
+
+
+
+
+

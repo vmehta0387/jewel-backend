@@ -76,7 +76,7 @@ export class BranchesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
   @ActionPermissions('branch.edit')
   updateStatus(@Param('id') id: number, @Body() dto: UpdateBranchStatusDto, @Request() req: { user: AuthUser }) {
-    return this.branchesService.updateStatus(id, dto.isActive, req.user);
+    return this.branchesService.updateStatus(id, dto, req.user);
   }
 
   @Post(':id/pricing-slabs')
@@ -86,3 +86,4 @@ export class BranchesController {
     return this.branchesService.updatePricingSlabs(id, slabs, req.user);
   }
 }
+

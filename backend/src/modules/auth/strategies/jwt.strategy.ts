@@ -27,11 +27,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload): Promise<AuthUser> {
     const user = await this.userRepo.findOne({
       where: { id: payload.sub, isActive: true },
-      relations: ['branch'],
+      relations: ['branch', 'company'],
     });
 
     if (!user) {
       throw new UnauthorizedException('Invalid token');
+    }
+    if (user.companyId && user.company && !user.company.isActive) {
+      throw new UnauthorizedException('Company account is temporarily disabled. Please contact the Administrator.');
+    }
+    if (user.branchId && user.branch && !user.branch.isActive) {
+      throw new UnauthorizedException('Branch account is temporarily disabled. Please contact the Administrator.');
     }
 
     const now = Date.now();
@@ -54,3 +60,4 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     };
   }
 }
+

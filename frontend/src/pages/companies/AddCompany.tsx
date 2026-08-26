@@ -23,6 +23,7 @@ const COMPANY_ERROR_ORDER = [
   'companyName',
   'companyCode',
   'newManagerDraft',
+  'newBranchName',
   'newUserDraft',
   'primaryEmail',
   'shipStreetAddress',
@@ -136,6 +137,8 @@ export default function AddCompany() {
   const [accountManagers, setAccountManagers] = useState<any[]>([]);
   const [showCreateBranchForm, setShowCreateBranchForm] = useState(false);
   const [showCreateUserForm, setShowCreateUserForm] = useState(false);
+  const [editingDraftBranchId, setEditingDraftBranchId] = useState<string | null>(null);
+  const [editingDraftUserId, setEditingDraftUserId] = useState<string | null>(null);
   const [draftBranches, setDraftBranches] = useState<DraftBranch[]>([]);
   const [draftUsers, setDraftUsers] = useState<DraftUser[]>([]);
   const [newBranchData, setNewBranchData] = useState({
@@ -251,8 +254,14 @@ export default function AddCompany() {
     if (showAddManager) {
       newErrors.newManagerDraft = 'Please click Add Manager to save the entered account manager details, or cancel this section before creating the company.';
     }
+    if (showCreateBranchForm) {
+      newErrors.newBranchName = 'Please click Add To List to save this branch, or close the Add Branch popup before creating the company.';
+    }
     if (showCreateUserForm) {
-      newErrors.newUserDraft = 'First add/cancel new user detail with company';
+      newErrors.newUserDraft = 'Please click Add To List to save this user, or close the Add User popup before creating the company.';
+    }
+    if (showCreateBranchForm || showCreateUserForm) {
+      newErrors.submit = 'Finish or close the open quick add popup before saving company details.';
     }
 
     setErrors(newErrors);
@@ -347,26 +356,29 @@ export default function AddCompany() {
       return;
     }
 
-    const tempId = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setDraftBranches((prev) => [
-      ...prev,
-      {
-        tempId,
-        name: newBranchData.name.trim(),
-        code: newBranchData.code.toUpperCase().replace(/\s+/g, ''),
-        streetAddress: newBranchData.streetAddress.trim() || undefined,
-        streetAddress2: newBranchData.streetAddress2.trim() || undefined,
-        city: newBranchData.city.trim() || undefined,
-        stateProvince: newBranchData.stateProvince.trim() || undefined,
-        postalCode: newBranchData.postalCode.trim() || undefined,
-        country: newBranchData.country.trim() || undefined,
-        email: newBranchData.email.trim() || undefined,
-        phone: newBranchData.phone.trim() || undefined,
-        branchMultiplier: newBranchData.branchMultiplier,
-        enableSlabPricing: newBranchData.enableSlabPricing,
-        pricingSlabs: newBranchData.enableSlabPricing ? newBranchSlabs.map((slab) => ({ ...slab })) : [],
-      },
-    ]);
+    const branchDraft = {
+      name: newBranchData.name.trim(),
+      code: newBranchData.code.toUpperCase().replace(/\s+/g, ''),
+      streetAddress: newBranchData.streetAddress.trim() || undefined,
+      streetAddress2: newBranchData.streetAddress2.trim() || undefined,
+      city: newBranchData.city.trim() || undefined,
+      stateProvince: newBranchData.stateProvince.trim() || undefined,
+      postalCode: newBranchData.postalCode.trim() || undefined,
+      country: newBranchData.country.trim() || undefined,
+      email: newBranchData.email.trim() || undefined,
+      phone: newBranchData.phone.trim() || undefined,
+      branchMultiplier: newBranchData.branchMultiplier,
+      enableSlabPricing: newBranchData.enableSlabPricing,
+      pricingSlabs: newBranchData.enableSlabPricing ? newBranchSlabs.map((slab) => ({ ...slab })) : [],
+    };
+
+    setDraftBranches((prev) => {
+      if (editingDraftBranchId) {
+        return prev.map((branch) => branch.tempId === editingDraftBranchId ? { ...branchDraft, tempId: editingDraftBranchId } : branch);
+      }
+      const tempId = `branch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return [...prev, { ...branchDraft, tempId }];
+    });
 
     setNewBranchData({
       name: '',
@@ -386,6 +398,7 @@ export default function AddCompany() {
       { minCost: 0, maxCost: 500, multiplier: 3.5 },
       { minCost: 500.01, maxCost: 3000, multiplier: 3.0 },
     ]);
+    setEditingDraftBranchId(null);
     setShowCreateBranchForm(false);
   };
 
@@ -394,21 +407,24 @@ export default function AddCompany() {
       return;
     }
 
-    const tempId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setDraftUsers((prev) => [
-      ...prev,
-      {
-        tempId,
-        firstName: newUserData.firstName.trim(),
-        lastName: newUserData.lastName.trim(),
-        email: newUserData.email.trim().toLowerCase(),
-        password: newUserData.password,
-        phone: newUserData.phone.trim() || undefined,
-        role: newUserData.role,
-        branchRef: quickRoleNeedsBranch(newUserData.role) ? newUserData.branchRef : '',
-        isActive: newUserData.isActive,
-      },
-    ]);
+    const userDraft = {
+      firstName: newUserData.firstName.trim(),
+      lastName: newUserData.lastName.trim(),
+      email: newUserData.email.trim().toLowerCase(),
+      password: newUserData.password,
+      phone: newUserData.phone.trim() || undefined,
+      role: newUserData.role,
+      branchRef: quickRoleNeedsBranch(newUserData.role) ? newUserData.branchRef : '',
+      isActive: newUserData.isActive,
+    };
+
+    setDraftUsers((prev) => {
+      if (editingDraftUserId) {
+        return prev.map((user) => user.tempId === editingDraftUserId ? { ...userDraft, tempId: editingDraftUserId } : user);
+      }
+      const tempId = `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return [...prev, { ...userDraft, tempId }];
+    });
 
     setNewUserData({
       firstName: '',
@@ -420,9 +436,103 @@ export default function AddCompany() {
       branchRef: '',
       isActive: true,
     });
+    setEditingDraftUserId(null);
     setShowCreateUserForm(false);
   };
 
+  const clearDraftBranchForm = () => {
+    setNewBranchData({
+      name: '',
+      code: '',
+      streetAddress: '',
+      streetAddress2: '',
+      city: '',
+      stateProvince: '',
+      postalCode: '',
+      country: '',
+      email: '',
+      phone: '',
+      branchMultiplier: 1,
+      enableSlabPricing: false,
+    });
+    setNewBranchSlabs([
+      { minCost: 0, maxCost: 500, multiplier: 3.5 },
+      { minCost: 500.01, maxCost: 3000, multiplier: 3.0 },
+    ]);
+    setEditingDraftBranchId(null);
+  };
+
+  const openDraftBranchCreator = () => {
+    clearDraftBranchForm();
+    setShowCreateBranchForm(true);
+  };
+
+  const openDraftBranchEditor = (branch: DraftBranch) => {
+    setEditingDraftBranchId(branch.tempId);
+    setNewBranchData({
+      name: branch.name,
+      code: branch.code,
+      streetAddress: branch.streetAddress || '',
+      streetAddress2: branch.streetAddress2 || '',
+      city: branch.city || '',
+      stateProvince: branch.stateProvince || '',
+      postalCode: branch.postalCode || '',
+      country: branch.country || '',
+      email: branch.email || '',
+      phone: branch.phone || '',
+      branchMultiplier: branch.branchMultiplier,
+      enableSlabPricing: branch.enableSlabPricing,
+    });
+    setNewBranchSlabs(branch.pricingSlabs.length > 0 ? branch.pricingSlabs.map((slab) => ({ ...slab })) : [
+      { minCost: 0, maxCost: 500, multiplier: 3.5 },
+      { minCost: 500.01, maxCost: 3000, multiplier: 3.0 },
+    ]);
+    setShowCreateBranchForm(true);
+  };
+
+  const closeDraftBranchModal = () => {
+    clearDraftBranchForm();
+    setShowCreateBranchForm(false);
+  };
+
+  const clearDraftUserForm = () => {
+    setNewUserData({
+      firstName: '',
+      lastName: '',
+      email: '',
+      password: '',
+      phone: '',
+      role: 'COMPANY_ADMIN',
+      branchRef: '',
+      isActive: true,
+    });
+    setEditingDraftUserId(null);
+  };
+
+  const openDraftUserCreator = () => {
+    clearDraftUserForm();
+    setShowCreateUserForm(true);
+  };
+
+  const openDraftUserEditor = (user: DraftUser) => {
+    setEditingDraftUserId(user.tempId);
+    setNewUserData({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      password: user.password,
+      phone: user.phone || '',
+      role: user.role,
+      branchRef: user.branchRef,
+      isActive: user.isActive,
+    });
+    setShowCreateUserForm(true);
+  };
+
+  const closeDraftUserModal = () => {
+    clearDraftUserForm();
+    setShowCreateUserForm(false);
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -749,13 +859,22 @@ export default function AddCompany() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Add branch records now; they will be created after company save.</p>
-              <Button type="button" size="sm" onClick={() => setShowCreateBranchForm((prev) => !prev)}>
+              <Button type="button" size="sm" onClick={showCreateBranchForm ? closeDraftBranchModal : openDraftBranchCreator}>
                 {showCreateBranchForm ? 'Cancel' : '+ Add Branch'}
               </Button>
             </div>
 
             {showCreateBranchForm && (
-              <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
+              <div className="fixed inset-0 z-[500] flex items-start justify-center overflow-y-auto bg-slate-900/45 px-4 py-8">
+                <div className="w-full max-w-4xl rounded-lg bg-white shadow-xl">
+                  <div className="flex items-start justify-between border-b px-5 py-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">{editingDraftBranchId ? 'Edit Branch' : 'Add Branch'}</h2>
+                      <p className="text-sm text-gray-500">Branch will be created when the company is saved.</p>
+                    </div>
+                    <button type="button" className="text-2xl leading-none text-gray-400 hover:text-gray-700" onClick={closeDraftBranchModal}>x</button>
+                  </div>
+                  <div className="space-y-3 p-5">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Input
                     id="newBranchName"
@@ -864,9 +983,11 @@ export default function AddCompany() {
                     )}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" onClick={addDraftBranch}>Add To List</Button>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowCreateBranchForm(false)}>Close</Button>
+                <div className="flex justify-end gap-2 border-t px-5 py-4 -mx-5 -mb-5 mt-4">
+                  <Button type="button" size="sm" variant="secondary" onClick={closeDraftBranchModal}>Close</Button>
+                  <Button type="button" size="sm" onClick={addDraftBranch}>{editingDraftBranchId ? 'Update Branch' : 'Add To List'}</Button>
+                </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -901,10 +1022,7 @@ export default function AddCompany() {
                         <td className="px-4 py-2">
                           <button
                             type="button"
-                            onClick={() => {
-                              setDraftBranches((prev) => prev.filter((item) => item.tempId !== branch.tempId));
-                              setDraftUsers((prev) => prev.filter((user) => user.branchRef !== branch.tempId));
-                            }}
+                            onClick={() => openDraftBranchEditor(branch)}
                             className="text-primary-600 hover:text-primary-800 font-medium"
                           >
                             <ManageActionContent />
@@ -923,7 +1041,7 @@ export default function AddCompany() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Add company users now; they will be created after company save.</p>
-              <Button type="button" size="sm" onClick={() => setShowCreateUserForm((prev) => !prev)}>
+              <Button type="button" size="sm" onClick={showCreateUserForm ? closeDraftUserModal : openDraftUserCreator}>
                 {showCreateUserForm ? 'Cancel' : '+ Add User'}
               </Button>
             </div>
@@ -932,8 +1050,17 @@ export default function AddCompany() {
               <div
                 id="newUserDraft"
                 tabIndex={-1}
-                className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="fixed inset-0 z-[500] flex items-start justify-center overflow-y-auto bg-slate-900/45 px-4 py-8 focus:outline-none"
               >
+                <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+                  <div className="flex items-start justify-between border-b px-5 py-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">{editingDraftUserId ? 'Edit User' : 'Add User'}</h2>
+                      <p className="text-sm text-gray-500">User will be created when the company is saved.</p>
+                    </div>
+                    <button type="button" className="text-2xl leading-none text-gray-400 hover:text-gray-700" onClick={closeDraftUserModal}>x</button>
+                  </div>
+                  <div className="space-y-3 p-5">
                 {errors.newUserDraft && (
                   <p className="text-sm text-red-600">{errors.newUserDraft}</p>
                 )}
@@ -1044,9 +1171,11 @@ export default function AddCompany() {
                     </label>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" onClick={addDraftUser}>Add To List</Button>
-                  <Button type="button" size="sm" variant="secondary" onClick={() => setShowCreateUserForm(false)}>Close</Button>
+                <div className="flex justify-end gap-2 border-t px-5 py-4 -mx-5 -mb-5 mt-4">
+                  <Button type="button" size="sm" variant="secondary" onClick={closeDraftUserModal}>Close</Button>
+                  <Button type="button" size="sm" onClick={addDraftUser}>{editingDraftUserId ? 'Update User' : 'Add To List'}</Button>
+                </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1087,7 +1216,7 @@ export default function AddCompany() {
                           <td className="px-4 py-2">
                             <button
                               type="button"
-                              onClick={() => setDraftUsers((prev) => prev.filter((item) => item.tempId !== user.tempId))}
+                              onClick={() => openDraftUserEditor(user)}
                               className="text-primary-600 hover:text-primary-800 font-medium"
                             >
                               <ManageActionContent />
@@ -1272,4 +1401,14 @@ export default function AddCompany() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
 

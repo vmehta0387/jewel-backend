@@ -351,6 +351,12 @@ export class AuthService implements OnModuleInit {
     if (!user.isActive) {
       throw new UnauthorizedException('This account was deleted and no longer exists in the application. Please create a new account with a different email.');
     }
+    if (user.companyId && user.company && !user.company.isActive) {
+      throw new UnauthorizedException('Company account is temporarily disabled. Please contact the Administrator.');
+    }
+    if (user.branchId && user.branch && !user.branch.isActive) {
+      throw new UnauthorizedException('Branch account is temporarily disabled. Please contact the Administrator.');
+    }
 
     let passwordMatches = false;
     try {
@@ -592,3 +598,4 @@ export class AuthService implements OnModuleInit {
     return url;
   }
 }
+

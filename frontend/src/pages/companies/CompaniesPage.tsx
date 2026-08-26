@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import Table from '../../components/common/Table';
 import Pagination from '../../components/common/Pagination';
 import Input from '../../components/common/Input';
+import AlertDialog from '../../components/common/AlertDialog';
 import ExpandableText from '../../components/common/ExpandableText';
 import api from '../../services/api';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
@@ -24,6 +25,8 @@ export default function CompaniesPage() {
   const [page, setPage] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [statusCompany, setStatusCompany] = useState<any | null>(null);
+  const [savingStatus, setSavingStatus] = useState(false);
 
   const pageSize = 15;
   const showingFrom = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -82,6 +85,23 @@ export default function CompaniesPage() {
     setSearchTerm('');
   };
 
+  const closeStatusConfirm = () => {
+    if (savingStatus) return;
+    setStatusCompany(null);
+  };
+
+  const updateCompanyStatus = async (company: any, isActive: boolean) => {
+    setSavingStatus(true);
+    try {
+      await api.patch(`/companies/${company.id}/status`, { isActive });
+      setStatusCompany(null);
+      fetchCompanies();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSavingStatus(false);
+    }
+  };
   const columns = [
     {
       key: 'serialNumber',
@@ -207,6 +227,17 @@ export default function CompaniesPage() {
         </form>
       </Card>
 
+      <AlertDialog
+        open={Boolean(statusCompany)}
+        title="Disable Company"
+        message={`Disable ${statusCompany?.companyName || 'this company'}? All branches under this company will be disabled and company users will be logged out on their next API request. They will not be able to log in until the company is enabled again.`}
+        variant="warning"
+        confirmLabel={savingStatus ? 'Disabling...' : 'Disable Company'}
+        cancelLabel="Cancel"
+        onClose={closeStatusConfirm}
+        onConfirm={() => statusCompany && updateCompanyStatus(statusCompany, false)}
+      />
+
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900">Company Directory</h2>
@@ -226,3 +257,4 @@ export default function CompaniesPage() {
     </div>
   );
 }
+

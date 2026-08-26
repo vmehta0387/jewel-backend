@@ -5,7 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { Branch } from './entities/branch.entity';
 import { Company } from '../companies/entities/company.entity';
-import { CreateBranchDto, UpdateBranchDto, BranchPricingSlabDto, NewBranchManagerDto } from './dto/branch.dto';
+import { CreateBranchDto, UpdateBranchDto, BranchPricingSlabDto, NewBranchManagerDto, UpdateBranchStatusDto } from './dto/branch.dto';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import { User } from '../users/entities/user.entity';
@@ -271,9 +271,37 @@ export class BranchesService {
     return this.findOne(id, requester);
   }
 
-  async updateStatus(id: number, isActive: boolean, requester?: AuthUser): Promise<Branch> {
+  async updateStatus(id: number, dto: UpdateBranchStatusDto, requester?: AuthUser): Promise<Branch> {
     const branch = await this.findOne(id, requester);
-    branch.isActive = isActive;
+
+    if (dto.isActive) {
+      branch.isActive = true;
+      await this.branchRepo.save(branch);
+      return this.findOne(id, requester);
+    }
+
+    const activeUsers = await this.userRepo.find({ where: { branchId: id, isActive: true } });
+    if (activeUsers.length > 0) {
+      if (dto.targetBranchId) {
+        if (dto.targetBranchId === id) {
+          throw new BadRequestException('Select a different branch to move users');
+        }
+        const targetBranch = await this.branchRepo.findOne({
+          where: { id: dto.targetBranchId, companyId: branch.companyId, isActive: true },
+        });
+        if (!targetBranch) {
+          throw new BadRequestException('Select an active branch from the same company to move users');
+        }
+        await this.userRepo.update({ branchId: id }, { branchId: dto.targetBranchId, companyId: branch.companyId });
+      } else if (dto.unlinkUsers) {
+        await this.userRepo.update({ branchId: id }, { branchId: null, companyId: branch.companyId });
+      } else {
+        throw new BadRequestException('Choose another branch for assigned users or confirm unlinking them before disabling this branch');
+      }
+    }
+
+    branch.isActive = false;
+    branch.branchManagerId = null;
     await this.branchRepo.save(branch);
     return this.findOne(id, requester);
   }
@@ -465,4 +493,5 @@ export class BranchesService {
     }
   }
 }
+
 

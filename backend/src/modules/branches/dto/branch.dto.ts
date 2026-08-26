@@ -218,4 +218,13 @@ export class UpdateBranchDto {
 export class UpdateBranchStatusDto {
   @IsBoolean()
   isActive: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  targetBranchId?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  unlinkUsers?: boolean;
 }
+

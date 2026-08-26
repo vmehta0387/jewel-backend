@@ -328,6 +328,12 @@ export class CompaniesService {
     const company = await this.findOne(id);
     company.isActive = isActive;
     await this.companyRepo.save(company);
+
+    if (!isActive) {
+      await this.branchRepo.update({ companyId: id }, { isActive: false, branchManagerId: null });
+      await this.userRepo.update({ companyId: id }, { branchId: null });
+    }
+
     return company;
   }
 
@@ -454,4 +460,5 @@ export class CompaniesService {
     }
   }
 }
+
 

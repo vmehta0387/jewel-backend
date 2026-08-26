@@ -511,7 +511,7 @@ export default function EditUser() {
             )}
 
             {roleNeedsBranch(formData.role) && (
-              <div>
+              <div data-validation-key="branchId" tabIndex={-1}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Branch *</label>
                 <SmartDropdown
                   value={formData.branchId}
@@ -567,6 +567,7 @@ export default function EditUser() {
     </div>
   );
 }
+
 
 
 

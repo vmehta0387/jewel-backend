@@ -22,6 +22,8 @@ const optionalNumberId = (value?: string | number | null): number | null => {
 const COMPANY_ERROR_ORDER = [
   'companyName',
   'newManagerDraft',
+  'newBranchName',
+  'newUserFirstName',
   'primaryEmail',
   'shipStreetAddress',
   'defaultMultiplier',
@@ -137,6 +139,36 @@ export default function EditCompany() {
     isActive: true,
   });
 
+  const [pendingCompanyAction, setPendingCompanyAction] = useState<(() => void) | null>(null);
+  const [editingBranch, setEditingBranch] = useState<any | null>(null);
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editBranchData, setEditBranchData] = useState({
+    name: '',
+    code: '',
+    streetAddress: '',
+    streetAddress2: '',
+    city: '',
+    stateProvince: '',
+    postalCode: '',
+    country: '',
+    email: '',
+    phone: '',
+    branchMultiplier: 1,
+    branchManagerId: '',
+    isActive: true,
+  });
+  const [editUserData, setEditUserData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    phone: '',
+    role: 'COMPANY_ADMIN' as QuickUserRole,
+    branchId: '',
+    isActive: true,
+  });
+  const [editModalErrors, setEditModalErrors] = useState<Record<string, string>>({});
+  const [isSavingEditModal, setIsSavingEditModal] = useState(false);
 
   const currentCompanySnapshot = useMemo(() => JSON.stringify({
     formData,
@@ -261,6 +293,15 @@ export default function EditCompany() {
     if (showAddManager) {
       newErrors.newManagerDraft = 'Please click Add Manager to save the entered account manager details, or cancel this section before updating the company.';
     }
+    if (showCreateBranchForm) {
+      newErrors.newBranchName = 'Please click Create Branch to save this branch, or close the Quick Add Branch form before updating the company.';
+    }
+    if (showCreateUserForm) {
+      newErrors.newUserFirstName = 'Please click Create User to save this user, or close the Quick Add User form before updating the company.';
+    }
+    if (showCreateBranchForm || showCreateUserForm) {
+      newErrors.submit = 'Finish or close the open Quick Add form before saving company details.';
+    }
     if (formData.primaryEmail && !EMAIL_REGEX.test(formData.primaryEmail)) {
       newErrors.primaryEmail = 'Invalid email format';
     }
@@ -299,7 +340,7 @@ export default function EditCompany() {
     return true;
   };
 
-  const saveCompany = async (nextPath: string) => {
+  const saveCompany = async (nextTarget: string | (() => void)) => {
     if (!validateForm()) {
       return;
     }
@@ -339,7 +380,11 @@ export default function EditCompany() {
 
       await api.put(`/companies/${id}`, payload);
       rememberCompanySnapshot(formData, slabs, collectionOverrides, null);
-      navigate(nextPath);
+      if (typeof nextTarget === 'function') {
+        nextTarget();
+      } else {
+        navigate(nextTarget);
+      }
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Network error. Please try again.' });
@@ -353,12 +398,23 @@ export default function EditCompany() {
     await saveCompany('/companies');
   };
 
-  const handleOpenFullForm = (path: string) => {
+  const queueCompanyAction = (action: () => void) => {
     if (!hasUnsavedCompanyChanges) {
-      navigate(path);
+      action();
       return;
     }
-    setPendingNavigationPath(path);
+    setPendingCompanyAction(() => action);
+  };
+
+  const handleOpenFullForm = (path: string) => {
+    queueCompanyAction(() => navigate(path));
+  };
+
+  const runPendingCompanyAction = () => {
+    const action = pendingCompanyAction;
+    setPendingCompanyAction(null);
+    setPendingNavigationPath(null);
+    action?.();
   };
 
   const validateBranchCreation = () => {
@@ -510,7 +566,7 @@ export default function EditCompany() {
 
     setIsCreatingUser(true);
     try {
-      await api.post('/users', {
+      const userResponse = await api.post('/users', {
         firstName: newUserData.firstName.trim(),
         lastName: newUserData.lastName.trim(),
         email: newUserData.email.trim().toLowerCase(),
@@ -521,6 +577,11 @@ export default function EditCompany() {
         phone: newUserData.phone.trim() || null,
         isActive: newUserData.isActive,
       });
+      if (newUserData.role === 'BRANCH_MANAGER' && newUserData.branchId) {
+        await api.put(`/branches/${newUserData.branchId}`, {
+          branchManagerId: optionalNumberId(userResponse.data.id),
+        });
+      }
 
       setNewUserData({
         firstName: '',
@@ -550,6 +611,163 @@ export default function EditCompany() {
     }
   };
 
+  const openBranchCreator = () => {
+    queueCompanyAction(() => {
+      setShowCreateBranchForm(false);
+      setEditModalErrors({});
+      setEditingBranch({ id: null, name: 'New Branch' });
+      setEditBranchData({
+        name: '',
+        code: '',
+        streetAddress: '',
+        streetAddress2: '',
+        city: '',
+        stateProvince: '',
+        postalCode: '',
+        country: '',
+        email: '',
+        phone: '',
+        branchMultiplier: 1,
+        branchManagerId: '',
+        isActive: true,
+      });
+    });
+  };
+
+  const openBranchEditor = (branch: any) => {
+    queueCompanyAction(() => {
+      setEditModalErrors({});
+      setEditingBranch(branch);
+      setEditBranchData({
+        name: branch.name || '',
+        code: branch.code || '',
+        streetAddress: branch.streetAddress || '',
+        streetAddress2: branch.streetAddress2 || '',
+        city: branch.city || '',
+        stateProvince: branch.stateProvince || '',
+        postalCode: branch.postalCode || '',
+        country: branch.country || '',
+        email: branch.email || '',
+        phone: branch.phone || '',
+        branchMultiplier: parseFloat(branch.branchMultiplier || 1),
+        branchManagerId: branch.branchManagerId || branch.branchManager?.id || '',
+        isActive: branch.isActive !== false,
+      });
+    });
+  };
+
+  const openUserEditor = (user: any) => {
+    queueCompanyAction(() => {
+      setEditModalErrors({});
+      setEditingUser(user);
+      setEditUserData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        password: '',
+        phone: user.phone || '',
+        role: (user.role || 'COMPANY_ADMIN') as QuickUserRole,
+        branchId: user.branchId || user.branch?.id || '',
+        isActive: user.isActive !== false,
+      });
+    });
+  };
+
+  const closeEditModals = () => {
+    if (isSavingEditModal) return;
+    setEditingBranch(null);
+    setEditingUser(null);
+    setEditModalErrors({});
+  };
+
+  const saveBranchEditor = async () => {
+    if (!editingBranch || !id) return;
+    const nextErrors: Record<string, string> = {};
+    if (!editBranchData.name.trim()) nextErrors.editBranchName = 'Branch name is required';
+    if (!editBranchData.code.trim()) nextErrors.editBranchCode = 'Branch code is required';
+    if (editBranchData.email && !EMAIL_REGEX.test(editBranchData.email)) nextErrors.editBranchEmail = 'Invalid email format';
+    if (editBranchData.branchMultiplier < 1 || editBranchData.branchMultiplier > 10) {
+      nextErrors.editBranchMultiplier = 'Markup must be between 1 and 10';
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setEditModalErrors(nextErrors);
+      return;
+    }
+
+    setIsSavingEditModal(true);
+    try {
+      const branchPayload = {
+        companyId: optionalNumberId(id),
+        name: editBranchData.name.trim(),
+        code: editBranchData.code.toUpperCase().replace(/\s+/g, ''),
+        streetAddress: editBranchData.streetAddress.trim() || null,
+        streetAddress2: editBranchData.streetAddress2.trim() || null,
+        city: editBranchData.city.trim() || null,
+        stateProvince: editBranchData.stateProvince.trim() || null,
+        postalCode: editBranchData.postalCode.trim() || null,
+        country: editBranchData.country.trim() || null,
+        email: editBranchData.email.trim() || null,
+        phone: editBranchData.phone.trim() || null,
+        branchMultiplier: editBranchData.branchMultiplier,
+        branchManagerId: optionalNumberId(editBranchData.branchManagerId),
+        isActive: editBranchData.isActive,
+      };
+      if (editingBranch.id) {
+        await api.put(`/branches/${editingBranch.id}`, branchPayload);
+      } else {
+        await api.post('/branches', branchPayload);
+      }
+      await fetchCompanyResources(id);
+      setEditingBranch(null);
+      setEditModalErrors({});
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      setEditModalErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Failed to update branch' });
+    } finally {
+      setIsSavingEditModal(false);
+    }
+  };
+
+  const saveUserEditor = async () => {
+    if (!editingUser || !id) return;
+    const nextErrors: Record<string, string> = {};
+    if (!editUserData.firstName.trim()) nextErrors.editUserFirstName = 'First name is required';
+    if (!editUserData.lastName.trim()) nextErrors.editUserLastName = 'Last name is required';
+    if (!editUserData.email.trim()) nextErrors.editUserEmail = 'Email is required';
+    if (editUserData.email && !EMAIL_REGEX.test(editUserData.email)) nextErrors.editUserEmail = 'Invalid email format';
+    if (editUserData.password && editUserData.password.length < 8) nextErrors.editUserPassword = 'Password must be at least 8 characters';
+    if (quickRoleNeedsBranch(editUserData.role) && !editUserData.branchId) nextErrors.editUserBranch = 'Branch is required for this role';
+    if (Object.keys(nextErrors).length > 0) {
+      setEditModalErrors(nextErrors);
+      return;
+    }
+
+    setIsSavingEditModal(true);
+    try {
+      const payload: any = {
+        firstName: editUserData.firstName.trim(),
+        lastName: editUserData.lastName.trim(),
+        email: editUserData.email.trim().toLowerCase(),
+        role: editUserData.role,
+        companyId: optionalNumberId(id),
+        branchId: quickRoleNeedsBranch(editUserData.role) ? optionalNumberId(editUserData.branchId) : null,
+        phone: editUserData.phone.trim() || null,
+        isActive: editUserData.isActive,
+      };
+      if (editUserData.password.trim()) {
+        payload.password = editUserData.password;
+      }
+      await api.put(`/users/${editingUser.id}`, payload);
+      await fetchCompanyResources(id);
+      setEditingUser(null);
+      setEditModalErrors({});
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      setEditModalErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Failed to update user' });
+    } finally {
+      setIsSavingEditModal(false);
+    }
+  };
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading...</div>;
   }
@@ -557,7 +775,7 @@ export default function EditCompany() {
   return (
     <div className="mx-auto w-full max-w-screen-2xl">
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="secondary" onClick={() => navigate('/companies')}>Back</Button>
+        <Button variant="secondary" onClick={() => handleOpenFullForm('/companies')}>Back</Button>
         <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
       </div>
 
@@ -571,21 +789,22 @@ export default function EditCompany() {
           })}
         />
 
-        {pendingNavigationPath && (
+        {(pendingNavigationPath || pendingCompanyAction) && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/40 px-4">
             <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl">
               <h2 className="text-lg font-semibold text-gray-900">Unsaved Company Changes</h2>
               <p className="mt-2 text-sm text-gray-600">
-                Save your company changes before opening the full form, discard them, or stay on this page.
+                Save your company changes before continuing, discard them, or stay on this page.
               </p>
               <div className="mt-5 flex flex-wrap justify-end gap-2">
                 <Button
                   type="button"
                   size="sm"
                   onClick={() => {
-                    const nextPath = pendingNavigationPath;
+                    const nextTarget = pendingCompanyAction || pendingNavigationPath || '/companies';
+                    setPendingCompanyAction(null);
                     setPendingNavigationPath(null);
-                    void saveCompany(nextPath);
+                    void saveCompany(nextTarget);
                   }}
                   disabled={isSubmitting}
                 >
@@ -596,9 +815,13 @@ export default function EditCompany() {
                   size="sm"
                   variant="secondary"
                   onClick={() => {
+                    if (pendingCompanyAction) {
+                      runPendingCompanyAction();
+                      return;
+                    }
                     const nextPath = pendingNavigationPath;
                     setPendingNavigationPath(null);
-                    navigate(nextPath);
+                    if (nextPath) navigate(nextPath);
                   }}
                   disabled={isSubmitting}
                 >
@@ -608,7 +831,10 @@ export default function EditCompany() {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  onClick={() => setPendingNavigationPath(null)}
+                  onClick={() => {
+                    setPendingCompanyAction(null);
+                    setPendingNavigationPath(null);
+                  }}
                   disabled={isSubmitting}
                 >
                   Cancel
@@ -948,10 +1174,10 @@ export default function EditCompany() {
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Create and manage branches from this company context.</p>
               <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={() => setShowCreateBranchForm((prev) => !prev)}>
+                <Button type="button" size="sm" onClick={() => queueCompanyAction(() => setShowCreateBranchForm((prev) => !prev))}>
                   {showCreateBranchForm ? 'Cancel' : '+ Quick Add Branch'}
                 </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => handleOpenFullForm(`/branches/add?companyId=${id}`)}>
+                <Button type="button" size="sm" variant="secondary" onClick={openBranchCreator}>
                   Open Full Branch Form
                 </Button>
               </div>
@@ -1082,7 +1308,7 @@ export default function EditCompany() {
                         <td className="px-4 py-2">
                           <button
                             type="button"
-                            onClick={() => navigate(`/branches/edit/${branch.id}`)}
+                            onClick={() => openBranchEditor(branch)}
                             className="text-primary-600 hover:text-primary-800 font-medium"
                           >
                             <ManageActionContent />
@@ -1102,7 +1328,7 @@ export default function EditCompany() {
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">Manage users mapped to this company.</p>
               <div className="flex gap-2">
-                <Button type="button" size="sm" onClick={() => setShowCreateUserForm((prev) => !prev)}>
+                <Button type="button" size="sm" onClick={() => queueCompanyAction(() => setShowCreateUserForm((prev) => !prev))}>
                   {showCreateUserForm ? 'Cancel' : '+ Quick Add User'}
                 </Button>
                 <Button type="button" size="sm" variant="secondary" onClick={() => handleOpenFullForm(`/users/add?companyId=${id}`)}>
@@ -1262,7 +1488,7 @@ export default function EditCompany() {
                         <td className="px-4 py-2">
                           <button
                             type="button"
-                            onClick={() => navigate(`/users/edit/${user.id}`)}
+                            onClick={() => openUserEditor(user)}
                             className="text-primary-600 hover:text-primary-800 font-medium"
                           >
                             <ManageActionContent />
@@ -1277,11 +1503,114 @@ export default function EditCompany() {
           </div>
         </Card>
 
+        {editingBranch && (
+          <div className="fixed inset-0 z-[500] flex items-start justify-center overflow-y-auto bg-slate-900/45 px-4 py-8" role="dialog" aria-modal="true">
+            <div className="w-full max-w-4xl rounded-lg bg-white shadow-xl">
+              <div className="flex items-start justify-between border-b px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">{editingBranch.id ? 'Edit Branch' : 'Add Branch'}</h2>
+                  <p className="text-sm text-gray-500">{editingBranch.name}</p>
+                </div>
+                <button type="button" className="text-2xl leading-none text-gray-400 hover:text-gray-700" onClick={closeEditModals} disabled={isSavingEditModal}>x</button>
+              </div>
+              <div className="space-y-4 p-5">
+                {editModalErrors.submit && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{editModalErrors.submit}</div>}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Input label="Branch Name *" value={editBranchData.name} onChange={(event) => setEditBranchData({ ...editBranchData, name: event.target.value })} error={editModalErrors.editBranchName} />
+                  <Input label="Branch Code *" value={editBranchData.code} onChange={(event) => setEditBranchData({ ...editBranchData, code: event.target.value.toUpperCase().replace(/\s+/g, '') })} error={editModalErrors.editBranchCode} />
+                  <Input label="Branch Email" type="email" value={editBranchData.email} onChange={(event) => setEditBranchData({ ...editBranchData, email: event.target.value })} error={editModalErrors.editBranchEmail} />
+                  <Input label="Branch Phone" value={editBranchData.phone} onChange={(event) => setEditBranchData({ ...editBranchData, phone: event.target.value })} />
+                  <Input label="City" value={editBranchData.city} onChange={(event) => setEditBranchData({ ...editBranchData, city: event.target.value })} />
+                  <Input label="State/Province" value={editBranchData.stateProvince} onChange={(event) => setEditBranchData({ ...editBranchData, stateProvince: event.target.value })} />
+                  <Input label="Postal Code" value={editBranchData.postalCode} onChange={(event) => setEditBranchData({ ...editBranchData, postalCode: event.target.value })} />
+                  <Input label="Country" value={editBranchData.country} onChange={(event) => setEditBranchData({ ...editBranchData, country: event.target.value })} />
+                  <div className="md:col-span-2">
+                    <Input label="Street Address" value={editBranchData.streetAddress} onChange={(event) => setEditBranchData({ ...editBranchData, streetAddress: event.target.value })} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Input label="Address Line 2" value={editBranchData.streetAddress2} onChange={(event) => setEditBranchData({ ...editBranchData, streetAddress2: event.target.value })} />
+                  </div>
+                  <Input label="Branch Markup *" type="number" min="1" max="10" step="0.01" value={editBranchData.branchMultiplier} onChange={(event) => setEditBranchData({ ...editBranchData, branchMultiplier: parseFloat(event.target.value) || 0 })} error={editModalErrors.editBranchMultiplier} />
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Branch Manager</label>
+                    <select className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-primary-500" value={editBranchData.branchManagerId} onChange={(event) => setEditBranchData({ ...editBranchData, branchManagerId: event.target.value })}>
+                      <option value="">No manager</option>
+                      {companyUsers.filter((user) => user.role === 'BRANCH_MANAGER').map((user) => (
+                        <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-2 md:col-span-2">
+                    <input type="checkbox" checked={editBranchData.isActive} onChange={(event) => setEditBranchData({ ...editBranchData, isActive: event.target.checked })} className="h-4 w-4 text-primary-600" />
+                    <span className="text-sm font-medium text-gray-700">Active branch</span>
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t px-5 py-4">
+                <Button type="button" variant="secondary" onClick={closeEditModals} disabled={isSavingEditModal}>Cancel</Button>
+                <Button type="button" onClick={saveBranchEditor} disabled={isSavingEditModal}>{isSavingEditModal ? 'Saving...' : editingBranch.id ? 'Save Branch' : 'Create Branch'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editingUser && (
+          <div className="fixed inset-0 z-[500] flex items-start justify-center overflow-y-auto bg-slate-900/45 px-4 py-8" role="dialog" aria-modal="true">
+            <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+              <div className="flex items-start justify-between border-b px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Edit User</h2>
+                  <p className="text-sm text-gray-500">{editingUser.email}</p>
+                </div>
+                <button type="button" className="text-2xl leading-none text-gray-400 hover:text-gray-700" onClick={closeEditModals} disabled={isSavingEditModal}>x</button>
+              </div>
+              <div className="space-y-4 p-5">
+                {editModalErrors.submit && <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{editModalErrors.submit}</div>}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Input label="First Name *" value={editUserData.firstName} onChange={(event) => setEditUserData({ ...editUserData, firstName: event.target.value })} error={editModalErrors.editUserFirstName} />
+                  <Input label="Last Name *" value={editUserData.lastName} onChange={(event) => setEditUserData({ ...editUserData, lastName: event.target.value })} error={editModalErrors.editUserLastName} />
+                  <Input label="Email *" type="email" value={editUserData.email} onChange={(event) => setEditUserData({ ...editUserData, email: event.target.value })} error={editModalErrors.editUserEmail} />
+                  <Input label="New Password" type="password" value={editUserData.password} onChange={(event) => setEditUserData({ ...editUserData, password: event.target.value })} error={editModalErrors.editUserPassword} placeholder="Leave blank to keep current password" />
+                  <Input label="Phone" value={editUserData.phone} onChange={(event) => setEditUserData({ ...editUserData, phone: event.target.value })} />
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Role *</label>
+                    <SmartDropdown
+                      value={editUserData.role}
+                      onChange={(value) => {
+                        const nextRole = value as QuickUserRole;
+                        setEditUserData({ ...editUserData, role: nextRole, branchId: quickRoleNeedsBranch(nextRole) ? editUserData.branchId : '' });
+                      }}
+                      config={{ showSearch: false, options: QUICK_USER_ROLE_OPTIONS.map((option) => ({ id: option.value, value: option.value, label: option.label })), placeholder: 'Select Role', valueKey: 'id', labelKey: 'label' }}
+                    />
+                  </div>
+                  {quickRoleNeedsBranch(editUserData.role) && (
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Branch *</label>
+                      <select className={`w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-primary-500 ${editModalErrors.editUserBranch ? 'border-red-500' : 'border-gray-300'}`} value={editUserData.branchId} onChange={(event) => setEditUserData({ ...editUserData, branchId: event.target.value })}>
+                        <option value="">Select Branch</option>
+                        {companyBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name} ({branch.code})</option>)}
+                      </select>
+                      {editModalErrors.editUserBranch && <p className="mt-1 text-sm text-red-600">{editModalErrors.editUserBranch}</p>}
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 md:col-span-2">
+                    <input type="checkbox" checked={editUserData.isActive} onChange={(event) => setEditUserData({ ...editUserData, isActive: event.target.checked })} className="h-4 w-4 text-primary-600" />
+                    <span className="text-sm font-medium text-gray-700">Active user</span>
+                  </label>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t px-5 py-4">
+                <Button type="button" variant="secondary" onClick={closeEditModals} disabled={isSavingEditModal}>Cancel</Button>
+                <Button type="button" onClick={saveUserEditor} disabled={isSavingEditModal}>{isSavingEditModal ? 'Saving...' : 'Save User'}</Button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex gap-3 sticky bottom-0 bg-white py-4 border-t">
           <Button type="submit" size="lg" disabled={isSubmitting}>
             {isSubmitting ? 'Updating...' : 'Update Company'}
           </Button>
-          <Button type="button" variant="secondary" size="lg" onClick={() => navigate('/companies')} disabled={isSubmitting}>
+          <Button type="button" variant="secondary" size="lg" onClick={() => handleOpenFullForm('/companies')} disabled={isSubmitting}>
             Cancel
           </Button>
         </div>
@@ -1289,4 +1618,6 @@ export default function EditCompany() {
     </div>
   );
 }
+
+
 
