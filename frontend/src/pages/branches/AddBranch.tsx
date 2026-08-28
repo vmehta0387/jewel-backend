@@ -80,7 +80,7 @@ export default function AddBranch() {
     shipStateProvince: '',
     shipPostalCode: '',
     shipCountry: '',
-    branchMultiplier: 1,
+    branchMultiplier: 2,
     enableSlabPricing: false,
     branchManagerId: '',
   });
@@ -126,8 +126,8 @@ export default function AddBranch() {
     if (!formData.companyId) newErrors.companyId = 'Company is required';
     if (!formData.name.trim()) newErrors.name = 'Branch name is required';
     if (!formData.code.trim()) newErrors.code = 'Branch code is required';
-    if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
-      newErrors.branchMultiplier = 'Markup must be between 1 and 10';
+    if (formData.branchMultiplier < 1.5 || formData.branchMultiplier > 10) {
+      newErrors.branchMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (formData.email && !EMAIL_REGEX.test(formData.email)) {
       newErrors.email = 'Invalid email format';
@@ -502,7 +502,7 @@ export default function AddBranch() {
               id="branchMultiplier"
               label="Default Branch Markup *"
               type="number"
-              min="1"
+              min="1.5"
               max="10"
               step="0.01"
               value={formData.branchMultiplier}
@@ -542,7 +542,6 @@ export default function AddBranch() {
     </div>
   );
 }
-
 
 
 

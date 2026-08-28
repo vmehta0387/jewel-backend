@@ -93,7 +93,7 @@ export default function EditCompany() {
     shipStateProvince: '',
     shipPostalCode: '',
     shipCountry: '',
-    defaultMultiplier: 1.5,
+    defaultMultiplier: 2,
     enableSlabPricing: false,
     enableCollectionPricing: false,
   });
@@ -124,7 +124,7 @@ export default function EditCompany() {
     country: '',
     email: '',
     phone: '',
-    branchMultiplier: 1,
+    branchMultiplier: 2,
   });
   const initialCompanySnapshotRef = useRef<string>('');
 
@@ -308,8 +308,8 @@ export default function EditCompany() {
     if (formData.shipToType === 'CUSTOM' && !formData.shipStreetAddress.trim()) {
       newErrors.shipStreetAddress = 'Shipping address is required for custom shipping';
     }
-    if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
-      newErrors.defaultMultiplier = 'Markup must be between 1 and 10';
+    if (formData.defaultMultiplier < 1.5 || formData.defaultMultiplier > 10) {
+      newErrors.defaultMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (formData.enableSlabPricing) {
       if (slabs.length === 0) {
@@ -422,8 +422,8 @@ export default function EditCompany() {
 
     if (!newBranchData.name.trim()) nextErrors.newBranchName = 'Branch name is required';
     if (!newBranchData.code.trim()) nextErrors.newBranchCode = 'Branch code is required';
-    if (newBranchData.branchMultiplier < 1 || newBranchData.branchMultiplier > 10) {
-      nextErrors.newBranchMultiplier = 'Markup must be between 1 and 10';
+    if (newBranchData.branchMultiplier < 1.5 || newBranchData.branchMultiplier > 10) {
+      nextErrors.newBranchMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (newBranchData.email && !EMAIL_REGEX.test(newBranchData.email)) {
       nextErrors.newBranchEmail = 'Invalid email format';
@@ -649,7 +649,7 @@ export default function EditCompany() {
         country: branch.country || '',
         email: branch.email || '',
         phone: branch.phone || '',
-        branchMultiplier: parseFloat(branch.branchMultiplier || 1),
+        branchMultiplier: parseFloat(branch.branchMultiplier || 2),
         branchManagerId: branch.branchManagerId || branch.branchManager?.id || '',
         isActive: branch.isActive !== false,
       });
@@ -686,8 +686,8 @@ export default function EditCompany() {
     if (!editBranchData.name.trim()) nextErrors.editBranchName = 'Branch name is required';
     if (!editBranchData.code.trim()) nextErrors.editBranchCode = 'Branch code is required';
     if (editBranchData.email && !EMAIL_REGEX.test(editBranchData.email)) nextErrors.editBranchEmail = 'Invalid email format';
-    if (editBranchData.branchMultiplier < 1 || editBranchData.branchMultiplier > 10) {
-      nextErrors.editBranchMultiplier = 'Markup must be between 1 and 10';
+    if (editBranchData.branchMultiplier < 1.5 || editBranchData.branchMultiplier > 10) {
+      nextErrors.editBranchMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (Object.keys(nextErrors).length > 0) {
       setEditModalErrors(nextErrors);
@@ -1102,7 +1102,7 @@ export default function EditCompany() {
                   type="number"
                   id="defaultMultiplier"
                   step="0.01"
-                  min="1"
+                  min="1.5"
                   max="10"
                   value={formData.defaultMultiplier}
                   onChange={(event) => {
@@ -1221,7 +1221,7 @@ export default function EditCompany() {
                     id="newBranchMultiplier"
                     label="Branch Markup *"
                     type="number"
-                    min="1"
+                    min="1.5"
                     max="10"
                     step="0.01"
                     value={newBranchData.branchMultiplier}
@@ -1530,7 +1530,7 @@ export default function EditCompany() {
                   <div className="md:col-span-2">
                     <Input label="Address Line 2" value={editBranchData.streetAddress2} onChange={(event) => setEditBranchData({ ...editBranchData, streetAddress2: event.target.value })} />
                   </div>
-                  <Input label="Branch Markup *" type="number" min="1" max="10" step="0.01" value={editBranchData.branchMultiplier} onChange={(event) => setEditBranchData({ ...editBranchData, branchMultiplier: parseFloat(event.target.value) || 0 })} error={editModalErrors.editBranchMultiplier} />
+                  <Input label="Branch Markup *" type="number" min="1.5" max="10" step="0.01" value={editBranchData.branchMultiplier} onChange={(event) => setEditBranchData({ ...editBranchData, branchMultiplier: parseFloat(event.target.value) || 0 })} error={editModalErrors.editBranchMultiplier} />
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Branch Manager</label>
                     <select className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-primary-500" value={editBranchData.branchManagerId} onChange={(event) => setEditBranchData({ ...editBranchData, branchManagerId: event.target.value })}>
@@ -1618,6 +1618,4 @@ export default function EditCompany() {
     </div>
   );
 }
-
-
 

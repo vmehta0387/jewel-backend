@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsNumber, IsBoolean, IsArray, ValidateNested, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum ShipToType {
@@ -105,6 +105,8 @@ export class CreateCompanyDto {
   shipCountry?: string;
 
   @IsNumber()
+  @Min(1.5)
+  @Max(10)
   defaultMultiplier: number;
 
   @IsOptional()
@@ -199,6 +201,8 @@ export class UpdateCompanyDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(1.5)
+  @Max(10)
   defaultMultiplier?: number;
 
   @IsOptional()
@@ -222,4 +226,3 @@ export class UpdateCompanyStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-

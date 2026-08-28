@@ -280,6 +280,7 @@ export default function ActivityEventsPage() {
             <table className="min-w-[1100px] w-full border-separate border-spacing-0 text-left text-sm">
               <thead>
                 <tr className="text-left text-xs font-bold uppercase tracking-[0.16em] text-[#8a7a67]">
+                  <th className="border-b border-[#eadfce] px-4 py-3">S.No.</th>
                   <th className="border-b border-[#eadfce] px-4 py-3">When</th>
                   <th className="border-b border-[#eadfce] px-4 py-3">Person</th>
                   <th className="border-b border-[#eadfce] px-4 py-3">Activity</th>
@@ -289,8 +290,9 @@ export default function ActivityEventsPage() {
                 </tr>
               </thead>
               <tbody>
-                {events.map((item) => (
+                {events.map((item, index) => (
                   <tr key={item.id} className="align-top text-[#40362e] transition hover:bg-[#fffaf2]">
+                    <td className="whitespace-nowrap border-b border-[#f0e7dc] px-4 py-4 font-medium text-[#251d17]">{(page - 1) * limit + index + 1}</td>
                     <td className="whitespace-nowrap border-b border-[#f0e7dc] px-4 py-4 font-medium text-[#251d17]">{formatDateTime(item.createdAt)}</td>
                     <td className="border-b border-[#f0e7dc] px-4 py-4">
                       <p className="font-semibold text-[#251d17]">{getUserTitle(item)}</p>
@@ -360,7 +362,6 @@ export default function ActivityEventsPage() {
     </div>
   );
 }
-
 
 
 

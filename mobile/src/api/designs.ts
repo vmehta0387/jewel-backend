@@ -208,7 +208,7 @@ export const fetchMobileCatalogDesigns = (token: string, query: MobileCatalogQue
 
   return apiRequest<DesignListResponse & { data: MobileCatalogDesign[] }>(
     `/products/mobile/catalog?${params.toString()}`,
-    { method: 'GET' },
+    { method: 'GET', cache: 'no-store' },
     token,
   );
 };
@@ -291,5 +291,4 @@ export const fetchAllDesigns = async (token: string, limit = 500) => {
 
   return rows;
 };
-
 

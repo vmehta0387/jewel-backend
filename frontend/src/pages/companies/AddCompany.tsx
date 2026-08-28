@@ -121,7 +121,7 @@ export default function AddCompany() {
     shipStateProvince: '',
     shipPostalCode: '',
     shipCountry: '',
-    defaultMultiplier: 1.5,
+    defaultMultiplier: 2,
     enableSlabPricing: false,
     enableCollectionPricing: false,
     createMainBranch: false,
@@ -152,7 +152,7 @@ export default function AddCompany() {
     country: '',
     email: '',
     phone: '',
-    branchMultiplier: 1,
+    branchMultiplier: 2,
     enableSlabPricing: false,
   });
   const [newBranchSlabs, setNewBranchSlabs] = useState<Slab[]>([
@@ -223,8 +223,8 @@ export default function AddCompany() {
       newErrors.primaryEmail = 'Invalid email format';
     }
 
-    if (formData.defaultMultiplier < 1 || formData.defaultMultiplier > 10) {
-      newErrors.defaultMultiplier = 'Markup must be between 1 and 10';
+    if (formData.defaultMultiplier < 1.5 || formData.defaultMultiplier > 10) {
+      newErrors.defaultMultiplier = 'Markup must be between 1.5 and 10';
     }
 
     if (formData.shipToType === 'CUSTOM' && !formData.shipStreetAddress.trim()) {
@@ -277,8 +277,8 @@ export default function AddCompany() {
 
     if (!newBranchData.name.trim()) nextErrors.newBranchName = 'Branch name is required';
     if (!newBranchData.code.trim()) nextErrors.newBranchCode = 'Branch code is required';
-    if (newBranchData.branchMultiplier < 1 || newBranchData.branchMultiplier > 10) {
-      nextErrors.newBranchMultiplier = 'Markup must be between 1 and 10';
+    if (newBranchData.branchMultiplier < 1.5 || newBranchData.branchMultiplier > 10) {
+      nextErrors.newBranchMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (newBranchData.email && !EMAIL_REGEX.test(newBranchData.email)) {
       nextErrors.newBranchEmail = 'Invalid email format';
@@ -391,7 +391,7 @@ export default function AddCompany() {
       country: '',
       email: '',
       phone: '',
-      branchMultiplier: 1,
+      branchMultiplier: 2,
       enableSlabPricing: false,
     });
     setNewBranchSlabs([
@@ -452,7 +452,7 @@ export default function AddCompany() {
       country: '',
       email: '',
       phone: '',
-      branchMultiplier: 1,
+      branchMultiplier: 2,
       enableSlabPricing: false,
     });
     setNewBranchSlabs([
@@ -952,7 +952,7 @@ export default function AddCompany() {
                       id="newBranchMultiplier"
                       label="Branch Markup *"
                       type="number"
-                      min="1"
+                      min="1.5"
                       max="10"
                       step="0.01"
                       value={newBranchData.branchMultiplier}
@@ -1322,7 +1322,7 @@ export default function AddCompany() {
                   type="number"
                   id="defaultMultiplier"
                   step="0.01"
-                  min="1"
+                  min="1.5"
                   max="10"
                   value={formData.defaultMultiplier}
                   onChange={(e) => {
@@ -1401,7 +1401,6 @@ export default function AddCompany() {
     </div>
   );
 }
-
 
 
 

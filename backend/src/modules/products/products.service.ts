@@ -517,7 +517,8 @@ export class ProductsService {
     }
 
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
-    const isPrimary = await this.resolvePrimaryVersionFlag(baseDesignNo, version, scope);
+    const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
+    const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
     const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
     if (isPrimary) {
       await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
@@ -560,7 +561,6 @@ export class ProductsService {
     const ijewelBaseName = this.optionalText(dto.ijewelBaseName);
     const resolvedIjewelBase =
       ijewelModelId && /^https?:\/\//i.test(ijewelModelId) ? null : ijewelBaseName;
-    const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const barcode = await this.resolveDesignBarcode();
 
     const stlFileUrl = this.normalizePersistentStlFileUrl(dto.stlFileUrl);
@@ -2161,7 +2161,7 @@ export class ProductsService {
 
   async findMobileConfigurator(id: number, requester: AuthUser): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
-    const selected = family.find((design) => design.id === id) || family.find((design) => design.isPrimary) || family[0];
+    const selected = family.find((design) => design.isPrimary) || family.find((design) => design.id === id) || family[0];
     return this.toMobileConfiguratorResponse(family, selected, {}, requester);
   }
 
@@ -2177,8 +2177,8 @@ export class ProductsService {
       this.fetchMobileConfiguratorMatchIdFromDb(id, familyDesignId, query, requester),
     ]);
     const selected = family.find((design) => Number(design.id) === Number(selectedId))
-      || family.find((design) => Number(design.id) === Number(id))
       || family.find((design) => design.isPrimary)
+      || family.find((design) => Number(design.id) === Number(id))
       || family[0];
     return this.toMobileConfiguratorResponse(family, selected, query, requester);
   }
@@ -2363,6 +2363,15 @@ export class ProductsService {
     ].join(':');
   }
 
+  private invalidateMobileConfiguratorFamilyCache(familyDesignId: number): void {
+    const familyPrefix = `${familyDesignId}:`;
+    for (const cacheKey of this.mobileConfiguratorFamilyCache.keys()) {
+      if (cacheKey.startsWith(familyPrefix)) {
+        this.mobileConfiguratorFamilyCache.delete(cacheKey);
+      }
+    }
+  }
+
   private getCachedMobileConfiguratorFamily(cacheKey: string): Design[] | null {
     const cached = this.mobileConfiguratorFamilyCache.get(cacheKey);
     if (!cached) return null;
@@ -2520,7 +2529,9 @@ export class ProductsService {
     const selectedDiamondType = selectedOptions?.diamondType?.label || this.resolveMobileConfiguratorDiamondType(design);
     const selectedDiamondQuality = selectedOptions?.quality?.label || design.diamondQuality;
     const selectedSpread = selectedOptions?.style?.label || design.diamondSpread;
-    const selectedRingSize = selectedOptions?.ringSize?.label || design.jewelrySize;
+    const selectedRingSize = design.jewelrySize
+      ? selectedOptions?.ringSize?.label || design.jewelrySize
+      : null;
 
     return {
       id: design.id,
@@ -2816,10 +2827,46 @@ export class ProductsService {
     limit: number,
     skip: number,
   ): Promise<any> {
-    const familyDesignId = query.familyDesignId?.trim();
-    if (!familyDesignId) {
+    const requestedFamilyDesignId = query.familyDesignId?.trim();
+    if (!requestedFamilyDesignId) {
       return { data: [], total: 0, page, totalPages: 1 };
     }
+
+    const familySeedQb = this.designRepo
+      .createQueryBuilder('design')
+      .select(['design.id', 'design.familyDesignId'])
+      .where('design.id = :requestedFamilyDesignId', { requestedFamilyDesignId });
+    this.applyScopeFilter(familySeedQb, requester, query.companyId, query.branchId);
+    const familySeed = await familySeedQb.getOne();
+    if (!familySeed) {
+      return { data: [], total: 0, page, totalPages: 1 };
+    }
+    const familyDesignId = familySeed.familyDesignId || familySeed.id;
+
+    const familyStatsQb = this.designRepo
+      .createQueryBuilder('design')
+      .select(
+        `COUNT(DISTINCT CASE
+          WHEN UPPER(TRIM(design.version)) REGEXP '^V[0-9]+$'
+          THEN CAST(SUBSTRING(UPPER(TRIM(design.version)), 2) AS UNSIGNED)
+          ELSE NULL
+        END)`,
+        'familyVersionCount',
+      )
+      .addSelect(
+        `MAX(CASE
+          WHEN UPPER(TRIM(design.version)) REGEXP '^V[0-9]+$'
+          THEN CAST(SUBSTRING(UPPER(TRIM(design.version)), 2) AS UNSIGNED)
+          ELSE NULL
+        END)`,
+        'latestVersionNumber',
+      )
+      .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId });
+    this.applyScopeFilter(familyStatsQb, requester, query.companyId, query.branchId);
+    const familyStatsPromise = familyStatsQb.getRawOne<{
+      familyVersionCount?: string | number;
+      latestVersionNumber?: string | number;
+    }>();
 
     const qb = this.designRepo
       .createQueryBuilder('design')
@@ -2952,11 +2999,14 @@ export class ProductsService {
       )),
     );
 
+    const familyStats = await familyStatsPromise;
     return {
       data: summaryData,
       total,
       page,
       totalPages: Math.ceil(total / limit) || 1,
+      familyVersionCount: Math.max(0, Math.trunc(this.toNumber(familyStats?.familyVersionCount))),
+      latestVersionNumber: Math.max(0, Math.trunc(this.toNumber(familyStats?.latestVersionNumber))),
     };
   }
 
@@ -3396,37 +3446,36 @@ export class ProductsService {
   async setPrimaryVersion(id: number, requester: AuthUser): Promise<any> {
     this.assertDesignWriteAccess(requester);
     const design = await this.getDesignForWrite(id, requester);
-
-    const baseDesignNo = this.normalizeBaseDesignNo(design.designNo);
-    const versionedDesignNo = `${baseDesignNo}-V%`;
+    const familyDesignId = design.familyDesignId || design.id;
     const companyId = design.companyId;
     const branchId = design.branchId;
 
-    const resetQuery = this.designRepo
-      .createQueryBuilder()
-      .update(Design)
-      .set({ isPrimary: false })
-      .where('(designNo = :baseDesignNo OR designNo LIKE :versionedDesignNo)', {
-        baseDesignNo,
-        versionedDesignNo,
-      });
+    await this.dataSource.transaction(async (manager) => {
+      const resetQuery = manager
+        .createQueryBuilder()
+        .update(Design)
+        .set({ isPrimary: false })
+        .where('(familyDesignId = :familyDesignId OR id = :familyDesignId)', { familyDesignId });
 
-    if (companyId) {
-      resetQuery.andWhere('companyId = :companyId', { companyId });
-    } else {
-      resetQuery.andWhere('companyId IS NULL');
-    }
+      if (companyId) {
+        resetQuery.andWhere('companyId = :companyId', { companyId });
+      } else {
+        resetQuery.andWhere('companyId IS NULL');
+      }
 
-    if (branchId) {
-      resetQuery.andWhere('branchId = :branchId', { branchId });
-    } else {
-      resetQuery.andWhere('branchId IS NULL');
-    }
+      if (branchId) {
+        resetQuery.andWhere('branchId = :branchId', { branchId });
+      } else {
+        resetQuery.andWhere('branchId IS NULL');
+      }
 
-    await resetQuery.execute();
-    design.isPrimary = true;
-    design.updatedBy = requester.id;
-    await this.designRepo.save(design);
+      await resetQuery.execute();
+      await manager.getRepository(Design).update(
+        { id: design.id },
+        { isPrimary: true, updatedBy: requester.id },
+      );
+    });
+    this.invalidateMobileConfiguratorFamilyCache(familyDesignId);
 
     await this.addHistory(id, 'PRIMARY_UPDATED', 'Design version set as primary.', requester.id);
     return this.findOne(id, requester);
@@ -3813,7 +3862,6 @@ export class ProductsService {
 
     const qb = this.designMediaLibraryRepo
       .createQueryBuilder('media')
-      .leftJoinAndSelect('media.uploadedByUser', 'uploadedByUser')
       .where('media.status != :removedStatus', { removedStatus: -1 })
       .orderBy('media.createdAt', 'DESC')
       .skip(skip)
@@ -3840,20 +3888,26 @@ export class ProductsService {
     }
 
     const [rows, total] = await qb.getManyAndCount();
+    const uploadedByIds = rows
+      .map((row) => this.optionalInt(row.uploadedBy))
+      .filter((value): value is number => Boolean(value));
+    const uploadedByMap = await this.resolveUserNames(uploadedByIds);
     const data = await Promise.all(
-      rows.map(async (row) => ({
-        id: row.id,
-        mediaType: row.mediaType,
-        fileName: row.fileName,
-        fileKey: row.fileKey,
-        mimeType: row.mimeType,
-        fileSizeBytes: row.fileSizeBytes ? Number(row.fileSizeBytes) : null,
-        url: (await this.resolveAssetUrl(row.fileKey)) || row.fileKey,
-        uploadedBy: row.uploadedByUser
-          ? `${row.uploadedByUser.firstName || ''} ${row.uploadedByUser.lastName || ''}`.trim() || row.uploadedByUser.email
-          : null,
-        createdAt: row.createdAt,
-      })),
+      rows.map(async (row) => {
+        const uploadedById = this.optionalInt(row.uploadedBy);
+        const resolvedUrl = await this.resolveAssetUrl(row.fileKey).catch(() => row.fileKey);
+        return {
+          id: row.id,
+          mediaType: row.mediaType,
+          fileName: row.fileName,
+          fileKey: row.fileKey,
+          mimeType: row.mimeType,
+          fileSizeBytes: row.fileSizeBytes ? Number(row.fileSizeBytes) : null,
+          url: resolvedUrl || row.fileKey,
+          uploadedBy: uploadedById ? uploadedByMap.get(uploadedById) || null : null,
+          createdAt: row.createdAt,
+        };
+      }),
     );
 
     return {
@@ -4156,22 +4210,28 @@ export class ProductsService {
     }
   }
   private async resolvePrimaryVersionFlag(
+    familyDesignId: number | null,
     baseDesignNo: string,
     version: string,
     scope: ScopeResult,
   ): Promise<boolean> {
-    if (version !== 'V1') {
+    if (!familyDesignId && version !== 'V1') {
       return false;
     }
 
     const qb = this.designRepo
       .createQueryBuilder('design')
-      .select('design.id')
-      .where(
+      .select('design.id');
+
+    if (familyDesignId) {
+      qb.where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId });
+    } else {
+      qb.where(
         '(design.designNo = :baseDesignNo OR design.designNo LIKE :versionedDesignNo)',
         { baseDesignNo, versionedDesignNo: `${baseDesignNo}-V%` },
-      )
-      .andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
+      );
+    }
+    qb.andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
 
     if (scope.companyId) {
       qb.andWhere('design.companyId = :companyId', { companyId: scope.companyId });
@@ -6479,6 +6539,14 @@ export class ProductsService {
   }
 
   private async resolveDesignMasterRefs(dto: CreateProductDto | UpdateProductDto, existing?: Design): Promise<DesignMasterRefs> {
+    const jewelrySizeProvided = dto.jewelrySizeId !== undefined || dto.jewelrySize !== undefined;
+    const diamondSpreadProvided = dto.diamondSpreadId !== undefined || dto.diamondSpread !== undefined;
+    const diamondTypeProvided = dto.diamondTypeId !== undefined || dto.diamondType !== undefined;
+    const stageProvided = dto.stageId !== undefined || dto.stage !== undefined;
+    const diamondWeightProvided = dto.diamondWeightId !== undefined || dto.diamondWeight !== undefined;
+    const diamondQualityProvided = dto.diamondQualityId !== undefined || dto.diamondQuality !== undefined;
+    const designStatusProvided = dto.designStatusId !== undefined || dto.designStatus !== undefined;
+
     return {
       jewelryGroup: await this.resolveMasterRef(
         'jewelry_groups',
@@ -6488,13 +6556,48 @@ export class ProductsService {
         true,
       ),
       collection: await this.resolveMasterRef('collections', dto.collectionId ?? existing?.collectionId, dto.collection ?? existing?.collection, 'collection'),
-      jewelrySize: await this.resolveMasterRef('jewelry_sizes', dto.jewelrySizeId ?? existing?.jewelrySizeId, dto.jewelrySize ?? existing?.jewelrySize, 'jewelrySize'),
-      stage: await this.resolveMasterRef('design_stages', dto.stageId ?? existing?.stageId, dto.stage ?? existing?.stage, 'stage'),
-      diamondSpread: await this.resolveMasterRef('diamond_spreads', dto.diamondSpreadId ?? existing?.diamondSpreadId, dto.diamondSpread ?? existing?.diamondSpread, 'diamondSpread'),
-      diamondType: await this.resolveMasterRef('diamond_types', dto.diamondTypeId ?? existing?.diamondTypeId, dto.diamondType ?? existing?.diamondType, 'diamondType'),
-      diamondWeight: await this.resolveMasterRef('diamond_weights', dto.diamondWeightId ?? existing?.diamondWeightId, dto.diamondWeight ?? existing?.diamondWeight, 'diamondWeight'),
-      diamondQuality: await this.resolveMasterRef('diamond_qualities', dto.diamondQualityId ?? existing?.diamondQualityId, dto.diamondQuality ?? existing?.diamondQuality, 'diamondQuality'),
-      designStatus: await this.resolveMasterRef('design_statuses', dto.designStatusId ?? existing?.designStatusId, dto.designStatus ?? existing?.designStatus, 'designStatus'),
+      jewelrySize: await this.resolveMasterRef(
+        'jewelry_sizes',
+        jewelrySizeProvided ? dto.jewelrySizeId : existing?.jewelrySizeId,
+        jewelrySizeProvided ? dto.jewelrySize : existing?.jewelrySize,
+        'jewelrySize',
+      ),
+      stage: await this.resolveMasterRef(
+        'design_stages',
+        stageProvided ? dto.stageId : existing?.stageId,
+        stageProvided ? dto.stage : existing?.stage,
+        'stage',
+      ),
+      diamondSpread: await this.resolveMasterRef(
+        'diamond_spreads',
+        diamondSpreadProvided ? dto.diamondSpreadId : existing?.diamondSpreadId,
+        diamondSpreadProvided ? dto.diamondSpread : existing?.diamondSpread,
+        'diamondSpread',
+      ),
+      diamondType: await this.resolveMasterRef(
+        'diamond_types',
+        diamondTypeProvided ? dto.diamondTypeId : existing?.diamondTypeId,
+        diamondTypeProvided ? dto.diamondType : existing?.diamondType,
+        'diamondType',
+      ),
+      diamondWeight: await this.resolveMasterRef(
+        'diamond_weights',
+        diamondWeightProvided ? dto.diamondWeightId : existing?.diamondWeightId,
+        diamondWeightProvided ? dto.diamondWeight : existing?.diamondWeight,
+        'diamondWeight',
+      ),
+      diamondQuality: await this.resolveMasterRef(
+        'diamond_qualities',
+        diamondQualityProvided ? dto.diamondQualityId : existing?.diamondQualityId,
+        diamondQualityProvided ? dto.diamondQuality : existing?.diamondQuality,
+        'diamondQuality',
+      ),
+      designStatus: await this.resolveMasterRef(
+        'design_statuses',
+        designStatusProvided ? dto.designStatusId : existing?.designStatusId,
+        designStatusProvided ? dto.designStatus : existing?.designStatus,
+        'designStatus',
+      ),
       metalCaratage: await this.resolveMasterRef(
         'metal_caratages',
         dto.metalCaratageId ?? existing?.metalCaratageId,
@@ -6988,4 +7091,3 @@ export class ProductsService {
   }
 
 }
-

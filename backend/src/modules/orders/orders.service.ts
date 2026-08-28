@@ -65,15 +65,17 @@ export class OrdersService implements OnModuleInit {
           action_type varchar(50) NOT NULL,
           summary text NOT NULL,
           changes json NULL,
-          performed_by varchar(36) NULL,
+          performed_by int(11) NULL,
           performed_by_name varchar(255) NULL,
           performed_by_role varchar(50) NULL,
           metadata json NULL,
           performed_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
           PRIMARY KEY (id),
           INDEX idx_order_history_order_id (order_id),
+          INDEX idx_order_history_performed_by (performed_by),
           INDEX idx_order_history_performed_at (performed_at),
-          CONSTRAINT fk_order_history_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+          CONSTRAINT fk_order_history_order_id FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+          CONSTRAINT fk_order_history_performed_by FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE SET NULL
         )
       `);
     } catch (error: any) {
@@ -2292,7 +2294,6 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
-
 
 
 

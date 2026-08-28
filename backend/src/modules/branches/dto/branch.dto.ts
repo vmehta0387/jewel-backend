@@ -115,7 +115,7 @@ export class CreateBranchDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(1.5)
   @Max(10)
   branchMultiplier?: number;
 }
@@ -210,7 +210,7 @@ export class UpdateBranchDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(1.5)
   @Max(10)
   branchMultiplier?: number;
 }
@@ -227,4 +227,3 @@ export class UpdateBranchStatusDto {
   @IsBoolean()
   unlinkUsers?: boolean;
 }
-

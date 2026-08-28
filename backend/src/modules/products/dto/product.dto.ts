@@ -458,11 +458,11 @@ export class CreateProductDto {
   @IsInt()
   @Min(1)
   @IsOptional()
-  stageId?: number;
+  stageId?: number | null;
 
   @IsString()
   @IsOptional()
-  stage?: string;
+  stage?: string | null;
 
   @Type(() => Number)
   @IsInt()
@@ -488,21 +488,21 @@ export class CreateProductDto {
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondWeightId?: number;
+  diamondWeightId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondWeight?: string;
+  diamondWeight?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondQualityId?: number;
+  diamondQualityId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondQuality?: string;
+  diamondQuality?: string | null;
 
   @Type(() => Number)
   @IsInt()
@@ -726,71 +726,71 @@ export class UpdateProductDto {
   @IsInt()
   @Min(1)
   @IsOptional()
-  jewelrySizeId?: number;
+  jewelrySizeId?: number | null;
 
   @IsString()
   @IsOptional()
-  jewelrySize?: string;
+  jewelrySize?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  stageId?: number;
+  stageId?: number | null;
 
   @IsString()
   @IsOptional()
-  stage?: string;
+  stage?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondSpreadId?: number;
+  diamondSpreadId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondSpread?: string;
+  diamondSpread?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondTypeId?: number;
+  diamondTypeId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondType?: string;
+  diamondType?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondWeightId?: number;
+  diamondWeightId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondWeight?: string;
+  diamondWeight?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  diamondQualityId?: number;
+  diamondQualityId?: number | null;
 
   @IsString()
   @IsOptional()
-  diamondQuality?: string;
+  diamondQuality?: string | null;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @IsOptional()
-  designStatusId?: number;
+  designStatusId?: number | null;
 
   @IsString()
   @IsOptional()
-  designStatus?: string;
+  designStatus?: string | null;
 
   @Type(() => Number)
   @IsInt()
@@ -828,11 +828,11 @@ export class UpdateProductDto {
 
   @IsString()
   @IsOptional()
-  designDescription?: string;
+  designDescription?: string | null;
 
   @IsString()
   @IsOptional()
-  remarks?: string;
+  remarks?: string | null;
 
   @IsArray()
   @IsString({ each: true })
@@ -1778,4 +1778,3 @@ export class UpdateDesignMasterStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-

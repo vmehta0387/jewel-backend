@@ -101,7 +101,7 @@ export default function EditBranch() {
     shipStateProvince: '',
     shipPostalCode: '',
     shipCountry: '',
-    branchMultiplier: 1,
+    branchMultiplier: 2,
     enableSlabPricing: false,
     branchManagerId: '',
   });
@@ -157,7 +157,7 @@ export default function EditBranch() {
         shipStateProvince: branch.shipStateProvince || '',
         shipPostalCode: branch.shipPostalCode || '',
         shipCountry: branch.shipCountry || '',
-        branchMultiplier: parseFloat(branch.branchMultiplier) || 1,
+        branchMultiplier: parseFloat(branch.branchMultiplier) || 2,
         enableSlabPricing: Boolean(branch.enableSlabPricing),
         branchManagerId: branch.branchManagerId || '',
       });
@@ -214,8 +214,8 @@ export default function EditBranch() {
     if (!formData.companyId) newErrors.companyId = 'Company is required';
     if (!formData.name.trim()) newErrors.name = 'Branch name is required';
     if (!formData.code.trim()) newErrors.code = 'Branch code is required';
-    if (formData.branchMultiplier < 1 || formData.branchMultiplier > 10) {
-      newErrors.branchMultiplier = 'Markup must be between 1 and 10';
+    if (formData.branchMultiplier < 1.5 || formData.branchMultiplier > 10) {
+      newErrors.branchMultiplier = 'Markup must be between 1.5 and 10';
     }
     if (formData.email && !EMAIL_REGEX.test(formData.email)) {
       newErrors.email = 'Invalid email format';
@@ -674,7 +674,7 @@ export default function EditBranch() {
               id="branchMultiplier"
               label="Default Branch Markup *"
               type="number"
-              min="1"
+              min="1.5"
               max="10"
               step="0.01"
               value={formData.branchMultiplier}
@@ -820,7 +820,6 @@ export default function EditBranch() {
     </div>
   );
 }
-
 
 
 

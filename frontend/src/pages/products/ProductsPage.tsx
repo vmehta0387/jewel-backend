@@ -15,6 +15,8 @@ import DesignHistoryModal from './components/DesignHistoryModal';
 import DesignViewModal from './components/DesignViewModal';
 import Modal from './components/ProductsModal';
 import VersionListGrid from './components/VersionListGrid';
+import { getVersionNumber, resolveVersionCounts } from './version-count';
+import { initializeInheritedOverheads } from './overhead-inheritance';
 import VersionBuilderModal, {
   DEFAULT_VERSION_BUILDER_GENERATED_COLUMN_WIDTHS,
   EMPTY_VERSION_BUILDER_SELECTIONS,
@@ -134,6 +136,7 @@ const masterOptionMatchesValue = (option: MasterOption, value: string | null | u
 
 interface DesignRow {
   id: string;
+  familyDesignId?: string;
   designNo: string;
   barcode?: string;
   designName: string;
@@ -187,6 +190,7 @@ interface DesignListColumn {
 
 interface ApiDesignRow {
   id: string;
+  familyDesignId?: string | number | null;
   designNo?: string;
   barcode?: string | null;
   designName?: string | null;
@@ -465,7 +469,7 @@ const DEFAULT_DESIGN_LIST_COLUMNS: DesignListColumnKey[] = [
 ];
 
 const DESIGN_LIST_PAGE_SIZE = 15;
-const VERSION_LIST_PAGE_SIZE = 50;
+const VERSION_LIST_PAGE_SIZE = 15;
 const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v5';
 
 interface VersionListFilters {
@@ -491,6 +495,8 @@ interface VersionFamilyListState {
   page: number;
   total: number;
   totalPages: number;
+  familyVersionCount: number;
+  latestVersionNumber: number;
   search: string;
   filters: VersionListFilters;
   loading: boolean;
@@ -769,6 +775,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   const tags = normalizeStringArray(design.tags);
   return {
     id: design.id,
+    familyDesignId: design.familyDesignId != null ? String(design.familyDesignId) : undefined,
     designNo: design.designNo || '',
     barcode: design.barcode || '',
     designName: design.designName || design.designNo || '',
@@ -1034,18 +1041,16 @@ const getNextDesignVersion = (designNo: string, existingRows: DesignRow[]): stri
   return `V${Math.max(1, maxVersion + 1)}`;
 };
 
-const getVersionNumber = (version: string): number => {
-  const match = /V(\d+)/i.exec((version || '').trim());
-  if (!match) return 0;
-  const parsed = Number.parseInt(match[1], 10);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
 const resolvePrimaryVersionId = (versions: DesignRow[]): string => {
   if (!versions.length) {
     return '';
   }
-  const explicitPrimary = versions.find((row) => row.isPrimary);
+  const explicitPrimary = versions
+    .filter((row) => row.isPrimary)
+    .sort((a, b) => {
+      const modifiedDiff = new Date(b.modifiedAt || 0).getTime() - new Date(a.modifiedAt || 0).getTime();
+      return modifiedDiff || getVersionNumber(b.version) - getVersionNumber(a.version);
+    })[0];
   if (explicitPrimary) {
     return explicitPrimary.id;
   }
@@ -1059,6 +1064,9 @@ const resolvePrimaryVersionId = (versions: DesignRow[]): string => {
     })[0]?.id || versions[0].id
   );
 };
+
+const getDesignRowFamilyKey = (row: DesignRow): string =>
+  row.familyDesignId ? `FAMILY-${row.familyDesignId}` : getDesignFamilyKey(row.designNo || '', row.id);
 
 const pickPrimaryDesignRow = (versions: DesignRow[]): DesignRow => {
   if (!versions.length) {
@@ -3645,7 +3653,7 @@ export default function ProductsPage() {
   const versionsByBaseDesign = useMemo(() => {
     const map = new Map<string, DesignRow[]>();
     allDesignRows.forEach((row) => {
-      const key = getDesignFamilyKey(row.designNo || '', row.designNo || row.id);
+      const key = getDesignRowFamilyKey(row);
       if (!map.has(key)) {
         map.set(key, []);
       }
@@ -3663,7 +3671,7 @@ export default function ProductsPage() {
   const filteredBaseRows = useMemo(() => {
     const map = new Map<string, DesignRow>();
     filteredRows.forEach((row) => {
-      const key = getDesignFamilyKey(row.designNo || '', row.designNo || row.id);
+      const key = getDesignRowFamilyKey(row);
       if (map.has(key)) return;
       const versions = versionsByBaseDesign.get(key) || [row];
       const primaryVersion = pickPrimaryDesignRow(versions);
@@ -3739,6 +3747,8 @@ export default function ProductsPage() {
         page: nextPage,
         total: prev[base]?.total || 0,
         totalPages: prev[base]?.totalPages || 1,
+        familyVersionCount: prev[base]?.familyVersionCount || 0,
+        latestVersionNumber: prev[base]?.latestVersionNumber || 0,
         search: nextSearch,
         filters: nextFilters,
         loading: true,
@@ -3765,6 +3775,10 @@ export default function ProductsPage() {
       const versionRows = (((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow));
       const total = Number(response.data?.total || versionRows.length || 0);
       const totalPages = Math.max(1, Number(response.data?.totalPages || Math.ceil(total / VERSION_LIST_PAGE_SIZE) || 1));
+      const familyVersionCount = response.data?.familyVersionCount === undefined
+        ? versionRows.length
+        : Math.max(0, Number(response.data.familyVersionCount));
+      const latestVersionNumber = Math.max(0, Number(response.data?.latestVersionNumber || 0));
 
       setAllDesignRows((prev) => {
         const loadedIds = new Set(versionRows.map((row) => row.id));
@@ -3779,6 +3793,8 @@ export default function ProductsPage() {
           page: nextPage,
           total,
           totalPages,
+          familyVersionCount,
+          latestVersionNumber,
           search: nextSearch,
           filters: nextFilters,
           loading: false,
@@ -3795,6 +3811,8 @@ export default function ProductsPage() {
           page: nextPage,
           total: prev[base]?.total || 0,
           totalPages: prev[base]?.totalPages || 1,
+          familyVersionCount: prev[base]?.familyVersionCount || 0,
+          latestVersionNumber: prev[base]?.latestVersionNumber || 0,
           search: nextSearch,
           filters: nextFilters,
           loading: false,
@@ -3970,15 +3988,16 @@ export default function ProductsPage() {
       const jewelryGroupId = jewelryGroups.find((option) =>
         masterOptionMatchesValue(option, freshBaseDesign.jewelryGroup),
       )?.id;
-      await Promise.all([
+      const [, , , , , overheadRules] = await Promise.all([
         fetchMasterOptions('METAL_CARATAGE', undefined, true),
         fetchMasterOptions('DIAMOND_SPREAD', undefined, true),
         fetchMasterOptions('DIAMOND_QUALITY', undefined, true),
         fetchMasterOptions('DIAMOND_WEIGHT', undefined, true),
         fetchMasterOptions('JEWELRY_SIZE', jewelryGroupId ? { jewelryGroupId } : undefined, true),
+        fetchMasterOptions('OVERHEAD_RULE', jewelryGroupId ? { jewelryGroupId } : undefined, true),
       ]);
       if (versionBuilderInitializationSeqRef.current !== initializationSeq) return;
-      await loadVersionBuilderGemstoneTemplate(freshBaseDesign, detail);
+      await loadVersionBuilderGemstoneTemplate(freshBaseDesign, detail, overheadRules);
     } catch (error: any) {
       if (versionBuilderInitializationSeqRef.current === initializationSeq) {
         setVersionBuilderGemError(error?.response?.data?.message || 'Unable to load the latest parent design data.');
@@ -4011,7 +4030,11 @@ export default function ProductsPage() {
     setShowVersionBuilderModal(false);
   };
 
-  const loadVersionBuilderGemstoneTemplate = async (row: DesignRow, freshDetail?: any) => {
+  const loadVersionBuilderGemstoneTemplate = async (
+    row: DesignRow,
+    freshDetail?: any,
+    availableOverheadRules: MasterOption[] = masterOptions.overheadRules,
+  ) => {
     const canLoadDetails = String(row.id || '').trim().length > 0;
     if (!canLoadDetails) {
       setVersionBuilderGemRows([createEmptyGemRow()]);
@@ -4025,7 +4048,36 @@ export default function ProductsPage() {
       const gemstones = Array.isArray(detail?.gemstones) ? detail.gemstones : [];
       const metals = Array.isArray(detail?.metals) ? detail.metals : [];
       const labors = Array.isArray(detail?.labors) ? detail.labors : [];
+      const overheads = Array.isArray(detail?.overheads) ? detail.overheads : [];
       const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+      gemstones.forEach((gem: any) => {
+        const packetId = String(gem?.packetId ?? '').trim();
+        if (!packetId) return;
+        mergePacketOption(gem?.packet || {
+          id: packetId,
+          packetName: gem?.packetName,
+          barcode: gem?.packetBarcode,
+          stoneId: gem?.stoneId,
+          stone: gem?.stone,
+          shapeId: gem?.shapeId,
+          shape: gem?.shape,
+          sizeId: gem?.sizeId,
+          size: gem?.size,
+          cutId: gem?.cutId,
+          cut: gem?.cut,
+          colorId: gem?.colorId,
+          color: gem?.color,
+          qualityId: gem?.qualityId,
+          quality: gem?.quality,
+          sellingPrice: gem?.pricePerCt,
+          weightPerPc: gem?.wtPerPcs,
+          pieces: gem?.pcs,
+          weight: gem?.wtInCts,
+          weightUnit: 'CTS',
+        });
+      });
+
       const resolvePacketForGem = (gem: any): string => {
         const direct = String(gem?.packetId ?? '').trim();
         if (direct) return direct;
@@ -4099,19 +4151,7 @@ export default function ProductsPage() {
           : [{ id: makeId(), laborHead: '', laborPerUnit: '', unitQty: '', laborValue: '' }],
       );
       setVersionBuilderOverheadRows(
-        labors
-          .filter((item: any) => String(item?.laborHead || '').trim().toLowerCase().startsWith('overhead -'))
-          .map((item: any) => {
-            const overheadLabel = String(item?.laborHead || '').replace(/^Overhead\s*-\s*/i, '').trim();
-            const matchedOverheadRule = masterOptions.overheadRules.find(
-              (rule) => normalizeLookupKey(rule.value) === normalizeLookupKey(overheadLabel),
-            );
-            return {
-              id: item.id || makeId(),
-              overheadHead: overheadLabel,
-              ruleId: matchedOverheadRule?.id || '',
-            };
-          }),
+        initializeInheritedOverheads(overheads, labors, availableOverheadRules, makeId) as OverheadRow[],
       );
     } catch (error: any) {
       setVersionBuilderGemRows([createEmptyGemRow()]);
@@ -4567,6 +4607,23 @@ export default function ProductsPage() {
 
       if (createdRows.length > 0) {
         setAllDesignRows((prev) => [...createdRows, ...prev]);
+        const familyKey = getDesignFamilyKey(versionBuilderBaseDesign.designNo || '');
+        const latestCreatedVersion = createdRows.reduce(
+          (max, item) => Math.max(max, getVersionNumber(item.version)),
+          0,
+        );
+        setVersionFamilies((prev) => {
+          const familyState = prev[familyKey];
+          if (!familyState) return prev;
+          return {
+            ...prev,
+            [familyKey]: {
+              ...familyState,
+              familyVersionCount: familyState.familyVersionCount + createdRows.length,
+              latestVersionNumber: Math.max(familyState.latestVersionNumber, latestCreatedVersion),
+            },
+          };
+        });
         const createdPrimaryRows = createdRows.filter((item) => item.isPrimary);
         if (createdPrimaryRows.length > 0) {
           setRows((prev) => [...createdPrimaryRows, ...prev.filter((item) => !createdPrimaryRows.some((created) => created.id === item.id))]);
@@ -4757,6 +4814,40 @@ export default function ProductsPage() {
     setVersionBuilderGemRows((prev) => [...prev, createEmptyGemRow()]);
   };
 
+  const clearVersionBuilderPacketFields = (rowId: string) => {
+    setVersionBuilderGemRows((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...createEmptyGemRow(), id: row.id } : row)),
+    );
+    setVersionBuilderSizeChart((prev) => {
+      let changed = false;
+      const next: VersionBuilderSizeChartState = {};
+      Object.entries(prev).forEach(([coverage, coverageState]) => {
+        const nextCoverageState = { ...coverageState };
+        Object.entries(coverageState).forEach(([sizeKey, sizeState]) => {
+          if (!sizeState.groups[rowId]) {
+            nextCoverageState[sizeKey] = sizeState;
+            return;
+          }
+          changed = true;
+          nextCoverageState[sizeKey] = {
+            ...sizeState,
+            groups: {
+              ...sizeState.groups,
+              [rowId]: { count: '', ctPerStone: '' },
+            },
+          };
+        });
+        next[coverage] = nextCoverageState;
+      });
+      return changed ? next : prev;
+    });
+    setVersionBuilderManualSizeChartCells((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).filter(([key]) => key.split('|')[2] !== rowId),
+      ),
+    );
+  };
+
   const applyPacketToVersionBuilderGemRow = (
     rowId: string,
     packetId: string,
@@ -4764,7 +4855,7 @@ export default function ProductsPage() {
   ) => {
     const packet = selectedPacket ? mergePacketOption(selectedPacket) : packetOptions.find((entry) => entry.id === packetId);
     if (!packet) {
-      updateVersionBuilderGemRow(rowId, 'packetId', '');
+      clearVersionBuilderPacketFields(rowId);
       return;
     }
 
@@ -4974,13 +5065,18 @@ export default function ProductsPage() {
     return groups.reduce((total, count) => total * count, 1);
   }, [versionBuilderOptionGroups, versionBuilderSelections]);
 
-  const versionBuilderHighestVersion = useMemo(() => {
-    if (!versionBuilderVersionRows.length) {
-      return 0;
-    }
-
-    return versionBuilderVersionRows.reduce((max, row) => Math.max(max, getVersionNumber(row.version)), 0);
-  }, [versionBuilderVersionRows]);
+  const versionBuilderFamilyState = versionBuilderBaseDesign
+    ? versionFamilies[getDesignFamilyKey(versionBuilderBaseDesign.designNo || '')]
+    : undefined;
+  const versionBuilderCounts = useMemo(
+    () => resolveVersionCounts(
+      versionBuilderVersionRows,
+      versionBuilderFamilyState?.familyVersionCount,
+      versionBuilderFamilyState?.latestVersionNumber,
+    ),
+    [versionBuilderFamilyState?.familyVersionCount, versionBuilderFamilyState?.latestVersionNumber, versionBuilderVersionRows],
+  );
+  const versionBuilderHighestVersion = versionBuilderCounts.latestVersionNumber;
   const versionBuilderStepOrder = useMemo(
     () => VERSION_BUILDER_WORKFLOW.map((step) => step.id),
     [],
@@ -6144,16 +6240,27 @@ const createDefaultVendorRow = (): VendorRow => ({
         diamondWeight: resolveMasterValue(masterOptions.diamondWeights, detail.diamondWeight, detail.diamondWeightMaster, detail.diamondWeightId),
         diamondQuality: resolveMasterValue(masterOptions.diamondQualities, detail.diamondQuality, detail.diamondQualityMaster, detail.diamondQualityId),
         diamondQualityCustom: '',
-        jewelrySize: resolveMasterValue(masterOptions.jewelrySizes, detail.jewelrySize, detail.jewelrySizeMaster, detail.jewelrySizeId, row.jewelrySize),
+        jewelrySize: resolveMasterValue(masterOptions.jewelrySizes, detail.jewelrySize, detail.jewelrySizeMaster, detail.jewelrySizeId),
         otherWeight: asInput(detail.otherWeight),
         tags: tags.join(', '),
-        designStatus: resolveMasterValue(masterOptions.designStatuses, detail.designStatus, detail.designStatusMaster, detail.designStatusId, row.status),
+        designStatus: resolveMasterValue(masterOptions.designStatuses, detail.designStatus, detail.designStatusMaster, detail.designStatusId),
         drawerLocation: detail.drawerLocation || '',
         designDescription: detail.designDescription || '',
-        remarks: detail.remarks || row.remarks || '',
+        remarks: detail.remarks || '',
         ijewelModelId: asInput(detail.ijewelModelId),
         ijewelBaseName: asInput(detail.ijewelBaseName),
       };
+
+      if (baseForm.collection) {
+        mergeMasterOption('COLLECTION', {
+          ...(detail.collectionMaster || {}),
+          id: detail.collectionId ?? detail.collectionMaster?.id ?? baseForm.collection,
+          value: baseForm.collection,
+          label: baseForm.collection,
+          jewelryGroupId: detail.collectionMaster?.jewelryGroupId ?? detail.jewelryGroupId,
+          jewelryGroup: baseForm.jewelryGroup,
+        });
+      }
 
       setForm({ ...baseForm, ...(overrides || {}) });
 
@@ -6595,25 +6702,25 @@ const createDefaultVendorRow = (): VendorRow => ({
       jewelryGroup: form.jewelryGroup.trim(),
       collectionId: getMasterIdByValue(filteredSubCategoryOptions, form.collection),
       collection: form.collection.trim() || undefined,
-      stageId: getMasterIdByValue(masterOptions.stages, form.stage),
-      stage: form.stage.trim() || undefined,
-      diamondTypeId: getMasterIdByValue(masterOptions.diamondTypes, form.diamondType),
-      diamondType: form.diamondType.trim() || undefined,
-      diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, form.diamondSpread),
-      diamondSpread: form.diamondSpread.trim() || undefined,
-      diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, form.diamondWeight),
+      stageId: getMasterIdByValue(masterOptions.stages, form.stage) ?? null,
+      stage: form.stage.trim() || null,
+      diamondTypeId: getMasterIdByValue(masterOptions.diamondTypes, form.diamondType) ?? null,
+      diamondType: form.diamondType.trim() || null,
+      diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, form.diamondSpread) ?? null,
+      diamondSpread: form.diamondSpread.trim() || null,
+      diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, form.diamondWeight) ?? null,
       diamondWeight: form.diamondWeight.trim().length > 0 ? form.diamondWeight.trim() : null,
-      diamondQualityId: getMasterIdByValue(masterOptions.diamondQualities, form.diamondQuality),
-      diamondQuality: form.diamondQuality.trim() || undefined,
-      jewelrySizeId: getMasterIdByValue(filteredJewelrySizeOptions, form.jewelrySize),
-      jewelrySize: form.jewelrySize.trim() || undefined,
-      designStatusId: getMasterIdByValue(masterOptions.designStatuses, form.designStatus),
-      designStatus: form.designStatus.trim() || undefined,
+      diamondQualityId: getMasterIdByValue(masterOptions.diamondQualities, form.diamondQuality) ?? null,
+      diamondQuality: form.diamondQuality.trim() || null,
+      jewelrySizeId: getMasterIdByValue(filteredJewelrySizeOptions, form.jewelrySize) ?? null,
+      jewelrySize: form.jewelrySize.trim() || null,
+      designStatusId: getMasterIdByValue(masterOptions.designStatuses, form.designStatus) ?? null,
+      designStatus: form.designStatus.trim() || null,
       metalCaratageId: toOptionalMasterId(firstMetalMaster?.id),
       drawerLocation: form.drawerLocation.trim() || undefined,
       otherWeight: form.otherWeight.trim().length > 0 ? parseNum(form.otherWeight) : undefined,
-      designDescription: form.designDescription.trim() || undefined,
-      remarks: form.remarks.trim() || undefined,
+      designDescription: form.designDescription.trim() || null,
+      remarks: form.remarks.trim() || null,
       tags: selectedTags,
       tagsId: getMasterIdByValue(masterOptions.tags, selectedTags[0]),
       imageUrls: galleryKeys,
@@ -6883,6 +6990,27 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     try {
       await api.post(`/products/${row.id}/primary`);
+      const familyId = row.familyDesignId;
+      const familyKey = getDesignFamilyKey(row.designNo || '');
+      const applyPrimaryStatus = (item: DesignRow): DesignRow =>
+        (familyId && item.familyDesignId
+          ? item.familyDesignId === familyId
+          : getDesignFamilyKey(item.designNo || '') === familyKey)
+          ? { ...item, isPrimary: item.id === row.id }
+          : item;
+
+      setAllDesignRows((prev) => prev.map(applyPrimaryStatus));
+      setVersionFamilies((prev) => {
+        const familyState = prev[familyKey];
+        if (!familyState) return prev;
+        return {
+          ...prev,
+          [familyKey]: {
+            ...familyState,
+            rows: familyState.rows.map(applyPrimaryStatus),
+          },
+        };
+      });
       await fetchDesignRows(row.id);
     } catch (error: any) {
       showAppAlert(error?.response?.data?.message || 'Unable to set primary version.');
@@ -7283,17 +7411,19 @@ const createDefaultVendorRow = (): VendorRow => ({
         <Button type="button" variant="secondary" onClick={confirmCloseVersionBuilderModal} disabled={creatingVersions}>
           Close
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => {
-            const previousStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex - 1];
-            if (previousStep) setVersionBuilderWorkflowStep(previousStep);
-          }}
-          disabled={versionBuilderCurrentStepIndex <= 0 || creatingVersions}
-        >
-          Back
-        </Button>
+        {versionBuilderCurrentStepIndex > 0 ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              const previousStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex - 1];
+              if (previousStep) setVersionBuilderWorkflowStep(previousStep);
+            }}
+            disabled={creatingVersions}
+          >
+            Back
+          </Button>
+        ) : null}
       </div>
       <p className="text-xs text-slate-500 md:text-center">
         Generated variants now reflect the full selected combination set.
@@ -7306,19 +7436,21 @@ const createDefaultVendorRow = (): VendorRow => ({
               : ` ${versionBuilderCreateValidation.message}`}
       </p>
       <div className="flex flex-wrap items-center gap-2 md:justify-end">
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => {
-            const nextStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex + 1];
-            if (nextStep && canNavigateVersionBuilderToStep(nextStep)) {
-              setVersionBuilderWorkflowStep(nextStep);
-            }
-          }}
-          disabled={versionBuilderCurrentStepIndex >= versionBuilderStepOrder.length - 1 || creatingVersions}
-        >
-          Next
-        </Button>
+        {versionBuilderCurrentStepIndex < versionBuilderStepOrder.length - 1 ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              const nextStep = versionBuilderStepOrder[versionBuilderCurrentStepIndex + 1];
+              if (nextStep && canNavigateVersionBuilderToStep(nextStep)) {
+                setVersionBuilderWorkflowStep(nextStep);
+              }
+            }}
+            disabled={creatingVersions}
+          >
+            Next
+          </Button>
+        ) : null}
         <Button
           type="button"
           onClick={createVersionBuilderVariants}
@@ -8116,6 +8248,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                       page: prev[versionBase]?.page || 1,
                                       total: prev[versionBase]?.total || 0,
                                       totalPages: prev[versionBase]?.totalPages || 1,
+                                      familyVersionCount: prev[versionBase]?.familyVersionCount || 0,
+                                      latestVersionNumber: prev[versionBase]?.latestVersionNumber || 0,
                                       search: nextSearch,
                                       filters: prev[versionBase]?.filters || EMPTY_VERSION_LIST_FILTERS,
                                       loading: prev[versionBase]?.loading || false,
@@ -8229,10 +8363,12 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No additional versions for this design.</p>
                         ) : versionRows.length === 0 ? (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No versions match this search.</p>
-                        ) : (
+                        ) : (() => {
+                          const effectivePrimaryId = resolvePrimaryVersionId(versionRows);
+                          return (
                           <VersionListGrid
                             rows={versionRows.map((versionRow) => {
-                              const isPrimaryVersion = versionRow.isPrimary === true;
+                              const isPrimaryVersion = versionRow.id === effectivePrimaryId;
                               const versionImage = getPreferredRowImage(versionRow);
                               return {
                                 id: versionRow.id,
@@ -8284,7 +8420,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                               };
                             })}
                           />
-                        )}
+                          );
+                        })()}
                         <Pagination
                           page={versionState?.page || 1}
                           totalPages={versionState?.totalPages || 1}
@@ -8555,7 +8692,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </div>
                       <div className="rounded-xl border border-[#e6ddd2] bg-white px-3 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Existing</p>
-                        <p className="text-sm font-semibold text-slate-900">{versionBuilderVersionRows.length} versions</p>
+                        <p className="text-sm font-semibold text-slate-900">{versionBuilderCounts.existingCount} versions</p>
                       </div>
                       <div className="rounded-xl border border-[#e6ddd2] bg-white px-3 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Variant Count</p>
@@ -8563,7 +8700,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </div>
                       <div className="rounded-xl border border-[#d9b977] bg-[#faf4e6] px-3 py-2">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Next Version</p>
-                        <p className="text-sm font-semibold text-amber-800">V{versionBuilderHighestVersion + 1}</p>
+                        <p className="text-sm font-semibold text-amber-800">{versionBuilderCounts.nextVersion}</p>
                       </div>
                     </div>
                   </div>
@@ -10590,21 +10727,5 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

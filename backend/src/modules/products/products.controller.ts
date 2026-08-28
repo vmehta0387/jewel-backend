@@ -191,6 +191,13 @@ export class ProductsController {
     return this.productsService.findAll(query, req.user);
   }
 
+  @Get('media-library')
+  @TaskPermissions()
+  @ActionPermissions()
+  findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
+    return this.productsService.findMediaLibrary(query);
+  }
+
   @Get(':id')
   @TaskPermissions()
   @ActionPermissions()
@@ -219,13 +226,6 @@ export class ProductsController {
     @Request() req: { user: AuthUser },
   ) {
     return this.productsService.updateStatus(id, dto.isActive, req.user);
-  }
-
-  @Get('media-library')
-  @TaskPermissions()
-  @ActionPermissions()
-  findMediaLibrary(@Query() query: FindDesignMediaLibraryQueryDto) {
-    return this.productsService.findMediaLibrary(query);
   }
 
   @Delete('media-library/:id')

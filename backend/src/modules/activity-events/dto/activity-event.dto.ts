@@ -4,10 +4,10 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   Min,
   ValidateNested,
@@ -26,11 +26,11 @@ export class ActivityEventChangeDto {
 
 export class RecordActivityEventDto {
   @IsOptional()
-  @IsString()
-  id?: string;
+  @IsInt()
+  id?: number;
 
   @IsOptional()
-  userId?: string | number;
+  userId?: number;
 
   @IsOptional()
   @IsString()
@@ -51,7 +51,9 @@ export class RecordActivityEventDto {
   entityType?: string;
 
   @IsOptional()
-  entityId?: string | number;
+  @Type(() => Number)
+  @IsInt()
+  entityId?: number;
 
   @IsOptional()
   @IsArray()
@@ -90,8 +92,9 @@ export class FindActivityEventsQueryDto {
   limit?: number = 25;
 
   @IsOptional()
-  @IsUUID()
-  userId?: string;
+  @Type(() => Number)
+  @IsInt()
+  userId?: number;
 
   @IsOptional()
   @IsDateString()
@@ -118,6 +121,7 @@ export class FindActivityEventsQueryDto {
   entityType?: string;
 
   @IsOptional()
-  @IsString()
-  entityId?: string;
+  @Type(() => Number)
+  @IsInt()
+  entityId?: number;
 }

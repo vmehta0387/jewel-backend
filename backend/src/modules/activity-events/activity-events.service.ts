@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { Order } from '../orders/entities/order.entity';
@@ -74,8 +73,8 @@ export class ActivityEventsService {
       qb.andWhere('activityEvent.entity_type = :entityType', { entityType: query.entityType.trim() });
     }
 
-    if (query.entityId?.trim()) {
-      qb.andWhere('activityEvent.entity_id = :entityId', { entityId: query.entityId.trim() });
+    if (query.entityId != null) {
+      qb.andWhere('activityEvent.entity_id = :entityId', { entityId: query.entityId });
     }
 
     const [events, total] = await qb.getManyAndCount();
@@ -155,7 +154,7 @@ export class ActivityEventsService {
       event: eventName,
       screen: this.optionalText(event.screen, 120),
       entityType: this.optionalText(event.entityType, 80),
-      entityId: event.entityId ? Number(event.entityId) : null,
+      entityId: event.entityId ?? null,
       changes: this.sanitizeJson(event.changes) as ActivityEvent['changes'],
       data: this.sanitizeJson(event.data) as ActivityEvent['data'],
       createdAt: this.parseCreatedAt(event.createdAt),
@@ -209,6 +208,3 @@ export class ActivityEventsService {
     return String(value).slice(0, MAX_STRING_LENGTH);
   }
 }
-
-
-

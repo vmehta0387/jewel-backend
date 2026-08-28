@@ -437,7 +437,7 @@ export class CompaniesService {
       country: company.country,
       email: company.primaryEmail,
       phone: company.primaryPhone,
-      branchMultiplier: 1,
+      branchMultiplier: 2,
       isActive: true,
     });
 
@@ -460,5 +460,4 @@ export class CompaniesService {
     }
   }
 }
-
 
