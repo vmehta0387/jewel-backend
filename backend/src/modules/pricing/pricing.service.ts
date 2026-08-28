@@ -25,7 +25,7 @@ import { Branch } from '../branches/entities/branch.entity';
 import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
 import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.entity';
 import { User } from '../users/entities/user.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import {
   CompanyAdminPricingSlabDto,
@@ -72,7 +72,7 @@ export class PricingService {
     private readonly branchSlabRepo: Repository<BranchPricingSlab>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsService: NotificationEventsService,
     private readonly masterTablesService: MasterTablesService,
   ) {}
 
@@ -799,7 +799,7 @@ export class PricingService {
       const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
       if (!userIds.length) return;
 
-      await this.notificationsService.createForUsers(userIds, {
+      await this.notificationEventsService.createForUsers(userIds, {
         companyId: company.id,
         branchId: null,
         type: 'PRICING_UPDATED',
@@ -835,7 +835,7 @@ export class PricingService {
       const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
       if (!userIds.length) return;
 
-      await this.notificationsService.createForUsers(userIds, {
+      await this.notificationEventsService.createForUsers(userIds, {
         companyId: branch.companyId,
         branchId: branch.id,
         type: 'PRICING_UPDATED',

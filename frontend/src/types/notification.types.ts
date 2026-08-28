@@ -41,6 +41,7 @@ export interface SendCustomNotificationPayload {
   activityType: CustomNotificationActivityType;
   activityRecordId?: number;
   priority?: NotificationPriority;
+  channelInApp?: boolean;
   channelPush?: boolean;
   targetMode?: 'ALL' | 'FILTERED' | 'SELECTED';
   role?: string;

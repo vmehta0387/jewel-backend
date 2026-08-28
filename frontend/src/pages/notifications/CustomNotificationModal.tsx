@@ -102,7 +102,7 @@ export default function CustomNotificationModal({ open, onClose, onSent }: Custo
   const [message, setMessage] = useState('');
   const [activityType, setActivityType] = useState<CustomNotificationActivityType>('GENERAL');
   const [priority, setPriority] = useState<SendCustomNotificationPayload['priority']>('P1');
-  const [channelPush, setChannelPush] = useState(true);
+  const [channelPush, setChannelPush] = useState(false);
   const [targetMode, setTargetMode] = useState<TargetMode>('ALL');
   const [role, setRole] = useState('');
   const [companyId, setCompanyId] = useState('');
@@ -239,6 +239,7 @@ export default function CustomNotificationModal({ open, onClose, onSent }: Custo
         activityType,
         activityRecordId: selectedRecordId ? Number(selectedRecordId) : undefined,
         priority,
+        channelInApp: true,
         channelPush,
         targetMode,
         role: targetMode === 'FILTERED' ? role || undefined : undefined,
@@ -273,7 +274,7 @@ export default function CustomNotificationModal({ open, onClose, onSent }: Custo
         <div className="flex items-start justify-between gap-4 border-b border-[#eadfce] px-6 py-5">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Custom Notification</h2>
-            <p className="mt-1 text-sm text-slate-600">Create a targeted in-app and push notification.</p>
+            <p className="mt-1 text-sm text-slate-600">Create a targeted notification. Push also creates an in-app record.</p>
           </div>
           <button type="button" onClick={resetAndClose} className="rounded-full border border-[#dfd3c4] px-3 py-1.5 text-sm font-semibold text-[#6f6356] hover:bg-[#faf7f2]">
             Close
@@ -299,7 +300,7 @@ export default function CustomNotificationModal({ open, onClose, onSent }: Custo
 
           <label className="space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-[0.18em] text-[#8c7148]">Message</span>
-            <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} className="w-full resize-none rounded-xl border border-[#dfd3c4] px-4 py-2.5 text-sm outline-none focus:border-[#c9a971]" placeholder="Write the push notification message" />
+            <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={4} className="w-full resize-none rounded-xl border border-[#dfd3c4] px-4 py-2.5 text-sm outline-none focus:border-[#c9a971]" placeholder="Write the notification message" />
           </label>
 
           {needsActivityRecord ? (
@@ -392,10 +393,25 @@ export default function CustomNotificationModal({ open, onClose, onSent }: Custo
                 {priorityOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
             </label>
-            <label className="flex items-center gap-3 rounded-xl border border-[#dfd3c4] px-4 py-3">
-              <input type="checkbox" checked={channelPush} onChange={(event) => setChannelPush(event.target.checked)} className="h-4 w-4 accent-[#b98e45]" />
-              <span className="text-sm font-semibold text-slate-700">Send as push notification</span>
-            </label>
+            <div className="rounded-xl border border-[#dfd3c4] px-4 py-3">
+              <span className="text-xs font-bold uppercase tracking-[0.18em] text-[#8c7148]">Channel</span>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChannelPush(false)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${!channelPush ? 'border-[#1f1a16] bg-[#1f1a16] text-white' : 'border-[#ddcfbf] bg-[#faf7f2] text-[#6f6356]'}`}
+                >
+                  In-app only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChannelPush(true)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${channelPush ? 'border-[#1f1a16] bg-[#1f1a16] text-white' : 'border-[#ddcfbf] bg-[#faf7f2] text-[#6f6356]'}`}
+                >
+                  In-app + Push
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap justify-end gap-2 border-t border-[#eadfce] pt-4">

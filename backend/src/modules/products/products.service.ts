@@ -60,7 +60,7 @@ import { DesignMasterType } from './entities/design-master-tables.entity';
 import { GlobalBasePrice, GlobalBasePriceCategory } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary, DesignMediaType } from './entities/design-media-library.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { PricingService } from '../pricing/pricing.service';
 import { MasterTablesService } from './master-tables.service';
@@ -433,7 +433,7 @@ export class ProductsService {
     private readonly designMediaLibraryRepo: Repository<DesignMediaLibrary>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsService: NotificationEventsService,
     private readonly pricingService: PricingService,
     private readonly masterTablesService: MasterTablesService,
   ) { }
@@ -5307,7 +5307,7 @@ export class ProductsService {
       const userIds = Array.from(new Set(recipients.map((user) => user.id).filter(Boolean)));
       if (!userIds.length) return;
 
-      await this.notificationsService.createForUsers(userIds, {
+      await this.notificationEventsService.createForUsers(userIds, {
         companyId: requester.companyId ?? null,
         branchId: requester.branchId ?? null,
         type: 'PRODUCT_IMPORT_FAILED',

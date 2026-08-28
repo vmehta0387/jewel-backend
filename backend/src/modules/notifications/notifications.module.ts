@@ -4,11 +4,12 @@ import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { User } from '../users/entities/user.entity';
-import { NotificationPushDevice } from './entities/notification-push-device.entity';
 import { Notification } from './entities/notification.entity';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsGateway } from './notifications.gateway';
 import { NotificationsService } from './notifications.service';
+import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -20,8 +21,10 @@ import { NotificationsService } from './notifications.service';
         secret: configService.get<string>('JWT_SECRET') || 'change_me',
       }),
     }),
-    TypeOrmModule.forFeature([Notification, NotificationPushDevice, User]),
+    TypeOrmModule.forFeature([Notification, User]),
     AuthModule,
+    PushNotificationsModule,
+    EmailModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, NotificationsGateway],

@@ -96,7 +96,12 @@ export class SendCustomNotificationDto {
   @IsOptional()
   @Transform(({ value }) => parseBooleanQuery(value))
   @IsBoolean()
-  channelPush?: boolean = true;
+  channelInApp?: boolean = true;
+
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  channelPush?: boolean = false;
 
   @IsOptional()
   @IsIn(['ALL', 'FILTERED', 'SELECTED'])

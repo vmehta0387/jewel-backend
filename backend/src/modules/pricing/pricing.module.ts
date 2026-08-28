@@ -18,7 +18,7 @@ import { Branch } from '../branches/entities/branch.entity';
 import { CompanyPricingSlab } from '../companies/entities/company-pricing-slab.entity';
 import { BranchPricingSlab } from '../branches/entities/branch-pricing-slab.entity';
 import { User } from '../users/entities/user.entity';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationEventsModule } from '../notification-events/notification-events.module';
 
 @Module({
   imports: [
@@ -38,7 +38,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       User,
     ]),
     AuthModule,
-    NotificationsModule,
+    NotificationEventsModule,
   ],
   controllers: [PricingController, CompanyAdminPricingController],
   providers: [PricingService, MasterTablesService],

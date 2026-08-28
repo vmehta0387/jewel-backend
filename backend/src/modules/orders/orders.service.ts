@@ -16,7 +16,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateOrderDto, FindOrdersQueryDto, FindPurchaseOrderUsageQueryDto, UpdateOrderDto } from './dto/order.dto';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
 import { SpiffService } from '../spiff/spiff.service';
 import { PricingService } from '../pricing/pricing.service';
 
@@ -92,7 +92,7 @@ export class OrdersService implements OnModuleInit {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(UserPermissionAction) private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
     private readonly spiffService: SpiffService,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsService: NotificationEventsService,
     private readonly pricingService: PricingService,
   ) {}
 
@@ -2076,7 +2076,7 @@ export class OrdersService implements OnModuleInit {
       const salesRepName = this.getSalesRepDisplayName(context) || 'A sales rep';
 
       if (context.salesRepId) {
-        await this.notificationsService.createForUser({
+        await this.notificationEventsService.createForUser({
           userId: context.salesRepId,
           companyId: context.companyId ?? null,
           branchId: context.branchId ?? null,
@@ -2103,7 +2103,7 @@ export class OrdersService implements OnModuleInit {
       if (context.status === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? context.salesRepId : null]);
         if (approverIds.length) {
-          await this.notificationsService.createForUsers(approverIds, {
+          await this.notificationEventsService.createForUsers(approverIds, {
             companyId: context.companyId ?? null,
             branchId: context.branchId ?? null,
             type: 'ORDER_APPROVAL_REQUIRED',
@@ -2157,7 +2157,7 @@ export class OrdersService implements OnModuleInit {
       if (current === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
         if (approverIds.length) {
-          await this.notificationsService.createForUsers(approverIds, {
+          await this.notificationEventsService.createForUsers(approverIds, {
             companyId: context.companyId,
             branchId: context.branchId,
             type: 'ORDER_APPROVAL_REQUIRED',
@@ -2205,7 +2205,7 @@ export class OrdersService implements OnModuleInit {
       const transition = transitionMessages[current];
       if (!transition) return;
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: context.salesRepId,
         companyId: context.companyId ?? null,
         branchId: context.branchId ?? null,

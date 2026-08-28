@@ -1,4 +1,4 @@
-﻿import { Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { Order } from '../orders/entities/order.entity';
@@ -11,7 +11,7 @@ import { GiftogramService } from './giftogram.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
 import { SpiffSetting } from './entities/spiff-setting.entity';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationEventsModule } from '../notification-events/notification-events.module';
 
 @Module({
   imports: [
@@ -25,7 +25,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
       Branch,
     ]),
     AuthModule,
-    NotificationsModule,
+    NotificationEventsModule,
   ],
   controllers: [SpiffController],
   providers: [SpiffService, GiftogramService],

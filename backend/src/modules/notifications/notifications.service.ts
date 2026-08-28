@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { Brackets, In, Not, Repository } from 'typeorm';
@@ -11,9 +10,10 @@ import {
   SendCustomNotificationDto,
   UnregisterPushDeviceDto,
 } from './dto/notification.dto';
-import { NotificationPushDevice } from './entities/notification-push-device.entity';
 import { Notification, NotificationPriority } from './entities/notification.entity';
 import { NotificationsGateway } from './notifications.gateway';
+import { PushNotificationsService } from '../push-notifications/push-notifications.service';
+import { EmailService } from '../email/email.service';
 
 const DESIGN_UPDATED_NOTIFICATION_TYPE = 'DESIGN_UPDATED';
 
@@ -37,20 +37,16 @@ export interface CreateNotificationInput {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private readonly expoPushUrl: string;
 
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepo: Repository<Notification>,
-    @InjectRepository(NotificationPushDevice)
-    private readonly pushDeviceRepo: Repository<NotificationPushDevice>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationsGateway: NotificationsGateway,
-    private readonly configService: ConfigService,
-  ) {
-    this.expoPushUrl = this.configService.get<string>('EXPO_PUSH_URL') || 'https://exp.host/--/api/v2/push/send';
-  }
+    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly emailService: EmailService,
+  ) {}
 
   async findMine(query: FindNotificationsQueryDto, requester: AuthUser) {
     const page = query.page || 1;
@@ -167,64 +163,12 @@ export class NotificationsService {
   }
 
   async registerPushDevice(requester: AuthUser, dto: RegisterPushDeviceDto) {
-    const expoPushToken = this.normalizePushToken(dto.expoPushToken);
-    if (!expoPushToken) {
-      throw new NotFoundException('Push token is required');
-    }
-
-    const existing = await this.pushDeviceRepo.findOne({
-      where: { expoPushToken },
-    });
-
-    const record = existing
-      ? Object.assign(existing, {
-        userId: requester.id,
-        platform: this.optionalText(dto.platform),
-        deviceId: this.optionalText(dto.deviceId),
-        appVersion: this.optionalText(dto.appVersion),
-        isActive: true,
-        lastRegisteredAt: new Date(),
-        lastError: null,
-      })
-      : this.pushDeviceRepo.create({
-        userId: requester.id,
-        expoPushToken,
-        platform: this.optionalText(dto.platform),
-        deviceId: this.optionalText(dto.deviceId),
-        appVersion: this.optionalText(dto.appVersion),
-        isActive: true,
-        lastRegisteredAt: new Date(),
-        lastError: null,
-      });
-
-    const saved = await this.pushDeviceRepo.save(record);
-    return {
-      success: true,
-      id: saved.id,
-      expoPushToken: saved.expoPushToken,
-      isActive: saved.isActive,
-    };
+    return this.pushNotificationsService.registerDevice(requester, dto);
   }
 
   async unregisterPushDevice(requester: AuthUser, dto: UnregisterPushDeviceDto) {
-    const expoPushToken = this.normalizePushToken(dto.expoPushToken);
-    if (!expoPushToken) {
-      throw new NotFoundException('Push token is required');
-    }
-
-    const record = await this.pushDeviceRepo.findOne({
-      where: { expoPushToken, userId: requester.id },
-    });
-
-    if (!record) {
-      return { success: true };
-    }
-
-    record.isActive = false;
-    await this.pushDeviceRepo.save(record);
-    return { success: true };
+    return this.pushNotificationsService.unregisterDevice(requester, dto);
   }
-
   async createForUser(input: CreateNotificationInput) {
     const record = this.notificationRepo.create({
       recipientUserId: input.userId,
@@ -247,7 +191,8 @@ export class NotificationsService {
 
     const saved = await this.notificationRepo.save(record);
     await this.emitUnreadCountUpdate(saved.recipientUserId);
-    await this.sendPushForNotifications([saved]);
+    await this.pushNotificationsService.sendForNotifications([saved]);
+    await this.sendEmailForNotifications([saved]);
     return saved;
   }
 
@@ -288,7 +233,8 @@ export class NotificationsService {
 
     const saved = await this.notificationRepo.save(rows);
     await Promise.all(uniqueUserIds.map((userId) => this.emitUnreadCountUpdate(userId)));
-    await this.sendPushForNotifications(saved);
+    await this.pushNotificationsService.sendForNotifications(saved);
+    await this.sendEmailForNotifications(saved);
     return saved;
   }
 
@@ -355,13 +301,17 @@ export class NotificationsService {
       entityType,
       entityId,
       actionUrl,
-      channelInApp: true,
-      channelPush: dto.channelPush ?? true,
+      channelInApp: dto.channelPush ? true : dto.channelInApp ?? true,
+      channelPush: dto.channelPush ?? false,
       metadata: {
         generatedByUserId: requester.id,
         activityType: dto.activityType,
         activityRecordId: entityId,
         targetMode,
+        channels: {
+          inApp: dto.channelPush ? true : dto.channelInApp ?? true,
+          push: dto.channelPush ?? false,
+        },
         filters: {
           role: dto.role || null,
           companyId: dto.companyId || null,
@@ -378,117 +328,37 @@ export class NotificationsService {
       createdNotifications: saved.length,
     };
   }
-  private async sendPushForNotifications(notifications: Notification[]) {
-    const pushNotifications = notifications.filter(
-      (item) => item.channelPush && !item.isRead && this.isSupportedExpoTokenValue(item.recipientUserId),
-    );
-
-    const candidateNotifications = notifications.filter((item) => item.channelPush && !item.isRead);
-    if (!candidateNotifications.length) {
+  private async sendEmailForNotifications(notifications: Notification[]) {
+    const emailNotifications = notifications.filter((item) => item.channelEmail && item.recipientUserId);
+    if (!emailNotifications.length) {
       return;
     }
 
-    const userIds = Array.from(new Set(candidateNotifications.map((item) => item.recipientUserId).filter(Boolean)));
-    if (!userIds.length) {
-      return;
-    }
-
-    const devices = await this.pushDeviceRepo.find({
-      where: {
-        userId: In(userIds),
-        isActive: true,
-      },
+    const userIds = Array.from(new Set(emailNotifications.map((item) => item.recipientUserId).filter(Boolean)));
+    const users = await this.userRepo.find({
+      where: { id: In(userIds), isActive: true },
+      select: ['id', 'email', 'firstName', 'lastName'],
     });
+    const usersById = new Map(users.map((user) => [user.id, user]));
 
-    if (!devices.length) {
-      return;
-    }
+    await Promise.all(
+      emailNotifications.map(async (notification) => {
+        const user = usersById.get(notification.recipientUserId);
+        if (!user?.email) return;
 
-    const messages = candidateNotifications.flatMap((notification) => {
-      const userDevices = devices.filter(
-        (device) =>
-          device.userId === notification.recipientUserId && this.isValidExpoPushToken(device.expoPushToken),
-      );
-
-      return userDevices.map((device) => ({
-        to: device.expoPushToken,
-        title: notification.title,
-        body: notification.message,
-        sound: 'default',
-        priority: notification.priority === NotificationPriority.P0 ? 'high' : 'default',
-        data: {
-          notificationId: notification.id,
-          type: notification.type,
-          priority: notification.priority,
-          entityType: notification.entityType,
-          entityId: notification.entityId,
-          actionUrl: notification.actionUrl,
-          metadata: notification.metadata ?? null,
-        },
-      }));
-    });
-
-    if (!messages.length) {
-      return;
-    }
-
-    const chunks: Array<typeof messages> = [];
-    for (let i = 0; i < messages.length; i += 100) {
-      chunks.push(messages.slice(i, i + 100));
-    }
-
-    for (const chunk of chunks) {
-      try {
-        const response = await fetch(this.expoPushUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
+        await this.emailService.sendNotificationEmail({
+          to: {
+            email: user.email,
+            name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || undefined,
           },
-          body: JSON.stringify(chunk),
+          title: notification.title,
+          message: notification.message,
+          actionUrl: notification.actionUrl,
+          type: notification.type,
+          metadata: notification.metadata,
         });
-
-        const payload = (await response.json().catch(() => null)) as
-          | {
-            data?: Array<{ status?: string; details?: { error?: string } }>;
-            errors?: Array<{ message?: string }>;
-          }
-          | null;
-
-        if (!response.ok) {
-          const message =
-            payload?.errors?.map((item) => item?.message).filter(Boolean).join(', ')
-            || `Expo push request failed with status ${response.status}`;
-          this.logger.warn(`Push delivery failed: ${message}`);
-          continue;
-        }
-
-        const tickets = payload?.data || [];
-        await Promise.all(
-          chunk.map(async (message, index) => {
-            const ticket = tickets[index];
-            const device = devices.find((item) => item.expoPushToken === message.to);
-            if (!device) return;
-
-            if (ticket?.status === 'error') {
-              const errorText = ticket?.details?.error || 'Expo push rejected the token';
-              device.lastError = errorText;
-              if (errorText === 'DeviceNotRegistered') {
-                device.isActive = false;
-              }
-              await this.pushDeviceRepo.save(device);
-              return;
-            }
-
-            device.lastDeliveredAt = new Date();
-            device.lastError = null;
-            await this.pushDeviceRepo.save(device);
-          }),
-        );
-      } catch (error: any) {
-        this.logger.warn(`Push delivery failed: ${error?.message || 'unknown error'}`);
-      }
-    }
+      }),
+    );
   }
 
   private async emitUnreadCountUpdate(userId: number) {
@@ -510,19 +380,6 @@ export class NotificationsService {
     return String(value || '').trim();
   }
 
-  private normalizePushToken(value: string | null | undefined): string | null {
-    const normalized = String(value || '').trim();
-    return this.isValidExpoPushToken(normalized) ? normalized : null;
-  }
-
-  private isValidExpoPushToken(value: string | null | undefined): boolean {
-    const normalized = String(value || '').trim();
-    return /^Expo(nent)?PushToken\[[^\]]+\]$/.test(normalized);
-  }
-
-  private isSupportedExpoTokenValue(value: number | null | undefined): boolean {
-    return Boolean(value);
-  }
 
   private optionalText(value: string | null | undefined): string | null {
     const normalized = String(value || '').trim();

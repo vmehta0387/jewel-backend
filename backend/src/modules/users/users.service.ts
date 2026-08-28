@@ -23,7 +23,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateBranchEmployeeDto, UpdateBranchEmployeeDto } from './dto/branch-employee.dto';
 import { CheckUserHandleQueryDto, CreateUserDto, FindUsersQueryDto, UpdateUserDto } from './dto/user.dto';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import {
@@ -99,7 +99,7 @@ export class UsersService implements OnModuleInit {
     private branchRepo: Repository<Branch>,
     @InjectRepository(UserPermissionAction)
     private userPermissionActionRepo: Repository<UserPermissionAction>,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsService: NotificationEventsService,
     private readonly permissionsService: PermissionsService,
   ) { }
 
@@ -609,7 +609,7 @@ export class UsersService implements OnModuleInit {
       const companyLabel = response.company?.companyName || 'your company';
       const branchLabel = response.branch?.name || null;
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: user.id,
         companyId: user.companyId ?? null,
         branchId: user.branchId ?? null,
@@ -632,7 +632,7 @@ export class UsersService implements OnModuleInit {
       });
 
       if (recipientIds.length) {
-        await this.notificationsService.createForUsers(recipientIds, {
+        await this.notificationEventsService.createForUsers(recipientIds, {
           companyId: user.companyId ?? null,
           branchId: user.branchId ?? null,
           type: 'USER_ACCOUNT_CREATED',
@@ -668,7 +668,7 @@ export class UsersService implements OnModuleInit {
       const nextRoleLabel = this.formatRoleLabel(user.role);
       const previousRoleLabel = this.formatRoleLabel(previousRole);
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: user.id,
         companyId: user.companyId ?? null,
         branchId: user.branchId ?? null,
@@ -689,7 +689,7 @@ export class UsersService implements OnModuleInit {
       });
 
       if (recipientIds.length) {
-        await this.notificationsService.createForUsers(recipientIds, {
+        await this.notificationEventsService.createForUsers(recipientIds, {
           companyId: user.companyId ?? null,
           branchId: user.branchId ?? null,
           type: 'USER_ROLE_CHANGED',

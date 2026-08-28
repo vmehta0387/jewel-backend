@@ -26,7 +26,7 @@ import { DESIGN_MASTER_TABLE_ENTITIES } from './entities/design-master-tables.en
 import { GlobalBasePrice } from '../pricing/entities/global-base-price.entity';
 import { User } from '../users/entities/user.entity';
 import { DesignMediaLibrary } from './entities/design-media-library.entity';
-import { NotificationsModule } from '../notifications/notifications.module';
+import { NotificationEventsModule } from '../notification-events/notification-events.module';
 import { PricingModule } from '../pricing/pricing.module';
 
 @Module({
@@ -55,7 +55,7 @@ import { PricingModule } from '../pricing/pricing.module';
       Branch,
     ]),
     AuthModule,
-    NotificationsModule,
+    NotificationEventsModule,
     PricingModule,
   ],
   controllers: [ProductsController, MasterTablesController],

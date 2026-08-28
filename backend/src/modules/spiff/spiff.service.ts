@@ -17,7 +17,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { OrderStatus } from '../../common/enums/order-status.enum';
 import { GiftogramService } from './giftogram.service';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
 import { SpiffPointLedger } from './entities/spiff-point-ledger.entity';
 import { SpiffRedemptionClaim } from './entities/spiff-redemption-claim.entity';
 import { SpiffSetting } from './entities/spiff-setting.entity';
@@ -70,7 +70,7 @@ export class SpiffService {
     @InjectRepository(Branch)
     private readonly branchRepo: Repository<Branch>,
     private readonly giftogramService: GiftogramService,
-    private readonly notificationsService: NotificationsService,
+    private readonly notificationEventsService: NotificationEventsService,
   ) { }
 
   async getConfig() {
@@ -900,7 +900,7 @@ export class SpiffService {
       const claimLabel = context.claimNumber || 'SPIFF claim';
       const requestedAmount = this.roundMoney(context.requestedAmountCents / 100);
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
@@ -926,7 +926,7 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationsService.createForUsers(managerIds, {
+        await this.notificationEventsService.createForUsers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
           type: 'SPIFF_CLAIM_REVIEW_REQUIRED',
@@ -1005,7 +1005,7 @@ export class SpiffService {
       const payload = byStatus[context.status];
       if (!payload) return;
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
@@ -1028,7 +1028,7 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationsService.createForUsers(managerIds, {
+        await this.notificationEventsService.createForUsers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
           type: payload.type,
@@ -1058,7 +1058,7 @@ export class SpiffService {
       const context = await this.loadClaimNotificationContext(claim.id);
       if (!context) return;
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
@@ -1088,7 +1088,7 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationsService.createForUsers(managerIds, {
+        await this.notificationEventsService.createForUsers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
           type: 'SPIFF_CLAIM_FULFILLED',
@@ -1399,7 +1399,7 @@ export class SpiffService {
         || requester.email
         || 'Admin';
 
-      await this.notificationsService.createForUser({
+      await this.notificationEventsService.createForUser({
         userId: targetUser.id,
         companyId: targetUser.companyId || null,
         branchId: targetUser.branchId || null,
