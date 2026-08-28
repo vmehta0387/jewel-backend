@@ -900,18 +900,16 @@ export class SpiffService {
       const claimLabel = context.claimNumber || 'SPIFF claim';
       const requestedAmount = this.roundMoney(context.requestedAmountCents / 100);
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifySpiffClaimSubmitted({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
-        type: 'SPIFF_CLAIM_SUBMITTED',
         priority: NotificationPriority.P2,
         title: `${claimLabel} submitted`,
         message: `Your redemption claim ${claimLabel} for $${requestedAmount.toFixed(2)} was submitted for review.`,
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
-        channelPush: true,
         metadata: {
           claimId: context.id,
           claimNumber: context.claimNumber,
@@ -926,17 +924,15 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationEventsService.createForUsers(managerIds, {
+        await this.notificationEventsService.notifySpiffClaimReviewRequired(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
-          type: 'SPIFF_CLAIM_REVIEW_REQUIRED',
           priority: NotificationPriority.P1,
           title: `Review needed for ${claimLabel}`,
           message: `${requestorName} submitted ${claimLabel} for ${context.requestedPoints} points.`,
           entityType: 'SPIFF_CLAIM',
           entityId: context.id,
           actionUrl: `/spiff`,
-          channelPush: true,
           metadata: {
             claimId: context.id,
             claimNumber: context.claimNumber,
@@ -1005,7 +1001,7 @@ export class SpiffService {
       const payload = byStatus[context.status];
       if (!payload) return;
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifySpiffClaimUpdated({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
@@ -1016,7 +1012,6 @@ export class SpiffService {
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
-        channelPush: true,
         metadata: {
           ...baseMetadata,
           rewardLink: context.giftbitLinkUrl ?? null,
@@ -1028,7 +1023,7 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationEventsService.createForUsers(managerIds, {
+        await this.notificationEventsService.notifySpiffClaimUpdatedForManagers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
           type: payload.type,
@@ -1038,7 +1033,6 @@ export class SpiffService {
           entityType: 'SPIFF_CLAIM',
           entityId: context.id,
           actionUrl: `/spiff`,
-          channelPush: true,
           metadata: {
             ...baseMetadata,
             requestorName,
@@ -1058,7 +1052,7 @@ export class SpiffService {
       const context = await this.loadClaimNotificationContext(claim.id);
       if (!context) return;
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifySpiffClaimUpdated({
         userId: context.userId,
         companyId: context.companyId,
         branchId: context.branchId,
@@ -1071,7 +1065,6 @@ export class SpiffService {
         entityType: 'SPIFF_CLAIM',
         entityId: context.id,
         actionUrl: `/spiff`,
-        channelPush: true,
         metadata: {
           claimId: context.id,
           claimNumber: context.claimNumber,
@@ -1088,7 +1081,7 @@ export class SpiffService {
         const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
           || context.user?.email
           || 'A user';
-        await this.notificationEventsService.createForUsers(managerIds, {
+        await this.notificationEventsService.notifySpiffClaimUpdatedForManagers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
           type: 'SPIFF_CLAIM_FULFILLED',
@@ -1098,7 +1091,6 @@ export class SpiffService {
           entityType: 'SPIFF_CLAIM',
           entityId: context.id,
           actionUrl: `/spiff`,
-          channelPush: true,
           metadata: {
             claimId: context.id,
             claimNumber: context.claimNumber,
@@ -1399,19 +1391,16 @@ export class SpiffService {
         || requester.email
         || 'Admin';
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifySpiffPointsGiven({
         userId: targetUser.id,
         companyId: targetUser.companyId || null,
         branchId: targetUser.branchId || null,
-        type: 'SPIFF_POINTS_GIVEN',
         priority: NotificationPriority.P1,
         title: 'SPIFF reward received',
         message: `${actorName} gave you ${points.toLocaleString('en-US', { maximumFractionDigits: 2 })} SPIFF points.`,
         entityType: 'SPIFF_LEDGER',
         entityId: Number(ledgerEntry.id) || null,
         actionUrl: null,
-        channelInApp: false,
-        channelPush: true,
         metadata: {
           ledgerId: ledgerEntry.id,
           points,
@@ -2099,6 +2088,9 @@ export class SpiffService {
     return Math.round(value * 100) / 100;
   }
 }
+
+
+
 
 
 

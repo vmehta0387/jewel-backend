@@ -8,11 +8,13 @@ import { CollectionPricingOverride } from './entities/collection-pricing-overrid
 import { User } from '../users/entities/user.entity';
 import { AuthModule } from '../auth/auth.module';
 import { Branch } from '../branches/entities/branch.entity';
+import { NotificationEventsModule } from '../notification-events/notification-events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, CompanyPricingSlab, CollectionPricingOverride, User, Branch]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Company, CompanyPricingSlab, CollectionPricingOverride, User, Branch]), AuthModule, NotificationEventsModule],
   controllers: [CompaniesController],
   providers: [CompaniesService],
   exports: [CompaniesService],
 })
 export class CompaniesModule {}
+

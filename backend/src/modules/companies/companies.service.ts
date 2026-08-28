@@ -12,6 +12,8 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
 import { Branch } from '../branches/entities/branch.entity';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { NotificationEventsService } from '../notification-events/notification-events.service';
+import { NotificationPriority } from '../notifications/entities/notification.entity';
 
 @Injectable()
 export class CompaniesService {
@@ -26,6 +28,7 @@ export class CompaniesService {
     private userRepo: Repository<User>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
+    private readonly notificationEventsService: NotificationEventsService,
   ) { }
 
   async create(dto: CreateCompanyDto): Promise<Company> {
@@ -85,9 +88,39 @@ export class CompaniesService {
       await this.createMainBranchFromCompany(saved, mainBranchName, mainBranchCode);
     }
 
+    await this.safeNotifyTenantOnboarded(saved);
+
     return this.findOne(saved.id);
   }
 
+  private async safeNotifyTenantOnboarded(company: Company): Promise<void> {
+    try {
+      const superAdmins = await this.userRepo.find({
+        where: { role: UserRole.SUPER_ADMIN, isActive: true },
+        select: ['id'],
+      });
+      const userIds = superAdmins.map((user) => user.id).filter(Boolean);
+      if (!userIds.length) return;
+
+      await this.notificationEventsService.notifyTenantOnboarded(userIds, {
+        companyId: company.id,
+        branchId: null,
+        priority: NotificationPriority.P1,
+        title: 'New tenant onboarded',
+        message: `${company.companyName} has been created and is ready for setup.`,
+        entityType: 'COMPANY',
+        entityId: company.id,
+        actionUrl: `/companies/${company.id}`,
+        metadata: {
+          companyId: company.id,
+          companyCode: company.companyCode,
+          accountManagerId: company.accountManagerId ?? null,
+        },
+      });
+    } catch {
+      // Best-effort only; tenant creation remains the source of truth.
+    }
+  }
   async findAll(
     page = 1,
     limit = 10,
@@ -460,4 +493,6 @@ export class CompaniesService {
     }
   }
 }
+
+
 

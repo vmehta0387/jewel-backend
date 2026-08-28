@@ -609,11 +609,10 @@ export class UsersService implements OnModuleInit {
       const companyLabel = response.company?.companyName || 'your company';
       const branchLabel = response.branch?.name || null;
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifyUserAccountCreated({
         userId: user.id,
         companyId: user.companyId ?? null,
         branchId: user.branchId ?? null,
-        type: 'USER_ACCOUNT_CREATED',
         priority: NotificationPriority.P1,
         title: 'Your account is ready',
         message: branchLabel
@@ -622,7 +621,6 @@ export class UsersService implements OnModuleInit {
         entityType: 'USER',
         entityId: user.id,
         actionUrl: '/profile',
-        channelPush: true,
         metadata: {
           userId: user.id,
           role: user.role,
@@ -632,17 +630,15 @@ export class UsersService implements OnModuleInit {
       });
 
       if (recipientIds.length) {
-        await this.notificationEventsService.createForUsers(recipientIds, {
+        await this.notificationEventsService.notifyUserAccountCreatedForAdmins(recipientIds, {
           companyId: user.companyId ?? null,
           branchId: user.branchId ?? null,
-          type: 'USER_ACCOUNT_CREATED',
           priority: NotificationPriority.P2,
           title: `New ${roleLabel} account created`,
           message: `${response.firstName} ${response.lastName} was added as ${roleLabel}.`,
           entityType: 'USER',
           entityId: user.id,
           actionUrl: `/users/${user.id}`,
-          channelPush: true,
           metadata: {
             userId: user.id,
             role: user.role,
@@ -668,18 +664,16 @@ export class UsersService implements OnModuleInit {
       const nextRoleLabel = this.formatRoleLabel(user.role);
       const previousRoleLabel = this.formatRoleLabel(previousRole);
 
-      await this.notificationEventsService.createForUser({
+      await this.notificationEventsService.notifyUserRoleChanged({
         userId: user.id,
         companyId: user.companyId ?? null,
         branchId: user.branchId ?? null,
-        type: 'USER_ROLE_CHANGED',
         priority: NotificationPriority.P1,
         title: 'Your role was updated',
         message: `Your role changed from ${previousRoleLabel} to ${nextRoleLabel}.`,
         entityType: 'USER',
         entityId: user.id,
         actionUrl: '/profile',
-        channelPush: true,
         metadata: {
           userId: user.id,
           previousRole,
@@ -689,17 +683,15 @@ export class UsersService implements OnModuleInit {
       });
 
       if (recipientIds.length) {
-        await this.notificationEventsService.createForUsers(recipientIds, {
+        await this.notificationEventsService.notifyUserRoleChangedForAdmins(recipientIds, {
           companyId: user.companyId ?? null,
           branchId: user.branchId ?? null,
-          type: 'USER_ROLE_CHANGED',
           priority: NotificationPriority.P2,
           title: `Role updated for ${response.firstName} ${response.lastName}`,
           message: `${response.firstName} ${response.lastName} moved from ${previousRoleLabel} to ${nextRoleLabel}.`,
           entityType: 'USER',
           entityId: user.id,
           actionUrl: `/users/${user.id}`,
-          channelPush: true,
           metadata: {
             userId: user.id,
             previousRole,
@@ -1899,6 +1891,8 @@ export class UsersService implements OnModuleInit {
     return `s3://${s3Config.bucket}/${key}`;
   }
 }
+
+
 
 
 

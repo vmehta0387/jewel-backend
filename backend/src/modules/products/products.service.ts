@@ -1184,7 +1184,6 @@ export class ProductsService {
     };
 
     if (errors.length > 0) {
-      await this.safeNotifyDesignImportFailed(requester, result);
     }
 
     return result;
@@ -5290,48 +5289,6 @@ export class ProductsService {
     }
   }
 
-  private async safeNotifyDesignImportFailed(
-    requester: AuthUser,
-    result: { totalRows: number; created: number; updated: number; failed: number; errors: string[] },
-  ) {
-    try {
-      const recipients = await this.userRepo.find({
-        where: [
-          { id: requester.id, isActive: true } as any,
-          { role: UserRole.SUPER_ADMIN, isActive: true } as any,
-          { role: UserRole.INTERNAL_REP, isActive: true } as any,
-        ],
-        select: ['id'],
-      });
-
-      const userIds = Array.from(new Set(recipients.map((user) => user.id).filter(Boolean)));
-      if (!userIds.length) return;
-
-      await this.notificationEventsService.createForUsers(userIds, {
-        companyId: requester.companyId ?? null,
-        branchId: requester.branchId ?? null,
-        type: 'PRODUCT_IMPORT_FAILED',
-        priority: NotificationPriority.P1,
-        title: 'Design import completed with failures',
-        message: `${result.failed} row(s) failed during design import. Created ${result.created}, updated ${result.updated}.`,
-        entityType: 'PRODUCT_IMPORT',
-        entityId: null,
-        actionUrl: '/products',
-        channelPush: true,
-        metadata: {
-          totalRows: result.totalRows,
-          created: result.created,
-          updated: result.updated,
-          failed: result.failed,
-          sampleErrors: result.errors.slice(0, 5),
-          requestedByUserId: requester.id,
-        },
-      });
-    } catch {
-      // Best-effort only.
-    }
-  }
-
   private async getExistingRows(designId: number): Promise<{
     metals: DesignMetal[];
     gemstones: DesignGemstone[];
@@ -7091,3 +7048,6 @@ export class ProductsService {
   }
 
 }
+
+
+

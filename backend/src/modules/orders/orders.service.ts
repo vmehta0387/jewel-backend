@@ -2076,21 +2076,19 @@ export class OrdersService implements OnModuleInit {
       const salesRepName = this.getSalesRepDisplayName(context) || 'A sales rep';
 
       if (context.salesRepId) {
-        await this.notificationEventsService.createForUser({
+        await this.notificationEventsService.notifyOrderSubmitted({
           userId: context.salesRepId,
           companyId: context.companyId ?? null,
           branchId: context.branchId ?? null,
-          type: 'ORDER_CREATED',
-          priority: NotificationPriority.P2,
-          title: `Order ${orderLabel} created`,
+          priority: NotificationPriority.P1,
+          title: `Order ${orderLabel} submitted`,
           message:
             context.status === OrderStatus.PENDING_APPROVAL
               ? `Your order ${orderLabel} for ${designLabel} was submitted for approval.`
-              : `Your order ${orderLabel} for ${designLabel} was created successfully.`,
+              : `Your order ${orderLabel} for ${designLabel} was submitted successfully.`,
           entityType: 'ORDER',
           entityId: context.id,
           actionUrl: `/orders/${context.id}`,
-          channelPush: true,
           metadata: {
             orderId: context.id,
             orderNumber: context.orderNumber,
@@ -2103,17 +2101,15 @@ export class OrdersService implements OnModuleInit {
       if (context.status === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? context.salesRepId : null]);
         if (approverIds.length) {
-          await this.notificationEventsService.createForUsers(approverIds, {
+          await this.notificationEventsService.notifyOrderApprovalRequired(approverIds, {
             companyId: context.companyId ?? null,
             branchId: context.branchId ?? null,
-            type: 'ORDER_APPROVAL_REQUIRED',
-            priority: NotificationPriority.P1,
+            priority: NotificationPriority.P0,
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} submitted ${orderLabel} for approval.`,
             entityType: 'ORDER',
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
-            channelPush: true,
             metadata: {
               orderId: context.id,
               orderNumber: context.orderNumber,
@@ -2157,17 +2153,15 @@ export class OrdersService implements OnModuleInit {
       if (current === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
         if (approverIds.length) {
-          await this.notificationEventsService.createForUsers(approverIds, {
+          await this.notificationEventsService.notifyOrderApprovalRequired(approverIds, {
             companyId: context.companyId,
             branchId: context.branchId,
-            type: 'ORDER_APPROVAL_REQUIRED',
-            priority: NotificationPriority.P1,
+            priority: NotificationPriority.P0,
             title: `Approval needed for ${orderLabel}`,
             message: `${salesRepName} moved ${orderLabel} back to pending approval.`,
             entityType: 'ORDER',
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
-            channelPush: true,
             metadata,
           });
         }
@@ -2178,7 +2172,7 @@ export class OrdersService implements OnModuleInit {
       const transitionMessages: Partial<Record<OrderStatus, { type: string; priority: NotificationPriority; title: string; message: string }>> = {
         [OrderStatus.APPROVED]: {
           type: 'ORDER_APPROVED',
-          priority: NotificationPriority.P1,
+          priority: NotificationPriority.P0,
           title: `Order ${orderLabel} approved`,
           message: `${orderLabel} for ${designLabel} was approved.`,
         },
@@ -2190,13 +2184,15 @@ export class OrdersService implements OnModuleInit {
         },
         [OrderStatus.COMPLETED]: {
           type: 'ORDER_COMPLETED',
-          priority: NotificationPriority.P2,
-          title: `${orderLabel} completed`,
-          message: `${orderLabel} for ${designLabel} is complete.`,
+          priority: context.trackingNo ? NotificationPriority.P1 : NotificationPriority.P2,
+          title: context.trackingNo ? `${orderLabel} shipped` : `${orderLabel} completed`,
+          message: context.trackingNo
+            ? `Tracking is available for ${orderLabel}.`
+            : `${orderLabel} for ${designLabel} is complete.`,
         },
         [OrderStatus.CANCELLED]: {
           type: 'ORDER_CANCELLED',
-          priority: NotificationPriority.P1,
+          priority: NotificationPriority.P0,
           title: `${orderLabel} cancelled`,
           message: `${orderLabel} for ${designLabel} was cancelled.`,
         },
@@ -2205,30 +2201,59 @@ export class OrdersService implements OnModuleInit {
       const transition = transitionMessages[current];
       if (!transition) return;
 
-      await this.notificationEventsService.createForUser({
-        userId: context.salesRepId,
-        companyId: context.companyId ?? null,
-        branchId: context.branchId ?? null,
-        type: transition.type,
-        priority: transition.priority,
-        title: transition.title,
-        message: transition.message,
-        entityType: 'ORDER',
-        entityId: context.id,
-        actionUrl: `/orders/${context.id}`,
-        channelPush: true,
-        metadata: {
-          ...metadata,
-          updatedByUserId: requester.id,
-        },
-      });
+      await this.notifyOrderTransitionByV1Status(context, transition, metadata, requester);
     } catch (error: any) {
       this.logger.warn(
         `Order transition notification skipped for order ${order?.id || '-'}: ${error?.message || 'unknown error'}`,
       );
     }
   }
+  private async notifyOrderTransitionByV1Status(
+    context: Order,
+    transition: { type: string; priority: NotificationPriority; title: string; message: string },
+    metadata: Record<string, unknown>,
+    requester: AuthUser,
+  ): Promise<void> {
+    const input = {
+      userId: context.salesRepId as number,
+      companyId: context.companyId ?? null,
+      branchId: context.branchId ?? null,
+      priority: transition.priority,
+      title: transition.title,
+      message: transition.message,
+      entityType: 'ORDER',
+      entityId: context.id,
+      actionUrl: `/orders/${context.id}`,
+      metadata: {
+        ...metadata,
+        updatedByUserId: requester.id,
+      },
+    };
 
+    if (transition.type === 'ORDER_IN_PRODUCTION') {
+      await this.notificationEventsService.notifyOrderInProduction(input);
+      return;
+    }
+
+    if (transition.type === 'ORDER_CANCELLED') {
+      await this.notificationEventsService.notifyOrderCancelled(input);
+      return;
+    }
+
+    if (transition.type === 'ORDER_COMPLETED' && context.trackingNo) {
+      await this.notificationEventsService.notifyOrderShipped({
+        ...input,
+        title: `${context.orderNumber || 'Order'} shipped`,
+        message: `Tracking is available for ${context.orderNumber || 'your order'}.`,
+      });
+      return;
+    }
+
+    await this.notificationEventsService.notifyOrderStatusChanged({
+      ...input,
+      type: transition.type,
+    }, { inApp: true, push: true, email: false });
+  }
   private async loadOrderNotificationContext(orderId: number): Promise<Order | null> {
     return this.orderRepo.findOne({
       where: { id: orderId },
@@ -2294,6 +2319,8 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
+
+
 
 
 

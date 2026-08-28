@@ -3,13 +3,26 @@ import { CreateNotificationInput, NotificationsService } from '../notifications/
 
 export type NotificationActivity =
   | 'ORDER_CREATED'
+  | 'ORDER_SUBMITTED'
   | 'ORDER_APPROVAL_REQUIRED'
   | 'ORDER_APPROVED'
+  | 'ORDER_ON_HOLD'
   | 'ORDER_IN_PRODUCTION'
+  | 'ORDER_SHIPPED'
   | 'ORDER_COMPLETED'
   | 'ORDER_CANCELLED'
+  | 'ORDER_REVISED'
+  | 'COLLECTION_ACCESS_GRANTED'
+  | 'PRICING_TIER_CHANGED'
   | 'PRICING_UPDATED'
+  | 'PROMO_SPIFF_WINDOW_CHANGED'
   | 'PRODUCT_IMPORT_FAILED'
+  | 'SPIFF_CAMPAIGN_LIVE'
+  | 'SPIFF_EARNED'
+  | 'SPIFF_LEADERBOARD_MOVEMENT'
+  | 'SPIFF_PACE_NUDGE'
+  | 'SPIFF_EXPIRING_SOON'
+  | 'SPIFF_PERIOD_RESET'
   | 'SPIFF_CLAIM_SUBMITTED'
   | 'SPIFF_CLAIM_REVIEW_REQUIRED'
   | 'SPIFF_CLAIM_APPROVED'
@@ -19,6 +32,10 @@ export type NotificationActivity =
   | 'SPIFF_POINTS_GIVEN'
   | 'USER_ACCOUNT_CREATED'
   | 'USER_ROLE_CHANGED'
+  | 'USER_INVITE_ACTIVITY'
+  | 'USER_ACCESS_CHANGED'
+  | 'TENANT_ONBOARDED'
+  | 'SERVICE_DEGRADATION'
   | string;
 
 export interface NotificationEventInput extends Omit<CreateNotificationInput, 'type'> {
@@ -55,6 +72,15 @@ export interface NotificationChannelOptions {
   email?: boolean;
 }
 
+export const NotificationChannels = {
+  inAppOnly: { inApp: true, push: false, email: false },
+  inAppPush: { inApp: true, push: true, email: false },
+  inAppEmail: { inApp: true, push: false, email: true },
+  inAppPushEmail: { inApp: true, push: true, email: true },
+  emailOnly: { inApp: false, push: false, email: true },
+  pushEmail: { inApp: false, push: true, email: true },
+} as const satisfies Record<string, NotificationChannelOptions>;
+
 @Injectable()
 export class NotificationEventsService {
   constructor(private readonly notificationsService: NotificationsService) {}
@@ -89,59 +115,123 @@ export class NotificationEventsService {
   }
 
   async notifyOrderCreated(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'ORDER_CREATED' }, channels);
+    return this.notifyUser({ ...input, type: 'ORDER_CREATED' }, channels ?? NotificationChannels.inAppPushEmail);
+  }
+
+  async notifyOrderSubmitted(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'ORDER_SUBMITTED' }, channels ?? NotificationChannels.inAppPushEmail);
   }
 
   async notifyOrderApprovalRequired(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'ORDER_APPROVAL_REQUIRED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'ORDER_APPROVAL_REQUIRED' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifyOrderStatusChanged(input: NotificationEventInput, channels?: NotificationChannelOptions) {
-    return this.notifyUser(input, channels);
+    return this.notifyUser(input, channels ?? NotificationChannels.inAppPush);
+  }
+
+  async notifyOrderInProduction(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'ORDER_IN_PRODUCTION' }, channels ?? NotificationChannels.inAppOnly);
+  }
+
+  async notifyOrderShipped(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'ORDER_SHIPPED' }, channels ?? NotificationChannels.inAppPushEmail);
+  }
+
+  async notifyOrderCancelled(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'ORDER_CANCELLED' }, channels ?? NotificationChannels.inAppPushEmail);
+  }
+
+  async notifyOrderRevised(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'ORDER_REVISED' }, channels ?? NotificationChannels.inAppOnly);
   }
 
   async notifyPricingUpdated(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'PRICING_UPDATED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'PRICING_UPDATED' }, channels ?? NotificationChannels.inAppEmail);
+  }
+
+  async notifyPricingTierChanged(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'PRICING_TIER_CHANGED' }, channels ?? NotificationChannels.inAppEmail);
+  }
+
+  async notifyCollectionAccessGranted(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'COLLECTION_ACCESS_GRANTED' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifyProductImportFailed(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'PRODUCT_IMPORT_FAILED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'PRODUCT_IMPORT_FAILED' }, channels ?? NotificationChannels.inAppOnly);
+  }
+
+  async notifySpiffCampaignLive(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_CAMPAIGN_LIVE' }, channels ?? NotificationChannels.inAppPush);
+  }
+
+  async notifySpiffEarned(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'SPIFF_EARNED' }, channels ?? NotificationChannels.inAppPush);
+  }
+
+  async notifySpiffLeaderboardMovement(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'SPIFF_LEADERBOARD_MOVEMENT' }, channels ?? NotificationChannels.inAppOnly);
+  }
+
+  async notifySpiffPaceNudge(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUser({ ...input, type: 'SPIFF_PACE_NUDGE' }, channels ?? NotificationChannels.inAppOnly);
+  }
+
+  async notifySpiffExpiringSoon(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_EXPIRING_SOON' }, channels ?? NotificationChannels.inAppPush);
+  }
+
+  async notifySpiffPeriodReset(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_PERIOD_RESET' }, channels ?? NotificationChannels.inAppOnly);
   }
 
   async notifySpiffClaimSubmitted(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'SPIFF_CLAIM_SUBMITTED' }, channels);
+    return this.notifyUser({ ...input, type: 'SPIFF_CLAIM_SUBMITTED' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifySpiffClaimReviewRequired(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_CLAIM_REVIEW_REQUIRED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_CLAIM_REVIEW_REQUIRED' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifySpiffClaimUpdated(input: NotificationEventInput, channels?: NotificationChannelOptions) {
-    return this.notifyUser(input, channels);
+    return this.notifyUser(input, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifySpiffClaimUpdatedForManagers(userIds: number[], input: Omit<NotificationEventInput, 'userId'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, input, channels);
+    return this.notifyUsers(userIds, input, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifySpiffPointsGiven(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'SPIFF_POINTS_GIVEN' }, channels);
+    return this.notifyUser({ ...input, type: 'SPIFF_POINTS_GIVEN' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifyUserAccountCreated(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'USER_ACCOUNT_CREATED' }, channels);
+    return this.notifyUser({ ...input, type: 'USER_ACCOUNT_CREATED' }, channels ?? NotificationChannels.emailOnly);
   }
 
   async notifyUserAccountCreatedForAdmins(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'USER_ACCOUNT_CREATED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'USER_ACCOUNT_CREATED' }, channels ?? NotificationChannels.inAppOnly);
   }
 
   async notifyUserRoleChanged(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'USER_ROLE_CHANGED' }, channels);
+    return this.notifyUser({ ...input, type: 'USER_ROLE_CHANGED' }, channels ?? NotificationChannels.inAppEmail);
   }
 
   async notifyUserRoleChangedForAdmins(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'USER_ROLE_CHANGED' }, channels);
+    return this.notifyUsers(userIds, { ...input, type: 'USER_ROLE_CHANGED' }, channels ?? NotificationChannels.inAppOnly);
+  }
+
+  async notifyUserAccessChanged(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'USER_ACCESS_CHANGED' }, channels ?? NotificationChannels.inAppEmail);
+  }
+
+  async notifyTenantOnboarded(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'TENANT_ONBOARDED' }, channels ?? NotificationChannels.inAppEmail);
+  }
+
+  async notifyServiceDegradation(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
+    return this.notifyUsers(userIds, { ...input, type: 'SERVICE_DEGRADATION' }, channels ?? NotificationChannels.pushEmail);
   }
 
   private toNotificationInput(event: NotificationEventPayload): Omit<CreateNotificationInput, 'userId'> {
@@ -161,10 +251,11 @@ export class NotificationEventsService {
 
   private withChannelDefaults<T extends Partial<CreateNotificationInput>>(input: T, channels?: NotificationChannelOptions): T {
     return {
+      ...input,
       channelInApp: channels?.inApp ?? input.channelInApp ?? true,
       channelPush: channels?.push ?? input.channelPush ?? false,
       channelEmail: channels?.email ?? input.channelEmail ?? false,
-      ...input,
     };
   }
 }
+

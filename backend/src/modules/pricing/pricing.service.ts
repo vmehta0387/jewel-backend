@@ -799,17 +799,15 @@ export class PricingService {
       const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
       if (!userIds.length) return;
 
-      await this.notificationEventsService.createForUsers(userIds, {
+      await this.notificationEventsService.notifyPricingTierChanged(userIds, {
         companyId: company.id,
         branchId: null,
-        type: 'PRICING_UPDATED',
         priority: NotificationPriority.P1,
         title: 'Pricing settings updated',
         message: `Company pricing for ${company.companyName} was updated.`,
         entityType: 'PRICING',
         entityId: company.id,
         actionUrl: '/pricing',
-        channelPush: true,
         metadata: {
           companyId: company.id,
           updatedByUserId: requester.id,
@@ -835,17 +833,15 @@ export class PricingService {
       const userIds = recipients.map((user) => user.id).filter((id) => id && id !== requester.id);
       if (!userIds.length) return;
 
-      await this.notificationEventsService.createForUsers(userIds, {
+      await this.notificationEventsService.notifyPricingTierChanged(userIds, {
         companyId: branch.companyId,
         branchId: branch.id,
-        type: 'PRICING_UPDATED',
         priority: NotificationPriority.P1,
         title: 'Branch pricing updated',
         message: `Pricing for branch ${branch.name} was updated.`,
         entityType: 'PRICING',
         entityId: branch.id,
         actionUrl: '/pricing',
-        channelPush: true,
         metadata: {
           companyId: branch.companyId,
           branchId: branch.id,
@@ -987,3 +983,4 @@ export class PricingService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 }
+
