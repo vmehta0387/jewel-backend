@@ -26,6 +26,10 @@ export class PushNotificationsService {
       throw new NotFoundException('Push token is required');
     }
 
+    const platform = this.optionalText(dto.platform);
+    const deviceId = this.optionalText(dto.deviceId);
+    const appVersion = this.optionalText(dto.appVersion);
+
     const existing = await this.pushDeviceRepo.findOne({
       where: { expoPushToken },
     });
@@ -33,9 +37,9 @@ export class PushNotificationsService {
     const record = existing
       ? Object.assign(existing, {
         userId: requester.id,
-        platform: this.optionalText(dto.platform),
-        deviceId: this.optionalText(dto.deviceId),
-        appVersion: this.optionalText(dto.appVersion),
+        platform,
+        deviceId,
+        appVersion,
         isActive: true,
         lastRegisteredAt: new Date(),
         lastError: null,
@@ -43,15 +47,27 @@ export class PushNotificationsService {
       : this.pushDeviceRepo.create({
         userId: requester.id,
         expoPushToken,
-        platform: this.optionalText(dto.platform),
-        deviceId: this.optionalText(dto.deviceId),
-        appVersion: this.optionalText(dto.appVersion),
+        platform,
+        deviceId,
+        appVersion,
         isActive: true,
         lastRegisteredAt: new Date(),
         lastError: null,
       });
 
     const saved = await this.pushDeviceRepo.save(record);
+
+    if (deviceId) {
+      await this.pushDeviceRepo
+        .createQueryBuilder()
+        .update(NotificationPushDevice)
+        .set({ isActive: false })
+        .where('user_id = :userId', { userId: requester.id })
+        .andWhere('device_id = :deviceId', { deviceId })
+        .andWhere('id != :id', { id: saved.id })
+        .execute();
+    }
+
     return {
       success: true,
       id: saved.id,
@@ -202,3 +218,4 @@ export class PushNotificationsService {
     return normalized.length ? normalized : null;
   }
 }
+

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, DefaultTheme, StackActions, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
@@ -11,7 +11,7 @@ import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { registerPushDevice } from '../api/notifications';
+import { registerPushDevice, unregisterPushDevice } from '../api/notifications';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
@@ -208,7 +208,7 @@ const routeFromPushNotification = (data: Record<string, unknown> | null | undefi
   }
 };
 
-const registerForPushNotificationsAsync = async (authToken: string) => {
+const registerForPushNotificationsAsync = async (authToken: string, deviceId?: string | null) => {
   if (!Device.isDevice) {
     return null;
   }
@@ -247,6 +247,7 @@ const registerForPushNotificationsAsync = async (authToken: string) => {
   await registerPushDevice(authToken, {
     expoPushToken,
     platform: Platform.OS,
+    deviceId: deviceId || undefined,
     appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
   });
 
@@ -451,7 +452,7 @@ const LoadingScreen = () => (
 );
 
 const RootNavigator = () => {
-  const { token, isLoading, user } = useAuth();
+  const { token, isLoading, user, deviceId } = useAuth();
   const registeredPushTokenRef = useRef<string | null>(null);
   const persistedNavigationKeyRef = useRef<string | null>(null);
   const [initialNavigationState, setInitialNavigationState] = useState<any>(undefined);
@@ -505,6 +506,7 @@ const RootNavigator = () => {
 
   useEffect(() => {
     if (!token || !user || !canReceivePushForRole(user.role)) {
+      registeredPushTokenRef.current = null;
       return undefined;
     }
 
@@ -512,7 +514,7 @@ const RootNavigator = () => {
 
     const registerDevice = async () => {
       try {
-        const pushToken = await registerForPushNotificationsAsync(token);
+        const pushToken = await registerForPushNotificationsAsync(token, deviceId);
         if (!isMounted || !pushToken) {
           return;
         }
@@ -529,6 +531,24 @@ const RootNavigator = () => {
       routeFromPushNotification(data);
     });
 
+    const pushTokenSubscription = Notifications.addPushTokenListener((pushToken) => {
+      const expoPushToken = pushToken.data;
+      if (!expoPushToken) return;
+      registeredPushTokenRef.current = expoPushToken;
+      void registerPushDevice(token, {
+        expoPushToken,
+        platform: Platform.OS,
+        deviceId: deviceId || undefined,
+        appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
+      }).catch(() => undefined);
+    });
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void registerDevice();
+      }
+    });
+
     void Notifications.getLastNotificationResponseAsync().then((response) => {
       if (!isMounted || !response) {
         return;
@@ -540,8 +560,15 @@ const RootNavigator = () => {
     return () => {
       isMounted = false;
       responseSubscription.remove();
+      pushTokenSubscription.remove();
+      appStateSubscription.remove();
+      const registeredPushToken = registeredPushTokenRef.current;
+      registeredPushTokenRef.current = null;
+      if (registeredPushToken) {
+        void unregisterPushDevice(token, registeredPushToken).catch(() => undefined);
+      }
     };
-  }, [token, user]);
+  }, [deviceId, token, user]);
 
   if (isLoading || isNavigationStateLoading) {
     return <LoadingScreen />;
@@ -588,5 +615,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 252, 245, 0.95)',
   },
 });
+
 
 

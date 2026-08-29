@@ -263,7 +263,6 @@ const DesignsScreen = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedCollection, setSelectedCollection] = useState('All');
   const [selectedShape, setSelectedShape] = useState('All');
-  const [selectedJewelrySize, setSelectedJewelrySize] = useState('All');
   const [selectedMetalCaratage, setSelectedMetalCaratage] = useState('All');
   const [selectedDiamondType, setSelectedDiamondType] = useState('All');
   const [selectedPriceBand, setSelectedPriceBand] = useState<PriceBand>('ALL');
@@ -274,7 +273,6 @@ const DesignsScreen = () => {
   const [draftCategory, setDraftCategory] = useState('All');
   const [draftCollection, setDraftCollection] = useState('All');
   const [draftShape, setDraftShape] = useState('All');
-  const [draftJewelrySize, setDraftJewelrySize] = useState('All');
   const [draftMetalCaratage, setDraftMetalCaratage] = useState('All');
   const [draftDiamondType, setDraftDiamondType] = useState('All');
   const [draftPriceBand, setDraftPriceBand] = useState<PriceBand>('ALL');
@@ -297,7 +295,6 @@ const DesignsScreen = () => {
       collection: findMasterFilterValue(masters?.collections, selectedCollection),
       diamondType: findMasterFilterValue(masters?.diamondTypes, selectedDiamondType),
       shape: findMasterFilterValue(masters?.packetShapes, selectedShape),
-      jewelrySize: findMasterFilterValue(masters?.jewelrySizes, selectedJewelrySize),
       metalCaratage: findMasterFilterValue(masters?.metalCaratages, selectedMetalCaratage),
       priceBand: selectedPriceBand,
       sort: sortOption,
@@ -309,7 +306,6 @@ const DesignsScreen = () => {
       selectedCollection,
       selectedDiamondType,
       selectedShape,
-      selectedJewelrySize,
       selectedMetalCaratage,
       selectedPriceBand,
       sortOption,
@@ -484,16 +480,6 @@ const DesignsScreen = () => {
     return uniqueNonEmpty(masters.packetShapes.map((item) => item.value));
   }, [masters]);
 
-  const jewelrySizeOptions = useMemo(() => {
-    if (!masters) return ['All'];
-    const sourceOptions =
-      !selectedCategoryId
-        ? masters.jewelrySizes.map((item) => item.value)
-        : masters.jewelrySizes
-            .filter((item) => String(item.jewelryGroupId || '') === selectedCategoryId)
-            .map((item) => item.value);
-    return withAllOption(sourceOptions);
-  }, [masters, selectedCategoryId]);
   const metalCaratageOptions = useMemo(() => {
     if (!masters) return ['All'];
     return withAllOption(masters.metalCaratages.map((item) => item.value));
@@ -603,7 +589,6 @@ const DesignsScreen = () => {
     if (selectedCategory !== 'All' && toLower(selectedCategory) !== toLower(presetCategory)) count += 1;
     if (selectedCollection !== 'All') count += 1;
     if (selectedShape !== 'All') count += 1;
-    if (selectedJewelrySize !== 'All') count += 1;
     if (selectedMetalCaratage !== 'All') count += 1;
     if (selectedDiamondType !== 'All') count += 1;
     if (selectedPriceBand !== 'ALL') count += 1;
@@ -613,7 +598,6 @@ const DesignsScreen = () => {
     selectedCategory,
     selectedCollection,
     selectedShape,
-    selectedJewelrySize,
     selectedMetalCaratage,
     selectedDiamondType,
     selectedPriceBand,
@@ -624,7 +608,6 @@ const DesignsScreen = () => {
     setDraftCategory(selectedCategory);
     setDraftCollection(selectedCollection);
     setDraftShape(selectedShape);
-    setDraftJewelrySize(selectedJewelrySize);
     setDraftMetalCaratage(selectedMetalCaratage);
     setDraftDiamondType(selectedDiamondType);
     setDraftPriceBand(selectedPriceBand);
@@ -637,7 +620,6 @@ const DesignsScreen = () => {
     selectedCategory,
     selectedCollection,
     selectedShape,
-    selectedJewelrySize,
     selectedMetalCaratage,
     selectedDiamondType,
     selectedPriceBand,
@@ -650,7 +632,6 @@ const DesignsScreen = () => {
       category: draftCategory !== 'All' ? draftCategory : undefined,
       collection: draftCollection !== 'All' ? draftCollection : undefined,
       shape: draftShape !== 'All' ? draftShape : undefined,
-      jewelrySize: draftJewelrySize !== 'All' ? draftJewelrySize : undefined,
       metalCaratage: draftMetalCaratage !== 'All' ? draftMetalCaratage : undefined,
       diamondType: draftDiamondType !== 'All' ? draftDiamondType : undefined,
       priceBand: draftPriceBand !== 'ALL' ? draftPriceBand : undefined,
@@ -660,14 +641,13 @@ const DesignsScreen = () => {
     setSelectedCategory(draftCategory);
     setSelectedCollection(draftCollection);
     setSelectedShape(draftShape);
-    setSelectedJewelrySize(draftJewelrySize);
     setSelectedMetalCaratage(draftMetalCaratage);
     setSelectedDiamondType(draftDiamondType);
     setSelectedPriceBand(draftPriceBand);
     setSortOption(draftSortOption);
     setSortMenuVisible(false);
     trackDesignFilterApplied(nextFilters);
-  }, [draftSearch, draftCategory, draftCollection, draftShape, draftJewelrySize, draftMetalCaratage, draftDiamondType, draftPriceBand, draftSortOption]);
+  }, [draftSearch, draftCategory, draftCollection, draftShape, draftMetalCaratage, draftDiamondType, draftPriceBand, draftSortOption]);
 
   const renderEmpty = () => {
     if (loading || showInitialSkeleton || queryWaitingForLoad) {
@@ -903,24 +883,7 @@ const DesignsScreen = () => {
                       })}
                     </ScrollView>
 
-                    <Text style={styles.filterSectionTitle}>Jewelry Size</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                      {jewelrySizeOptions.map((item) => {
-                        const selected = item === draftJewelrySize;
-                        return (
-                          <TouchableOpacity
-                            key={`m-size-${item}`}
-                            style={[styles.modalChip, selected ? styles.modalChipActive : null]}
-                            onPress={() => setDraftJewelrySize(item)}
-                            activeOpacity={0.85}
-                          >
-                            <Text style={[styles.modalChipText, selected ? styles.modalChipTextActive : null]}>{item}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-
-                    <Text style={styles.filterSectionTitle}>Metal Caratage</Text>
+                    <Text style={styles.filterSectionTitle}>Metal</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
                       {metalCaratageOptions.map((item) => {
                         const selected = item === draftMetalCaratage;
@@ -965,7 +928,6 @@ const DesignsScreen = () => {
                           setDraftCategory('All');
                           setDraftCollection('All');
                           setDraftShape('All');
-                          setDraftJewelrySize('All');
                           setDraftMetalCaratage('All');
                           setDraftDiamondType('All');
                           setDraftPriceBand('ALL');

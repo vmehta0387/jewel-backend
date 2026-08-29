@@ -26,6 +26,7 @@ type AuthContextValue = {
   biometricEnabled: boolean;
   biometricRequired: boolean;
   biometricPrompted: boolean;
+  deviceId: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (data: {
     firstName: string;
@@ -319,6 +320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       biometricEnabled,
       biometricRequired,
       biometricPrompted,
+      deviceId,
       signIn,
       signUp,
       biometricSignIn,
@@ -334,6 +336,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       biometricEnabled,
       biometricRequired,
       biometricPrompted,
+      deviceId,
       signIn,
       signUp,
       biometricSignIn,
@@ -353,5 +356,6 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 

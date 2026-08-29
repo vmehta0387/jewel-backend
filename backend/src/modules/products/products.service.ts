@@ -2162,6 +2162,9 @@ export class ProductsService {
 
   async findMobileConfigurator(id: number, requester: AuthUser): Promise<any> {
     const family = await this.loadMobileConfiguratorFamily(id, requester);
+    if (!family.length) {
+      throw new NotFoundException('No active configurable variants found');
+    }
     const selected = family.find((design) => design.isPrimary) || family.find((design) => design.id === id) || family[0];
     return this.toMobileConfiguratorResponse(family, selected, {}, requester);
   }
@@ -2177,6 +2180,9 @@ export class ProductsService {
       this.loadMobileConfiguratorFamily(id, requester, selectedSeed, familyDesignId),
       this.fetchMobileConfiguratorMatchIdFromDb(id, familyDesignId, query, requester),
     ]);
+    if (!family.length) {
+      throw new NotFoundException('No active configurable variants found');
+    }
     const selected = family.find((design) => Number(design.id) === Number(selectedId))
       || family.find((design) => design.isPrimary)
       || family.find((design) => Number(design.id) === Number(id))
@@ -2194,8 +2200,20 @@ export class ProductsService {
       .select('design.id', 'id')
       .leftJoin('design.gemstones', 'gemstone')
       .leftJoin('design.metals', 'metal')
+      .leftJoin('design.jewelrySizeMaster', 'matchJewelrySizeMaster')
+      .leftJoin('design.diamondSpreadMaster', 'matchDiamondSpreadMaster')
+      .leftJoin('design.diamondWeightMaster', 'matchDiamondWeightMaster')
+      .leftJoin('design.diamondQualityMaster', 'matchDiamondQualityMaster')
+      .leftJoin('design.metalCaratageMaster', 'matchDesignMetalCaratageMaster')
+      .leftJoin('metal.metalCaratageMaster', 'matchMetalCaratageMaster')
       .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
-      .andWhere('design.isActive = :isActive', { isActive: true });
+      .andWhere('design.isActive = :isActive', { isActive: true })
+      .andWhere('(design.jewelrySizeId IS NULL OR matchJewelrySizeMaster.isActive = :isActive)')
+      .andWhere('(design.diamondSpreadId IS NULL OR matchDiamondSpreadMaster.isActive = :isActive)')
+      .andWhere('(design.diamondWeightId IS NULL OR matchDiamondWeightMaster.isActive = :isActive)')
+      .andWhere('(design.diamondQualityId IS NULL OR matchDiamondQualityMaster.isActive = :isActive)')
+      .andWhere('(design.metalCaratageId IS NULL OR matchDesignMetalCaratageMaster.isActive = :isActive)')
+      .andWhere('(metal.id IS NULL OR metal.metalCaratageId IS NULL OR matchMetalCaratageMaster.isActive = :isActive)');
 
     this.applyScopeFilter(qb, requester);
 
@@ -2218,22 +2236,22 @@ export class ProductsService {
     }
     if (styleId !== undefined && styleId !== null) {
       const boost = query.selectedKey === 'style' ? 1000 : 1;
-      scoreCases.push(`(CASE WHEN design.diamond_spread_id = :styleId THEN ${boost} ELSE 0 END)`);
+      scoreCases.push(`(CASE WHEN design.diamond_spread_id = :styleId AND matchDiamondSpreadMaster.is_active = true THEN ${boost} ELSE 0 END)`);
       params.styleId = styleId;
     }
     if (weightId !== undefined && weightId !== null) {
       const boost = query.selectedKey === 'weight' ? 1000 : 1;
-      scoreCases.push(`(CASE WHEN design.diamond_weight_id = :weightId THEN ${boost} ELSE 0 END)`);
+      scoreCases.push(`(CASE WHEN design.diamond_weight_id = :weightId AND matchDiamondWeightMaster.is_active = true THEN ${boost} ELSE 0 END)`);
       params.weightId = weightId;
     }
     if (qualityId !== undefined && qualityId !== null) {
       const boost = query.selectedKey === 'quality' ? 1000 : 1;
-      scoreCases.push(`(CASE WHEN design.diamond_quality_id = :qualityId THEN ${boost} ELSE 0 END)`);
+      scoreCases.push(`(CASE WHEN design.diamond_quality_id = :qualityId AND matchDiamondQualityMaster.is_active = true THEN ${boost} ELSE 0 END)`);
       params.qualityId = qualityId;
     }
     if (ringSizeId !== undefined && ringSizeId !== null) {
       const boost = query.selectedKey === 'ringSize' ? 1000 : 1;
-      scoreCases.push(`(CASE WHEN design.jewelry_size_id = :ringSizeId THEN ${boost} ELSE 0 END)`);
+      scoreCases.push(`(CASE WHEN design.jewelry_size_id = :ringSizeId AND matchJewelrySizeMaster.is_active = true THEN ${boost} ELSE 0 END)`);
       params.ringSizeId = ringSizeId;
     }
     if (shapeId !== undefined && shapeId !== null) {
@@ -2248,7 +2266,7 @@ export class ProductsService {
     }
     if (metalCaratageId !== undefined && metalCaratageId !== null) {
       const boost = query.selectedKey === 'metalCaratage' ? 1000 : 1;
-      scoreCases.push(`(CASE WHEN metal.metal_caratage_id = :metalCaratageId THEN ${boost} ELSE 0 END)`);
+      scoreCases.push(`(CASE WHEN metal.metal_caratage_id = :metalCaratageId AND matchMetalCaratageMaster.is_active = true THEN ${boost} ELSE 0 END)`);
       params.metalCaratageId = metalCaratageId;
     }
 
@@ -2310,6 +2328,11 @@ export class ProductsService {
       .leftJoinAndSelect('design.designStatusMaster', 'configDesignStatusMaster')
       .leftJoinAndSelect('design.metalCaratageMaster', 'configMetalCaratageMaster')
       .where('design.isActive = :isActive', { isActive: true })
+      .andWhere('(design.jewelrySizeId IS NULL OR configJewelrySizeMaster.isActive = :isActive)')
+      .andWhere('(design.diamondSpreadId IS NULL OR configDiamondSpreadMaster.isActive = :isActive)')
+      .andWhere('(design.diamondWeightId IS NULL OR configDiamondWeightMaster.isActive = :isActive)')
+      .andWhere('(design.diamondQualityId IS NULL OR configDiamondQualityMaster.isActive = :isActive)')
+      .andWhere('(design.metalCaratageId IS NULL OR configMetalCaratageMaster.isActive = :isActive)')
       .orderBy('design.isPrimary', 'DESC')
       .addOrderBy("CAST(REPLACE(UPPER(design.version), 'V', '') AS UNSIGNED)", 'ASC')
       .addOrderBy('design.createdAt', 'ASC');
@@ -2324,18 +2347,21 @@ export class ProductsService {
     // console.log('===============================');
 
     const rows = await qb.getMany();
-    const family = rows.length ? rows : [selected];
+    const family = rows;
     family.forEach((design) => this.hydrateDesignDisplayLabels(design));
     const designIds = family.map((design) => design.id);
     // Stone names and quantities are needed for configurator matching and the total
     // stone count, but gemstone row details remain hidden from the mobile response.
     const [metals, gemstones] = designIds.length
       ? await Promise.all([
-        this.metalRepo.find({
-          where: { designId: In(designIds) },
-          relations: ['metalCaratageMaster', 'metalCaratageMaster.metalColorMaster'],
-          order: { sortOrder: 'ASC', createdAt: 'ASC' },
-        }),
+        this.metalRepo
+          .createQueryBuilder('metal')
+          .innerJoinAndSelect('metal.metalCaratageMaster', 'mobileMetalCaratageMaster', 'mobileMetalCaratageMaster.isActive = :isActive', { isActive: true })
+          .leftJoinAndSelect('mobileMetalCaratageMaster.metalColorMaster', 'mobileMetalColorMaster')
+          .where('metal.designId IN (:...designIds)', { designIds })
+          .orderBy('metal.sortOrder', 'ASC')
+          .addOrderBy('metal.createdAt', 'ASC')
+          .getMany(),
         this.gemstoneRepo.find({
           where: { designId: In(designIds) },
           relations: ['stoneMaster', 'stoneTypeMaster'],
@@ -2361,6 +2387,7 @@ export class ProductsService {
       requester.companyId || '',
       requester.branchId || '',
       requester.id || '',
+      this.masterTablesService.getActiveStatusVersion(),
     ].join(':');
   }
 
@@ -2650,6 +2677,12 @@ export class ProductsService {
     return /\b(lab|grown|hpht|cvd|natural|synthetic|earth[-\s]?mined)\b/.test(normalized);
   }
 
+  private isMobileConfiguratorActiveMaster(
+    masterId: number | null | undefined,
+    master: { isActive?: boolean | null } | null | undefined,
+  ): boolean {
+    return !masterId || master?.isActive === true;
+  }
   private getMobileConfiguratorOptions(design: Design): Record<MobileConfiguratorKey, MobileConfiguratorOption[]> {
     const addOpt = (id: number | null, label: string): MobileConfiguratorOption | null => {
       const text = label.replace(/\s+/g, ' ').trim();
@@ -2690,13 +2723,15 @@ export class ProductsService {
     const style: MobileConfiguratorOption[] = [];
     const styleLabel = this.mobileConfiguratorDisplayValue('style', design.diamondSpread);
     const styleId = design.diamondSpreadMaster?.id ?? design.diamondSpreadId ?? null;
-    if (styleLabel) style.push({ id: styleId, label: styleLabel });
+    if (styleLabel && this.isMobileConfiguratorActiveMaster(design.diamondSpreadId, design.diamondSpreadMaster)) {
+      style.push({ id: styleId, label: styleLabel });
+    }
 
     const metalCaratage: MobileConfiguratorOption[] = [];
     for (const metal of design.metals || []) {
       const caratLabel = this.mobileConfiguratorText(metal.metalCaratage);
       const metalCaratId = metal.metalCaratageMaster?.id ?? metal.metalCaratageId ?? null;
-      if (caratLabel) {
+      if (caratLabel && this.isMobileConfiguratorActiveMaster(metal.metalCaratageId, metal.metalCaratageMaster)) {
         caratLabel.split(',').forEach((part) => {
           const trimmed = part.trim();
           if (trimmed && !metalCaratage.some((m) => (metalCaratId !== null && m.id === metalCaratId) || m.label.toLowerCase() === trimmed.toLowerCase())) {
@@ -2708,7 +2743,7 @@ export class ProductsService {
     if (!metalCaratage.length) {
       const fallback = this.mobileConfiguratorText(design.metalCaratage);
       const designMetalCaratId = design.metalCaratageMaster?.id ?? design.metalCaratageId ?? null;
-      if (fallback) {
+      if (fallback && this.isMobileConfiguratorActiveMaster(design.metalCaratageId, design.metalCaratageMaster)) {
         fallback.split(',').forEach((part) => {
           const trimmed = part.trim();
           if (trimmed) metalCaratage.push({ id: designMetalCaratId, label: trimmed });
@@ -2719,17 +2754,23 @@ export class ProductsService {
     const weight: MobileConfiguratorOption[] = [];
     const weightLabel = this.mobileConfiguratorDisplayValue('weight', design.diamondWeight);
     const weightId = design.diamondWeightMaster?.id ?? design.diamondWeightId ?? null;
-    if (weightLabel) weight.push({ id: weightId, label: weightLabel });
+    if (weightLabel && this.isMobileConfiguratorActiveMaster(design.diamondWeightId, design.diamondWeightMaster)) {
+      weight.push({ id: weightId, label: weightLabel });
+    }
 
     const quality: MobileConfiguratorOption[] = [];
     const qualityLabel = this.mobileConfiguratorDisplayValue('quality', design.diamondQuality);
     const qualityId = design.diamondQualityMaster?.id ?? design.diamondQualityId ?? null;
-    if (qualityLabel) quality.push({ id: qualityId, label: qualityLabel });
+    if (qualityLabel && this.isMobileConfiguratorActiveMaster(design.diamondQualityId, design.diamondQualityMaster)) {
+      quality.push({ id: qualityId, label: qualityLabel });
+    }
 
     const ringSize: MobileConfiguratorOption[] = [];
     const ringSizeLabel = this.mobileConfiguratorDisplayValue('ringSize', design.jewelrySize);
     const ringSizeId = design.jewelrySizeMaster?.id ?? design.jewelrySizeId ?? null;
-    if (ringSizeLabel) ringSize.push({ id: ringSizeId, label: ringSizeLabel });
+    if (ringSizeLabel && this.isMobileConfiguratorActiveMaster(design.jewelrySizeId, design.jewelrySizeMaster)) {
+      ringSize.push({ id: ringSizeId, label: ringSizeLabel });
+    }
 
     return { diamondType, stone, shape, style, metalCaratage, weight, quality, ringSize };
   }
@@ -7083,4 +7124,8 @@ export class ProductsService {
   }
 
 }
+
+
+
+
 

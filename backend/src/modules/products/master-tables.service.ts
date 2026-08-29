@@ -128,7 +128,17 @@ const UNIQUE_SCOPE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> 
 
 @Injectable()
 export class MasterTablesService {
+  private static activeStatusVersion = 0;
+
   constructor(private readonly dataSource: DataSource) {}
+
+  getActiveStatusVersion(): number {
+    return MasterTablesService.activeStatusVersion;
+  }
+
+  private bumpActiveStatusVersion(): void {
+    MasterTablesService.activeStatusVersion += 1;
+  }
 
   async list(masterType: DesignMasterType, query: FindMasterTableQueryDto): Promise<any> {
     if (masterType === DesignMasterType.PACKET) {
@@ -628,6 +638,7 @@ export class MasterTablesService {
     Object.assign(row, data);
     (row as any).updatedBy = this.toOptionalInt(requester?.id);
     await repo.save(row);
+    this.bumpActiveStatusVersion();
     return this.get(masterType, id);
   }
 
@@ -647,6 +658,7 @@ export class MasterTablesService {
     (row as any).isActive = isActive;
     (row as any).updatedBy = this.toOptionalInt(requester?.id);
     await repo.save(row);
+    this.bumpActiveStatusVersion();
     return this.get(masterType, id);
   }
 
