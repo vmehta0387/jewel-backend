@@ -168,6 +168,7 @@ interface GlobalRateMaps {
 interface MasterRef {
   id: number | null;
   value: string | null;
+  aliasName: string | null;
 }
 
 type ProductMasterRow = Record<string, any> & {
@@ -501,7 +502,8 @@ export class ProductsService {
     const version = this.normalizeVersion(dto.version);
     const requestedDesignNo = dto.designNo?.trim();
 
-    const prefix = await this.resolveJewelryGroupPrefix(jewelryGroup);
+    const aliasIdentity = this.buildAliasDesignIdentity(designMasterRefs);
+    const prefix = aliasIdentity.designNoPrefix || (await this.resolveJewelryGroupPrefix(jewelryGroup));
 
     let designNo: string;
     if (requestedDesignNo) {
@@ -519,7 +521,7 @@ export class ProductsService {
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
-    const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
+    const resolvedDesignName = this.optionalText(dto.designName) || aliasIdentity.designName || this.buildDefaultDesignName(jewelryGroup, designNo);
     if (isPrimary) {
       await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
     }
@@ -4277,6 +4279,39 @@ export class ProductsService {
     return this.buildDesignNoPrefix(normalizedGroup);
   }
 
+  private normalizeDesignIdentityToken(value: string | null | undefined): string {
+    return (value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '');
+  }
+
+  private getDesignIdentityToken(ref: MasterRef): string {
+    return this.normalizeDesignIdentityToken(ref.aliasName || ref.value);
+  }
+
+  private buildAliasDesignIdentity(refs: DesignMasterRefs): { designNoPrefix: string; designName: string } {
+    const style = this.getDesignIdentityToken(refs.diamondSpread);
+    const coverage = this.getDesignIdentityToken(refs.diamondWeight);
+    const metal = this.getDesignIdentityToken(refs.metalCaratage);
+    const diamondQuality = this.getDesignIdentityToken(refs.diamondQuality);
+    const fingerSize = this.getDesignIdentityToken(refs.jewelrySize);
+    const segments = [style, coverage, metal, diamondQuality, fingerSize].filter(Boolean);
+    const displaySegments = [
+      refs.diamondSpread.aliasName || refs.diamondSpread.value,
+      refs.diamondWeight.aliasName || refs.diamondWeight.value,
+      refs.metalCaratage.aliasName || refs.metalCaratage.value,
+      refs.diamondQuality.aliasName || refs.diamondQuality.value,
+      refs.jewelrySize.aliasName || refs.jewelrySize.value,
+    ]
+      .map((value) => this.optionalText(value))
+      .filter((value): value is string => Boolean(value));
+
+    return {
+      designNoPrefix: segments.join('-'),
+      designName: displaySegments.join(' '),
+    };
+  }
   private async generateNextDesignNo(prefix: string, companyId: number | null): Promise<string> {
     const regex = `^${prefix}-[0-9]+$`;
     const qb = this.designRepo
@@ -6462,13 +6497,13 @@ export class ProductsService {
     const numericId = this.optionalInt(id);
     if (numericId) {
       const rows = await this.dataSource.query(
-        `SELECT id, value FROM ${tableName} WHERE id = ? LIMIT 1`,
+        `SELECT id, value, alias_name AS aliasName FROM ${tableName} WHERE id = ? LIMIT 1`,
         [numericId],
       );
       if (!rows?.[0]) {
         throw new BadRequestException(`${fieldLabel} master id "${numericId}" not found`);
       }
-      return { id: Number(rows[0].id), value: this.optionalText(rows[0].value) };
+      return { id: Number(rows[0].id), value: this.optionalText(rows[0].value), aliasName: this.optionalText(rows[0].aliasName) };
     }
 
     const normalizedValue = this.optionalText(value);
@@ -6476,11 +6511,11 @@ export class ProductsService {
       if (required) {
         throw new BadRequestException(`${fieldLabel} is required`);
       }
-      return { id: null, value: null };
+      return { id: null, value: null, aliasName: null };
     }
 
     const rows = await this.dataSource.query(
-      `SELECT id, value FROM ${tableName}
+      `SELECT id, value, alias_name AS aliasName FROM ${tableName}
        WHERE normalized_value = LOWER(TRIM(?))
           OR normalized_alias = LOWER(TRIM(?))
           OR value = ?
@@ -6492,7 +6527,7 @@ export class ProductsService {
     if (!rows?.[0]) {
       throw new BadRequestException(`${fieldLabel} "${normalizedValue}" not found in master table`);
     }
-    return { id: Number(rows[0].id), value: this.optionalText(rows[0].value) };
+    return { id: Number(rows[0].id), value: this.optionalText(rows[0].value), aliasName: this.optionalText(rows[0].aliasName) };
   }
 
   private async resolveDesignMasterRefs(dto: CreateProductDto | UpdateProductDto, existing?: Design): Promise<DesignMasterRefs> {
@@ -7048,6 +7083,4 @@ export class ProductsService {
   }
 
 }
-
-
 

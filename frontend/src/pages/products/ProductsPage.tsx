@@ -593,13 +593,13 @@ const uniqueNonEmptyValues = (values: Array<string | null | undefined>): string[
   return result;
 };
 const getMetalPurityDisplay = (option: MasterOption): string => {
-  return (option.aliasName || option.value || '').trim();
+  return (option.value || '').trim();
 };
 const getMetalCaratageDisplay = (value: string, options: MasterOption[] = []): string => {
   const normalized = normalizeLookupKey(value);
   if (!normalized) return '';
   const match = options.find((option) => normalizeLookupKey(option.value) === normalized);
-  return (match?.aliasName || match?.value || value || '').trim();
+  return (match?.value || value || '').trim();
 };
 const normalizeLookupKey = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 const normalizeDateTimeValue = (value: string | null | undefined): string => {
@@ -913,25 +913,22 @@ const sanitizeStructuredToken = (value: string, options?: { preserveSlash?: bool
   return value.trim().toUpperCase().replace(matcher, '');
 };
 
-const resolveCoverageCode = (coverage: string, customCoverage: string): string => {
-  const normalized = normalizeLookupKey(coverage);
-  if (!normalized) return '';
-  if (normalized === 'custom') {
-    return sanitizeStructuredToken(customCoverage, { preserveSlash: true });
-  }
-  if (normalized.includes('full')) return 'F';
-  if (normalized.includes('1/2') || normalized.includes('half')) return '1/2';
-  if (normalized.includes('3/4')) return '3/4';
-  return sanitizeStructuredToken(coverage, { preserveSlash: true });
-};
-
 const resolveDiamondQualityCode = (diamondQuality: string, customDiamondQuality: string): string => {
   const normalized = normalizeLookupKey(diamondQuality);
   const rawValue = normalized === 'custom' ? customDiamondQuality : diamondQuality;
   return sanitizeStructuredToken(rawValue, { preserveSlash: true }).replace(/\//g, '-');
 };
 
-const resolveSizeCode = (size: string): string => {
+const resolveOptionAliasCode = (value: string, options: MasterOption[], customValue = ''): string => {
+  const normalized = normalizeLookupKey(value);
+  const rawValue = normalized === 'custom' ? customValue : value;
+  const match = options.find((option) => masterOptionMatchesValue(option, rawValue));
+  return sanitizeStructuredToken(match?.aliasName || rawValue, { preserveSlash: true }).replace(/\//g, '-');
+};
+
+const resolveSizeCode = (size: string, sizeOptions: MasterOption[]): string => {
+  const aliasCode = resolveOptionAliasCode(size, sizeOptions);
+  if (aliasCode) return aliasCode;
   const trimmed = size.trim();
   if (!trimmed) return '';
   const numeric = Number.parseFloat(trimmed);
@@ -960,47 +957,20 @@ const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string =
   return sanitizeStructuredToken(trimmed);
 };
 
-const getNextStructuredDesignSerial = (
-  jewelryGroup: string,
-  existingRows: DesignRow[],
-  aliasName?: string,
-): string => {
-  const prefix = buildDesignNoPrefix(jewelryGroup, aliasName);
-  if (!prefix) return '1';
-
-  const matcher = new RegExp(`^${escapeRegex(prefix)}-(\\d+)(?:-|$)`, 'i');
-  let maxSerial = 0;
-
-  existingRows.forEach((row) => {
-    const baseDesignNo = getBaseDesignNo(row.designNo || '');
-    const match = matcher.exec(baseDesignNo);
-    if (!match) return;
-    const parsed = Number.parseInt(match[1], 10);
-    if (Number.isFinite(parsed) && parsed > maxSerial) {
-      maxSerial = parsed;
-    }
-  });
-
-  return String(maxSerial + 1);
-};
-
 const buildStructuredDesignNo = ({
-  categoryCode,
-  serialCode,
+  styleCode,
   coverageCode,
   metalCode,
   diamondQualityCode,
   sizeCode,
 }: {
-  categoryCode: string;
-  serialCode: string;
+  styleCode: string;
   coverageCode: string;
   metalCode: string;
   diamondQualityCode: string;
   sizeCode: string;
 }): string => {
-  const safeSerialCode = sanitizeStructuredToken(serialCode);
-  const segments = [categoryCode, safeSerialCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
+  const segments = [styleCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
   return segments.join('-');
 };
 
@@ -1650,7 +1620,7 @@ export default function ProductsPage() {
   });
   const [isDesignNoManual, setIsDesignNoManual] = useState(false);
   const [isDesignNameManual, setIsDesignNameManual] = useState(false);
-  const [structuredSerialOverride, setStructuredSerialOverride] = useState('');
+  const [, setStructuredSerialOverride] = useState('');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -1842,12 +1812,10 @@ export default function ProductsPage() {
   const shouldShowInfoSkeleton = !isInfoDetailReady && (detailDesignLoading || !detailDesignError);
   const primaryMetalValue = metalRows[0]?.metalCaratage || '';
   const structuredMetalOptions = useMemo(() => masterOptions.metalCaratages, [masterOptions.metalCaratages]);
-  const structuredCategoryCode = useMemo(() => {
-    const match = masterOptions.jewelryGroups.find(
-      (option) => masterOptionMatchesValue(option, form.jewelryGroup),
-    );
-    return sanitizeStructuredToken(match?.aliasName || form.jewelryGroup).slice(0, 5);
-  }, [form.jewelryGroup, masterOptions.jewelryGroups]);
+  const structuredStyleCode = useMemo(
+    () => resolveOptionAliasCode(form.diamondSpread, masterOptions.diamondSpreads, form.coverageCustom),
+    [form.coverageCustom, form.diamondSpread, masterOptions.diamondSpreads],
+  );
   const selectedJewelryGroupMasterId = useMemo(
     () =>
       masterOptions.jewelryGroups.find(
@@ -1856,24 +1824,13 @@ export default function ProductsPage() {
     [form.jewelryGroup, masterOptions.jewelryGroups],
   );
   const structuredCoverageCode = useMemo(
-    () => resolveCoverageCode(form.diamondSpread, form.coverageCustom),
-    [form.coverageCustom, form.diamondSpread],
+    () => resolveOptionAliasCode(form.diamondWeight, masterOptions.diamondWeights),
+    [form.diamondWeight, masterOptions.diamondWeights],
   );
   const structuredDiamondQualityCode = useMemo(
     () => resolveDiamondQualityCode(form.diamondQuality, form.diamondQualityCustom),
     [form.diamondQuality, form.diamondQualityCustom],
   );
-  const structuredSerialCode = useMemo(() => {
-    if (structuredSerialOverride.trim()) {
-      return structuredSerialOverride.trim();
-    }
-    const categoryAlias =
-      masterOptions.jewelryGroups.find(
-        (option) => masterOptionMatchesValue(option, form.jewelryGroup),
-      )?.aliasName || '';
-    return getNextStructuredDesignSerial(form.jewelryGroup, rows, categoryAlias);
-  }, [form.jewelryGroup, masterOptions.jewelryGroups, rows, structuredSerialOverride]);
-
   const showDesignSaveNotice = useCallback((message: string) => {
     setDesignSaveNotice(message);
     if (designSaveNoticeTimeoutRef.current) {
@@ -1896,23 +1853,24 @@ export default function ProductsPage() {
     () => resolveMetalCode(primaryMetalValue, structuredMetalOptions),
     [primaryMetalValue, structuredMetalOptions],
   );
-  const structuredSizeCode = useMemo(() => resolveSizeCode(form.jewelrySize), [form.jewelrySize]);
+  const structuredSizeCode = useMemo(
+    () => resolveSizeCode(form.jewelrySize, masterOptions.jewelrySizes),
+    [form.jewelrySize, masterOptions.jewelrySizes],
+  );
   const structuredDesignNo = useMemo(
     () =>
       buildStructuredDesignNo({
-        categoryCode: structuredCategoryCode,
-        serialCode: structuredSerialCode,
+        styleCode: structuredStyleCode,
         coverageCode: structuredCoverageCode,
         metalCode: structuredMetalCode,
         diamondQualityCode: structuredDiamondQualityCode,
         sizeCode: structuredSizeCode,
       }),
     [
-      structuredCategoryCode,
+      structuredStyleCode,
       structuredCoverageCode,
       structuredDiamondQualityCode,
       structuredMetalCode,
-      structuredSerialCode,
       structuredSizeCode,
     ],
   );
@@ -5244,24 +5202,25 @@ export default function ProductsPage() {
   const buildVersionBuilderVariantSku = useCallback(
     (selection: VersionBuilderBomSelection, versionLabel: string) => {
       if (!versionBuilderBaseDesign) return '';
-      const family = getStructuredDesignFamilyParts(versionBuilderBaseDesign.designNo || '');
       const fallbackBase = getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo;
-      if (!family.categoryCode || !family.serialCode) {
-        return buildVersionedDesignNo(fallbackBase, versionLabel);
-      }
-
       const structuredBase = buildStructuredDesignNo({
-        categoryCode: family.categoryCode,
-        serialCode: family.serialCode,
-        coverageCode: resolveCoverageCode(selection.coverage || '', ''),
+        styleCode: resolveOptionAliasCode(selection.coverage || '', masterOptions.diamondSpreads),
+        coverageCode: resolveOptionAliasCode(selection.caratWeight || '', masterOptions.diamondWeights),
         metalCode: resolveMetalCode(selection.metal || '', masterOptions.metalCaratages),
-        diamondQualityCode: resolveDiamondQualityCode(selection.diamondQuality || '', ''),
-        sizeCode: resolveSizeCode(selection.size || ''),
+        diamondQualityCode: resolveOptionAliasCode(selection.diamondQuality || '', masterOptions.diamondQualities),
+        sizeCode: resolveSizeCode(selection.size || '', masterOptions.jewelrySizes),
       });
 
       return buildVersionedDesignNo(structuredBase || fallbackBase, versionLabel);
     },
-    [masterOptions.metalCaratages, versionBuilderBaseDesign],
+    [
+      masterOptions.diamondQualities,
+      masterOptions.diamondSpreads,
+      masterOptions.diamondWeights,
+      masterOptions.jewelrySizes,
+      masterOptions.metalCaratages,
+      versionBuilderBaseDesign,
+    ],
   );
 
   const getVersionBuilderOverheadRuleForRow = (row: OverheadRow): MasterOption | null => {
@@ -7540,6 +7499,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setForm,
     setGemRows,
     setIsDesignNameManual,
+    setIsDesignNoManual,
     setLaborRows,
     setMetalRows,
     setOverheadRows,
@@ -7909,7 +7869,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   config={masterDropdownConfig(
                     'METAL_CARATAGE',
                     'All Metals',
-                    toSmartDropdownOptions(masterOptions.metalCaratages, (option) => option.aliasName || option.value),
+                    toSmartDropdownOptions(masterOptions.metalCaratages),
                   )}
                 />
               </div>
@@ -8321,7 +8281,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               config={masterDropdownConfig(
                                 'METAL_CARATAGE',
                                 'All Metals',
-                                toSmartDropdownOptions(masterOptions.metalCaratages, (option) => option.aliasName || option.value),
+                                toSmartDropdownOptions(masterOptions.metalCaratages),
                               )}
                             />
                             <SmartDropdown
@@ -10727,5 +10687,4 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
-
 

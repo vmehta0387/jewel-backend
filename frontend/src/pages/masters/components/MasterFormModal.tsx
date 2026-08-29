@@ -254,7 +254,7 @@ function optionId(value?: string | number | null): string {
 }
 
 function getMetalPurityDisplay(option: MasterOption): string {
-  return (option.aliasName || option.label || option.value || '').trim();
+  return (option.value || option.label || '').trim();
 }
 
 function getJoinedMasterDisplay(value?: JoinedMasterRef | string | null): string {

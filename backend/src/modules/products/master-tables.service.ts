@@ -424,7 +424,7 @@ export class MasterTablesService {
           value,
           alias: aliasName,
           aliasName,
-          label: aliasName || value,
+          label: value,
         };
 
         if (masterType === DesignMasterType.METAL_CARATAGE) {
@@ -1716,15 +1716,4 @@ export class MasterTablesService {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
 

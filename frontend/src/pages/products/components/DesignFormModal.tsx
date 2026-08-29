@@ -82,6 +82,7 @@ interface DesignFormModalScope {
   setForm: StateSetter;
   setGemRows: ArrayStateSetter;
   setIsDesignNameManual: StateSetter;
+  setIsDesignNoManual: StateSetter;
   setLaborRows: ArrayStateSetter;
   setMetalRows: ArrayStateSetter;
   setOverheadRows: ArrayStateSetter;
@@ -210,6 +211,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     setForm,
     setGemRows,
     setIsDesignNameManual,
+    setIsDesignNoManual,
     setLaborRows,
     setMetalRows,
     setOverheadRows,
@@ -309,9 +311,12 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
                     <input
-                      className="w-full rounded border border-gray-300 bg-[#c9d5e0] px-2 py-2 text-sm text-slate-700"
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm text-slate-700"
                       value={form.designNo}
-                      readOnly
+                      onChange={(event) => {
+                        setIsDesignNoManual(true);
+                        setForm((prev) => ({ ...prev, designNo: event.target.value }));
+                      }}
                       placeholder="Design No"
                     />
                   </div>
@@ -403,7 +408,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       config={masterDropdownConfig(
                         'DIAMOND_SPREAD',
                         'Select Diamond Spread',
-                        toSmartDropdownOptions(masterOptions.diamondSpreads, (option) => option.aliasName || option.value),
+                        toSmartDropdownOptions(masterOptions.diamondSpreads),
                       )}
                     />
                   </div>
@@ -427,7 +432,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           form.diamondQuality
                             ? [{ id: `current-${form.diamondQuality}`, value: form.diamondQuality, label: form.diamondQuality }]
                             : []),
-                          ...toSmartDropdownOptions(masterOptions.diamondQualities, (option) => option.aliasName || option.value),
+                          ...toSmartDropdownOptions(masterOptions.diamondQualities),
                         ],
                       )}
                     />
@@ -1035,7 +1040,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                           );
                                         return {
                                           ...option,
-                                          label: `${option.aliasName || option.value}${isUsedInOtherRow ? ' (Used)' : ''}`,
+                                          label: `${option.value}${isUsedInOtherRow ? ' (Used)' : ''}`,
                                           disabled: isUsedInOtherRow,
                                         };
                                       }),

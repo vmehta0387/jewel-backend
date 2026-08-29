@@ -481,7 +481,7 @@ function masterRefValue(ref?: JoinedMasterRef | string | null): string {
   if (typeof ref === 'string') {
     return ref;
   }
-  return ref.value || ref.name || ref.aliasName || ref.label || '';
+  return ref.value || ref.name || ref.label || '';
 }
 
 function masterRefId(ref?: JoinedMasterRef | string | null): string {
@@ -512,7 +512,7 @@ function masterRefOption(
 }
 
 function getMetalPurityDisplay(option: MasterOption): string {
-  return (option.aliasName || option.label || option.value || '').trim();
+  return (option.value || option.label || '').trim();
 }
 
 function buildMetalCaratageName(metalName: string, metalPurity: string, metalColor: string, purityOption?: MasterOption | null): string {
@@ -2414,22 +2414,4 @@ export default function DesignMastersPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
