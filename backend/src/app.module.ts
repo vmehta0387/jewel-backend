@@ -14,6 +14,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { ActivityEventsModule } from './modules/activity-events/activity-events.module';
 import { EmailModule } from './modules/email/email.module';
+import { EmailTemplatesModule } from './modules/email-templates/email-templates.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { EmailModule } from './modules/email/email.module';
     PermissionsModule,
     ActivityEventsModule,
     EmailModule,
+    EmailTemplatesModule,
   ],
 })
 export class AppModule {}

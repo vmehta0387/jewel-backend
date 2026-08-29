@@ -10,6 +10,7 @@ import { NotificationsGateway } from './notifications.gateway';
 import { NotificationsService } from './notifications.service';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { EmailModule } from '../email/email.module';
+import { EmailTemplatesModule } from '../email-templates/email-templates.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { EmailModule } from '../email/email.module';
     AuthModule,
     PushNotificationsModule,
     EmailModule,
+    EmailTemplatesModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, NotificationsGateway],

@@ -14,6 +14,7 @@ import { Notification, NotificationPriority } from './entities/notification.enti
 import { NotificationsGateway } from './notifications.gateway';
 import { PushNotificationsService } from '../push-notifications/push-notifications.service';
 import { EmailService } from '../email/email.service';
+import { EmailTemplatesService } from '../email-templates/email-templates.service';
 
 const DESIGN_UPDATED_NOTIFICATION_TYPE = 'DESIGN_UPDATED';
 
@@ -46,6 +47,7 @@ export class NotificationsService {
     private readonly notificationsGateway: NotificationsGateway,
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly emailService: EmailService,
+    private readonly emailTemplatesService: EmailTemplatesService,
   ) {}
 
   async findMine(query: FindNotificationsQueryDto, requester: AuthUser) {
@@ -337,7 +339,7 @@ export class NotificationsService {
     const userIds = Array.from(new Set(emailNotifications.map((item) => item.recipientUserId).filter(Boolean)));
     const users = await this.userRepo.find({
       where: { id: In(userIds), isActive: true },
-      select: ['id', 'email', 'firstName', 'lastName'],
+      select: ['id', 'email', 'firstName', 'lastName', 'role'],
     });
     const usersById = new Map(users.map((user) => [user.id, user]));
 
@@ -346,10 +348,37 @@ export class NotificationsService {
         const user = usersById.get(notification.recipientUserId);
         if (!user?.email) return;
 
+        const recipientName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || undefined;
+        const variables = {
+          ...(notification.metadata || {}),
+          title: notification.title,
+          message: notification.message,
+          action_url: notification.actionUrl || '',
+          recipient_first_name: user.firstName || '',
+          recipient_last_name: user.lastName || '',
+          recipient_name: recipientName || '',
+          recipient_email: user.email,
+        };
+        const rendered = await this.emailTemplatesService.renderForAction({
+          actionType: notification.type,
+          recipientRole: user.role,
+          variables,
+        });
+
+        if (rendered && rendered.missingVariables.length === 0) {
+          await this.emailService.sendMail({
+            to: { email: user.email, name: recipientName },
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+          });
+          return;
+        }
+
         await this.emailService.sendNotificationEmail({
           to: {
             email: user.email,
-            name: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || undefined,
+            name: recipientName,
           },
           title: notification.title,
           message: notification.message,

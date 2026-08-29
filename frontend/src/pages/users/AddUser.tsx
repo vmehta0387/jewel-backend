@@ -4,6 +4,7 @@ import Button from '../../components/common/Button';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import PermissionMatrix, { DetailedPermission } from '../../components/permissions/PermissionMatrix';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
@@ -56,8 +57,25 @@ function roleNeedsBranch(role: UserRole): boolean {
   return role === 'BRANCH_MANAGER' || role === 'SALES_REP';
 }
 
+const getApiMessage = (error: unknown, fallback: string) => {
+  const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+  return Array.isArray(message) ? message.join(', ') : message || fallback;
+};
+
+const getSubmitErrors = (message: string): Record<string, string> => {
+  const normalizedMessage = message.toLowerCase();
+  if (normalizedMessage.includes('email')) {
+    return { email: message };
+  }
+  if (normalizedMessage.includes('user handle')) {
+    return { userHandle: message };
+  }
+  return { submit: message };
+};
+
 export default function AddUser() {
   const navigate = useNavigate();
+  const { showAlert: showAppAlert, dialogNode } = useAppDialog();
   const currentUser = getStoredUser();
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
   const companyAdminCompanyId = currentUser?.companyId || '';
@@ -284,11 +302,10 @@ export default function AddUser() {
 
       navigate('/users');
     } catch (error) {
-      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
-      const text = Array.isArray(message) ? message.join(', ') : message || 'Failed to create user';
-      const nextErrors: Record<string, string> =
-        text === 'User handle name alreday exit. try other please' ? { userHandle: text } : { submit: text };
+      const text = getApiMessage(error, 'Failed to create user');
+      const nextErrors = getSubmitErrors(text);
       setErrors(nextErrors);
+      showAppAlert(text, { variant: 'error' });
       focusValidationError(nextErrors);
     } finally {
       setIsSubmitting(false);
@@ -544,6 +561,7 @@ export default function AddUser() {
           </Button>
         </div>
       </form>
+      {dialogNode}
     </div>
   );
 }

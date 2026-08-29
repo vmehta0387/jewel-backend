@@ -14,6 +14,7 @@ type MenuIconName =
   | 'masters'
   | 'orders'
   | 'activity'
+  | 'emailTemplates'
   | 'spiff'
   | 'permissions';
 
@@ -64,6 +65,7 @@ const navigation: NavigationItem[] = [
   { name: 'Masters', path: '/masters/design', icon: 'masters', permission: 'DESIGN_ENTRIES', actionPermission: 'master.view' },
   { name: 'Orders', path: '/orders', icon: 'orders' },
   { name: 'Default Permissions', path: '/permissions/defaults', icon: 'permissions', allowedRoles: ['SUPER_ADMIN'] },
+  { name: 'Email Templates', path: '/email-templates', icon: 'emailTemplates', allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP'] },
   { name: 'Activity', path: '/activity-events', icon: 'activity', allowedRoles: ['SUPER_ADMIN'] },
   { name: 'SPIFF', path: '/spiff', icon: 'spiff', permission: 'ORDER_ENTRIES', actionPermission: 'spiff.view' },
 ];
@@ -154,6 +156,14 @@ function MenuIcon({ name, isActive }: { name: MenuIconName; isActive: boolean })
         <circle cx="11" cy="11" r="1" />
         <circle cx="14" cy="13" r="1" />
         <circle cx="18" cy="6" r="1" />
+      </>
+    );
+  } else if (name === 'emailTemplates') {
+    iconBody = (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="M3 7l9 6 9-6" />
+        <path d="M8 15h8" />
       </>
     );
   } else if (name === 'spiff') {
