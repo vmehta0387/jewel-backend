@@ -502,7 +502,7 @@ export class ProductsService {
     const version = this.normalizeVersion(dto.version);
     const requestedDesignNo = dto.designNo?.trim();
 
-    const aliasIdentity = this.buildAliasDesignIdentity(designMasterRefs);
+    const aliasIdentity = this.buildAliasDesignIdentity(designMasterRefs, dto.designName);
     const prefix = aliasIdentity.designNoPrefix || (await this.resolveJewelryGroupPrefix(jewelryGroup));
 
     let designNo: string;
@@ -521,7 +521,7 @@ export class ProductsService {
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
-    const resolvedDesignName = this.optionalText(dto.designName) || aliasIdentity.designName || this.buildDefaultDesignName(jewelryGroup, designNo);
+    const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
     if (isPrimary) {
       await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
     }
@@ -4331,26 +4331,18 @@ export class ProductsService {
     return this.normalizeDesignIdentityToken(ref.aliasName || ref.value);
   }
 
-  private buildAliasDesignIdentity(refs: DesignMasterRefs): { designNoPrefix: string; designName: string } {
-    const style = this.getDesignIdentityToken(refs.diamondSpread);
-    const coverage = this.getDesignIdentityToken(refs.diamondWeight);
+  private buildAliasDesignIdentity(refs: DesignMasterRefs, designName?: string | null): { designNoPrefix: string; designName: string } {
+    const requestedDesignName = this.optionalText(designName);
+    const nameCode = this.normalizeDesignIdentityToken(requestedDesignName);
+    const diamondSpread = this.getDesignIdentityToken(refs.diamondSpread);
     const metal = this.getDesignIdentityToken(refs.metalCaratage);
+    const diamondWeight = this.getDesignIdentityToken(refs.diamondWeight);
     const diamondQuality = this.getDesignIdentityToken(refs.diamondQuality);
-    const fingerSize = this.getDesignIdentityToken(refs.jewelrySize);
-    const segments = [style, coverage, metal, diamondQuality, fingerSize].filter(Boolean);
-    const displaySegments = [
-      refs.diamondSpread.aliasName || refs.diamondSpread.value,
-      refs.diamondWeight.aliasName || refs.diamondWeight.value,
-      refs.metalCaratage.aliasName || refs.metalCaratage.value,
-      refs.diamondQuality.aliasName || refs.diamondQuality.value,
-      refs.jewelrySize.aliasName || refs.jewelrySize.value,
-    ]
-      .map((value) => this.optionalText(value))
-      .filter((value): value is string => Boolean(value));
+    const segments = [nameCode, diamondSpread, metal, diamondWeight, diamondQuality].filter(Boolean);
 
     return {
       designNoPrefix: segments.join('-'),
-      designName: displaySegments.join(' '),
+      designName: requestedDesignName || '',
     };
   }
   private async generateNextDesignNo(prefix: string, companyId: number | null): Promise<string> {
@@ -7124,6 +7116,7 @@ export class ProductsService {
   }
 
 }
+
 
 
 

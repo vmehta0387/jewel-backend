@@ -156,7 +156,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     confirmDesignFormAction,
     creatingMasterType,
     defaultPacketForm,
-    editingDesignIsPrimary,
     filteredJewelrySizeOptions,
     filteredSubCategoryOptions,
     findingRows,
@@ -238,6 +237,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     vendorRows,
   } = scope;
   const skipTabFocusProps = { tabIndex: -1, 'data-autofocus-skip': 'true' };
+  const isDesignIdentityLocked = Boolean(editingId);
   const confirmCloseDesignForm = async () => {
     const confirmed = await confirmDesignFormAction('Close this design form? Unsaved changes will be lost.', {
       title: 'Close design form',
@@ -292,32 +292,33 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Name</label>
                     <input
                       className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
-                        editingId && !editingDesignIsPrimary ? 'bg-[#c9d5e0] text-slate-500' : ''
+                        isDesignIdentityLocked ? 'bg-[#c9d5e0] text-slate-500' : ''
                       }`}
                       value={form.designName}
                       onChange={(event) => {
                         setIsDesignNameManual(true);
                         setForm((prev) => ({ ...prev, designName: event.target.value }));
                       }}
-                      readOnly={Boolean(editingId && !editingDesignIsPrimary)}
+                      readOnly={isDesignIdentityLocked}
                       placeholder="Design Name"
                     />
-                    {editingId && !editingDesignIsPrimary ? (
+                    {isDesignIdentityLocked ? (
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Design name is controlled by the parent design for this version family.
+                        Design name is locked because it is part of Design No.
                       </p>
                     ) : null}
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
                     <input
-                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm text-slate-700"
+                      className={`w-full rounded border border-gray-300 px-2 py-2 text-sm text-slate-700 ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
                       value={form.designNo}
                       onChange={(event) => {
                         setIsDesignNoManual(true);
                         setForm((prev) => ({ ...prev, designNo: event.target.value }));
                       }}
                       placeholder="Design No"
+                      readOnly={isDesignIdentityLocked}
                     />
                   </div>
                   <div className="xl:col-span-3">
@@ -405,11 +406,14 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           coverageCustom: value === 'Custom' ? prev.coverageCustom : '',
                         }));
                       }}
-                      config={masterDropdownConfig(
-                        'DIAMOND_SPREAD',
-                        'Select Diamond Spread',
-                        toSmartDropdownOptions(masterOptions.diamondSpreads),
-                      )}
+                      config={{
+                        ...masterDropdownConfig(
+                          'DIAMOND_SPREAD',
+                          'Select Diamond Spread',
+                          toSmartDropdownOptions(masterOptions.diamondSpreads),
+                        ),
+                        disabled: isDesignIdentityLocked,
+                      }}
                     />
                   </div>
                   <div className="xl:col-span-3">
@@ -424,25 +428,29 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           diamondQualityCustom: value === 'Custom' ? prev.diamondQualityCustom : '',
                         }));
                       }}
-                      config={masterDropdownConfig(
-                        'DIAMOND_QUALITY',
-                        'Select Dia Quality',
-                        [
+                      config={{
+                        ...masterDropdownConfig(
+                          'DIAMOND_QUALITY',
+                          'Select Dia Quality',
+                          [
                           ...(!masterOptions.diamondQualities.some((option) => option.value === form.diamondQuality) &&
                           form.diamondQuality
                             ? [{ id: `current-${form.diamondQuality}`, value: form.diamondQuality, label: form.diamondQuality }]
                             : []),
                           ...toSmartDropdownOptions(masterOptions.diamondQualities),
-                        ],
-                      )}
+                          ],
+                        ),
+                        disabled: isDesignIdentityLocked,
+                      }}
                     />
                   </div>
                   {form.diamondSpread === 'Custom' ? (
                     <div className="xl:col-span-3">
                       <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread Custom Code</label>
                       <input
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
                         value={form.coverageCustom}
+                        readOnly={isDesignIdentityLocked}
                         onChange={(event) => setForm((prev) => ({ ...prev, coverageCustom: event.target.value }))}
                         placeholder="C"
                       />
@@ -452,8 +460,9 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                     <div className="xl:col-span-3">
                       <label className="mb-1 block text-sm font-medium text-slate-700">Dia Quality Custom Code</label>
                       <input
-                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                        className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
                         value={form.diamondQualityCustom}
+                        readOnly={isDesignIdentityLocked}
                         onChange={(event) => setForm((prev) => ({ ...prev, diamondQualityCustom: event.target.value }))}
                         placeholder="C"
                       />
@@ -550,17 +559,20 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                           mergeMasterOption('DIAMOND_WEIGHT', option);
                           setForm((prev) => ({ ...prev, diamondWeight: value }));
                         }}
-                        config={masterDropdownConfig(
-                          'DIAMOND_WEIGHT',
-                          'Select Diamond Wt',
-                          toSmartDropdownOptions(masterOptions.diamondWeights),
-                        )}
+                        config={{
+                          ...masterDropdownConfig(
+                            'DIAMOND_WEIGHT',
+                            'Select Diamond Wt',
+                            toSmartDropdownOptions(masterOptions.diamondWeights),
+                          ),
+                          disabled: isDesignIdentityLocked,
+                        }}
                       />
                       <button
                         type="button"
                         {...skipTabFocusProps}
                         className={inlineMasterJoinedAddButtonClass}
-                        disabled={creatingMasterType === 'DIAMOND_WEIGHT'}
+                        disabled={isDesignIdentityLocked || creatingMasterType === 'DIAMOND_WEIGHT'}
                         onClick={() => addMasterFromDesign('DIAMOND_WEIGHT')}
                       >
                         +
@@ -1001,7 +1013,9 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {metalRows.map((item) => (
+                        {metalRows.map((item, index) => {
+                          const isFirstIdentityMetalLocked = isDesignIdentityLocked && index === 0;
+                          return (
                           <tr key={item.id}>
                             <td className="px-2 py-2">
                               <div className={inlineMasterControlGroupClass}>
@@ -1012,8 +1026,9 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                     mergeMasterOption('METAL_CARATAGE', option);
                                     updateMetalRow(item.id, 'metalCaratage', value);
                                   }}
-                                  config={masterDropdownConfig(
-                                    'METAL_CARATAGE',
+                                  config={{
+                                    ...masterDropdownConfig(
+                                      'METAL_CARATAGE',
                                     'Select Metal',
                                     [
                                       ...(!(
@@ -1044,14 +1059,16 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                           disabled: isUsedInOtherRow,
                                         };
                                       }),
-                                    ],
-                                  )}
+                                      ],
+                                    ),
+                                    disabled: isFirstIdentityMetalLocked,
+                                  }}
                                 />
                                 <button
                                   type="button"
                                   {...skipTabFocusProps}
                                   className={inlineMasterJoinedAddButtonClass}
-                                  disabled={creatingMasterType === 'METAL_CARATAGE'}
+                                  disabled={isFirstIdentityMetalLocked || creatingMasterType === 'METAL_CARATAGE'}
                                   onClick={() =>
                                     addMasterFromDesign('METAL_CARATAGE', (masterValue) =>
                                       updateMetalRow(item.id, 'metalCaratage', masterValue),
@@ -1103,9 +1120,10 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                 placeholder={getMetalValue(item).toFixed(2)}
                               />
                             </td>
-                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
+                            <td className="px-2 py-2"><button type="button" className="inline-flex min-h-[1.75rem] items-center justify-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/80 px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold text-rose-700 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500/40" disabled={isFirstIdentityMetalLocked} onClick={() => setMetalRows((prev) => prev.filter((row) => row.id !== item.id))}>Remove</button></td>
                           </tr>
-                        ))}
+                          );
+                        })}
                         <tr className="bg-slate-100 text-sm font-bold text-slate-900">
                           <td className="px-2 py-2 text-right" colSpan={4}>Total</td>
                           <td className="px-2 py-2">{metalRows.reduce((sum, row) => sum + getMetalTotalWt(row), 0).toFixed(3)}</td>
@@ -1552,4 +1570,11 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     </ProductsModal>
   );
 }
+
+
+
+
+
+
+
 
