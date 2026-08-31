@@ -143,6 +143,7 @@ const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const NAVIGATION_STATE_KEY_PREFIX = 'navigation_state';
+const PUSH_REGISTRATION_DEBUG_KEY = 'push_registration_debug';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -168,6 +169,17 @@ const navigationTheme = {
 
 const canReceivePushForRole = (role?: UserRole) =>
   role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN';
+
+const recordPushRegistrationDebug = async (status: string, details?: Record<string, unknown>) => {
+  const payload = {
+    status,
+    details: details || {},
+    platform: Platform.OS,
+    at: new Date().toISOString(),
+  };
+  console.warn('[push-registration]', payload);
+  await AsyncStorage.setItem(PUSH_REGISTRATION_DEBUG_KEY, JSON.stringify(payload)).catch(() => undefined);
+};
 
 const routeFromPushNotification = (data: Record<string, unknown> | null | undefined) => {
   if (!data || !navigationRef.isReady()) {
@@ -210,6 +222,7 @@ const routeFromPushNotification = (data: Record<string, unknown> | null | undefi
 
 const registerForPushNotificationsAsync = async (authToken: string, deviceId?: string | null) => {
   if (!Device.isDevice) {
+    await recordPushRegistrationDebug('skipped_not_physical_device');
     return null;
   }
 
@@ -231,6 +244,7 @@ const registerForPushNotificationsAsync = async (authToken: string, deviceId?: s
   }
 
   if (status !== 'granted') {
+    await recordPushRegistrationDebug('permission_not_granted', { status });
     return null;
   }
 
@@ -242,6 +256,7 @@ const registerForPushNotificationsAsync = async (authToken: string, deviceId?: s
   const tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
   const expoPushToken = tokenResponse.data;
   if (!expoPushToken) {
+    await recordPushRegistrationDebug('expo_token_empty', { projectId: projectId || null });
     return null;
   }
 
@@ -250,6 +265,11 @@ const registerForPushNotificationsAsync = async (authToken: string, deviceId?: s
     platform: Platform.OS,
     deviceId: deviceId || undefined,
     appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
+  });
+  await recordPushRegistrationDebug('registered', {
+    projectId: projectId || null,
+    deviceId: deviceId || null,
+    tokenPrefix: expoPushToken.slice(0, 22),
   });
 
   return expoPushToken;
@@ -520,7 +540,8 @@ const RootNavigator = () => {
           return;
         }
         registeredPushTokenRef.current = pushToken;
-      } catch {
+      } catch (err: any) {
+        await recordPushRegistrationDebug('failed', { message: err?.message || String(err), status: err?.status || null });
         // Push registration is best-effort; in-app notifications remain available.
       }
     };
@@ -569,7 +590,7 @@ const RootNavigator = () => {
         void unregisterPushDevice(token, registeredPushToken).catch(() => undefined);
       }
     };
-  }, [deviceId, token, user]);
+  }, [deviceId, token, user?.id, user?.role]);
 
   if (isLoading || isNavigationStateLoading) {
     return <LoadingScreen />;

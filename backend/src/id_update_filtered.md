@@ -89,18 +89,18 @@ ALTER TABLE user_permission_actions ADD COLUMN id_int INT(11) NOT NULL AUTO_INCR
 ALTER TABLE global_base_prices ADD COLUMN id_int INT(11) NOT NULL AUTO_INCREMENT UNIQUE;
 ALTER TABLE metal_price_history ADD COLUMN id_int INT(11) NOT NULL AUTO_INCREMENT UNIQUE;
 
-CREATE TABLE id_map_companies AS SELECT id AS old_id, id_int AS new_id FROM companies;
-CREATE TABLE id_map_branches AS SELECT id AS old_id, id_int AS new_id FROM branches;
-CREATE TABLE id_map_users AS SELECT id AS old_id, id_int AS new_id FROM users;
-CREATE TABLE id_map_help_requests AS SELECT id AS old_id, id_int AS new_id FROM help_requests;
-CREATE TABLE id_map_company_pricing_slabs AS SELECT id AS old_id, id_int AS new_id FROM company_pricing_slabs;
-CREATE TABLE id_map_branch_pricing_slabs AS SELECT id AS old_id, id_int AS new_id FROM branch_pricing_slabs;
-CREATE TABLE id_map_collection_pricing_overrides AS SELECT id AS old_id, id_int AS new_id FROM collection_pricing_overrides;
-CREATE TABLE id_map_notifications AS SELECT id AS old_id, id_int AS new_id FROM notifications;
-CREATE TABLE id_map_notification_push_devices AS SELECT id AS old_id, id_int AS new_id FROM notification_push_devices;
-CREATE TABLE id_map_user_permission_actions AS SELECT id AS old_id, id_int AS new_id FROM user_permission_actions;
-CREATE TABLE id_map_global_base_prices AS SELECT id AS old_id, id_int AS new_id FROM global_base_prices;
-CREATE TABLE id_map_metal_price_history AS SELECT id AS old_id, id_int AS new_id FROM metal_price_history;
+CREATE TEMPORARY TABLE id_map_companies AS SELECT id AS old_id, id_int AS new_id FROM companies;
+CREATE TEMPORARY TABLE id_map_branches AS SELECT id AS old_id, id_int AS new_id FROM branches;
+CREATE TEMPORARY TABLE id_map_users AS SELECT id AS old_id, id_int AS new_id FROM users;
+CREATE TEMPORARY TABLE id_map_help_requests AS SELECT id AS old_id, id_int AS new_id FROM help_requests;
+CREATE TEMPORARY TABLE id_map_company_pricing_slabs AS SELECT id AS old_id, id_int AS new_id FROM company_pricing_slabs;
+CREATE TEMPORARY TABLE id_map_branch_pricing_slabs AS SELECT id AS old_id, id_int AS new_id FROM branch_pricing_slabs;
+CREATE TEMPORARY TABLE id_map_collection_pricing_overrides AS SELECT id AS old_id, id_int AS new_id FROM collection_pricing_overrides;
+CREATE TEMPORARY TABLE id_map_notifications AS SELECT id AS old_id, id_int AS new_id FROM notifications;
+CREATE TEMPORARY TABLE id_map_notification_push_devices AS SELECT id AS old_id, id_int AS new_id FROM notification_push_devices;
+CREATE TEMPORARY TABLE id_map_user_permission_actions AS SELECT id AS old_id, id_int AS new_id FROM user_permission_actions;
+CREATE TEMPORARY TABLE id_map_global_base_prices AS SELECT id AS old_id, id_int AS new_id FROM global_base_prices;
+CREATE TEMPORARY TABLE id_map_metal_price_history AS SELECT id AS old_id, id_int AS new_id FROM metal_price_history;
 
 ALTER TABLE users ADD COLUMN company_id_int INT(11) NULL, ADD COLUMN branch_id_int INT(11) NULL;
 UPDATE users u LEFT JOIN id_map_companies c ON c.old_id = u.company_id SET u.company_id_int = c.new_id;
@@ -348,18 +348,18 @@ ALTER TABLE notifications ADD CONSTRAINT fk_notifications_recipient_user_id FORE
 ALTER TABLE notification_push_devices ADD CONSTRAINT fk_notification_push_devices_user_id FOREIGN KEY (user_id) REFERENCES users(id);
 ALTER TABLE user_permission_actions ADD CONSTRAINT fk_user_permission_actions_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
 
-DROP TABLE id_map_companies;
-DROP TABLE id_map_branches;
-DROP TABLE id_map_users;
-DROP TABLE id_map_help_requests;
-DROP TABLE id_map_company_pricing_slabs;
-DROP TABLE id_map_branch_pricing_slabs;
-DROP TABLE id_map_collection_pricing_overrides;
-DROP TABLE id_map_notifications;
-DROP TABLE id_map_notification_push_devices;
-DROP TABLE id_map_user_permission_actions;
-DROP TABLE id_map_global_base_prices;
-DROP TABLE id_map_metal_price_history;
+DROP TEMPORARY TABLE IF EXISTS id_map_companies;
+DROP TEMPORARY TABLE IF EXISTS id_map_branches;
+DROP TEMPORARY TABLE IF EXISTS id_map_users;
+DROP TEMPORARY TABLE IF EXISTS id_map_help_requests;
+DROP TEMPORARY TABLE IF EXISTS id_map_company_pricing_slabs;
+DROP TEMPORARY TABLE IF EXISTS id_map_branch_pricing_slabs;
+DROP TEMPORARY TABLE IF EXISTS id_map_collection_pricing_overrides;
+DROP TEMPORARY TABLE IF EXISTS id_map_notifications;
+DROP TEMPORARY TABLE IF EXISTS id_map_notification_push_devices;
+DROP TEMPORARY TABLE IF EXISTS id_map_user_permission_actions;
+DROP TEMPORARY TABLE IF EXISTS id_map_global_base_prices;
+DROP TEMPORARY TABLE IF EXISTS id_map_metal_price_history;
 
 SET FOREIGN_KEY_CHECKS = 1;
 ```
@@ -384,3 +384,4 @@ SELECT id, recipient_user_id, company_id, branch_id, entity_id FROM notification
 - `notification_push_devices.device_id`
 - `designs.ijewel_model_id`
 - `pricing_rules.entity_id` is not changed here because it may be polymorphic. Convert only if every stored value is numeric or has a known mapping.
+

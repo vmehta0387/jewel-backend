@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "90823362683",
+    "project_id": "blitz-f54d5",
+    "storage_bucket": "blitz-f54d5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:90823362683:android:3264c443082a936437fade",
+        "android_client_info": {
+          "package_name": "com.clariondiamonds.blitznyc"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_y-fG03Xp_tU_Siu5DwXSZYdKAKIAiGU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -868,7 +868,7 @@ const QuoteBuilderScreen = () => {
 
   const currentOrderStatus = normalizeOrderStatus(order?.status || draft.status || '');
   const isOrderLocked = !canEditOrderByStatus(currentOrderStatus, user?.role);
-  const canPersist = Boolean(
+  const canUseActions = Boolean(
     token
     && companyId
     && branchId
@@ -876,7 +876,6 @@ const QuoteBuilderScreen = () => {
     && !sending
     && !loadingFamily
     && !loadingSalesReps
-    && (!requiresSalesRepSelection || Boolean(selectedSalesRepId))
     && !isOrderLocked,
   );
 
@@ -916,6 +915,11 @@ const QuoteBuilderScreen = () => {
     return true;
   }, [customerEmail, customerName, customerPhone, purchaseOrderNumber]);
 
+  const validateSalesRepSelection = useCallback(() => {
+    if (!requiresSalesRepSelection || selectedSalesRepId) return true;
+    setError(salesReps.length ? 'Select a sales rep before saving this quote.' : 'No active sales reps found for this branch.');
+    return false;
+  }, [requiresSalesRepSelection, salesReps.length, selectedSalesRepId]);
 
   const resolvePoReuseConfirmation = useCallback((confirmed: boolean) => {
     const resolve = poReuseResolveRef.current;
@@ -1081,8 +1085,9 @@ const QuoteBuilderScreen = () => {
 
 
   const handleSave = useCallback(async () => {
-    if (!canPersist) return;
+    if (!canUseActions) return;
     if (!validateCustomerDetails()) return;
+    if (!validateSalesRepSelection()) return;
     if (!(await confirmPurchaseOrderReuseInApp())) return;
     setSaving(true);
     setError(null);
@@ -1098,14 +1103,15 @@ const QuoteBuilderScreen = () => {
     } finally {
       setSaving(false);
     }
-  }, [canPersist, confirmPurchaseOrderReuseInApp, navigation, persistOrder, validateCustomerDetails]);
+  }, [canUseActions, confirmPurchaseOrderReuseInApp, navigation, persistOrder, validateCustomerDetails, validateSalesRepSelection]);
 
   const handleSendForApproval = useCallback(async () => {
-    if (!canPersist) return;
+    if (!canUseActions) return;
     if (!validateCustomerDetails()) return;
+    if (!validateSalesRepSelection()) return;
     closeDropdown();
     setApprovalConfirmVisible(true);
-  }, [canPersist, closeDropdown, validateCustomerDetails]);
+  }, [canUseActions, closeDropdown, validateCustomerDetails, validateSalesRepSelection]);
 
   const handleConfirmSendForApproval = useCallback(async () => {
     setApprovalConfirmVisible(false);
@@ -1428,17 +1434,17 @@ const QuoteBuilderScreen = () => {
         ) : null}
         <View style={styles.bottomActionsRow}>
           <TouchableOpacity
-            style={[styles.smallBtn, !canPersist ? styles.actionBtnDisabled : null]}
+            style={[styles.smallBtn, !canUseActions ? styles.actionBtnDisabled : null]}
             onPress={handleSave}
-            disabled={!canPersist}
+            disabled={!canUseActions}
             activeOpacity={0.9}
           >
             <Text style={styles.smallBtnText}>{saving ? 'Saving...' : 'Save Quote'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sendBtn, !canPersist ? styles.sendBtnDisabled : null]}
+            style={[styles.sendBtn, !canUseActions ? styles.sendBtnDisabled : null]}
             onPress={handleSendForApproval}
-            disabled={!canPersist}
+            disabled={!canUseActions}
             activeOpacity={0.9}
           >
             <Text style={styles.sendBtnText}>
