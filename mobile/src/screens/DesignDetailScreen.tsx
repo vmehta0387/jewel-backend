@@ -2413,7 +2413,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#38312A',
     fontWeight: '600',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   inlineDropdownOptionTextActive: {
     color: '#FFFFFF',
@@ -2431,7 +2431,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8F8378',
     fontWeight: '600',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   specCard: {
     marginTop: 10,

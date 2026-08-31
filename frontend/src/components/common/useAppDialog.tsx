@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import AlertDialog from './AlertDialog';
+import AppToast, { AppToastOptions } from './AppToast';
 
 type DialogVariant = 'info' | 'success' | 'warning' | 'error';
+type AlertInput = string | AppToastOptions;
 
 type DialogState =
   | {
@@ -34,6 +36,7 @@ type Resolver = (value: any) => void;
 
 export function useAppDialog() {
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [toast, setToast] = useState<AppToastOptions | null>(null);
   const [inputValue, setInputValue] = useState('');
   const resolverRef = useRef<Resolver | null>(null);
 
@@ -46,15 +49,15 @@ export function useAppDialog() {
 
   const showAlert = useCallback(
     (
-      message: string,
-      options: { title?: string; variant?: DialogVariant; confirmLabel?: string } = {},
+      alert: AlertInput,
+      options: Partial<AppToastOptions> & { confirmLabel?: string } = {},
     ) => {
-      setDialog({
-        mode: 'alert',
-        title: options.title || 'Notice',
-        message,
-        variant: options.variant || 'info',
-        confirmLabel: options.confirmLabel || 'OK',
+      const payload = typeof alert === 'string' ? { ...options, message: alert } : { ...options, ...alert };
+      setToast({
+        ...payload,
+        message: payload.message || '',
+        variant: payload.variant || 'info',
+        position: payload.position || 'top-end',
       });
     },
     [],
@@ -110,6 +113,11 @@ export function useAppDialog() {
   );
 
   const dialogNode = useMemo(() => {
+    if (!dialog && !toast) return null;
+    if (toast) {
+      return <AppToast open {...toast} onClose={() => setToast(null)} />;
+    }
+
     if (!dialog) return null;
     const isConfirm = dialog.mode === 'confirm';
     const isPrompt = dialog.mode === 'prompt';
@@ -134,7 +142,8 @@ export function useAppDialog() {
         }
       />
     );
-  }, [closeDialog, dialog, inputValue]);
+  }, [closeDialog, dialog, inputValue, toast]);
 
   return { showAlert, confirm, prompt, dialogNode };
 }
+

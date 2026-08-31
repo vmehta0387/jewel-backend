@@ -3,6 +3,14 @@ import Button from '../../../components/common/Button';
 import SmartDropdown from '../../../components/common/SmartDropdown';
 import ProductsModal from './ProductsModal';
 
+const buildDesignNoWithUpdatedName = (currentDesignNo: string, designName: string): string => {
+  const styleCode = designName.trim().toUpperCase().replace(/[^A-Z0-9/]+/g, '').replace(/\//g, '-');
+  const existingParts = String(currentDesignNo || '').split('-').filter(Boolean);
+  const restParts = existingParts.slice(1);
+  return [styleCode, ...restParts].filter(Boolean).join('-');
+};
+
+
 interface StateSetter {
   (value: (prev: any) => any): void;
   (value: any): void;
@@ -292,8 +300,13 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={form.designName}
                       onChange={(event) => {
+                        const designName = event.target.value;
                         setIsDesignNameManual(true);
-                        setForm((prev) => ({ ...prev, designName: event.target.value }));
+                        setForm((prev) => ({
+                          ...prev,
+                          designName,
+                          designNo: buildDesignNoWithUpdatedName(prev.designNo, designName),
+                        }));
                       }}
                       placeholder="Design Name"
                     />

@@ -1737,6 +1737,8 @@ export default function ProductsPage() {
   const versionBuilderInitializationSeqRef = useRef(0);
   const selectAllVisibleCheckboxRef = useRef<HTMLInputElement | null>(null);
   const designNoRequestSeqRef = useRef(0);
+  const lastAutoDesignNoRef = useRef('');
+  const previousDesignNameRef = useRef('');
   const designSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const masterRequestCountRef = useRef(0);
   const loadedMasterRequestsRef = useRef(new Set<string>());
@@ -1858,21 +1860,34 @@ export default function ProductsPage() {
   }, [form.jewelryGroup, masterOptions.overheadRules, selectedJewelryGroupMasterId]);
 
   useEffect(() => {
-    if (editingId || sourceDesignNo) {
+    if (sourceDesignNo) {
+      previousDesignNameRef.current = form.designName;
+      lastAutoDesignNoRef.current = structuredDesignNo;
       return;
     }
 
+    const designNameChanged = previousDesignNameRef.current !== form.designName;
+    previousDesignNameRef.current = form.designName;
+
     setForm((prev) => {
-      if (prev.designNo === structuredDesignNo) {
+      const shouldAutoUpdateDesignNo =
+        !editingId ||
+        designNameChanged ||
+        !prev.designNo.trim() ||
+        prev.designNo === lastAutoDesignNoRef.current;
+
+      if (!shouldAutoUpdateDesignNo || prev.designNo === structuredDesignNo) {
+        lastAutoDesignNoRef.current = structuredDesignNo;
         return prev;
       }
 
+      lastAutoDesignNoRef.current = structuredDesignNo;
       return {
         ...prev,
         designNo: structuredDesignNo,
       };
     });
-  }, [editingId, sourceDesignNo, structuredDesignNo]);
+  }, [editingId, form.designName, sourceDesignNo, structuredDesignNo]);
 
   useEffect(() => {
     setVersionBuilderGemGroupModes((prev) => {
@@ -4462,6 +4477,9 @@ export default function ProductsPage() {
             ...failures.slice(0, 4),
           ].join('\n')}${skipped.length + failures.length > 8 ? '\n...' : ''}`,
         );
+        if (failures.length === 0) {
+          closeVersionBuilderModal();
+        }
       } else {
         showAppAlert(`Created ${createdRows.length} version(s) successfully.`);
         closeVersionBuilderModal();
@@ -10541,6 +10559,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
 
 
 
