@@ -107,8 +107,6 @@ type MasterFilterOption = {
   id?: string | number | null;
   value?: string | null;
   label?: string | null;
-  aliasName?: string | null;
-  alias?: string | null;
 };
 
 const normalizeMasterToken = (value?: string | null) => {
@@ -123,7 +121,7 @@ const findMasterFilterOption = <T extends MasterFilterOption>(
   if (toLower(label) === 'all') return undefined;
   const selectedToken = normalizeMasterToken(label);
   return (options || []).find((item) => {
-    const candidates = [item.value, item.label, item.aliasName, item.alias];
+    const candidates = [item.id != null ? String(item.id) : null, item.value, item.label];
     return candidates.some((candidate) => normalizeMasterToken(candidate) === selectedToken);
   });
 };
@@ -1445,4 +1443,6 @@ const styles = StyleSheet.create({
 });
 
 export default DesignsScreen;
+
+
 

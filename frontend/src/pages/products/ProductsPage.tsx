@@ -2465,7 +2465,7 @@ export default function ProductsPage() {
       ...row,
       id: String(row?.id || row?.value || ''),
       value: String(row?.value || ''),
-      aliasName: row?.aliasName ?? row?.label,
+      aliasName: row?.aliasName,
       jewelryGroup: getMasterRelationValue(row?.jewelryGroup ?? row?.jewelryGroupMaster),
       jewelryGroupId: String(row?.jewelryGroupId ?? row?.jewelryGroupMaster?.id ?? ''),
       metalName: getMasterRelationValue(row?.metalName ?? row?.metalMaster),
@@ -4623,7 +4623,7 @@ export default function ProductsPage() {
       ...(extraParams || {}),
     },
     valueKey: 'value',
-    labelKey: 'label',
+    labelKey: 'value',
     placeholder,
   });
 
@@ -6347,13 +6347,6 @@ const createDefaultVendorRow = (): VendorRow => ({
     const forceCreate = Boolean(options?.forceCreate);
     const isUpdate = Boolean(editingId) && !forceCreate;
     const isStructuredNewDesignMode = !isUpdate && !forceCreate && !sourceDesignNo;
-    const originalDesignName = String(detailInfo?.designName || '').trim();
-    const requestedDesignName = String(form.designName || '').trim();
-    const shouldShowFamilyNameSyncNotice =
-      isUpdate &&
-      editingDesignIsPrimary &&
-      requestedDesignName.length > 0 &&
-      requestedDesignName !== originalDesignName;
     if (isUpdate) {
       if (!canModifyExistingDesigns) {
         showAppAlert('You have read-only access for existing designs.');
@@ -6735,9 +6728,6 @@ const createDefaultVendorRow = (): VendorRow => ({
       setShowGalleryPicker(false);
       setStlRemoved(false);
       setShowAddModal(false);
-      if (shouldShowFamilyNameSyncNotice) {
-        showDesignSaveNotice('Design name synced across all versions');
-      }
     } catch (error: any) {
       showAppAlert(error?.response?.data?.message || 'Unable to save design.');
     } finally {
@@ -7763,7 +7753,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                       { value: 'Inactive', label: 'Inactive' },
                     ],
                     valueKey: 'value',
-                    labelKey: 'label',
+                    labelKey: 'value',
                     placeholder: 'All Statuses',
                     showSearch: false,
                   }}
@@ -8167,7 +8157,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   { value: 'Inactive', label: 'Inactive' },
                                 ],
                                 valueKey: 'value',
-                                labelKey: 'label',
+                                labelKey: 'value',
                                 placeholder: 'All Statuses',
                                 showSearch: false,
                               }}
@@ -10551,6 +10541,8 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
+
+
 
 
 

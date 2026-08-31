@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -275,10 +275,13 @@ const optionGroupsFromConfigurator = (
 const QuoteBuilderScreen = () => {
   const route = useRoute<QuoteRoute>();
   const navigation = useNavigation<QuoteNav>();
+  const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const { draft } = route.params;
   const { width, height: windowHeight } = useWindowDimensions();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
+  const footerScrollClearance = FOOTER_SCROLL_CLEARANCE + bottomInset;
   const companyId = user?.companyId || '';
   const branchId = user?.branchId || '';
   const initializedDraftKeyRef = useRef<string | null>(null);
@@ -1413,10 +1416,10 @@ const QuoteBuilderScreen = () => {
           </View>
         </View>
 
-        <View style={{ height: keyboardHeight ? keyboardHeight + 28 : FOOTER_SCROLL_CLEARANCE }} />
+        <View style={{ height: keyboardHeight ? keyboardHeight + bottomInset + 28 : footerScrollClearance }} />
       </ScrollView>
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12 }]}>
         {isOrderLocked ? (
           <View style={styles.lockedOrderNotice}>
             <Ionicons name="lock-closed-outline" size={14} color="#8A7C6B" />
@@ -1451,7 +1454,10 @@ const QuoteBuilderScreen = () => {
         animationType="fade"
         onRequestClose={() => setSalesRepPickerVisible(false)}
       >
-        <Pressable style={styles.pickerOverlay} onPress={() => setSalesRepPickerVisible(false)}>
+        <Pressable
+          style={[styles.pickerOverlay, { paddingBottom: footerScrollClearance }]}
+          onPress={() => setSalesRepPickerVisible(false)}
+        >
           <Pressable style={styles.pickerCard} onPress={(event) => event.stopPropagation()}>
             <Text style={styles.pickerTitle}>Select Sales Rep</Text>
             <ScrollView style={styles.pickerList} nestedScrollEnabled>
@@ -1484,7 +1490,7 @@ const QuoteBuilderScreen = () => {
         animationType="fade"
         onRequestClose={() => setApprovalConfirmVisible(false)}
       >
-        <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmOverlay, { paddingBottom: footerScrollClearance }]}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmHeaderRow}>
               <View style={styles.confirmIconWrap}>

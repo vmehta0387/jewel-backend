@@ -35,7 +35,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import NotificationPopover from '../components/NotificationPopover';
@@ -458,10 +458,12 @@ const DesignDetailScreen = ({
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NativeStackNavigationProp<DesignsStackParamList>>();
   const route = useRoute<RouteProp<DesignsStackParamList, 'DesignDetail'>>();
+  const insets = useSafeAreaInsets();
   const isModal = Boolean(modalDesignId && onClose);
   const designId = modalDesignId || route.params?.designId;
   const presetCategory = modalPresetCategory ?? route.params?.presetCategory;
   const { width, height: windowHeight } = useWindowDimensions();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
   const mediaHeight = Math.min(width >= 700 ? 360 : 260, Math.max(156, width * 0.54));
   const mediaListRef = useRef<FlatList<string> | null>(null);
   const detailScrollRef = useRef<ScrollView | null>(null);
@@ -1626,7 +1628,7 @@ const DesignDetailScreen = ({
         <ScrollView
           ref={detailScrollRef}
           style={styles.detailScroll}
-          contentContainerStyle={styles.detailScrollContent}
+          contentContainerStyle={[styles.detailScrollContent, { paddingBottom: bottomInset + 82 }]}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!dropdownVisible}
           onTouchStart={handleDetailTouchStart}
@@ -1779,7 +1781,10 @@ const DesignDetailScreen = ({
           {/* <GemstoneGrid gemstones={activeDesign.gemstones || []} /> */}
         </ScrollView>
 
-        <View style={styles.bottomSummary} onTouchStart={handleOutsideDropdownTouchStart}>
+        <View
+          style={[styles.bottomSummary, { paddingBottom: bottomInset + 12 }]}
+          onTouchStart={handleOutsideDropdownTouchStart}
+        >
           <View style={styles.bottomTopRow}>
             <View style={styles.retailBlock}>
               <Text style={styles.retailLabel}>RETAIL PRICE</Text>

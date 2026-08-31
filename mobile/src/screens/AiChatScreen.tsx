@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { NavigationProp, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -86,7 +86,9 @@ const AiChatScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const navigation = useNavigation<NavigationProp<any>>();
+  const insets = useSafeAreaInsets();
   const chatRef = useRef<ScrollView | null>(null);
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
   const firstName = useMemo(() => getFirstName(user?.firstName), [user?.firstName]);
 
   const [thread, setThread] = useState<ChatMessage[]>(() => [buildWelcomeMessage(getFirstName(user?.firstName))]);
@@ -354,7 +356,7 @@ const AiChatScreen = () => {
             ) : null}
           </ScrollView>
 
-          <View style={styles.inputArea}>
+          <View style={[styles.inputArea, { paddingBottom: bottomInset + 10 }]}>
             <View style={styles.inputShell}>
               <TextInput
                 style={styles.input}

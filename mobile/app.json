@@ -62,7 +62,16 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-font",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#A67F3F",
+          "sounds": [
+            "./assets/notification_beep.wav"
+          ]
+        }
+      ],
       "expo-video"
     ],
     "owner": "vmehta0387"

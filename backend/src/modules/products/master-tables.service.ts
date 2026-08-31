@@ -605,7 +605,6 @@ export class MasterTablesService {
 
     const repo = this.getRepository(masterType);
     const data = this.pickWritable(masterType, dto);
-    await this.syncMetalCaratageDisplayValue(masterType, data);
     await this.validateBeforeSave(masterType, data);
     await this.assertUnique(repo, masterType, data);
     const row = repo.create(data);
@@ -628,7 +627,6 @@ export class MasterTablesService {
 
     const data = this.pickWritable(masterType, dto);
     const nextRow = { ...row, ...data };
-    await this.syncMetalCaratageDisplayValue(masterType, nextRow);
     await this.validateBeforeSave(masterType, nextRow);
     await this.assertUnique(repo, masterType, nextRow, id);
     if (masterType === DesignMasterType.METAL_CARATAGE) {
@@ -1493,26 +1491,6 @@ export class MasterTablesService {
     return data;
   }
 
-  /**
-   * Metal caratage keeps value and alias in sync, while duplicate validation
-   * is enforced separately by selected metal, purity, and color.
-   */
-  private async syncMetalCaratageDisplayValue(
-    masterType: DesignMasterType,
-    data: Record<string, unknown>,
-  ): Promise<void> {
-    if (masterType !== DesignMasterType.METAL_CARATAGE) {
-      return;
-    }
-
-    const displayValue = this.optionalString(data.aliasName) || this.optionalString(data.value);
-    if (!displayValue) {
-      return;
-    }
-
-    data.value = displayValue;
-    data.aliasName = displayValue;
-  }
 
   private async validateBeforeSave(masterType: DesignMasterType, data: Record<string, unknown>) {
     if (!this.optionalString(data.value)) {
@@ -1728,4 +1706,5 @@ export class MasterTablesService {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }
+
 

@@ -750,7 +750,6 @@ export default function DesignMastersPage() {
       purityOption,
     );
     setFormValue(computedValue);
-    setFormAliasName(computedValue);
   }, [selectedType]);
 
   const handleMetalNameChange = useCallback((value: string, option?: SmartDropdownOption | null) => {
@@ -1094,9 +1093,6 @@ export default function DesignMastersPage() {
 
     let value = formValue.trim();
     let aliasName = formAliasName.trim();
-    if (selectedType === 'METAL_CARATAGE') {
-      value = aliasName;
-    }
     if (!value || !aliasName) {
       showAppAlert('Master name and alias name are required.');
       return;
@@ -2414,4 +2410,6 @@ export default function DesignMastersPage() {
     </div>
   );
 }
+
+
 

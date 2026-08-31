@@ -214,11 +214,12 @@ const registerForPushNotificationsAsync = async (authToken: string, deviceId?: s
   }
 
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
+    await Notifications.setNotificationChannelAsync('blitz-alerts', {
+      name: 'BLITZ alerts',
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#A67F3F',
+      sound: 'notification_beep.wav',
     });
   }
 

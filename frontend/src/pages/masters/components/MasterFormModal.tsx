@@ -962,9 +962,19 @@ export function MasterFormModal({
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
                     <input
                       className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      value={formValue}
+                      onChange={(event) => onChangeValue(event.target.value)}
+                      placeholder="Metal Caratage Name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
+                    <input
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                       value={formAliasName}
                       onChange={(event) => onChangeAliasName(event.target.value)}
-                      placeholder="Metal Caratage Name"
+                      placeholder="Alias Name"
                       required
                     />
                   </div>
@@ -1323,4 +1333,7 @@ export function PacketFormModal({
     document.body,
   );
 }
+
+
+
 

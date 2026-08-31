@@ -522,9 +522,7 @@ export class ProductsService {
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
     const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
-    if (isPrimary) {
-      await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
-    }
+    await this.assertUniqueDesignName(resolvedDesignName, scope.companyId, undefined);
 
     const globalRateMaps = await this.getGlobalRateMaps();
     const metalCaratageRates = await this.getMetalCaratageRateMap();
@@ -3370,17 +3368,14 @@ export class ProductsService {
     const resolvedFamilyId = await this.resolveFamilyDesignId(undefined, designNo, scope);
     design.familyDesignId = design.familyDesignId || (resolvedFamilyId !== null ? resolvedFamilyId : Number(design.id));
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
-    const shouldSyncFamilyName = design.isPrimary && dto.designName !== undefined;
     if (dto.designName !== undefined) {
-      if (design.isPrimary && nextRequestedDesignName) {
+      if (nextRequestedDesignName) {
         await this.assertUniqueDesignName(nextRequestedDesignName, scope.companyId, id);
       }
-      design.designName = design.isPrimary ? nextRequestedDesignName : design.designName;
+      design.designName = nextRequestedDesignName;
     } else if (!this.optionalText(design.designName)) {
       const fallbackDesignName = this.buildDefaultDesignName(designJewelryGroup, designNo);
-      if (design.isPrimary) {
-        await this.assertUniqueDesignName(fallbackDesignName, scope.companyId, id);
-      }
+      await this.assertUniqueDesignName(fallbackDesignName, scope.companyId, id);
       design.designName = fallbackDesignName;
     }
     design.companyId = scope.companyId;
@@ -3436,10 +3431,6 @@ export class ProductsService {
         );
       }
     });
-
-    if (shouldSyncFamilyName) {
-      await this.syncFamilyDesignName(design, design.designName, requester.id);
-    }
 
     if (dto.metals !== undefined) {
       await this.replaceMetalRows(id, normalizedMetals);
@@ -4203,26 +4194,29 @@ export class ProductsService {
 
   private async assertUniqueDesign(
     designNo: string,
-    version: string,
-    companyId: number | null,
+    _version: string,
+    _companyId: number | null,
     excludeId?: string | number,
   ): Promise<void> {
-    const existing = await this.designRepo.findOne({
-      where: {
-        designNo,
-        version,
-        companyId,
-      },
-    });
+    const normalizedDesignNo = this.normalizeDesignNo(designNo);
+    const qb = this.designRepo
+      .createQueryBuilder('design')
+      .select('design.id')
+      .where('UPPER(TRIM(design.designNo)) = :designNo', { designNo: normalizedDesignNo });
 
-    if (existing && Number(existing.id) !== Number(excludeId)) {
-      throw new BadRequestException('Design no and version already exist for this company');
+    if (excludeId !== undefined && excludeId !== null) {
+      qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
+    }
+
+    const existing = await qb.getRawOne<{ id: string | number }>();
+    if (existing) {
+      throw new BadRequestException('Design No already exists.');
     }
   }
 
   private async assertUniqueDesignName(
     designName: string | null,
-    companyId: number | null,
+    _companyId: number | null,
     excludeId?: string | number,
   ): Promise<void> {
     const normalizedDesignName = this.optionalText(designName);
@@ -4233,14 +4227,7 @@ export class ProductsService {
     const qb = this.designRepo
       .createQueryBuilder('design')
       .select('design.id')
-      .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName })
-      .andWhere('design.isPrimary = :isPrimary', { isPrimary: true });
-
-    if (companyId) {
-      qb.andWhere('design.companyId = :companyId', { companyId });
-    } else {
-      qb.andWhere('design.companyId IS NULL');
-    }
+      .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName });
 
     if (excludeId !== undefined && excludeId !== null) {
       qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
@@ -4354,12 +4341,6 @@ export class ProductsService {
         'maxSequence',
       )
       .where('design.designNo REGEXP :regex', { regex });
-
-    if (companyId) {
-      qb.andWhere('design.companyId = :companyId', { companyId });
-    } else {
-      qb.andWhere('design.companyId IS NULL');
-    }
 
     const result = await qb.getRawOne<{ maxSequence?: number | string | null }>();
     const maxSequence = Number(result?.maxSequence ?? 0);
@@ -7116,6 +7097,8 @@ export class ProductsService {
   }
 
 }
+
+
 
 
 

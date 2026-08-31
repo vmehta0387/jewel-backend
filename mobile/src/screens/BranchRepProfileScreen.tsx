@@ -3,6 +3,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
@@ -97,6 +98,7 @@ const splitName = (fullName: string) => {
 
 const BranchRepProfileScreen = () => {
   const { token, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<RepProfileNav>();
   const route = useRoute<RepProfileRoute>();
 
@@ -245,6 +247,7 @@ const BranchRepProfileScreen = () => {
 
   const isOnline = Boolean(employee.isActive && employee.isOnline);
   const canManageProfile = employee.role === 'SALES_REP' && hasActionPermission(user, 'team.employee.manage');
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
   const initial = (employee.firstName?.[0] || employee.email?.[0] || 'R').toUpperCase();
   const subtitle = `Sales Associate \u2022 ${selectedBranchName || 'Branch'}`;
 
@@ -341,7 +344,10 @@ const BranchRepProfileScreen = () => {
       {editNotice ? <Text style={styles.noticeText}>{editNotice}</Text> : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, canManageProfile ? { paddingBottom: bottomInset + 120 } : null]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.profileCard}>
           {employee.photoUrl ? (
             <Image source={{ uri: employee.photoUrl }} style={styles.avatar} />
@@ -496,7 +502,7 @@ const BranchRepProfileScreen = () => {
       </ScrollView>
 
       {canManageProfile ? (
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12 }]}>
           <TouchableOpacity
             style={[styles.suspendBtn, saving ? styles.btnDisabled : null]}
             onPress={toggleSuspend}

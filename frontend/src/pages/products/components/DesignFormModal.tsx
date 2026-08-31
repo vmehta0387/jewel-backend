@@ -40,7 +40,6 @@ interface DesignFormModalScope {
   getGemValue: (...args: any[]) => any;
   getGemWeight: (...args: any[]) => any;
   getLaborValue: (...args: any[]) => any;
-  getMetalCaratageDisplay: (...args: any[]) => any;
   getMetalTotalWt: (...args: any[]) => any;
   getMetalValue: (...args: any[]) => any;
   getOverheadApplyModeLabel: (...args: any[]) => any;
@@ -168,7 +167,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     getGemValue,
     getGemWeight,
     getLaborValue,
-    getMetalCaratageDisplay,
     getMetalTotalWt,
     getMetalValue,
     getOverheadApplyModeLabel,
@@ -291,34 +289,25 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                   <div className="xl:col-span-6">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design Name</label>
                     <input
-                      className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${
-                        isDesignIdentityLocked ? 'bg-[#c9d5e0] text-slate-500' : ''
-                      }`}
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
                       value={form.designName}
                       onChange={(event) => {
                         setIsDesignNameManual(true);
                         setForm((prev) => ({ ...prev, designName: event.target.value }));
                       }}
-                      readOnly={isDesignIdentityLocked}
                       placeholder="Design Name"
                     />
-                    {isDesignIdentityLocked ? (
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Design name is locked because it is part of Design No.
-                      </p>
-                    ) : null}
                   </div>
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Design No *</label>
                     <input
-                      className={`w-full rounded border border-gray-300 px-2 py-2 text-sm text-slate-700 ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
+                      className="w-full rounded border border-gray-300 px-2 py-2 text-sm text-slate-700"
                       value={form.designNo}
                       onChange={(event) => {
                         setIsDesignNoManual(true);
                         setForm((prev) => ({ ...prev, designNo: event.target.value }));
                       }}
                       placeholder="Design No"
-                      readOnly={isDesignIdentityLocked}
                     />
                   </div>
                   <div className="xl:col-span-3">
@@ -450,7 +439,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       <input
                         className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
                         value={form.coverageCustom}
-                        readOnly={isDesignIdentityLocked}
                         onChange={(event) => setForm((prev) => ({ ...prev, coverageCustom: event.target.value }))}
                         placeholder="C"
                       />
@@ -462,7 +450,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       <input
                         className={`w-full rounded border border-gray-300 px-2 py-2 text-sm ${isDesignIdentityLocked ? 'bg-[#c9d5e0]' : ''}`}
                         value={form.diamondQualityCustom}
-                        readOnly={isDesignIdentityLocked}
                         onChange={(event) => setForm((prev) => ({ ...prev, diamondQualityCustom: event.target.value }))}
                         placeholder="C"
                       />
@@ -1037,11 +1024,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                                         ? [{
                                             id: `current-${item.metalCaratage}`,
                                             value: item.metalCaratage,
-                                            label:
-                                              getMetalCaratageDisplay(
-                                                item.metalCaratage,
-                                                masterOptions.metalCaratages,
-                                              ) || item.metalCaratage,
+                                            label: item.metalCaratage,
                                           }]
                                         : []),
                                       ...masterOptions.metalCaratages.map((option) => {
@@ -1570,6 +1553,10 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     </ProductsModal>
   );
 }
+
+
+
+
 
 
 

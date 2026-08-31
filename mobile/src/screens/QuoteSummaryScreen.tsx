@@ -17,7 +17,7 @@ import * as Sharing from 'expo-sharing';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createOrder, fetchOrder, getOrderPdfUrl, updateOrder } from '../api/orders';
 import { fetchAllDesigns, fetchDesign } from '../api/designs';
@@ -305,6 +305,7 @@ const mergeOrderIntoSummary = (base: QuoteSummaryPayload, order: Order): QuoteSu
 const QuoteSummaryScreen = () => {
   const route = useRoute<SummaryRoute>();
   const navigation = useNavigation<SummaryNav>();
+  const insets = useSafeAreaInsets();
   const { token, user } = useAuth();
   const { summary } = route.params;
 
@@ -744,6 +745,8 @@ const QuoteSummaryScreen = () => {
   );
 
   const showManagerPendingActions = canApproveOrderByStatus(statusKey, user?.role);
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
+  const bottomBarClearance = bottomInset + 138;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -765,7 +768,10 @@ const QuoteSummaryScreen = () => {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomBarClearance }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.topCard}>
           <View style={styles.topLineRow}>
             <Text style={styles.quoteText}>QUOTE #{orderNumber || 'DRAFT'}</Text>
@@ -894,11 +900,10 @@ const QuoteSummaryScreen = () => {
           )}
         </View>
 
-        <View style={{ height: 138 }} />
       </ScrollView>
 
       {toastMessage ? (
-        <View style={styles.toastWrap} pointerEvents="none">
+        <View style={[styles.toastWrap, { bottom: bottomInset + 96 }]} pointerEvents="none">
           <View style={styles.toastPill}>
             <Ionicons name="checkmark-circle" size={15} color="#FFFFFF" />
             <Text style={styles.toastText}>{toastMessage}</Text>
@@ -906,7 +911,7 @@ const QuoteSummaryScreen = () => {
         </View>
       ) : null}
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12 }]}>
         {showManagerPendingActions ? (
           <View style={styles.managerDecisionRow}>
             <TouchableOpacity

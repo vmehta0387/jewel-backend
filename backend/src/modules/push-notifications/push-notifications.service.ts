@@ -126,7 +126,8 @@ export class PushNotificationsService {
         to: device.expoPushToken,
         title: notification.title,
         body: notification.message,
-        sound: 'default',
+        sound: 'notification_beep.wav',
+        channelId: 'blitz-alerts',
         priority: notification.priority === NotificationPriority.P0 ? 'high' : 'default',
         data: {
           notificationId: notification.id,
