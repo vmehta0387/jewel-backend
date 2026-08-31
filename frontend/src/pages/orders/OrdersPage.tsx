@@ -2450,7 +2450,8 @@ export default function OrdersPage() {
                             valueKey: 'id',
                             labelKey: 'companyName',
                             placeholder: 'Select Company',
-                            options: form.companyId ? companies.filter(c => c.id === form.companyId).map(c => ({ id: c.id, companyName: c.companyName })) : [],
+                            options: companies.map((company) => ({ ...company, label: company.companyCode ? company.companyName + ' (' + company.companyCode + ')' : company.companyName })),
+                            renderLabel: (option) => [option.companyName, option.companyCode ? '(' + option.companyCode + ')' : ''].filter(Boolean).join(' '),
                           }}
                           className={`mt-1 ${formErrors.companyId
                             ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
@@ -2482,7 +2483,8 @@ export default function OrdersPage() {
                           labelKey: 'name',
                           placeholder: 'Select Branch',
                           disabled: !canSelectOrderBranch || !form.companyId,
-                          options: form.branchId ? branches.filter(b => b.id === form.branchId).map(b => ({ id: b.id, name: b.name })) : [],
+                          options: branches.map((branch) => ({ ...branch, label: branch.code ? branch.name + ' (' + branch.code + ')' : branch.name })),
+                          renderLabel: (option) => [option.name, option.code ? '(' + option.code + ')' : ''].filter(Boolean).join(' '),
                         }}
                         className={`mt-1 ${formErrors.branchId
                           ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
@@ -2506,7 +2508,7 @@ export default function OrdersPage() {
                         }}
                         config={{
                           apiSubPath: '/users/lookup',
-                          extraParams: { role: 'SALES_REP', status: 'ACTIVE', branchId: form.branchId },
+                          extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: form.companyId || undefined, branchId: form.branchId },
                           valueKey: 'id',
                           labelKey: 'email',
                           renderLabel: (option) => {
@@ -2515,12 +2517,7 @@ export default function OrdersPage() {
                           },
                           placeholder: 'Select Sales Rep',
                           disabled: currentUser?.role === 'SALES_REP' || !form.branchId,
-                          options: form.salesRepId ? salesReps.filter(s => s.id === form.salesRepId).map(s => ({
-                            id: s.id,
-                            email: s.email,
-                            firstName: s.firstName,
-                            lastName: s.lastName
-                          })) : [],
+                          options: salesReps.map((rep) => ({ ...rep })),
                         }}
                         className={`mt-1 ${formErrors.salesRepId
                           ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
@@ -3676,4 +3673,7 @@ export default function OrdersPage() {
     </div>
   );
 }
+
+
+
 
