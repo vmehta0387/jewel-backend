@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "BLITZ NYC",
-    "slug": "mobile",
+    "slug": "blitz-nyc",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,9 +22,10 @@
       "version": "1.0.1",
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "POST_NOTIFICATIONS"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
@@ -41,7 +42,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "91a68c90-064d-4a53-9f1b-9b704b828945"
+        "projectId": "14521bc0-5134-4952-8c37-624a892e676a"
       }
     },
     "plugins": [
@@ -75,6 +76,6 @@
       ],
       "expo-video"
     ],
-    "owner": "vmehta0387"
+    "owner": "blitz-nyc"
   }
 }
