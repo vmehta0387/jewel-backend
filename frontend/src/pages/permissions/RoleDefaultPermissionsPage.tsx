@@ -6,6 +6,7 @@ import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
+  getDefaultDetailedPermissionsByRole,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
 
@@ -27,7 +28,7 @@ const EDITABLE_ROLES = USER_ROLE_OPTIONS.filter((role) => role.value !== 'SUPER_
 
 const createFallbackDraft = (role: UserRole): RoleDefaultDraft => ({
   taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role] || [],
-  detailedPermissions: [],
+  detailedPermissions: [...getDefaultDetailedPermissionsByRole(role)],
 });
 
 export default function RoleDefaultPermissionsPage() {

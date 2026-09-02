@@ -23,6 +23,10 @@ export class CreateOrderDto {
   salesRepId?: number;
 
   @IsOptional()
+  @IsIn(['SALES_REP', 'BRANCH_MANAGER'])
+  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER';
+
+  @IsOptional()
   @IsString()
   deliveryDate?: string;
 
@@ -113,6 +117,10 @@ export class UpdateOrderDto {
   @IsInt()
   @Min(1)
   salesRepId?: number;
+
+  @IsOptional()
+  @IsIn(['SALES_REP', 'BRANCH_MANAGER'])
+  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER';
 
   @IsOptional()
   @IsString()
@@ -315,7 +323,6 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-
 
 
 

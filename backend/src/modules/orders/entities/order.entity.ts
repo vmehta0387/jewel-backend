@@ -37,6 +37,8 @@ export class Order {
 
   @Index('idx_orders_sales_rep_id')
   @Column({ name: 'sales_rep_id', type: 'int', width: 11, nullable: true })
+  // Legacy column name retained for backwards compatibility. It stores the
+  // assigned user ID, which may be a Sales Rep or a Branch Manager.
   salesRepId: number | null;
 
   @Index('idx_orders_created_by')

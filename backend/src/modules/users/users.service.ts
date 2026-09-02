@@ -30,6 +30,7 @@ import {
   PermissionDataScope,
   UserPermissionAction,
 } from '../permissions/entities/user-permission-action.entity';
+import { getRestoredSpiffPermissionsForRole } from '../permissions/spiff-role-permissions';
 
 export interface UserResponse {
   id: number;
@@ -451,7 +452,10 @@ export class UsersService implements OnModuleInit {
       isActive: dto.isActive ?? true,
       taskPermissions:
         normalizedDetailedPermissions !== undefined
-          ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role)
+          ? this.normalizePermissions([
+            ...this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role),
+            ...(defaultAssignment?.usesBuiltInRoleDefaults ? defaultAssignment.taskPermissions : []),
+          ], dto.role)
           : this.normalizePermissions(defaultAssignment?.taskPermissions ?? dto.taskPermissions, dto.role),
     });
 
@@ -555,7 +559,10 @@ export class UsersService implements OnModuleInit {
             : user.taskPermissions || [];
     user.taskPermissions =
       normalizedDetailedPermissions !== undefined
-        ? this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, nextRole)
+        ? this.normalizePermissions([
+          ...this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, nextRole),
+          ...(defaultAssignment?.usesBuiltInRoleDefaults ? defaultAssignment.taskPermissions : []),
+        ], nextRole)
         : this.normalizePermissions(permissionsInput, nextRole);
 
     await this.userRepo.save(user);
@@ -1306,20 +1313,36 @@ export class UsersService implements OnModuleInit {
   private async resolveRoleDefaultPermissionAssignment(role: UserRole): Promise<{
     taskPermissions: TaskPermission[];
     detailedPermissions?: { actionKey: string; dataScope: PermissionDataScope }[];
+    usesBuiltInRoleDefaults?: boolean;
   }> {
     const defaultProfile = await this.permissionsService.getRoleDefault(role);
     if (!defaultProfile) {
-      return { taskPermissions: this.normalizePermissions(undefined, role) };
+      const restoredSpiffPermissions = getRestoredSpiffPermissionsForRole(role);
+      return {
+        taskPermissions: this.normalizePermissions(undefined, role),
+        detailedPermissions: restoredSpiffPermissions.length > 0 ? restoredSpiffPermissions : undefined,
+        usesBuiltInRoleDefaults: true,
+      };
     }
 
     const detailedPermissions = this.normalizeDetailedPermissions(defaultProfile.detailedPermissions || []);
-    const taskPermissions = detailedPermissions.length > 0
-      ? this.deriveLegacyPermissionsFromDetailed(detailedPermissions, role)
-      : this.normalizePermissions(defaultProfile.taskPermissions, role);
+    const restoredSpiffPermissions = getRestoredSpiffPermissionsForRole(role);
+    const hasOnlyRestoredSpiffPermissions =
+      restoredSpiffPermissions.length > 0 &&
+      detailedPermissions.length === restoredSpiffPermissions.length &&
+      detailedPermissions.every((permission) =>
+        restoredSpiffPermissions.some((restored) => restored.actionKey === permission.actionKey),
+      );
+    const taskPermissions = hasOnlyRestoredSpiffPermissions
+      ? this.normalizePermissions(defaultProfile.taskPermissions, role)
+      : detailedPermissions.length > 0
+        ? this.deriveLegacyPermissionsFromDetailed(detailedPermissions, role)
+        : this.normalizePermissions(defaultProfile.taskPermissions, role);
 
     return {
       taskPermissions,
       detailedPermissions: detailedPermissions.length > 0 ? detailedPermissions : undefined,
+      usesBuiltInRoleDefaults: hasOnlyRestoredSpiffPermissions,
     };
   }
   private normalizePermissions(
@@ -1918,5 +1941,3 @@ export class UsersService implements OnModuleInit {
     return `s3://${s3Config.bucket}/${key}`;
   }
 }
-
-

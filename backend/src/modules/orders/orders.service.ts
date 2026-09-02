@@ -224,7 +224,7 @@ export class OrdersService implements OnModuleInit {
     if (query.search?.trim()) {
       const search = `%${query.search.trim()}%`;
       qb.andWhere(
-        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR design.designName LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
+        '(order.orderNumber LIKE :search OR design.designNo LIKE :search OR design.designName LIKE :search OR company.companyName LIKE :search OR branch.name LIKE :search OR salesRep.firstName LIKE :search OR salesRep.lastName LIKE :search OR salesRep.email LIKE :search OR order.customerName LIKE :search OR order.customerPhone LIKE :search OR order.customerEmail LIKE :search OR order.purchaseOrderNumber LIKE :search)',
         { search },
       );
     }
@@ -299,6 +299,7 @@ export class OrdersService implements OnModuleInit {
       .addSelect('design.designName', 'read_designName')
       .addSelect('design.version', 'read_designVersion')
       .addSelect('salesRep.email', 'read_salesRepEmail')
+      .addSelect('salesRep.role', 'read_assignedUserRole')
       .addSelect("NULLIF(TRIM(CONCAT(COALESCE(salesRep.firstName, ''), ' ', COALESCE(salesRep.lastName, ''))), '')", 'read_salesRepName')
       .addSelect("NULLIF(TRIM(CONCAT(COALESCE(branchManager.firstName, ''), ' ', COALESCE(branchManager.lastName, ''))), '')", 'read_branchManagerName');
   }
@@ -323,6 +324,7 @@ export class OrdersService implements OnModuleInit {
           : null;
         const designImageUrl = await this.resolveOrderDesignImageUrl(primaryImage);
         const salesRepName = this.optionalText(raw.read_salesRepName) || this.optionalText(raw.read_salesRepEmail);
+        const assignedUserRole = this.optionalText(raw.read_assignedUserRole) || UserRole.SALES_REP;
         const branchManagerName = this.optionalText(raw.read_branchManagerName) || this.optionalText(order.branch?.branchManager?.email);
 
         return {
@@ -346,6 +348,9 @@ export class OrdersService implements OnModuleInit {
           costPrice: await this.resolveVisibleCostPrice(order, requester),
           salesRepName,
           salesRepEmail: this.optionalText(raw.read_salesRepEmail),
+          assignedUserId: order.salesRepId,
+          assignedUserName: salesRepName,
+          assignedUserRole,
           branchManagerName,
           designImageUrl,
         };
@@ -419,7 +424,7 @@ export class OrdersService implements OnModuleInit {
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
-      });
+      }, dto.assignedUserRole);
       const { orderNumber } = await this.getNextOrderNumber();
       const requestedStatus = dto.orderType === 'ORDER' ? undefined : dto.status;
       const createStatusUser = requester.role === UserRole.BRANCH_MANAGER ? requester : selectedSalesRep || requester;
@@ -501,32 +506,37 @@ export class OrdersService implements OnModuleInit {
     salesRepId: number | undefined,
     requester: AuthUser,
     scope: { companyId: number | null; branchId: number | null },
+    assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER',
   ): Promise<User | null> {
     if (salesRepId) {
-      return this.resolveOrderSalesRep(salesRepId, scope);
+      const expectedRole = assignedUserRole === 'BRANCH_MANAGER'
+        ? UserRole.BRANCH_MANAGER
+        : UserRole.SALES_REP;
+      return this.resolveOrderSalesRep(salesRepId, scope, expectedRole);
     }
 
-    if (requester.role === UserRole.SALES_REP) {
-      return this.resolveOrderSalesRep(requester.id, scope);
+    if (requester.role === UserRole.SALES_REP || requester.role === UserRole.BRANCH_MANAGER) {
+      return this.resolveOrderSalesRep(requester.id, scope, requester.role);
     }
 
-    throw new BadRequestException('Sales rep is required');
+    throw new BadRequestException('An assigned Sales Rep or Branch Manager is required');
   }
   private async resolveOrderSalesRep(
     salesRepId: number | undefined,
     scope: { companyId: number | null; branchId: number | null },
+    assignedUserRole: UserRole.SALES_REP | UserRole.BRANCH_MANAGER = UserRole.SALES_REP,
   ): Promise<User | null> {
     const normalizedSalesRepId = salesRepId;
 
     const salesRep = await this.userRepo.findOne({ where: { id: normalizedSalesRepId } });
-    if (!salesRep || salesRep.role !== UserRole.SALES_REP || !salesRep.isActive) {
-      throw new BadRequestException('Selected sales rep not found');
+    if (!salesRep || salesRep.role !== assignedUserRole || !salesRep.isActive) {
+      throw new BadRequestException(`Selected ${assignedUserRole === UserRole.BRANCH_MANAGER ? 'branch manager' : 'sales rep'} not found`);
     }
     if (scope.companyId && salesRep.companyId !== scope.companyId) {
-      throw new BadRequestException('Sales rep does not belong to the selected company');
+      throw new BadRequestException('Selected user does not belong to the selected company');
     }
     if (scope.branchId && salesRep.branchId !== scope.branchId) {
-      throw new BadRequestException('Sales rep does not belong to the selected branch');
+      throw new BadRequestException('Selected user does not belong to the selected branch');
     }
     return salesRep;
   }
@@ -663,7 +673,7 @@ export class OrdersService implements OnModuleInit {
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
-      });
+      }, dto.assignedUserRole);
       order.salesRepId = selectedSalesRep?.id || null;
       order.salesRep = selectedSalesRep;
     }
@@ -1680,6 +1690,7 @@ export class OrdersService implements OnModuleInit {
       'branchId',
       'designId',
       'salesRepId',
+      'assignedUserRole',
       'deliveryDate',
       'quantity',
       'price',
@@ -2449,4 +2460,3 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
-

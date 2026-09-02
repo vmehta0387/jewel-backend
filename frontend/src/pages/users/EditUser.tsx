@@ -12,6 +12,7 @@ import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
+  getDefaultDetailedPermissionsByRole,
   USER_ROLE_OPTIONS,
   UserRecord,
 } from '../../types/user.types';
@@ -241,8 +242,8 @@ export default function EditUser() {
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: [],
-      detailedPermissions: [],
+      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
+      detailedPermissions: [...getDefaultDetailedPermissionsByRole(role)],
     }));
   };
 
@@ -603,7 +604,6 @@ export default function EditUser() {
     </div>
   );
 }
-
 
 
 

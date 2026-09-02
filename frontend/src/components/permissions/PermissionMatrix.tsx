@@ -402,9 +402,9 @@ const MODULES: PermissionModule[] = [
       SALES_REP: 'OWN',
     },
     actions: [
-      { key: 'spiff.view', label: 'View SPIFF', description: 'Open SPIFF rewards screens.', group: 'SPIFF Access', platform: 'web', legacyPermission: 'ORDER_ENTRIES' },
-      { key: 'spiff.claim.create', label: 'Submit claim', description: 'Create redemption claims.', group: 'Claims', platform: 'web', legacyPermission: 'ORDER_ENTRIES' },
-      { key: 'spiff.claim.review', label: 'Review claim', description: 'Approve, hold, or reject claims.', group: 'Claims', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
+      { key: 'spiff.view', label: 'View SPIFF', description: 'Open SPIFF rewards screens.', group: 'SPIFF Access', platform: 'both', legacyPermission: 'ORDER_ENTRIES' },
+      { key: 'spiff.claim.create', label: 'Submit claim', description: 'Create redemption claims.', group: 'Claims', platform: 'both', legacyPermission: 'ORDER_ENTRIES' },
+      { key: 'spiff.claim.review', label: 'Review claim', description: 'Approve, hold, or reject claims.', group: 'Claims', platform: 'both', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'spiff.claim.fulfill', label: 'Fulfill claim', description: 'Fulfill approved claims.', group: 'Claims', platform: 'web', legacyPermission: 'ORDER_APPROVALS', sensitive: true },
       { key: 'spiff.config.edit', label: 'Edit SPIFF config', description: 'Change points and conversion rules.', group: 'Configuration', platform: 'web', sensitive: true },
       { key: 'mobile.spiff.view', label: 'View mobile SPIFF', description: 'Open mobile SPIFF rewards screens.', group: 'SPIFF Access', platform: 'mobile', legacyPermission: 'ORDER_ENTRIES' },
@@ -458,11 +458,17 @@ const MODULES: PermissionModule[] = [
 
 const SALES_REP_PERMISSION_ACTIONS = new Set([
   'order.require_approval',
+  'spiff.view',
+  'spiff.claim.create',
+  'spiff.claim.review',
 ]);
 
 const BRANCH_MANAGER_PERMISSION_ACTIONS = new Set([
   'order.require_approval',
   'mobile.order.status_update',
+  'spiff.view',
+  'spiff.claim.create',
+  'spiff.claim.review',
 ]);
 
 const COMPANY_ADMIN_HIDDEN_PERMISSION_ACTIONS = new Set([

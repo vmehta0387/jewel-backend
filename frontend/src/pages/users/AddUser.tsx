@@ -12,6 +12,7 @@ import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
+  getDefaultDetailedPermissionsByRole,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
@@ -117,8 +118,8 @@ export default function AddUser() {
     phone: '',
     photoUrl: '',
     isActive: true,
-    taskPermissions: [],
-    detailedPermissions: [],
+    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
+    detailedPermissions: [...getDefaultDetailedPermissionsByRole(presetRole)],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
   const canCustomizePermissions = Boolean(
@@ -225,8 +226,8 @@ export default function AddUser() {
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: [],
-      detailedPermissions: [],
+      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
+      detailedPermissions: [...getDefaultDetailedPermissionsByRole(role)],
     }));
   };
 
@@ -580,7 +581,6 @@ export default function AddUser() {
     </div>
   );
 }
-
 
 
 

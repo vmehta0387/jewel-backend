@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { TaskPermission } from '../../common/enums/task-permission.enum';
@@ -9,6 +9,9 @@ import { RoleDefaultPermissionAction } from './entities/role-default-permission-
 import { RolePermissionDefault } from './entities/role-permission-default.entity';
 import { PermissionDataScope } from './entities/user-permission-action.entity';
 import { UpdateRolePermissionDefaultDto } from './dto/role-permission-default.dto';
+import { User } from '../users/entities/user.entity';
+import { UserPermissionAction } from './entities/user-permission-action.entity';
+import { getRestoredSpiffPermissionsForRole } from './spiff-role-permissions';
 
 const HIDDEN_PERMISSION_MODULES = new Set([
   'design',
@@ -69,7 +72,7 @@ const HIDDEN_PERMISSION_ACTIONS = new Set([
 ]);
 
 @Injectable()
-export class PermissionsService {
+export class PermissionsService implements OnModuleInit {
   constructor(
     @InjectRepository(PermissionModule)
     private readonly moduleRepo: Repository<PermissionModule>,
@@ -79,7 +82,61 @@ export class PermissionsService {
     private readonly roleDefaultRepo: Repository<RolePermissionDefault>,
     @InjectRepository(RoleDefaultPermissionAction)
     private readonly roleDefaultActionRepo: Repository<RoleDefaultPermissionAction>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(UserPermissionAction)
+    private readonly userPermissionActionRepo: Repository<UserPermissionAction>,
   ) {}
+
+  async onModuleInit() {
+    await this.backfillRestoredSpiffPermissions();
+  }
+
+  /**
+   * Restores the SPIFF baseline for both existing users and any saved role
+   * defaults. Inserts are idempotent, so administrator-assigned permissions
+   * are preserved and no unrelated permissions are changed.
+   */
+  private async backfillRestoredSpiffPermissions() {
+    try {
+      const roles = [UserRole.SALES_REP, UserRole.BRANCH_MANAGER];
+      const [users, roleDefaults] = await Promise.all([
+        this.userRepo.find({ where: { role: In(roles) }, select: ['id', 'role'] }),
+        this.roleDefaultRepo.find({ where: { role: In(roles), isActive: true }, select: ['id', 'role'] }),
+      ]);
+
+      const userRows = users.flatMap((user) =>
+        getRestoredSpiffPermissionsForRole(user.role).map((permission) =>
+          ({ userId: user.id, ...permission }),
+        ),
+      );
+      const roleDefaultRows = roleDefaults.flatMap((defaultProfile) =>
+        getRestoredSpiffPermissionsForRole(defaultProfile.role).map((permission) =>
+          ({ defaultId: defaultProfile.id, ...permission }),
+        ),
+      );
+
+      if (userRows.length > 0) {
+        const placeholders = userRows.map(() => '(?, ?, ?)').join(', ');
+        await this.userPermissionActionRepo.query(
+          `INSERT IGNORE INTO user_permission_actions (user_id, action_key, data_scope) VALUES ${placeholders}`,
+          userRows.flatMap((row) => [row.userId, row.actionKey, row.dataScope]),
+        );
+      }
+      if (roleDefaultRows.length > 0) {
+        const placeholders = roleDefaultRows.map(() => '(?, ?, ?)').join(', ');
+        await this.roleDefaultActionRepo.query(
+          `INSERT IGNORE INTO role_default_permission_actions (default_id, action_key, data_scope) VALUES ${placeholders}`,
+          roleDefaultRows.flatMap((row) => [row.defaultId, row.actionKey, row.dataScope]),
+        );
+      }
+    } catch (error) {
+      if (this.isMissingRoleDefaultTableError(error) || this.isMissingPermissionCatalogTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+  }
 
   async getMatrix() {
     let modules: PermissionModule[] = [];

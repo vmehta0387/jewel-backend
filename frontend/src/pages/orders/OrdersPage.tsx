@@ -33,6 +33,9 @@ interface OrderRow {
   salesRepId?: string | null;
   salesRepName?: string | null;
   salesRepEmail?: string | null;
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
+  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER' | null;
   deliveryDate?: string | null;
   shipDate?: string | null;
   shipVia?: string | null;
@@ -153,6 +156,7 @@ interface OrderFormState {
   companyId: string;
   branchId: string;
   salesRepId: string;
+  assignedUserRole: 'SALES_REP' | 'BRANCH_MANAGER';
   designId: string;
   deliveryDate: string;
   status: string;
@@ -206,6 +210,7 @@ interface OrderSavePayload {
   companyId: number;
   branchId: number;
   salesRepId?: number;
+  assignedUserRole: 'SALES_REP' | 'BRANCH_MANAGER';
   designId: number;
   deliveryDate?: string;
   orderType?: OrderSaveType;
@@ -253,6 +258,7 @@ const defaultForm: OrderFormState = {
   companyId: '',
   branchId: '',
   salesRepId: '',
+  assignedUserRole: 'SALES_REP',
   designId: '',
   deliveryDate: '',
   status: 'QUOTE',
@@ -638,12 +644,13 @@ export default function OrdersPage() {
   const canSelectOrderCompany = isSuperAdmin;
   const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
   const effectiveCompanyFilterId = filters.companyId || (isCompanyAdmin ? currentUser?.companyId || '' : '');
-  const roleScopedDefaultForm = useMemo(
+  const roleScopedDefaultForm = useMemo<OrderFormState>(
     () => ({
       ...defaultForm,
       companyId: currentUser?.role === 'SUPER_ADMIN' ? '' : currentUser?.companyId || '',
       branchId: isBranchScopedUser ? currentUser?.branchId || '' : '',
-      salesRepId: currentUser?.role === 'SALES_REP' ? currentUser.id : '',
+      salesRepId: currentUser?.role === 'SALES_REP' || currentUser?.role === 'BRANCH_MANAGER' ? currentUser.id : '',
+      assignedUserRole: currentUser?.role === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : 'SALES_REP',
     }),
     [currentUser?.role, currentUser?.id, currentUser?.companyId, currentUser?.branchId, isBranchScopedUser],
   );
@@ -805,7 +812,7 @@ export default function OrdersPage() {
     setBranches(response.data?.data || []);
   };
 
-  const loadSalesReps = async (branchId: string) => {
+  const loadSalesReps = async (branchId: string, role: 'SALES_REP' | 'BRANCH_MANAGER') => {
     if (!branchId) {
       setSalesReps([]);
       return;
@@ -813,7 +820,7 @@ export default function OrdersPage() {
 
     try {
       const response = await api.get('/users/lookup', {
-        params: { role: 'SALES_REP', branchId, status: 'ACTIVE' },
+        params: { role, branchId, status: 'ACTIVE' },
       });
       setSalesReps(response.data || []);
     } catch {
@@ -1017,11 +1024,11 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!form.branchId) {
       setSalesReps([]);
-      setForm((prev) => ({ ...prev, salesRepId: currentUser?.role === 'SALES_REP' ? currentUser.id : '' }));
+      setForm((prev) => ({ ...prev, salesRepId: currentUser?.role === 'SALES_REP' || currentUser?.role === 'BRANCH_MANAGER' ? currentUser.id : '' }));
       return;
     }
-    loadSalesReps(form.branchId);
-  }, [form.branchId, currentUser?.role, currentUser?.id]);
+    loadSalesReps(form.branchId, form.assignedUserRole);
+  }, [form.branchId, form.assignedUserRole, currentUser?.role, currentUser?.id]);
 
   useEffect(() => {
     if (!showAddModal) return;
@@ -1158,7 +1165,7 @@ export default function OrdersPage() {
       nextErrors.branchId = 'Branch is required.';
     }
     if (!form.salesRepId) {
-      nextErrors.salesRepId = 'Sales Rep is required.';
+      nextErrors.salesRepId = `${form.assignedUserRole === 'BRANCH_MANAGER' ? 'Branch Manager' : 'Sales Rep'} is required.`;
     }
     if (!form.designId) {
       nextErrors.designId = 'Design is required.';
@@ -1193,6 +1200,7 @@ export default function OrdersPage() {
         companyId: Number(form.companyId),
         branchId: Number(form.branchId),
         salesRepId: form.salesRepId ? Number(form.salesRepId) : undefined,
+        assignedUserRole: form.assignedUserRole,
         designId: Number(form.designId),
         deliveryDate: form.deliveryDate || undefined,
         price: Number(form.price || 0),
@@ -1347,6 +1355,7 @@ export default function OrdersPage() {
         companyId: detail.companyId || '',
         branchId: detail.branchId || '',
         salesRepId: detail.salesRepId || '',
+        assignedUserRole: detail.assignedUserRole === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : 'SALES_REP',
         designId: detail.designId || '',
         deliveryDate: detail.deliveryDate || getExpectedDeliveryDefault(detail.createdAt || order.createdAt),
         status: normalizeOrderStatus(detail.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
@@ -1374,6 +1383,7 @@ export default function OrdersPage() {
         companyId: order.companyId || '',
         branchId: order.branchId || '',
         salesRepId: order.salesRepId || '',
+        assignedUserRole: order.assignedUserRole === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : 'SALES_REP',
         designId: order.designId || '',
         deliveryDate: order.deliveryDate || getExpectedDeliveryDefault(order.createdAt),
         status: normalizeOrderStatus(order.status) === 'QUOTE' ? 'QUOTE' : 'ORDER',
@@ -2043,21 +2053,21 @@ export default function OrdersPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-600">Rep Name</label>
+            <label className="text-xs font-semibold text-slate-600">User</label>
             <SmartDropdown
               value={filters.salesRepId}
               onChange={(val) => { setPage(1); setFilters((prev) => ({ ...prev, salesRepId: val })); }}
               config={{
                 apiSubPath: '/users/lookup',
-                extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: effectiveCompanyFilterId || undefined, branchId: filters.branchId || undefined },
+                extraParams: { status: 'ACTIVE', companyId: effectiveCompanyFilterId || undefined, branchId: filters.branchId || undefined },
                 valueKey: 'id',
                 labelKey: 'email',
                 renderLabel: (option) => {
                   const fullName = `${option.firstName || ''} ${option.lastName || ''}`.trim();
-                  return fullName || String(option.email || 'Sales Rep');
+                  return fullName || String(option.email || 'User');
                 },
-                placeholder: 'All Reps',
-                clearLabel: 'All Reps',
+                placeholder: 'All Users',
+                clearLabel: 'All Users',
               }}
               className="mt-1"
             />
@@ -2153,7 +2163,7 @@ export default function OrdersPage() {
                   <th className="app-table-head-cell">Design</th>
                   <th className="app-table-head-cell">Company</th>
                   <th className="app-table-head-cell">Branch</th>
-                  <th className="app-table-head-cell">Rep Name</th>
+                  <th className="app-table-head-cell">User</th>
                   <th className="app-table-head-cell">Delivery</th>
                   <th className="app-table-head-cell">Qty</th>
                   {canViewCostPrice && <th className="app-table-head-cell">Cost Price</th>}
@@ -2186,7 +2196,12 @@ export default function OrdersPage() {
                     <td className="app-table-cell text-sm text-slate-700">{formatDesignLabel(order.designNo, order.designVersion)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.companyName || '-'}</td>
                     <td className="app-table-cell text-sm text-slate-700">{order.branchName || '-'}</td>
-                    <td className="app-table-cell text-sm text-slate-700">{order.salesRepName || order.salesRepEmail || '-'}</td>
+                    <td className="app-table-cell text-sm text-slate-700">
+                      <div className="font-medium text-slate-800">{order.assignedUserName || order.salesRepName || order.salesRepEmail || '-'}</div>
+                      {order.assignedUserRole ? (
+                        <div className="mt-0.5 text-xs text-slate-500">{order.assignedUserRole === 'BRANCH_MANAGER' ? 'Branch Manager' : 'Sales Rep'}</div>
+                      ) : null}
+                    </td>
                     <td className="app-table-cell text-sm text-slate-700">{formatDisplayDate(order.deliveryDate)}</td>
                     <td className="app-table-cell text-sm text-slate-700">{Number(order.quantity || 0)}</td>
                     {canViewCostPrice && (
@@ -2493,7 +2508,7 @@ export default function OrdersPage() {
                     </div>
                   </fieldset>
 
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(220px,0.75fr)]">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(190px,0.8fr)_minmax(220px,1fr)_minmax(210px,0.75fr)]">
                     {canSelectOrderCompany ? (
                       <div>
                         <label className="text-sm font-medium text-slate-700">Company*</label>
@@ -2559,7 +2574,32 @@ export default function OrdersPage() {
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-slate-700">Sales Rep*</label>
+                      <label className="text-sm font-medium text-slate-700">Assign Order To*</label>
+                      <SmartDropdown
+                        value={form.assignedUserRole}
+                        onChange={(value) => {
+                          const assignedUserRole = value === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : 'SALES_REP';
+                          setForm((prev) => ({ ...prev, assignedUserRole, salesRepId: '' }));
+                          setFormErrors((prev) => ({ ...prev, salesRepId: undefined }));
+                        }}
+                        config={{
+                          options: [
+                          { value: 'SALES_REP', label: 'Sales Rep' },
+                          { value: 'BRANCH_MANAGER', label: 'Branch Manager' },
+                          ],
+                          valueKey: 'value',
+                          labelKey: 'label',
+                          placeholder: 'Select user type',
+                          disabled: !form.branchId || currentUser?.role === 'SALES_REP' || currentUser?.role === 'BRANCH_MANAGER',
+                        }}
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-slate-700">
+                        {form.assignedUserRole === 'BRANCH_MANAGER' ? 'Select Branch Manager*' : 'Select Sales Rep*'}
+                      </label>
                       <SmartDropdown
                         value={form.salesRepId}
                         onChange={(val) => {
@@ -2568,21 +2608,21 @@ export default function OrdersPage() {
                         }}
                         config={{
                           apiSubPath: '/users/lookup',
-                          extraParams: { role: 'SALES_REP', status: 'ACTIVE', companyId: form.companyId || undefined, branchId: form.branchId },
+                          extraParams: { role: form.assignedUserRole, status: 'ACTIVE', companyId: form.companyId || undefined, branchId: form.branchId },
                           valueKey: 'id',
                           labelKey: 'email',
                           renderLabel: (option) => {
                             const fullName = `${option.firstName || ''} ${option.lastName || ''}`.trim();
-                            return fullName || String(option.email || 'Sales Rep');
+                            return fullName || String(option.email || (form.assignedUserRole === 'BRANCH_MANAGER' ? 'Branch Manager' : 'Sales Rep'));
                           },
-                          placeholder: 'Select Sales Rep',
-                          disabled: currentUser?.role === 'SALES_REP' || !form.branchId,
+                          placeholder: form.assignedUserRole === 'BRANCH_MANAGER' ? 'Select Branch Manager' : 'Select Sales Rep',
+                          disabled: currentUser?.role === 'SALES_REP' || currentUser?.role === 'BRANCH_MANAGER' || !form.branchId,
                           options: salesReps.map((rep) => ({ ...rep })),
                         }}
                         className={`mt-1 ${formErrors.salesRepId
                           ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
                           : ''
-                          } ${(currentUser?.role === 'SALES_REP' || !form.branchId) ? 'appearance-none bg-none' : ''}`}
+                          } ${(currentUser?.role === 'SALES_REP' || currentUser?.role === 'BRANCH_MANAGER' || !form.branchId) ? 'appearance-none bg-none' : ''}`}
                       />
                       {formErrors.salesRepId && (
                         <p id="sales-rep-error" className="mt-1 text-xs font-medium text-rose-600">
@@ -3610,9 +3650,10 @@ export default function OrdersPage() {
                   </div>
                 )}
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Sales Rep</label>
+                  <label className="text-sm font-medium text-slate-700">Assigned User</label>
                   <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    {viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}
+                    <span>{viewOrder?.assignedUserName || viewOrder?.salesRepName || viewOrder?.salesRepEmail || '-'}</span>
+                    {viewOrder?.assignedUserRole ? <span className="ml-2 text-xs text-slate-500">({viewOrder.assignedUserRole === 'BRANCH_MANAGER' ? 'Branch Manager' : 'Sales Rep'})</span> : null}
                   </div>
                 </div>
                 <div>

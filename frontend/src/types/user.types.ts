@@ -135,6 +135,17 @@ export const DEFAULT_TASK_PERMISSIONS_BY_ROLE: Record<UserRole, TaskPermission[]
   ],
 };
 
+export const getDefaultDetailedPermissionsByRole = (role: UserRole) => {
+  const dataScope = role === 'BRANCH_MANAGER' ? 'BRANCH' : role === 'SALES_REP' ? 'OWN' : null;
+  if (!dataScope) return [];
+
+  return [
+    { actionKey: 'spiff.view', dataScope },
+    { actionKey: 'spiff.claim.create', dataScope },
+    { actionKey: 'spiff.claim.review', dataScope },
+  ] as const;
+};
+
 export const ALLOWED_TASK_PERMISSIONS_BY_ROLE: Record<UserRole, TaskPermission[]> = {
   SUPER_ADMIN: TASK_PERMISSION_OPTIONS.map((item) => item.value),
   COMPANY_ADMIN: [
