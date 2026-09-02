@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import puppeteer from 'puppeteer';
@@ -45,6 +45,13 @@ export class OrdersService implements OnModuleInit {
       { name: 'tracking_no', type: 'VARCHAR(120) NULL' },
       { name: 'invoice_no', type: 'VARCHAR(120) NULL' },
       { name: 'selected_options', type: 'JSON NULL' },
+      { name: 'base_cost_snapshot', type: 'DECIMAL(12,2) NULL' },
+      { name: 'company_cost_snapshot', type: 'DECIMAL(12,2) NULL' },
+      { name: 'company_multiplier_snapshot', type: 'DECIMAL(5,2) NULL' },
+      { name: 'branch_cost_snapshot', type: 'DECIMAL(12,2) NULL' },
+      { name: 'branch_multiplier_snapshot', type: 'DECIMAL(5,2) NULL' },
+      { name: 'effective_multiplier_snapshot', type: 'DECIMAL(5,2) NULL' },
+      { name: 'selling_price_snapshot', type: 'DECIMAL(12,2) NULL' },
     ];
     for (const col of columns) {
       try {
@@ -300,6 +307,16 @@ export class OrdersService implements OnModuleInit {
     const rawById = new Map(rawRows.map((row) => [Number(row.order_id), row]));
     return Promise.all(
       orders.map(async (order) => {
+        const {
+          baseCostSnapshot,
+          companyCostSnapshot,
+          companyMultiplierSnapshot,
+          branchCostSnapshot,
+          branchMultiplierSnapshot,
+          effectiveMultiplierSnapshot,
+          sellingPriceSnapshot,
+          ...safeOrder
+        } = order;
         const raw = rawById.get(Number(order.id)) || {};
         const primaryImage = Array.isArray(order.design?.imageUrls)
           ? order.design!.imageUrls.find((url) => typeof url === 'string' && url.trim().length > 0) || null
@@ -309,7 +326,18 @@ export class OrdersService implements OnModuleInit {
         const branchManagerName = this.optionalText(raw.read_branchManagerName) || this.optionalText(order.branch?.branchManager?.email);
 
         return {
-          ...order,
+          ...safeOrder,
+          ...(requester.role === UserRole.SUPER_ADMIN
+            ? {
+                baseCostSnapshot,
+                companyCostSnapshot,
+                companyMultiplierSnapshot,
+                branchCostSnapshot,
+                branchMultiplierSnapshot,
+                effectiveMultiplierSnapshot,
+                sellingPriceSnapshot,
+              }
+            : {}),
           companyName: this.optionalText(raw.read_companyName),
           branchName: this.optionalText(raw.read_branchName),
           designNo: this.optionalText(raw.read_designNo),
@@ -417,6 +445,12 @@ export class OrdersService implements OnModuleInit {
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date(), { defaultOffsetDays: 28 }),
         quantity: dto.quantity ?? 1,
         price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
+        baseCostSnapshot: this.roundMoney(pricing.baseCost),
+        companyCostSnapshot: this.roundMoney(pricing.companyPrice),
+        companyMultiplierSnapshot: this.roundMultiplierForSnapshot(pricing.companyMultiplier),
+        branchCostSnapshot: this.roundMoney(pricing.finalPrice),
+        branchMultiplierSnapshot: this.roundMultiplierForSnapshot(pricing.branchMultiplier),
+        effectiveMultiplierSnapshot: this.roundMultiplierForSnapshot(pricing.effectiveMultiplier),
         shortDescription: dto.shortDescription?.trim() || null,
         selectedOptions: this.normalizeSelectedOptions(dto.selectedOptions),
         customerName: dto.customerName?.trim() || null,
@@ -429,6 +463,7 @@ export class OrdersService implements OnModuleInit {
         ...shippingFields,
         isActive: true,
       });
+      order.sellingPriceSnapshot = this.roundMoney(order.price);
 
       try {
         const saved = await this.orderRepo.save(order);
@@ -542,6 +577,15 @@ export class OrdersService implements OnModuleInit {
     return Boolean(row);
   }
 
+  private async assertOrderActionPermission(requester: AuthUser, actionKey: string): Promise<void> {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+    if (!await this.hasOrderActionPermission(requester.id, actionKey)) {
+      throw new ForbiddenException(`Missing required permission: ${actionKey}`);
+    }
+  }
+
   async update(id: number, dto: UpdateOrderDto, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
@@ -553,11 +597,18 @@ export class OrdersService implements OnModuleInit {
 
     const previousStatus = order.status;
     const beforeSnapshot = this.getOrderAuditSnapshot(order);
-    const hasDetailChanges = this.hasOrderDetailChanges(dto);
+    const hasStatusChange = this.hasOrderStatusChange(dto, order.status);
+    const hasDetailChanges = this.hasOrderDetailChanges(dto, hasStatusChange);
     if (hasDetailChanges) {
+      await this.assertOrderActionPermission(requester, 'order.edit');
       this.assertOrderEditable(order, requester);
     }
-    const requestedBranchId = dto.branchId || order.branchId || requester.branchId || null;
+    if (hasStatusChange) {
+      await this.assertOrderActionPermission(requester, 'order.status_update');
+    }
+    const requestedBranchId = dto.branchId !== undefined
+      ? dto.branchId
+      : order.branchId || requester.branchId || null;
     const branch = requestedBranchId
       ? await this.branchRepo.findOne({ where: { id: requestedBranchId } })
       : null;
@@ -565,12 +616,15 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Selected branch not found');
     }
 
-    const requestedCompanyId = dto.companyId || order.companyId || requester.companyId || null;
+    const requestedCompanyId = dto.companyId !== undefined
+      ? dto.companyId
+      : order.companyId || requester.companyId || null;
     const effectiveCompanyId = branch?.companyId || requestedCompanyId;
     const effectiveBranchId = branch?.id || requestedBranchId;
 
+    let company: Company | null = null;
     if (effectiveCompanyId) {
-      const company = await this.companyRepo.findOne({ where: { id: effectiveCompanyId } });
+      company = await this.companyRepo.findOne({ where: { id: effectiveCompanyId } });
       if (!company) {
         throw new BadRequestException('Selected company not found');
       }
@@ -597,11 +651,13 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
-    if (dto.companyId !== undefined || branch) {
+    if (dto.companyId !== undefined || dto.branchId !== undefined) {
       order.companyId = effectiveCompanyId ?? null;
+      order.company = company;
     }
-    if (dto.branchId !== undefined || branch) {
+    if (dto.branchId !== undefined) {
       order.branchId = effectiveBranchId ?? null;
+      order.branch = branch;
     }
     if (dto.salesRepId !== undefined) {
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
@@ -609,6 +665,7 @@ export class OrdersService implements OnModuleInit {
         branchId: effectiveBranchId,
       });
       order.salesRepId = selectedSalesRep?.id || null;
+      order.salesRep = selectedSalesRep;
     }
     if (dto.deliveryDate !== undefined) {
       order.deliveryDate = this.normalizeFutureDeliveryDate(dto.deliveryDate, order.createdAt);
@@ -756,11 +813,54 @@ export class OrdersService implements OnModuleInit {
     }
     this.assertReadScope(order, requester);
 
-    return this.orderHistoryRepo.find({
+    const history = await this.orderHistoryRepo.find({
       where: { orderId: id },
       order: { performedAt: 'DESC' },
       take: 200,
     });
+    return this.withResolvedHistoryNames(history);
+  }
+
+  private async withResolvedHistoryNames(history: OrderHistory[]): Promise<OrderHistory[]> {
+    const collectIds = (field: 'companyId' | 'branchId' | 'salesRepId') =>
+      Array.from(new Set(
+        history.flatMap((row) => (row.changes || []))
+          .filter((change) => change.field === field)
+          .flatMap((change) => [change.oldValue, change.newValue])
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value > 0),
+      ));
+
+    const [companies, branches, salesReps] = await Promise.all([
+      this.companyRepo.find({ where: { id: In(collectIds('companyId')) } }),
+      this.branchRepo.find({ where: { id: In(collectIds('branchId')) } }),
+      this.userRepo.find({ where: { id: In(collectIds('salesRepId')) } }),
+    ]);
+    const companyNames = new Map(companies.map((company) => [company.id, company.companyName]));
+    const branchNames = new Map(branches.map((branch) => [branch.id, branch.name]));
+    const salesRepNames = new Map(salesReps.map((salesRep) => {
+      const name = `${salesRep.firstName || ''} ${salesRep.lastName || ''}`.trim();
+      return [salesRep.id, name || salesRep.email || String(salesRep.id)];
+    }));
+    const referenceFields = {
+      companyId: { label: 'Company', names: companyNames },
+      branchId: { label: 'Branch', names: branchNames },
+      salesRepId: { label: 'Sales Rep', names: salesRepNames },
+    } as const;
+
+    return history.map((row) => ({
+      ...row,
+      changes: row.changes?.map((change) => {
+        const reference = referenceFields[change.field as keyof typeof referenceFields];
+        if (!reference) return change;
+        const resolveName = (value: unknown) => reference.names.get(Number(value)) || value;
+        return {
+          field: reference.label,
+          oldValue: resolveName(change.oldValue),
+          newValue: resolveName(change.newValue),
+        };
+      }) || null,
+    }));
   }
 
   async getSummary(requester: AuthUser) {
@@ -1574,8 +1674,8 @@ export class OrdersService implements OnModuleInit {
       && [OrderStatus.QUOTE, OrderStatus.PENDING_APPROVAL].includes(order.status);
   }
 
-  private hasOrderDetailChanges(dto: UpdateOrderDto): boolean {
-    return [
+  private hasOrderDetailChanges(dto: UpdateOrderDto, isStatusChange = false): boolean {
+    const fields = [
       'companyId',
       'branchId',
       'designId',
@@ -1590,11 +1690,19 @@ export class OrdersService implements OnModuleInit {
       'customerEmail',
       'purchaseOrderNumber',
       'notes',
-      'shipDate',
-      'shipVia',
-      'trackingNo',
-      'invoiceNo',
-    ].some((field) => (dto as Record<string, unknown>)[field] !== undefined);
+    ];
+    if (!isStatusChange) {
+      fields.push('shipDate', 'shipVia', 'trackingNo', 'invoiceNo');
+    }
+    return fields.some((field) => (dto as Record<string, unknown>)[field] !== undefined);
+  }
+
+  private hasOrderStatusChange(dto: UpdateOrderDto, currentStatus: OrderStatus): boolean {
+    if (dto.status !== undefined) {
+      return dto.status !== currentStatus;
+    }
+    return (dto.orderType === 'QUOTE' && currentStatus !== OrderStatus.QUOTE)
+      || (dto.orderType === 'ORDER' && currentStatus === OrderStatus.QUOTE);
   }
 
   private assertCompletedShippingFields(order: Pick<Order, 'shipDate' | 'shipVia' | 'trackingNo' | 'invoiceNo'>): void {
@@ -1765,6 +1873,24 @@ export class OrdersService implements OnModuleInit {
   }
 
   private async resolveVisibleCostPrice(order: Order, requester: AuthUser): Promise<number | null> {
+    if (requester.role === UserRole.SUPER_ADMIN || requester.role === UserRole.INTERNAL_REP) {
+      if (order.baseCostSnapshot !== null && order.baseCostSnapshot !== undefined) {
+        return this.roundMoney(this.toNumber(order.baseCostSnapshot));
+      }
+    }
+
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      if (order.companyCostSnapshot !== null && order.companyCostSnapshot !== undefined) {
+        return this.roundMoney(this.toNumber(order.companyCostSnapshot));
+      }
+    }
+
+    if (requester.role === UserRole.BRANCH_MANAGER) {
+      if (order.branchCostSnapshot !== null && order.branchCostSnapshot !== undefined) {
+        return this.roundMoney(this.toNumber(order.branchCostSnapshot));
+      }
+    }
+
     if (!order.design) return null;
 
     try {
@@ -1794,6 +1920,10 @@ export class OrdersService implements OnModuleInit {
   private toNumber(value: unknown): number {
     const parsed = Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private roundMultiplierForSnapshot(value: unknown): number {
+    return Number(this.toNumber(value).toFixed(2));
   }
 
   private normalizeFutureDeliveryDate(
@@ -2319,13 +2449,4 @@ export class OrdersService implements OnModuleInit {
     return OrderStatus.QUOTE;
   }
 }
-
-
-
-
-
-
-
-
-
 

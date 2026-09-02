@@ -73,7 +73,7 @@ export const router = createBrowserRouter([
             ],
           },
           {
-            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} requiredActionPermissions={['user.view']} />,
+            element: <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN']} requiredTaskPermissions={['USER_MANAGEMENT']} requiredActionPermissions={['user.view']} />,
             children: [
               { path: '/users', element: <UsersPage /> },
             ],

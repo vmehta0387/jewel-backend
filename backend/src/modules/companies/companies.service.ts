@@ -364,7 +364,7 @@ export class CompaniesService {
 
     if (!isActive) {
       await this.branchRepo.update({ companyId: id }, { isActive: false, branchManagerId: null });
-      await this.userRepo.update({ companyId: id }, { branchId: null });
+      await this.userRepo.update({ companyId: id }, { isActive: false });
     }
 
     return company;
@@ -493,6 +493,5 @@ export class CompaniesService {
     }
   }
 }
-
 
 

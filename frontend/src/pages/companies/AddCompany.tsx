@@ -5,6 +5,7 @@ import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import FloatingErrorToast from '../../components/common/FloatingErrorToast';
+import { useUnsavedChangesGuard } from '../../components/common/useUnsavedChangesGuard';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable, {
   type CollectionOverride,
@@ -533,11 +534,9 @@ export default function AddCompany() {
     clearDraftUserForm();
     setShowCreateUserForm(false);
   };
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const saveCompany = async (navigateAfterSave = true): Promise<boolean> => {
     if (!validateForm()) {
-      return;
+      return false;
     }
 
     setIsSubmitting(true);
@@ -626,14 +625,38 @@ export default function AddCompany() {
         }
       }
 
-      navigate('/companies');
+      if (navigateAfterSave) navigate('/companies');
+      return true;
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Network error. Please try again.' });
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await saveCompany();
+  };
+
+  const { dialogNode: unsavedChangesDialog } = useUnsavedChangesGuard({
+    value: {
+      formData,
+      slabs,
+      collectionOverrides,
+      draftBranches,
+      draftUsers,
+      pendingManagerData,
+      newManager,
+      newBranchData,
+      newUserData,
+    },
+    onSave: () => saveCompany(false),
+    isSaving: isSubmitting,
+    title: 'Unsaved Company Changes',
+  });
 
   return (
     <div className="mx-auto w-full max-w-screen-2xl">
@@ -643,6 +666,7 @@ export default function AddCompany() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+        {unsavedChangesDialog}
         <FloatingErrorToast
           message={errors.submit}
           onClose={() => setErrors((prev) => {
@@ -1401,8 +1425,6 @@ export default function AddCompany() {
     </div>
   );
 }
-
-
 
 
 

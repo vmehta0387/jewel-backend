@@ -58,7 +58,7 @@ const navigation: NavigationItem[] = [
     icon: 'users',
     permission: 'USER_MANAGEMENT',
     actionPermission: 'user.view',
-    allowedRoles: ['SUPER_ADMIN', 'COMPANY_ADMIN'],
+    allowedRoles: ['SUPER_ADMIN', 'INTERNAL_REP', 'COMPANY_ADMIN'],
   },
   { name: 'Notifications', path: '/notifications', icon: 'notifications' },
   { name: 'Designs', path: '/products', icon: 'designs', permission: 'DESIGN_ENTRIES' },

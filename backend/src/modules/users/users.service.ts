@@ -251,6 +251,12 @@ export class UsersService implements OnModuleInit {
       if (query.role && !this.companyAdminManagedRoles.includes(query.role)) {
         return [];
       }
+    } else if (requester?.role === UserRole.INTERNAL_REP) {
+      const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+      if (managedCompanyIds.length === 0) {
+        return [];
+      }
+      usersQuery.andWhere('user.companyId IN (:...managedCompanyIds)', { managedCompanyIds });
     }
 
     const users = await usersQuery.getMany();
@@ -383,6 +389,8 @@ export class UsersService implements OnModuleInit {
 
     if (requester?.role === UserRole.COMPANY_ADMIN) {
       this.assertCompanyAdminCanManageUser(requester, user);
+    } else if (requester?.role === UserRole.INTERNAL_REP) {
+      await this.assertInternalRepCanViewUser(requester, user);
     }
 
     const [managedCompaniesMap, detailedPermissionsMap] = await Promise.all([
@@ -1084,6 +1092,24 @@ export class UsersService implements OnModuleInit {
     }
   }
 
+  private async assertInternalRepCanViewUser(requester: AuthUser, user: User): Promise<void> {
+    if (requester.role !== UserRole.INTERNAL_REP) {
+      return;
+    }
+    const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+    if (!user.companyId || !managedCompanyIds.includes(user.companyId)) {
+      throw new ForbiddenException('You can only view users in your assigned companies');
+    }
+  }
+
+  private async getInternalRepManagedCompanyIds(internalRepId: number): Promise<number[]> {
+    const companies = await this.companyRepo.find({
+      where: { accountManagerId: internalRepId },
+      select: ['id'],
+    });
+    return companies.map((company) => company.id);
+  }
+
   private async resolveScope(
     role: UserRole,
     companyId?: number | null,
@@ -1181,6 +1207,7 @@ export class UsersService implements OnModuleInit {
   private resolveLegacyPermissionForAction(actionKey: string): TaskPermission | null {
     const key = actionKey.trim().toLowerCase();
     if (!key) return null;
+    if (key === 'order.require_approval') return TaskPermission.ORDER_ENTRIES;
     if (key.startsWith('company.') || key.startsWith('organization.company')) return TaskPermission.COMPANY_MANAGEMENT;
     if (key.startsWith('branch.') || key.startsWith('organization.branch')) return TaskPermission.BRANCH_MANAGEMENT;
     if (key.startsWith('user.') || key.startsWith('mobile.dashboard.quick_actions.team')) return TaskPermission.USER_MANAGEMENT;
@@ -1891,8 +1918,5 @@ export class UsersService implements OnModuleInit {
     return `s3://${s3Config.bucket}/${key}`;
   }
 }
-
-
-
 
 

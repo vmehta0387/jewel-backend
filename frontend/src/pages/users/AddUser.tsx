@@ -5,6 +5,7 @@ import SmartDropdown from '../../components/common/SmartDropdown';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import { useAppDialog } from '../../components/common/useAppDialog';
+import { useUnsavedChangesGuard } from '../../components/common/useUnsavedChangesGuard';
 import PermissionMatrix, { DetailedPermission } from '../../components/permissions/PermissionMatrix';
 import api from '../../services/api';
 import { TaskPermission, UserRole } from '../../types/auth.types';
@@ -267,13 +268,12 @@ export default function AddUser() {
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const saveUser = async (navigateAfterSave = true): Promise<boolean> => {
     if (!validateForm()) {
-      return;
+      return false;
     }
     if (!(await validateUserHandleAvailability(true))) {
-      return;
+      return false;
     }
 
     setIsSubmitting(true);
@@ -300,17 +300,31 @@ export default function AddUser() {
       }
       await api.post('/users', payload);
 
-      navigate('/users');
+      if (navigateAfterSave) navigate('/users');
+      return true;
     } catch (error) {
       const text = getApiMessage(error, 'Failed to create user');
       const nextErrors = getSubmitErrors(text);
       setErrors(nextErrors);
       showAppAlert(text, { variant: 'error' });
       focusValidationError(nextErrors);
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await saveUser();
+  };
+
+  const { dialogNode: unsavedChangesDialog } = useUnsavedChangesGuard({
+    value: formData,
+    onSave: () => saveUser(false),
+    isSaving: isSubmitting || uploadingPhoto,
+    title: 'Unsaved User Changes',
+  });
 
   const handlePhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -562,10 +576,10 @@ export default function AddUser() {
         </div>
       </form>
       {dialogNode}
+      {unsavedChangesDialog}
     </div>
   );
 }
-
 
 
 

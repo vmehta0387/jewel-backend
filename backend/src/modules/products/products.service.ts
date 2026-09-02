@@ -522,7 +522,7 @@ export class ProductsService {
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
     const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
-    await this.assertUniqueDesignName(resolvedDesignName, designNo, undefined);
+    await this.assertUniqueDesignName(resolvedDesignName, undefined);
 
     const globalRateMaps = await this.getGlobalRateMaps();
     const metalCaratageRates = await this.getMetalCaratageRateMap();
@@ -1310,17 +1310,11 @@ export class ProductsService {
       )
       .addSelect(
         `(SELECT GROUP_CONCAT(
-            COALESCE(
-              NULLIF(TRIM(sp.packet_name), ''),
-              NULLIF(TRIM(ps.value), ''),
-              NULLIF(TRIM(dt.value), '')
-            )
+            NULLIF(TRIM(ps.value), '')
             ORDER BY dg.sort_order SEPARATOR ', '
           )
           FROM design_gemstones dg
-          LEFT JOIN stone_packets sp ON sp.id = dg.packet_id
           LEFT JOIN packet_stones ps ON ps.id = dg.stone_id
-          LEFT JOIN diamond_types dt ON dt.id = dg.stone_type_id
           WHERE dg.design_id = design.id)`,
         'stoneInfoAgg',
       )
@@ -3370,12 +3364,12 @@ export class ProductsService {
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
     if (dto.designName !== undefined) {
       if (nextRequestedDesignName) {
-        await this.assertUniqueDesignName(nextRequestedDesignName, designNo, id);
+        await this.assertUniqueDesignName(nextRequestedDesignName, id);
       }
       design.designName = nextRequestedDesignName;
     } else if (!this.optionalText(design.designName)) {
       const fallbackDesignName = this.buildDefaultDesignName(designJewelryGroup, designNo);
-      await this.assertUniqueDesignName(fallbackDesignName, designNo, id);
+      await this.assertUniqueDesignName(fallbackDesignName, id);
       design.designName = fallbackDesignName;
     }
     design.companyId = scope.companyId;
@@ -4216,7 +4210,6 @@ export class ProductsService {
 
   private async assertUniqueDesignName(
     designName: string | null,
-    designNo: string,
     excludeId?: string | number,
   ): Promise<void> {
     const normalizedDesignName = this.optionalText(designName);
@@ -4224,12 +4217,10 @@ export class ProductsService {
       return;
     }
 
-    const normalizedDesignNo = this.normalizeDesignNo(designNo);
     const qb = this.designRepo
       .createQueryBuilder('design')
       .select('design.id')
-      .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName })
-      .andWhere('UPPER(TRIM(design.designNo)) = :designNo', { designNo: normalizedDesignNo });
+      .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName });
 
     if (excludeId !== undefined && excludeId !== null) {
       qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
@@ -4237,7 +4228,7 @@ export class ProductsService {
 
     const existing = await qb.getRawOne<{ id: string | number }>();
     if (existing) {
-      throw new BadRequestException('Design Name and Design No already exist.');
+      throw new BadRequestException('Design Name already exists.');
     }
   }
   private async resolvePrimaryVersionFlag(
@@ -7099,7 +7090,6 @@ export class ProductsService {
   }
 
 }
-
 
 
 

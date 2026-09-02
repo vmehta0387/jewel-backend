@@ -5,6 +5,8 @@ import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import FloatingErrorToast from '../../components/common/FloatingErrorToast';
+import { useUnsavedChangesGuard } from '../../components/common/useUnsavedChangesGuard';
+import { useAppDialog } from '../../components/common/useAppDialog';
 import PricingSlabTable, { validatePricingSlabs } from '../../components/forms/PricingSlabTable';
 import CollectionPricingTable, {
   type CollectionOverride,
@@ -12,6 +14,7 @@ import CollectionPricingTable, {
 } from '../../components/forms/CollectionPricingTable';
 import api from '../../services/api';
 import { formatAddressLocation } from '../../utils/address';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const optionalNumberId = (value?: string | number | null): number | null => {
@@ -72,6 +75,11 @@ function ManageActionContent() {
 export default function EditCompany() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { confirm: confirmAppDialog, showAlert: showAppAlert, dialogNode } = useAppDialog();
+  const currentUser = getStoredUser();
+  const canDisableCompany = Boolean(
+    currentUser?.role === 'SUPER_ADMIN' && hasActionPermission(currentUser, 'company.status_update'),
+  );
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -226,8 +234,24 @@ export default function EditCompany() {
         api.get('/users/lookup', { params: { companyId, status: 'ALL' } }),
       ]);
 
-      setCompanyBranches(branchesResponse.data.data || []);
-      setCompanyUsers(usersResponse.data || []);
+      const users = Array.isArray(usersResponse.data) ? usersResponse.data : [];
+      const usersById = new Map(users.map((user: any) => [String(user.id), user]));
+      const branches = Array.isArray(branchesResponse.data?.data) ? branchesResponse.data.data : [];
+
+      setCompanyBranches(
+        branches.map((branch: any) => {
+          const branchManagerId = branch.branchManagerId ?? branch.branchManager?.id;
+          return {
+            ...branch,
+            branchManager:
+              branch.branchManager ||
+              (branchManagerId !== undefined && branchManagerId !== null
+                ? usersById.get(String(branchManagerId)) || null
+                : null),
+          };
+        }),
+      );
+      setCompanyUsers(users);
     } catch (error) {
       console.error(error);
       setCompanyBranches([]);
@@ -340,9 +364,9 @@ export default function EditCompany() {
     return true;
   };
 
-  const saveCompany = async (nextTarget: string | (() => void)) => {
+  const saveCompany = async (nextTarget?: string | (() => void)): Promise<boolean> => {
     if (!validateForm()) {
-      return;
+      return false;
     }
 
     setIsSubmitting(true);
@@ -382,12 +406,58 @@ export default function EditCompany() {
       rememberCompanySnapshot(formData, slabs, collectionOverrides, null);
       if (typeof nextTarget === 'function') {
         nextTarget();
-      } else {
+      } else if (nextTarget) {
         navigate(nextTarget);
       }
+      return true;
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Network error. Please try again.' });
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const { dialogNode: unsavedChangesDialog, markClean } = useUnsavedChangesGuard({
+    value: {
+      formData,
+      slabs,
+      collectionOverrides,
+      pendingManagerData,
+      newManager,
+      newBranchData,
+      newUserData,
+      editBranchData,
+      editUserData,
+    },
+    ready: !loading,
+    onSave: () => saveCompany(),
+    isSaving: isSubmitting || isSavingEditModal,
+    title: 'Unsaved Company Changes',
+  });
+
+  const handleDisableCompany = async () => {
+    if (!id || !canDisableCompany) return;
+    const confirmed = await confirmAppDialog(
+      'Disable this company? Its branches and user access will also be disabled.',
+      {
+        title: 'Disable Company',
+        variant: 'warning',
+        confirmLabel: 'Disable Company',
+        cancelLabel: 'Cancel',
+      },
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsSubmitting(true);
+      await api.patch(`/companies/${id}/status`, { isActive: false });
+      markClean();
+      navigate('/companies');
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
+      showAppAlert(Array.isArray(message) ? message.join(', ') : message || 'Unable to disable company.', { variant: 'error' });
     } finally {
       setIsSubmitting(false);
     }
@@ -777,9 +847,15 @@ export default function EditCompany() {
       <div className="flex items-center gap-4 mb-6">
         <Button variant="secondary" onClick={() => handleOpenFullForm('/companies')}>Back</Button>
         <h1 className="text-2xl font-bold text-gray-900">Edit Company</h1>
+        {canDisableCompany ? (
+          <Button type="button" variant="danger" className="ml-auto" onClick={() => void handleDisableCompany()} disabled={isSubmitting}>
+            Disable Company
+          </Button>
+        ) : null}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+        {unsavedChangesDialog}
         <FloatingErrorToast
           message={errors.submit}
           onClose={() => setErrors((prev) => {
@@ -1615,7 +1691,7 @@ export default function EditCompany() {
           </Button>
         </div>
       </form>
+      {dialogNode}
     </div>
   );
 }
-

@@ -44,6 +44,7 @@ interface DesignFormModalScope {
   galleryItems: any[];
   galleryUploadInputRef: { current: any };
   galleryUploading: any;
+  hasUnsavedDesignChanges: boolean;
   gemRows: any[];
   getGemValue: (...args: any[]) => any;
   getGemWeight: (...args: any[]) => any;
@@ -171,6 +172,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     galleryItems,
     galleryUploadInputRef,
     galleryUploading,
+    hasUnsavedDesignChanges,
     gemRows,
     getGemValue,
     getGemWeight,
@@ -245,6 +247,10 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
   const skipTabFocusProps = { tabIndex: -1, 'data-autofocus-skip': 'true' };
   const isDesignIdentityLocked = Boolean(editingId);
   const confirmCloseDesignForm = async () => {
+    if (!hasUnsavedDesignChanges) {
+      onClose();
+      return;
+    }
     const confirmed = await confirmDesignFormAction('Close this design form? Unsaved changes will be lost.', {
       title: 'Close design form',
       confirmLabel: 'Close',
@@ -1566,7 +1572,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     </ProductsModal>
   );
 }
-
 
 
 

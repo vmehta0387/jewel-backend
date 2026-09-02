@@ -40,7 +40,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.view')
   findAll(@Query() query: FindUsersQueryDto, @Request() req: { user: AuthUser }) {
     return this.usersService.findAll(query, req.user);
@@ -109,7 +109,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.view')
   findOne(@Param('id') id: number, @Request() req: { user: AuthUser }) {
     return this.usersService.findOne(id, req.user);

@@ -9,7 +9,7 @@ import Pagination from '../../components/common/Pagination';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import TableLoadingRow from '../../components/common/TableLoadingRow';
 import api from '../../services/api';
-import { getStoredUser } from '../../utils/auth';
+import { getStoredUser, hasActionPermission } from '../../utils/auth';
 import {
   canChangeOrderStatus,
   canEditOrderByStatus,
@@ -41,6 +41,13 @@ interface OrderRow {
   quantity: number;
   costPrice?: number | null;
   price: number;
+  baseCostSnapshot?: number | string | null;
+  companyCostSnapshot?: number | string | null;
+  companyMultiplierSnapshot?: number | string | null;
+  branchCostSnapshot?: number | string | null;
+  branchMultiplierSnapshot?: number | string | null;
+  effectiveMultiplierSnapshot?: number | string | null;
+  sellingPriceSnapshot?: number | string | null;
   shortDescription?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
@@ -318,6 +325,12 @@ const compactOptions = (values?: unknown[]): string[] =>
 
 const formatMoney = (value: number): string =>
   `USD ${Math.round(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const hasSnapshotValue = (value: unknown): boolean =>
+  value !== null && value !== undefined && String(value).trim() !== '' && Number.isFinite(Number(value));
+const formatSnapshotMoney = (value: unknown): string =>
+  hasSnapshotValue(value) ? formatMoney(Number(value)) : 'Not captured';
+const formatSnapshotMultiplier = (value: unknown): string =>
+  hasSnapshotValue(value) ? `× ${Number(value).toFixed(2)}` : '—';
 const calculateTotalAmount = (price: number | string | null | undefined, quantity: number | string | null | undefined): number =>
   Number(price || 0) * Number(quantity || 0);
 const formatDisplayDate = (value?: string | null): string => {
@@ -519,6 +532,8 @@ export default function OrdersPage() {
   const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
   const currentUserRole = currentUser?.role;
   const currentUserId = currentUser?.id;
+  const canEditOrder = Boolean(currentUser && hasActionPermission(currentUser, 'order.edit'));
+  const canUpdateOrderStatus = Boolean(currentUser && hasActionPermission(currentUser, 'order.status_update'));
   const canSeeOrderHistory = canViewOrderHistory(currentUserRole);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -615,6 +630,8 @@ export default function OrdersPage() {
   });
   const designSearchDebounceRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const designRequestSeqRef = useRef(0);
+  const configuratorRequestSeqRef = useRef(0);
+  const previousDesignFiltersRef = useRef(designFilters);
 
   const isEditing = Boolean(editingOrderId);
   const listTableColumnCount = canViewCostPrice ? 14 : 13;
@@ -898,6 +915,8 @@ export default function OrdersPage() {
   };
 
   const loadDesignConfigurator = async (designId: string, preserveManualDescription = false) => {
+    const requestSeq = configuratorRequestSeqRef.current + 1;
+    configuratorRequestSeqRef.current = requestSeq;
     if (!designId) {
       resetConfiguratorState();
       return;
@@ -906,12 +925,16 @@ export default function OrdersPage() {
     setConfiguratorError(null);
     try {
       const response = await api.get(`/products/mobile/configurator/${encodeURIComponent(designId)}`);
+      if (requestSeq !== configuratorRequestSeqRef.current) return;
       await applyConfiguratorResponse(response.data, preserveManualDescription);
     } catch (error: any) {
+      if (requestSeq !== configuratorRequestSeqRef.current) return;
       resetConfiguratorState();
       setConfiguratorError(error?.response?.data?.message || 'Unable to load design configurator.');
     } finally {
-      setConfiguratorLoading(false);
+      if (requestSeq === configuratorRequestSeqRef.current) {
+        setConfiguratorLoading(false);
+      }
     }
   };
 
@@ -1119,7 +1142,7 @@ export default function OrdersPage() {
   };
 
   const handleSaveOrder = async () => {
-    if (editingOrderId && !canEditOrderByStatus(editingOrderStatus, currentUserRole)) {
+    if (editingOrderId && (!canEditOrder || !canEditOrderByStatus(editingOrderStatus, currentUserRole))) {
       showAlert('This order cannot be edited in its current status.', {
         title: 'Order locked',
         variant: 'warning',
@@ -1296,7 +1319,7 @@ export default function OrdersPage() {
   }, [highlightedOrderId, orders]);
 
   const openEditModal = async (order: OrderRow) => {
-    if (!canEditOrderByStatus(order.status, currentUserRole)) {
+    if (!canEditOrder || !canEditOrderByStatus(order.status, currentUserRole)) {
       showAlert('This order cannot be edited in its current status.', {
         title: 'Order locked',
         variant: 'warning',
@@ -1371,7 +1394,7 @@ export default function OrdersPage() {
   };
 
   const openOrderStatusChange = (order: OrderRow) => {
-    if (!canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId)) {
+    if (!canUpdateOrderStatus || !canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId)) {
       showAlert('No status change is allowed for this order in its current status.', {
         title: 'Status locked',
         variant: 'warning',
@@ -1409,7 +1432,7 @@ export default function OrdersPage() {
 
   const requestOrderStatusChange = () => {
     if (!statusChangeOrder || !statusChangeTarget || statusChangeTarget === statusChangeOrder.status) return;
-    if (!canChangeOrderStatus(statusChangeOrder.status, statusChangeTarget, currentUserRole, statusChangeOrder.salesRepId, currentUserId)) {
+    if (!canUpdateOrderStatus || !canChangeOrderStatus(statusChangeOrder.status, statusChangeTarget, currentUserRole, statusChangeOrder.salesRepId, currentUserId)) {
       showAlert('This status change is not allowed for your role.', {
         title: 'Status locked',
         variant: 'warning',
@@ -1437,7 +1460,7 @@ export default function OrdersPage() {
 
   const confirmOrderStatusChange = async () => {
     if (!pendingOrderStatusChange) return;
-    if (!canChangeOrderStatus(
+    if (!canUpdateOrderStatus || !canChangeOrderStatus(
       pendingOrderStatusChange.from,
       pendingOrderStatusChange.to,
       currentUserRole,
@@ -1500,8 +1523,8 @@ export default function OrdersPage() {
 
   const getVisibleHistoryChanges = (row: OrderHistoryRow): OrderHistoryChange[] => {
     if (!Array.isArray(row.changes)) return [];
-    if (row.actionType !== 'STATUS_CHANGE') return row.changes;
-    return row.changes.filter((change) => change.field !== 'status');
+    if (row.actionType === 'STATUS_CHANGE') return [];
+    return row.changes;
   };
 
   const formatShipVia = (value?: string | null) => SHIP_VIA_OPTIONS.find((option) => option.value === value)?.label || value || '-';
@@ -1541,7 +1564,11 @@ export default function OrdersPage() {
   const selectDesignForOrder = (designId: string, closePicker = false) => {
     setPriceManuallyEdited(false);
     setBaseDesignId(designId);
-    setForm((prev) => ({ ...prev, designId }));
+    setForm((prev) => ({
+      ...prev,
+      designId,
+      ...(designId ? {} : { shortDescription: '' }),
+    }));
     if (designId) {
       setFormErrors((prev) => ({ ...prev, designId: undefined, price: undefined, totalAmount: undefined }));
     }
@@ -1549,6 +1576,13 @@ export default function OrdersPage() {
     if (closePicker) {
       setShowDesignPickerModal(false);
     }
+  };
+
+  const clearSelectedDesign = () => {
+    configuratorRequestSeqRef.current += 1;
+    setBaseDesignId('');
+    setForm((prev) => ({ ...prev, designId: '', shortDescription: '' }));
+    resetConfiguratorState();
   };
 
   const resetDesignFilters = () => {
@@ -1560,6 +1594,7 @@ export default function OrdersPage() {
       jewelrySize: '',
       designStatus: '',
     });
+    clearSelectedDesign();
   };
 
   const selectedDesignLabel = useMemo(() => {
@@ -1649,6 +1684,31 @@ export default function OrdersPage() {
     designFilters.jewelrySize ||
     designFilters.designStatus,
   );
+  useEffect(() => {
+    const filtersChanged = Object.entries(designFilters).some(
+      ([key, value]) => previousDesignFiltersRef.current[key as keyof typeof designFilters] !== value,
+    );
+    previousDesignFiltersRef.current = designFilters;
+
+    if (!filtersChanged) return;
+    if (!baseDesignId || !designDetail) return;
+
+    const matchesFilters =
+      (!designFilters.jewelryGroup || designDetail.jewelryGroup === designFilters.jewelryGroup) &&
+      (!designFilters.collection || designDetail.collection === designFilters.collection) &&
+      (!designFilters.metal || designDetail.metalCaratage === designFilters.metal) &&
+      (!designFilters.jewelrySize || designDetail.jewelrySize === designFilters.jewelrySize) &&
+      (!designFilters.designStatus || designDetail.designStatus === designFilters.designStatus) &&
+      (!designFilters.search || [designDetail.designNo, designDetail.version, designDetail.designName]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(designFilters.search.trim().toLowerCase()));
+
+    if (!matchesFilters) {
+      clearSelectedDesign();
+    }
+  }, [designFilters]);
   const filteredDesignOptions = useMemo(
     () =>
       designSelectOptions
@@ -1691,7 +1751,7 @@ export default function OrdersPage() {
   };
 
   const toggleOrderActive = async (order: OrderRow, nextActive: boolean) => {
-    if (!canEditOrderByStatus(order.status, currentUserRole)) {
+    if (!canEditOrder || !canEditOrderByStatus(order.status, currentUserRole)) {
       showAlert('This order cannot be changed in its current status.', {
         title: 'Order locked',
         variant: 'warning',
@@ -2154,9 +2214,9 @@ export default function OrdersPage() {
                           </svg>
                         </OrderActionIconButton>
                         <OrderActionIconButton
-                          title={canEditOrderByStatus(order.status, currentUserRole) ? 'Edit Order' : 'Order locked'}
+                          title={canEditOrder && canEditOrderByStatus(order.status, currentUserRole) ? 'Edit Order' : 'Order locked'}
                           onClick={() => openEditModal(order)}
-                          disabled={!canEditOrderByStatus(order.status, currentUserRole)}
+                          disabled={!canEditOrder || !canEditOrderByStatus(order.status, currentUserRole)}
                         >
                           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M12 20h9" />
@@ -2178,7 +2238,7 @@ export default function OrdersPage() {
                             </svg>
                           )}
                         </OrderActionIconButton>
-                        {canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId) && (
+                        {canUpdateOrderStatus && canOpenOrderStatusChange(order.status, currentUserRole, order.salesRepId, currentUserId) && (
                           <OrderActionIconButton
                             title="Change Status"
                             onClick={() => openOrderStatusChange(order)}
@@ -2215,7 +2275,7 @@ export default function OrdersPage() {
                             title="Suspend Order"
                             onClick={() => toggleOrderActive(order, false)}
                             className="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={activeToggleOrderId === order.id || !canEditOrderByStatus(order.status, currentUserRole)}
+                            disabled={activeToggleOrderId === order.id || !canEditOrder || !canEditOrderByStatus(order.status, currentUserRole)}
                           >
                             {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
@@ -2231,7 +2291,7 @@ export default function OrdersPage() {
                             title="Resume Order"
                             onClick={() => toggleOrderActive(order, true)}
                             className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={activeToggleOrderId === order.id || !canEditOrderByStatus(order.status, currentUserRole)}
+                            disabled={activeToggleOrderId === order.id || !canEditOrder || !canEditOrderByStatus(order.status, currentUserRole)}
                           >
                             {activeToggleOrderId === order.id ? (
                               <span className="text-[10px] font-semibold">...</span>
@@ -2693,7 +2753,6 @@ export default function OrdersPage() {
                               <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">Product Specifications</div>
                               <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
                                 <div><span className="text-slate-500">Category</span><div className="font-semibold text-slate-900">{designDetail?.jewelryGroup || '-'}</div></div>
-                                <div><span className="text-slate-500">Status</span><div className="font-semibold text-slate-900">{designDetail?.designStatus || '-'}</div></div>
                                 <div><span className="text-slate-500">Diamond Type</span><div className="font-semibold text-slate-900">{designDetail?.diamondType || '-'}</div></div>
                                 <div><span className="text-slate-500">Diamond Spread</span><div className="font-semibold text-slate-900">{designDetail?.diamondSpread || '-'}</div></div>
                               </div>
@@ -2762,7 +2821,7 @@ export default function OrdersPage() {
                   <div className="space-y-4 p-4">
                     <div className="grid gap-4 md:grid-cols-3">
                       <div>
-                        <label className="text-sm font-medium text-slate-700">Sale Price @*</label>
+                        <label className="text-sm font-medium text-slate-700">Selling Price (per piece)*</label>
                         <div className="mt-1 flex">
                           <input
                             type="number"
@@ -2787,6 +2846,7 @@ export default function OrdersPage() {
                           />
                           <span className="inline-flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-xs font-semibold text-slate-600">USD</span>
                         </div>
+                        <p className="mt-1 text-xs text-slate-500">{hasSnapshotValue(form.price) ? `${formatMoney(Number(form.price))} per piece` : 'Enter the customer-facing unit price.'}</p>
                         {formErrors.price && (
                           <p id="price-error" className="mt-1 text-xs font-medium text-rose-600">
                             {formErrors.price}
@@ -2822,7 +2882,7 @@ export default function OrdersPage() {
                         )}
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-slate-700">TOTAL AMOUNT*</label>
+                        <label className="text-sm font-medium text-slate-700">Order Total*</label>
                         <div className="mt-1 flex">
                           <input
                             type="number"
@@ -2850,6 +2910,27 @@ export default function OrdersPage() {
                             {formErrors.totalAmount}
                           </p>
                         )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-xl border border-[#e5dacb] bg-[#faf7f1] p-3 sm:grid-cols-3">
+                      <div className="rounded-lg border border-white/80 bg-white/80 px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Unit selling price</p>
+                        <p className="mt-1 text-base font-bold tabular-nums text-slate-900">
+                          {hasSnapshotValue(form.price) ? formatMoney(Number(form.price)) : '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-white/80 bg-white/80 px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Quantity</p>
+                        <p className="mt-1 text-base font-bold tabular-nums text-slate-900">
+                          {Number(form.quantity || 0) > 0 ? Number(form.quantity).toLocaleString() : '—'}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-[#cfe8da] bg-emerald-50/70 px-3 py-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">Order total</p>
+                        <p className="mt-1 text-base font-bold tabular-nums text-emerald-900">
+                          {formTotalAmount > 0 ? formatMoney(formTotalAmount) : '—'}
+                        </p>
                       </div>
                     </div>
 
@@ -3507,7 +3588,7 @@ export default function OrdersPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700">Sale Price</label>
+                  <label className="text-sm font-medium text-slate-700">Selling Price (per piece)</label>
                   <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">
                     {formatMoney(Number(viewOrder?.price || 0))}
                   </div>
@@ -3559,6 +3640,99 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
+
+              {isSuperAdmin && (() => {
+                const hasCostSnapshot = [
+                  viewOrder?.baseCostSnapshot,
+                  viewOrder?.companyCostSnapshot,
+                  viewOrder?.branchCostSnapshot,
+                ].some(hasSnapshotValue);
+                const sellingPrice = hasSnapshotValue(viewOrder?.sellingPriceSnapshot)
+                  ? viewOrder?.sellingPriceSnapshot
+                  : viewOrder?.price;
+                return (
+                  <section className="overflow-hidden rounded-xl border border-[#dfd3c4] bg-white shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eadfce] bg-[#faf6ef] px-5 py-4">
+                      <div>
+                        <h3 className="text-base font-bold text-[#2b241d]">Pricing Breakdown</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">Pricing captured when this order was created.</p>
+                      </div>
+                      <span className="rounded-full border border-[#ead1a5] bg-[#fff8e8] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a6d25]">
+                        Historical snapshot
+                      </span>
+                    </div>
+
+                    {hasCostSnapshot ? (
+                      <div className="p-4 sm:p-5">
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="min-w-full text-sm">
+                            <thead className="border-b border-[#eadfce] bg-[#fcfaf6] text-left">
+                              <tr>
+                                <th scope="col" className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Pricing Level</th>
+                                <th scope="col" className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Multiplier Applied</th>
+                                <th scope="col" className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Captured Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              <tr>
+                                <td className="px-4 py-3">
+                                  <p className="font-semibold text-slate-800">Base Design Cost</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">Exact design/version cost at order creation</p>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-slate-500">—</td>
+                                <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.baseCostSnapshot)}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-4 py-3">
+                                  <p className="font-semibold text-slate-800">Company Cost</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">Base cost after the company pricing rule</p>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex rounded-md border border-[#ead1a5] bg-[#fff8e8] px-2 py-1 text-xs font-semibold text-[#8a641f]">{formatSnapshotMultiplier(viewOrder?.companyMultiplierSnapshot)}</span>
+                                </td>
+                                <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.companyCostSnapshot)}</td>
+                              </tr>
+                              <tr>
+                                <td className="px-4 py-3">
+                                  <p className="font-semibold text-slate-800">Branch Cost</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">Company cost after the branch pricing rule</p>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="inline-flex rounded-md border border-[#ead1a5] bg-[#fff8e8] px-2 py-1 text-xs font-semibold text-[#8a641f]">{formatSnapshotMultiplier(viewOrder?.branchMultiplierSnapshot)}</span>
+                                </td>
+                                <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td>
+                              </tr>
+                              <tr className="bg-emerald-50/70">
+                                <td className="px-4 py-3">
+                                  <p className="font-bold text-emerald-900">Selling Price</p>
+                                  <p className="mt-0.5 text-xs text-emerald-700">Final customer-facing price charged on this order</p>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-emerald-800">—</td>
+                                <td className="px-4 py-3 text-right text-base font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {hasSnapshotValue(viewOrder?.effectiveMultiplierSnapshot) ? (
+                          <p className="mt-3 text-right text-xs font-medium text-slate-500">
+                            Effective multiplier: <span className="font-bold text-slate-700">{formatSnapshotMultiplier(viewOrder?.effectiveMultiplierSnapshot)}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="p-5">
+                        <p className="text-sm font-semibold text-slate-700">Historical pricing snapshot is not available for this older order.</p>
+                        <p className="mt-1 text-xs text-slate-500">The saved selling price remains available below.</p>
+                        <div className="mt-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                          <span className="text-sm font-semibold text-slate-700">Selling Price</span>
+                          <span className="text-base font-bold tabular-nums text-slate-900">{formatSnapshotMoney(sellingPrice)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                );
+              })()}
 
               <div className="mt-6 rounded-xl border border-slate-200">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800">Metal Information</div>
@@ -3673,7 +3847,3 @@ export default function OrdersPage() {
     </div>
   );
 }
-
-
-
-

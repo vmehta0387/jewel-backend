@@ -87,10 +87,6 @@ export class SpiffService {
   }
 
   async updateConfig(dto: UpdateSpiffConfigDto, requester: AuthUser) {
-    if (requester.role !== UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException('Only super admin can update SPIFF configuration');
-    }
-
     const normalizedPointsPerDollar = Math.max(1, Math.floor(Number(dto.pointsPerDollar || 0)));
     if (!Number.isFinite(normalizedPointsPerDollar)) {
       throw new BadRequestException('pointsPerDollar must be a valid positive integer');
@@ -375,11 +371,20 @@ export class SpiffService {
     }
 
     if (scope === SpiffLeaderboardScope.MY_COMPANY) {
+      if (requester.role === UserRole.INTERNAL_REP) {
+        const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+        if (managedCompanyIds.length === 0) {
+          qb.andWhere('1 = 0');
+        } else {
+          qb.andWhere('ledger.companyId IN (:...managedCompanyIds)', { managedCompanyIds });
+        }
+      } else {
       const companyId = requester.companyId;
       if (!companyId) {
         throw new BadRequestException('Company scope is not available for this user');
       }
       qb.andWhere('ledger.companyId = :companyId', { companyId });
+      }
     }
 
     qb.groupBy('ledger.userId').orderBy('points', 'DESC');
@@ -470,6 +475,16 @@ export class SpiffService {
           throw new ForbiddenException('Branch manager must be assigned to a branch');
         }
         qb.andWhere('claim.branchId = :branchId', { branchId: requester.branchId });
+      } else if (requester.role === UserRole.INTERNAL_REP) {
+        const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+        if (managedCompanyIds.length === 0) {
+          qb.andWhere('claim.userId = :requesterId', { requesterId: requester.id });
+        } else {
+          qb.andWhere('(claim.companyId IN (:...managedCompanyIds) OR claim.userId = :requesterId)', {
+            managedCompanyIds,
+            requesterId: requester.id,
+          });
+        }
       }
     } else {
       qb.andWhere('claim.userId = :userId', { userId: requester.id });
@@ -525,7 +540,7 @@ export class SpiffService {
       .orderBy('createdAt', 'DESC')
       .limit(take);
 
-    this.applySpiffActivityScope(earnedQb, requester, 'ledger');
+    await this.applySpiffActivityScope(earnedQb, requester, 'ledger');
 
     const claimsQb = this.claimRepo
       .createQueryBuilder('claim')
@@ -536,7 +551,7 @@ export class SpiffService {
       .orderBy('claim.createdAt', 'DESC')
       .take(take);
 
-    this.applySpiffActivityScope(claimsQb, requester, 'claim');
+    await this.applySpiffActivityScope(claimsQb, requester, 'claim');
 
     const earnedCountQb = this.ledgerRepo
       .createQueryBuilder('ledger')
@@ -546,12 +561,12 @@ export class SpiffService {
       )
       .where('ledger.points != 0')
       .setParameter('spiffCancelReversalEvent', SpiffLedgerEvent.ORDER_CANCELLED_REVERSAL);
-    this.applySpiffActivityScope(earnedCountQb, requester, 'ledger');
+    await this.applySpiffActivityScope(earnedCountQb, requester, 'ledger');
 
     const claimCountQb = this.claimRepo
       .createQueryBuilder('claim')
       .select('COUNT(*)', 'total');
-    this.applySpiffActivityScope(claimCountQb, requester, 'claim');
+    await this.applySpiffActivityScope(claimCountQb, requester, 'claim');
 
     const [earnedRows, claimRows, earnedTotalRaw, claimTotalRaw] = await Promise.all([
       earnedQb.getRawMany(),
@@ -589,7 +604,7 @@ export class SpiffService {
   }
 
   private async createRedemptionClaim(dto: CreateSpiffClaimDto, requester: AuthUser) {
-    if (![UserRole.SALES_REP, UserRole.COMPANY_ADMIN].includes(requester.role)) {
+    if (![UserRole.SALES_REP, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN].includes(requester.role)) {
       throw new ForbiddenException('Only sales users can create redemption claims');
     }
 
@@ -684,7 +699,7 @@ export class SpiffService {
     if (!targetUser || targetUser.role !== UserRole.SALES_REP) {
       throw new NotFoundException('Sales rep not found');
     }
-    this.assertUserAdjustmentScope(targetUser, requester);
+    await this.assertUserAdjustmentScope(targetUser, requester);
 
     const action = String((dto as CreateSpiffPointAdjustmentDto).action || '').toUpperCase() as SpiffPointAdjustmentAction;
     const absolutePoints = this.roundPoints(
@@ -759,7 +774,7 @@ export class SpiffService {
       throw new NotFoundException('Sales rep not found');
     }
 
-    this.assertUserAdjustmentScope(targetUser, requester);
+    await this.assertUserAdjustmentScope(targetUser, requester);
     return this.computeWallet(targetUser.id);
   }
 
@@ -774,7 +789,7 @@ export class SpiffService {
       throw new NotFoundException('Claim not found');
     }
 
-    this.assertClaimScope(claim, requester);
+    await this.assertClaimScope(claim, requester);
 
     if (claim.status === SpiffClaimStatus.REJECTED) {
       throw new BadRequestException('Claim is already rejected');
@@ -865,7 +880,7 @@ export class SpiffService {
       throw new NotFoundException('Claim not found');
     }
 
-    this.assertClaimScope(claim, requester);
+    await this.assertClaimScope(claim, requester);
 
     if (claim.status === SpiffClaimStatus.REJECTED) {
       throw new BadRequestException('Rejected claim cannot be fulfilled');
@@ -1592,6 +1607,10 @@ export class SpiffService {
     requested: SpiffLeaderboardScope | undefined,
     requester: AuthUser,
   ): SpiffLeaderboardScope {
+    if (requester.role === UserRole.INTERNAL_REP) {
+      return SpiffLeaderboardScope.MY_COMPANY;
+    }
+
     if (requested === SpiffLeaderboardScope.MY_BRANCH) {
       if (requester.branchId) {
         return SpiffLeaderboardScope.MY_BRANCH;
@@ -1654,18 +1673,27 @@ export class SpiffService {
   private canManageClaims(requester: AuthUser): boolean {
     return (
       requester.role === UserRole.SUPER_ADMIN ||
+      requester.role === UserRole.INTERNAL_REP ||
       requester.role === UserRole.COMPANY_ADMIN ||
       requester.role === UserRole.BRANCH_MANAGER
     );
   }
 
-  private assertClaimScope(claim: SpiffRedemptionClaim, requester: AuthUser): void {
+  private async assertClaimScope(claim: SpiffRedemptionClaim, requester: AuthUser): Promise<void> {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
     }
 
     if (requester.role === UserRole.COMPANY_ADMIN) {
       if (!requester.companyId || claim.companyId !== requester.companyId) {
+        throw new ForbiddenException('Claim is outside your company scope');
+      }
+      return;
+    }
+
+    if (requester.role === UserRole.INTERNAL_REP) {
+      const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+      if (claim.userId !== requester.id && (!claim.companyId || !managedCompanyIds.includes(claim.companyId))) {
         throw new ForbiddenException('Claim is outside your company scope');
       }
       return;
@@ -1683,13 +1711,21 @@ export class SpiffService {
     }
   }
 
-  private assertUserAdjustmentScope(targetUser: User, requester: AuthUser): void {
+  private async assertUserAdjustmentScope(targetUser: User, requester: AuthUser): Promise<void> {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
     }
 
     if (requester.role === UserRole.COMPANY_ADMIN) {
       if (!requester.companyId || targetUser.companyId !== requester.companyId) {
+        throw new ForbiddenException('Sales rep is outside your company scope');
+      }
+      return;
+    }
+
+    if (requester.role === UserRole.INTERNAL_REP) {
+      const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+      if (!targetUser.companyId || !managedCompanyIds.includes(targetUser.companyId)) {
         throw new ForbiddenException('Sales rep is outside your company scope');
       }
       return;
@@ -1705,7 +1741,7 @@ export class SpiffService {
     throw new ForbiddenException('Sales rep is outside your scope');
   }
 
-  private applySpiffActivityScope(qb: any, requester: AuthUser, alias: string): void {
+  private async applySpiffActivityScope(qb: any, requester: AuthUser, alias: string): Promise<void> {
     if (requester.role === UserRole.SUPER_ADMIN) {
       return;
     }
@@ -1716,6 +1752,18 @@ export class SpiffService {
       qb.andWhere(`${alias}.companyId = :activityCompanyId`, { activityCompanyId: requester.companyId });
       return;
     }
+    if (requester.role === UserRole.INTERNAL_REP) {
+      const managedCompanyIds = await this.getInternalRepManagedCompanyIds(requester.id);
+      if (managedCompanyIds.length === 0) {
+        qb.andWhere(`${alias}.userId = :activityUserId`, { activityUserId: requester.id });
+      } else {
+        qb.andWhere(`(${alias}.companyId IN (:...activityCompanyIds) OR ${alias}.userId = :activityUserId)`, {
+          activityCompanyIds: managedCompanyIds,
+          activityUserId: requester.id,
+        });
+      }
+      return;
+    }
     if (requester.role === UserRole.BRANCH_MANAGER) {
       if (!requester.branchId) {
         throw new ForbiddenException('Branch manager must be assigned to a branch');
@@ -1724,6 +1772,14 @@ export class SpiffService {
       return;
     }
     qb.andWhere(`${alias}.userId = :activityUserId`, { activityUserId: requester.id });
+  }
+
+  private async getInternalRepManagedCompanyIds(internalRepId: number): Promise<number[]> {
+    const companies = await this.companyRepo.find({
+      where: { accountManagerId: internalRepId },
+      select: ['id'],
+    });
+    return companies.map((company) => company.id);
   }
 
   private serializeEarnedActivity(row: Record<string, unknown>) {
@@ -2088,9 +2144,6 @@ export class SpiffService {
     return Math.round(value * 100) / 100;
   }
 }
-
-
-
 
 
 

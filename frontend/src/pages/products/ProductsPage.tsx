@@ -244,10 +244,7 @@ const getDesignStoneSummary = (design: ApiDesignRow): string => {
           String(
             item?.stone ||
               item?.stoneName ||
-              item?.stoneType ||
-              item?.packetName ||
               item?.packet?.stone ||
-              item?.packet?.packetName ||
               '',
           ).trim(),
         )
@@ -473,8 +470,6 @@ const VERSION_LIST_PAGE_SIZE = 15;
 const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v5';
 
 interface VersionListFilters {
-  jewelryGroup: string;
-  collection: string;
   jewelrySize: string;
   status: string;
   metalCaratage: string;
@@ -482,8 +477,6 @@ interface VersionListFilters {
 }
 
 const EMPTY_VERSION_LIST_FILTERS: VersionListFilters = {
-  jewelryGroup: '',
-  collection: '',
   jewelrySize: '',
   status: '',
   metalCaratage: '',
@@ -1564,9 +1557,11 @@ export default function ProductsPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [page, setPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [designFormBaseline, setDesignFormBaseline] = useState<string | null>(null);
   const [showActionsDropdown, setShowActionsDropdown] = useState(false);
   const [showMediaLibraryModal, setShowMediaLibraryModal] = useState(false);
   const [showVersionBuilderModal, setShowVersionBuilderModal] = useState(false);
+  const [versionBuilderBaseline, setVersionBuilderBaseline] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -1710,6 +1705,66 @@ export default function ProductsPage() {
     Record<string, VersionBuilderCreateResult>
   >({});
   const [allDesignRows, setAllDesignRows] = useState<DesignRow[]>([]);
+
+  const designFormSnapshot = useMemo(
+    () => JSON.stringify({
+      form, metalRows, gemRows, laborRows, overheadRows, findingRows, processRows, pricingRows, vendorRows,
+      relevantSelection,
+      galleryItems: galleryItems.map(({ url, key }) => ({ url, key })),
+      stlItem: stlItem ? { url: stlItem.url, key: stlItem.key, fileName: stlItem.fileName } : null,
+      stlRemoved,
+    }),
+    [findingRows, form, galleryItems, gemRows, laborRows, metalRows, overheadRows, pricingRows, processRows, relevantSelection, stlItem, stlRemoved, vendorRows],
+  );
+  const hasUnsavedDesignChanges = showAddModal && designFormBaseline !== null && designFormBaseline !== designFormSnapshot;
+
+  const versionBuilderSnapshot = useMemo(
+    () => JSON.stringify({
+      selections: versionBuilderSelections, imageMode: versionBuilderImageMode, gemMode: versionBuilderGemMode,
+      metalImageMap: versionBuilderMetalImageMap,
+      uploadedMedia: versionBuilderUploadedMediaItems.map((item) => ({ name: item.file.name, size: item.file.size, type: item.file.type })),
+      gemRows: versionBuilderGemRows, gemGroupModes: versionBuilderGemGroupModes, sizeChart: versionBuilderSizeChart,
+      manualSizeChartCells: versionBuilderManualSizeChartCells, laborRows: versionBuilderLaborRows,
+      overheadRows: versionBuilderOverheadRows, bomSelection: versionBuilderBomSelection,
+    }),
+    [versionBuilderBomSelection, versionBuilderGemGroupModes, versionBuilderGemRows, versionBuilderGemMode, versionBuilderImageMode, versionBuilderLaborRows, versionBuilderManualSizeChartCells, versionBuilderMetalImageMap, versionBuilderOverheadRows, versionBuilderSelections, versionBuilderSizeChart, versionBuilderUploadedMediaItems],
+  );
+  const hasUnsavedVersionBuilderChanges = showVersionBuilderModal && !versionBuilderInitializing && versionBuilderBaseline !== null && versionBuilderBaseline !== versionBuilderSnapshot;
+  const versionBuilderBaselineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!showAddModal) {
+      setDesignFormBaseline(null);
+      return;
+    }
+    if (designFormBaseline === null) setDesignFormBaseline(designFormSnapshot);
+  }, [designFormBaseline, designFormSnapshot, showAddModal]);
+
+  useEffect(() => {
+    if (versionBuilderBaselineTimerRef.current) {
+      clearTimeout(versionBuilderBaselineTimerRef.current);
+      versionBuilderBaselineTimerRef.current = null;
+    }
+    if (!showVersionBuilderModal) {
+      setVersionBuilderBaseline(null);
+      return;
+    }
+    if (versionBuilderInitializing || versionBuilderBaseline !== null) return;
+
+    // Gem grouping and the size chart are populated by follow-up effects after
+    // the builder's API load. Capture the baseline only once that setup settles.
+    versionBuilderBaselineTimerRef.current = setTimeout(() => {
+      setVersionBuilderBaseline(versionBuilderSnapshot);
+      versionBuilderBaselineTimerRef.current = null;
+    }, 100);
+
+    return () => {
+      if (versionBuilderBaselineTimerRef.current) {
+        clearTimeout(versionBuilderBaselineTimerRef.current);
+        versionBuilderBaselineTimerRef.current = null;
+      }
+    };
+  }, [showVersionBuilderModal, versionBuilderBaseline, versionBuilderInitializing, versionBuilderSnapshot]);
   const [expandedBaseDesigns, setExpandedBaseDesigns] = useState<string[]>([]);
   const [versionFamilies, setVersionFamilies] = useState<Record<string, VersionFamilyListState>>({});
   const versionSearchDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -3603,8 +3658,6 @@ export default function ProductsPage() {
           summaryOnly: true,
           familyDesignId: options?.familyDesignId,
           search: nextSearch.trim() || undefined,
-          jewelryGroup: nextFilters.jewelryGroup || undefined,
-          collection: nextFilters.collection || undefined,
           jewelrySize: nextFilters.jewelrySize || undefined,
           designStatus: nextFilters.status || undefined,
           metalCaratage: nextFilters.metalCaratage || undefined,
@@ -3719,18 +3772,9 @@ export default function ProductsPage() {
         };
       }
 
-      const familyRows = getVersionsForDesign(row.designNo);
-      const fallbackRow = familyRows.find((item) => item.imageUrls?.[0]);
-      if (fallbackRow?.imageUrls?.[0]) {
-        return {
-          url: fallbackRow.imageUrls[0],
-          key: fallbackRow.imageKeys?.[0] || `${fallbackRow.id}-0`,
-        };
-      }
-
       return null;
     },
-    [versionsByBaseDesign, versionFamilies],
+    [],
   );
 
   const versionBuilderVersionRows = useMemo(
@@ -4618,6 +4662,14 @@ export default function ProductsPage() {
 
     const currentRow = versionBuilderGemRows.find((row) => row.id === rowId);
     const nextRow = currentRow ? { ...currentRow, ...rowPatch } : null;
+    if (nextRow && (field === 'wtPerPcs' || field === 'pcs')) {
+      const wtPerPcs = Math.max(0, parseNum(nextRow.wtPerPcs));
+      const pcs = Math.max(0, parseNum(nextRow.pcs));
+      rowPatch.wtInCts = nextRow.wtPerPcs.trim() && nextRow.pcs.trim()
+        ? (wtPerPcs * pcs).toFixed(3)
+        : '';
+      nextRow.wtInCts = rowPatch.wtInCts;
+    }
 
     setVersionBuilderGemRows((prev) =>
       prev.map((row) => (row.id === rowId ? { ...row, ...rowPatch } : row)),
@@ -6402,6 +6454,19 @@ const createDefaultVendorRow = (): VendorRow => ({
     const resolvedVersion = normalizeVersionInput(options?.overrideVersion ?? form.version);
     const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, resolvedVersion);
 
+    const requestedDesignName = form.designName.trim();
+    if (
+      requestedDesignName &&
+      allDesignRows.some(
+        (row) =>
+          row.id !== String(editingId || '') &&
+          row.designName.trim().toLocaleLowerCase() === requestedDesignName.toLocaleLowerCase(),
+      )
+    ) {
+      showAppAlert('Design Name already exists.');
+      return;
+    }
+
     const usedMetalKeys = new Set<string>();
     if (!metalRows.some((row) => row.metalCaratage.trim())) {
       showAppAlert('Please add at least one Metal in Metal Information before saving the design.');
@@ -7222,6 +7287,11 @@ const createDefaultVendorRow = (): VendorRow => ({
   const confirmCloseVersionBuilderModal = async () => {
     if (creatingVersions) return;
 
+    if (!hasUnsavedVersionBuilderChanges) {
+      closeVersionBuilderModal();
+      return;
+    }
+
     const confirmed = await confirmAppDialog(
       'Any unsaved version builder changes will be lost.',
       {
@@ -7309,6 +7379,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     addTag,
     buildIjewelEmbedUrl,
     buildPacketSearchOptions,
+    hasUnsavedDesignChanges,
     costTotals,
     createDefaultVendorRow,
     confirmDesignFormAction: confirmAppDialog,
@@ -8051,7 +8122,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                               Clear all
                             </button>
                           </div>
-                          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+                          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
                             <form
                               className="relative min-w-0"
                               onSubmit={(event) => {
@@ -8117,24 +8188,6 @@ const createDefaultVendorRow = (): VendorRow => ({
                               </button>
                             </form>
                             <SmartDropdown
-                              value={versionFilters.jewelryGroup}
-                              onChange={(value, option) => {
-                                mergeMasterOption('JEWELRY_GROUP', option);
-                                applyVersionListFilter(row, 'jewelryGroup', value);
-                              }}
-                              className="min-w-0"
-                              config={masterDropdownConfig('JEWELRY_GROUP', 'All Categories', toSmartDropdownOptions(masterOptions.jewelryGroups))}
-                            />
-                            <SmartDropdown
-                              value={versionFilters.collection}
-                              onChange={(value, option) => {
-                                mergeMasterOption('COLLECTION', option);
-                                applyVersionListFilter(row, 'collection', value);
-                              }}
-                              className="min-w-0"
-                              config={masterDropdownConfig('COLLECTION', 'All Sub Categories', toSmartDropdownOptions(masterOptions.collections))}
-                            />
-                            <SmartDropdown
                               value={versionFilters.jewelrySize}
                               onChange={(value, option) => {
                                 mergeMasterOption('JEWELRY_SIZE', option);
@@ -8196,11 +8249,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ) : versionRows.length === 0 ? (
                           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">No versions match this search.</p>
                         ) : (() => {
-                          const effectivePrimaryId = resolvePrimaryVersionId(versionRows);
                           return (
                           <VersionListGrid
                             rows={versionRows.map((versionRow) => {
-                              const isPrimaryVersion = versionRow.id === effectivePrimaryId;
+                              const isPrimaryVersion = versionRow.isPrimary === true;
                               const versionImage = getPreferredRowImage(versionRow);
                               return {
                                 id: versionRow.id,
@@ -10559,12 +10611,3 @@ const createDefaultVendorRow = (): VendorRow => ({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-

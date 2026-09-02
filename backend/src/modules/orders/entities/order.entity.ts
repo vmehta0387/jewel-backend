@@ -56,6 +56,29 @@ export class Order {
   @Column({ name: 'price', type: 'decimal', precision: 12, scale: 2, default: 0.0 })
   price: number;
 
+  // Historical pricing values captured when the order is created. These must not
+  // be recalculated from later Design, Company, or Branch pricing changes.
+  @Column({ name: 'base_cost_snapshot', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  baseCostSnapshot: number | null;
+
+  @Column({ name: 'company_cost_snapshot', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  companyCostSnapshot: number | null;
+
+  @Column({ name: 'company_multiplier_snapshot', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  companyMultiplierSnapshot: number | null;
+
+  @Column({ name: 'branch_cost_snapshot', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  branchCostSnapshot: number | null;
+
+  @Column({ name: 'branch_multiplier_snapshot', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  branchMultiplierSnapshot: number | null;
+
+  @Column({ name: 'effective_multiplier_snapshot', type: 'decimal', precision: 5, scale: 2, nullable: true })
+  effectiveMultiplierSnapshot: number | null;
+
+  @Column({ name: 'selling_price_snapshot', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  sellingPriceSnapshot: number | null;
+
   @Column({ name: 'short_description', type: 'text', nullable: true })
   shortDescription: string | null;
 

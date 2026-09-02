@@ -17,7 +17,9 @@ export default function CompaniesPage() {
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const canCreateCompany = currentUser ? hasActionPermission(currentUser, 'company.create') : false;
   const canEditCompany = currentUser ? hasActionPermission(currentUser, 'company.edit') : false;
-  const canUpdateCompanyStatus = currentUser ? hasActionPermission(currentUser, 'company.status_update') : false;
+  const canUpdateCompanyStatus = Boolean(
+    isSuperAdmin && currentUser && hasActionPermission(currentUser, 'company.status_update'),
+  );
   const [companies, setCompanies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
@@ -171,13 +173,12 @@ export default function CompaniesPage() {
           )}
           {canUpdateCompanyStatus && (
             <button
-              onClick={async () => {
-                try {
-                  await api.patch(`/companies/${row.id}/status`, { isActive: !row.isActive });
-                  fetchCompanies();
-                } catch (error) {
-                  console.error(error);
+              onClick={() => {
+                if (row.isActive) {
+                  setStatusCompany(row);
+                  return;
                 }
+                void updateCompanyStatus(row, true);
               }}
               className={`app-table-action ${
                 row.isActive
@@ -230,7 +231,7 @@ export default function CompaniesPage() {
       <AlertDialog
         open={Boolean(statusCompany)}
         title="Disable Company"
-        message={`Disable ${statusCompany?.companyName || 'this company'}? All branches under this company will be disabled and company users will be logged out on their next API request. They will not be able to log in until the company is enabled again.`}
+        message={`Disable ${statusCompany?.companyName || 'this company'}? Its branches and user access will also be disabled.`}
         variant="warning"
         confirmLabel={savingStatus ? 'Disabling...' : 'Disable Company'}
         cancelLabel="Cancel"
@@ -257,4 +258,3 @@ export default function CompaniesPage() {
     </div>
   );
 }
-

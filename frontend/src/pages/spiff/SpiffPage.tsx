@@ -196,6 +196,7 @@ const getDefaultScopeForRole = (
   role: string | null | undefined,
 ): 'MY_BRANCH' | 'MY_COMPANY' | 'GLOBAL' => {
   if (role === 'SUPER_ADMIN') return 'GLOBAL';
+  if (role === 'INTERNAL_REP') return 'MY_COMPANY';
   if (role === 'COMPANY_ADMIN') return 'MY_COMPANY';
   return 'MY_BRANCH';
 };
@@ -211,6 +212,9 @@ const getScopeOptionsForRole = (
       { value: 'MY_COMPANY', label: 'My Company' },
       { value: 'GLOBAL', label: 'Global' },
     ];
+  }
+  if (role === 'INTERNAL_REP') {
+    return [{ value: 'MY_COMPANY', label: 'My Companies' }];
   }
   if (role === 'BRANCH_MANAGER') {
     return [
@@ -579,6 +583,17 @@ export default function SpiffPage() {
   const clearRepFilters = () => {
     setRepCompanyFilters([]);
     setRepBranchFilters([]);
+  };
+
+  const resetSalesRepFilter = () => {
+    setSelectedSalesRepId('');
+    setSalesRepSearch('');
+    setSalesRepDropdownOpen(false);
+    clearRepFilters();
+    setAdjustmentErrors((current) => {
+      const { salesRep: _salesRep, ...rest } = current;
+      return rest;
+    });
   };
 
   const applyRepFilters = () => {
@@ -1005,6 +1020,21 @@ export default function SpiffPage() {
                         {selectedFilterCount}
                       </span>
                     ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    title="Reset sales rep filter"
+                    aria-label="Reset sales rep filter"
+                    onClick={resetSalesRepFilter}
+                    disabled={!selectedSalesRepId && selectedFilterCount === 0 && !salesRepSearch}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 11a8.1 8.1 0 0 0-15.5-2L3 11" />
+                      <path d="M3 4v7h7" />
+                      <path d="M4 13a8.1 8.1 0 0 0 15.5 2L21 13" />
+                      <path d="M21 20v-7h-7" />
+                    </svg>
                   </button>
                 </div>
                 <p className="mt-1 min-h-[16px] text-xs font-semibold text-rose-600">

@@ -44,7 +44,7 @@ export class SpiffController {
   }
 
   @Patch('config')
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP)
   @TaskPermissions(TaskPermission.ORDER_ENTRIES)
   @ActionPermissions('spiff.config.edit')
   async updateConfig(

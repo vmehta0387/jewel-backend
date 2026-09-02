@@ -5,6 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
+import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import {
   CreateOrderDto,
@@ -94,11 +95,13 @@ export class OrdersController {
   }
 
   @Put(':id')
+  @ActionPermissions('order.edit')
   update(@Param('id') id: string, @Body() dto: UpdateOrderDto, @Request() req: { user: AuthUser }) {
     return this.ordersService.update(Number(id), dto, req.user);
   }
 
   @Patch(':id/status')
+  @ActionPermissions('order.status_update')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
@@ -108,6 +111,7 @@ export class OrdersController {
   }
 
   @Patch(':id/active')
+  @ActionPermissions('order.edit')
   updateActiveStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderActiveStatusDto,

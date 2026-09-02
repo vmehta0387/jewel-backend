@@ -368,12 +368,22 @@ export default function UsersPage() {
       {
         key: 'taskPermissions',
         label: 'Task Access',
-        render: (value: UserRecord['taskPermissions']) => {
-          if (!value || value.length === 0) {
+        render: (value: UserRecord['taskPermissions'], row: UserRecord) => {
+          const hasAutoApproval = row.detailedPermissions?.some(
+            (permission) => permission.actionKey === 'order.require_approval',
+          );
+          const taskPermissions = hasAutoApproval && row.role === 'SALES_REP'
+            ? (value || []).filter((permission) => permission !== 'ORDER_APPROVALS')
+            : value || [];
+          const labels = [
+            ...(hasAutoApproval ? ['Auto approval'] : []),
+            ...taskPermissions.map((permission) => TASK_PERMISSION_LABELS[permission]),
+          ];
+
+          if (labels.length === 0) {
             return <span className="text-gray-500">-</span>;
           }
 
-          const labels = value.map((permission) => TASK_PERMISSION_LABELS[permission]);
           const preview = labels.slice(0, 2).join(', ');
           const remaining = labels.length - 2;
           return (

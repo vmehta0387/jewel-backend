@@ -5,6 +5,7 @@ import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import SmartDropdown from '../../components/common/SmartDropdown';
 import PricingSlabTable, { type Slab, validatePricingSlabs } from '../../components/forms/PricingSlabTable';
+import { useUnsavedChangesGuard } from '../../components/common/useUnsavedChangesGuard';
 import api from '../../services/api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -280,10 +281,9 @@ export default function EditBranch() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const saveBranch = async (navigateAfterSave = true): Promise<boolean> => {
     if (!validateForm()) {
-      return;
+      return false;
     }
 
     setIsSubmitting(true);
@@ -302,14 +302,29 @@ export default function EditBranch() {
       }
 
       await api.put(`/branches/${id}`, payload);
-      navigate('/branches');
+      if (navigateAfterSave) navigate('/branches');
+      return true;
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string | string[] } } }).response?.data?.message;
       setErrors({ submit: Array.isArray(message) ? message.join(', ') : message || 'Failed to update branch' });
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await saveBranch();
+  };
+
+  const { dialogNode: unsavedChangesDialog } = useUnsavedChangesGuard({
+    value: { formData, slabs, pendingManagerData, newManager, salesRepForm },
+    ready: !loading,
+    onSave: () => saveBranch(false),
+    isSaving: isSubmitting,
+    title: 'Unsaved Branch Changes',
+  });
 
   const handleCreateSalesRep = async () => {
     if (!id || !validateSalesRepForm()) {
@@ -364,6 +379,7 @@ export default function EditBranch() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+        {unsavedChangesDialog}
         {errors.submit && (
           <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">{errors.submit}</div>
         )}
@@ -820,7 +836,5 @@ export default function EditBranch() {
     </div>
   );
 }
-
-
 
 
