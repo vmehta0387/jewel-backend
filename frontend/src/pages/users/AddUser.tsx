@@ -12,7 +12,6 @@ import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
-  getDefaultDetailedPermissionsByRole,
   USER_ROLE_OPTIONS,
 } from '../../types/user.types';
 import { getStoredUser, hasActionPermission } from '../../utils/auth';
@@ -118,8 +117,8 @@ export default function AddUser() {
     phone: '',
     photoUrl: '',
     isActive: true,
-    taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[presetRole],
-    detailedPermissions: [...getDefaultDetailedPermissionsByRole(presetRole)],
+    taskPermissions: [],
+    detailedPermissions: [],
   });
   const allowedPermissionsForRole = ALLOWED_TASK_PERMISSIONS_BY_ROLE[formData.role];
   const canCustomizePermissions = Boolean(
@@ -162,6 +161,39 @@ export default function AddUser() {
     setBranches([]);
     setFormData((prev) => ({ ...prev, branchId: '' }));
   }, [formData.companyId, formData.role]);
+
+  useEffect(() => {
+    let active = true;
+    const role = formData.role;
+
+    void (async () => {
+      try {
+        const response = await api.get(`/users/default-permissions/${role}`);
+        if (!active) return;
+
+        setFormData((prev) => (
+          prev.role === role
+            ? {
+              ...prev,
+              taskPermissions: response.data?.taskPermissions || [],
+              detailedPermissions: response.data?.detailedPermissions || [],
+            }
+            : prev
+        ));
+      } catch {
+        if (!active) return;
+        setFormData((prev) => (
+          prev.role === role
+            ? { ...prev, taskPermissions: [], detailedPermissions: [] }
+            : prev
+        ));
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [formData.role]);
 
   const fetchCompanies = async () => {
     try {
@@ -226,8 +258,8 @@ export default function AddUser() {
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
-      detailedPermissions: [...getDefaultDetailedPermissionsByRole(role)],
+      taskPermissions: [],
+      detailedPermissions: [],
     }));
   };
 
@@ -581,7 +613,6 @@ export default function AddUser() {
     </div>
   );
 }
-
 
 
 

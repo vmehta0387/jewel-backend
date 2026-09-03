@@ -7,6 +7,7 @@ import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard'
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
 import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
+import { UserRole } from '../../common/enums/user-role.enum';
 import {
   CreateOrderDto,
   FindPurchaseOrderUsageQueryDto,
@@ -49,7 +50,12 @@ export class OrdersController {
     @Query('branchId') branchId?: string,
   ) {
     if (!designId || !companyId || !branchId) {
-      return { baseCost: 0, companyMultiplier: 1, companyPrice: 0, branchMultiplier: 1, finalPrice: 0 };
+      if (req.user.role === UserRole.SUPER_ADMIN) {
+        return { baseCost: 0, companyMultiplier: 1, companyPrice: 0, branchMultiplier: 1, finalPrice: 0 };
+      }
+      return req.user.role === UserRole.COMPANY_ADMIN
+        ? { branchMultiplier: 1, branchMultiplierSource: 'BRANCH_DEFAULT', branchCost: 0, finalPrice: 0 }
+        : { finalPrice: 0 };
     }
     return this.ordersService.getPricePreview({ designId: Number(designId), companyId: Number(companyId), branchId: Number(branchId) }, req.user);
   }

@@ -421,6 +421,7 @@ const buildVersionBuilderCombinationKey = (input: {
   designNo: string;
   metal?: string;
   coverage?: string;
+  diamondType?: string;
   diamondQuality?: string;
   caratWeight?: string;
   size?: string;
@@ -430,6 +431,7 @@ const buildVersionBuilderCombinationKey = (input: {
     familyKey,
     normalizeLookupKey(input.metal || ''),
     normalizeLookupKey(input.coverage || ''),
+    normalizeLookupKey(input.diamondType || ''),
     normalizeLookupKey(input.diamondQuality || ''),
     normalizeLookupKey(input.caratWeight || ''),
     normalizeLookupKey(input.size || ''),
@@ -767,7 +769,7 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
   const imageKeys = normalizeStringArray(design.imageKeys ?? design.imageUrls);
   const tags = normalizeStringArray(design.tags);
   return {
-    id: design.id,
+    id: String(design.id),
     familyDesignId: design.familyDesignId != null ? String(design.familyDesignId) : undefined,
     designNo: design.designNo || '',
     barcode: design.barcode || '',
@@ -843,11 +845,16 @@ const getVersionDisplayValue = (value: string): string => {
 };
 
 const getBaseDesignNo = (designNo: string): string => designNo.trim().toUpperCase().replace(/-V\d+$/i, '');
+const isRingJewelryGroup = (jewelryGroup: string | null | undefined): boolean =>
+  normalizeLookupKey(jewelryGroup || '') === 'ring';
 
-const buildVersionedDesignNo = (designNo: string, version: string): string => {
-  const base = getBaseDesignNo(designNo);
+const buildVersionedDesignNo = (designNo: string, size: string, version: string): string => {
+  let base = getBaseDesignNo(designNo);
+  const normalizedSize = size.trim().toUpperCase();
+  if (normalizedSize && !base.endsWith(`-${normalizedSize}`)) {
+    base = `${base}-${normalizedSize}`;
+  }
   const normalizedVersion = normalizeVersionInput(version);
-  if (normalizedVersion === 'V1') return base;
   return `${base}-${normalizedVersion}`;
 };
 const sanitizeStructuredToken = (value: string, options?: { preserveSlash?: boolean }): string => {
@@ -889,19 +896,21 @@ const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string =
 };
 
 const buildStructuredDesignNo = ({
-  styleCode,
+  designNameCode,
+  categoryCode,
   coverageCode,
   metalCode,
   diamondQualityCode,
   sizeCode,
 }: {
-  styleCode: string;
+  designNameCode: string;
+  categoryCode: string;
   coverageCode: string;
   metalCode: string;
   diamondQualityCode: string;
   sizeCode: string;
 }): string => {
-  const segments = [styleCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
+  const segments = [designNameCode, categoryCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
   return segments.join('-');
 };
 
@@ -1811,9 +1820,15 @@ export default function ProductsPage() {
     () => sanitizeStructuredToken(form.designName, { preserveSlash: true }).replace(/\//g, '-'),
     [form.designName],
   );
+  const structuredCategoryCode = useMemo(
+    () => resolveOptionAliasCode(form.jewelryGroup, masterOptions.jewelryGroups),
+    [form.jewelryGroup, masterOptions.jewelryGroups],
+  );
   const structuredDiamondSpreadCode = useMemo(
-    () => resolveOptionAliasCode(form.diamondSpread, masterOptions.diamondSpreads, form.coverageCustom),
-    [form.coverageCustom, form.diamondSpread, masterOptions.diamondSpreads],
+    () => isRingJewelryGroup(form.jewelryGroup)
+      ? resolveOptionAliasCode(form.diamondSpread, masterOptions.diamondSpreads, form.coverageCustom)
+      : '',
+    [form.coverageCustom, form.diamondSpread, form.jewelryGroup, masterOptions.diamondSpreads],
   );
   const selectedJewelryGroupMasterId = useMemo(
     () =>
@@ -1853,16 +1868,22 @@ export default function ProductsPage() {
     [primaryMetalValue, structuredMetalOptions],
   );
   const structuredDesignNo = useMemo(
-    () =>
-      buildStructuredDesignNo({
-        styleCode: structuredDesignNameCode,
+    () => {
+      const base = buildStructuredDesignNo({
+        designNameCode: structuredDesignNameCode,
+        categoryCode: structuredCategoryCode,
         coverageCode: structuredDiamondSpreadCode,
         metalCode: structuredMetalCode,
         diamondQualityCode: structuredDiamondWeightCode,
         sizeCode: structuredDiamondQualityCode,
-      }),
+      });
+      return base ? buildVersionedDesignNo(base, form.jewelrySize, form.version) : '';
+    },
     [
+      form.jewelrySize,
+      form.version,
       structuredDesignNameCode,
+      structuredCategoryCode,
       structuredDiamondSpreadCode,
       structuredDiamondQualityCode,
       structuredDiamondWeightCode,
@@ -3809,7 +3830,9 @@ export default function ProductsPage() {
       uniqueNonEmptyValues([...filteredSizeOptions, versionBuilderBaseDesign.jewelrySize]),
     );
 
-    return VERSION_BUILDER_DIMENSION_CONFIG.map((dimension) => {
+    return VERSION_BUILDER_DIMENSION_CONFIG
+      .filter((dimension) => isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroup) || dimension.id !== 'coverages')
+      .map((dimension) => {
       if (dimension.id === 'metals') {
         return { ...dimension, values: metals };
       }
@@ -3823,7 +3846,7 @@ export default function ProductsPage() {
         return { ...dimension, values: caratWeights };
       }
       return { ...dimension, values: sizes };
-    });
+      });
   }, [masterOptions, versionBuilderBaseDesign]);
 
   const openVersionBuilder = async (row: DesignRow) => {
@@ -3933,6 +3956,28 @@ export default function ProductsPage() {
       const labors = Array.isArray(detail?.labors) ? detail.labors : [];
       const overheads = Array.isArray(detail?.overheads) ? detail.overheads : [];
       const normalized = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+      const resolveGemMasterValue = (
+        value: unknown,
+        relation: unknown,
+        id: unknown,
+        options: MasterOption[],
+      ): string => {
+        const directValue = getMasterRelationValue(value) || getMasterRelationValue(relation);
+        if (directValue) return directValue;
+        const masterId = toOptionalMasterId(id ?? (relation as any)?.id);
+        return masterId != null
+          ? options.find((option) => toOptionalMasterId(option.id) === masterId)?.value || ''
+          : '';
+      };
+      const getGemValues = (gem: any) => ({
+        stone: resolveGemMasterValue(gem?.stone, gem?.stoneMaster, gem?.stoneId, masterOptions.packetStones),
+        shape: resolveGemMasterValue(gem?.shape, gem?.shapeMaster, gem?.shapeId, masterOptions.packetShapes),
+        size: resolveGemMasterValue(gem?.size, gem?.sizeMaster, gem?.sizeId, masterOptions.packetSizes),
+        cut: resolveGemMasterValue(gem?.cut, gem?.cutMaster, gem?.cutId, masterOptions.packetCuts),
+        color: resolveGemMasterValue(gem?.color, gem?.colorMaster, gem?.colorId, masterOptions.packetColors),
+        quality: resolveGemMasterValue(gem?.quality, gem?.qualityMaster, gem?.qualityId, masterOptions.packetQualities),
+        stoneType: resolveGemMasterValue(gem?.stoneType, gem?.stoneTypeMaster, gem?.stoneTypeId, masterOptions.diamondTypes),
+      });
 
       gemstones.forEach((gem: any) => {
         const packetId = String(gem?.packetId ?? '').trim();
@@ -3964,42 +4009,46 @@ export default function ProductsPage() {
       const resolvePacketForGem = (gem: any): string => {
         const direct = String(gem?.packetId ?? '').trim();
         if (direct) return direct;
+        const gemValues = getGemValues(gem);
 
         const match = packetOptions.find((packet) =>
-          normalized(packet.stone) === normalized(gem?.stone) &&
-          normalized(packet.shape) === normalized(gem?.shape) &&
-          normalized(packet.size) === normalized(gem?.size) &&
-          normalized(packet.color) === normalized(gem?.color) &&
-          normalized(packet.quality) === normalized(gem?.quality),
+          normalized(packet.stone) === normalized(gemValues.stone) &&
+          normalized(packet.shape) === normalized(gemValues.shape) &&
+          normalized(packet.size) === normalized(gemValues.size) &&
+          normalized(packet.color) === normalized(gemValues.color) &&
+          normalized(packet.quality) === normalized(gemValues.quality),
         );
         return match?.id || '';
       };
 
       const rowsFromDesign: GemRow[] =
         gemstones.length > 0
-          ? gemstones.map((item: any) => ({
+          ? gemstones.map((item: any) => {
+            const values = getGemValues(item);
+            return {
               id: item.id || makeId(),
               packetId: resolvePacketForGem(item),
-              stoneId: toOptionalMasterId(item.stoneId),
-              stone: String(item.stone || ''),
-              shapeId: toOptionalMasterId(item.shapeId),
-              shape: String(item.shape || ''),
-              sizeId: toOptionalMasterId(item.sizeId),
-              size: String(item.size || ''),
-              cutId: toOptionalMasterId(item.cutId),
-              cut: String(item.cut || ''),
-              colorId: toOptionalMasterId(item.colorId),
-              color: String(item.color || ''),
-              qualityId: toOptionalMasterId(item.qualityId),
-              quality: String(item.quality || ''),
-              stoneTypeId: toOptionalMasterId(item.stoneTypeId),
-              settingType: String(item.stoneType || ''),
+              stoneId: toOptionalMasterId(item.stoneId ?? item.stoneMaster?.id),
+              stone: values.stone,
+              shapeId: toOptionalMasterId(item.shapeId ?? item.shapeMaster?.id),
+              shape: values.shape,
+              sizeId: toOptionalMasterId(item.sizeId ?? item.sizeMaster?.id),
+              size: values.size,
+              cutId: toOptionalMasterId(item.cutId ?? item.cutMaster?.id),
+              cut: values.cut,
+              colorId: toOptionalMasterId(item.colorId ?? item.colorMaster?.id),
+              color: values.color,
+              qualityId: toOptionalMasterId(item.qualityId ?? item.qualityMaster?.id),
+              quality: values.quality,
+              stoneTypeId: toOptionalMasterId(item.stoneTypeId ?? item.stoneTypeMaster?.id),
+              settingType: values.stoneType,
               wtPerPcs: String(item.wtPerPcs ?? ''),
               pcs: String(item.pcs ?? ''),
               wtInCts: String(item.wtInCts ?? ''),
               pricePerCt: String(item.pricePerCt ?? ''),
               amount: String(item.amount ?? ''),
-            }))
+            };
+          })
           : [createEmptyGemRow()];
 
       setVersionBuilderGemRows(rowsFromDesign);
@@ -4087,16 +4136,16 @@ export default function ProductsPage() {
 
   const getMissingVersionBuilderRequiredAxes = () =>
     (Object.keys(VERSION_BUILDER_REQUIRED_DIMENSION_LABELS) as Array<keyof VersionBuilderSelections>).filter(
-      (axis) => versionBuilderSelections[axis].length === 0,
+      (axis) => (axis !== 'coverages' || isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup)) && versionBuilderSelections[axis].length === 0,
     );
 
   const getMissingVersionBuilderMetalWeightCells = () => {
     const missing: Array<{ coverage: string; size: string; purity: string }> = [];
-    if (!versionBuilderSelections.coverages.length || !versionBuilderSelections.sizes.length || !versionBuilderMetalPurityColumns.length) {
+    if (!versionBuilderSizeChartCoverages.length || !versionBuilderSelections.sizes.length || !versionBuilderMetalPurityColumns.length) {
       return missing;
     }
 
-    versionBuilderSelections.coverages.forEach((coverage) => {
+    versionBuilderSizeChartCoverages.forEach((coverage) => {
       const coverageChart = versionBuilderSizeChart[coverage] || {};
       versionBuilderSelections.sizes.forEach((size) => {
         const sizeKey = normalizeSizeChartKey(size);
@@ -4162,7 +4211,7 @@ export default function ProductsPage() {
 
   const hasMissingVersionBuilderRequiredAxes = (selections: VersionBuilderSelections) =>
     (Object.keys(VERSION_BUILDER_REQUIRED_DIMENSION_LABELS) as Array<keyof VersionBuilderSelections>).some(
-      (axis) => selections[axis].length === 0,
+      (axis) => (axis !== 'coverages' || isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup)) && selections[axis].length === 0,
     );
 
   const createVersionBuilderVariants = async () => {
@@ -4233,18 +4282,37 @@ export default function ProductsPage() {
         }, {});
       }
 
+      const familyVersionsResponse = await api.get('/products', {
+        params: {
+          page: 1,
+          limit: 200,
+          status: 'ALL',
+          summaryOnly: true,
+          familyDesignId: versionBuilderBaseDesign.id,
+        },
+      });
+      const familyRows = (Array.isArray(familyVersionsResponse.data?.data)
+        ? familyVersionsResponse.data.data
+        : []) as ApiDesignRow[];
+      const knownFamilyRows = Array.from(
+        new Map(
+          [...rows, ...familyRows.map(mapApiDesignToRow)].map((familyRow) => [familyRow.id, familyRow]),
+        ).values(),
+      );
+      const baseDiamondType = String(detail?.diamondType || versionBuilderBaseDesign.diamondType || '').trim();
       const existingFamilyCombinationKeys = new Set(
-        rows
+        knownFamilyRows
           .filter(
             (existingRow) =>
-              getDesignFamilyKey(existingRow.designNo || '', existingRow.id || '') ===
-              getDesignFamilyKey(versionBuilderBaseDesign.designNo || '', versionBuilderBaseDesign.id || ''),
+              String(existingRow.familyDesignId || existingRow.id || '') ===
+              String(versionBuilderBaseDesign.familyDesignId || versionBuilderBaseDesign.id || ''),
           )
           .map((existingRow) =>
             buildVersionBuilderCombinationKey({
               designNo: existingRow.designNo || '',
               metal: existingRow.metalCaratage || '',
               coverage: existingRow.diamondSpread || '',
+              diamondType: existingRow.diamondType || '',
               diamondQuality: existingRow.diamondQuality || '',
               caratWeight: existingRow.diamondWeight || '',
               size: existingRow.jewelrySize || '',
@@ -4262,13 +4330,14 @@ export default function ProductsPage() {
           designNo: row.designNo,
           metal: row.metal,
           coverage: row.coverage,
+          diamondType: baseDiamondType,
           diamondQuality: row.diamondQuality,
           caratWeight: row.caratWeight,
           size: row.size,
         });
 
         if (existingFamilyCombinationKeys.has(combinationKey)) {
-          const message = 'Duplicate combination already exists';
+          const message = 'This variant combination already exists for this base design.';
           skipped.push(`${row.designNo}: ${message}`);
           setVersionBuilderCreateResults((prev) => ({
             ...prev,
@@ -4369,10 +4438,13 @@ export default function ProductsPage() {
           })
           .filter(Boolean);
 
+        const baseDesignName = String(detail?.designName || versionBuilderBaseDesign.designName || '').trim();
+        const generatedDesignName = [baseDesignName, row.size, row.version].filter(Boolean).join(' - ') || row.designNo;
+
         const payload = {
           designNo: row.designNo,
           familyDesignId: versionBuilderBaseDesign.id,
-          designName: String(detail?.designName || versionBuilderBaseDesign.designName || row.designNo || '').trim() || row.designNo,
+          designName: generatedDesignName,
           version: row.version,
           companyId: detail?.companyId || undefined,
           branchId: detail?.branchId || undefined,
@@ -4384,10 +4456,11 @@ export default function ProductsPage() {
           jewelrySize: row.size,
           stageId: toOptionalMasterId(detail?.stageId) ?? getMasterIdByValue(masterOptions.stages, detail?.stage),
           stage: String(detail?.stage || '').trim() || undefined,
-          diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, row.coverage),
-          diamondSpread: row.coverage || undefined,
+          ...(isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroup)
+            ? { diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, row.coverage), diamondSpread: row.coverage || undefined }
+            : {}),
           diamondTypeId: toOptionalMasterId(detail?.diamondTypeId) ?? getMasterIdByValue(masterOptions.diamondTypes, detail?.diamondType),
-          diamondType: String(detail?.diamondType || '').trim() || undefined,
+          diamondType: baseDiamondType || undefined,
           diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, row.caratWeight),
           diamondWeight: row.caratWeight || undefined,
           diamondQualityId: getMasterIdByValue(masterOptions.diamondQualities, row.diamondQuality),
@@ -4478,10 +4551,15 @@ export default function ProductsPage() {
           }));
         } catch (error: any) {
           const message = formatCreateFailureMessage(error);
-          failures.push(`${row.designNo}: ${message}`);
+          const isDuplicateCombination = message.includes('This variant combination already exists for this base design.');
+          if (isDuplicateCombination) {
+            skipped.push(`${row.designNo}: ${message}`);
+          } else {
+            failures.push(`${row.designNo}: ${message}`);
+          }
           setVersionBuilderCreateResults((prev) => ({
             ...prev,
-            [row.resultKey]: { status: 'failed', message },
+            [row.resultKey]: { status: isDuplicateCombination ? 'skipped' : 'failed', message },
           }));
         } finally {
           setVersionCreateProgress({ done: index + 1, total: rowsToCreate.length });
@@ -4812,6 +4890,22 @@ export default function ProductsPage() {
     });
   };
 
+  const toggleVersionBuilderSizeGroup = (values: string[]) => {
+    setVersionBuilderSelections((prev) => {
+      const groupValues = Array.from(new Set(values));
+      const selectedGroupValues = new Set(prev.sizes);
+      const groupIsFullySelected = groupValues.length > 0 && groupValues.every((value) => selectedGroupValues.has(value));
+      const nextSizes = groupIsFullySelected
+        ? prev.sizes.filter((value) => !groupValues.includes(value))
+        : Array.from(new Set([...prev.sizes, ...groupValues]));
+      const nextSelections = { ...prev, sizes: nextSizes };
+      if (!hasMissingVersionBuilderRequiredAxes(nextSelections)) {
+        setShowVersionBuilderRequiredAxisValidation(false);
+      }
+      return nextSelections;
+    });
+  };
+
   const toggleVersionBuilderMetalImageMap = (metal: string, imageUrl: string) => {
     setVersionBuilderMetalImageMap((prev) => {
       const current = prev[metal] || [];
@@ -4980,11 +5074,12 @@ export default function ProductsPage() {
     [versionBuilderStepOrder, versionBuilderWorkflowStep],
   );
   const versionBuilderSizeChartCoverages = useMemo(
-    () =>
-      uniqueNonEmptyValues([
+    () => isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup)
+      ? uniqueNonEmptyValues([
         ...versionBuilderSelections.coverages,
         versionBuilderBaseDesign?.diamondSpread,
-      ]),
+      ])
+      : [''],
     [versionBuilderBaseDesign?.diamondSpread, versionBuilderSelections.coverages],
   );
   const versionBuilderMetalPurityColumns = useMemo(
@@ -5086,7 +5181,7 @@ export default function ProductsPage() {
   ]);
 
   const activeVersionBuilderSizeChartRows = useMemo(
-    () => (versionBuilderChartCoverage ? versionBuilderSizeChart[versionBuilderChartCoverage] || {} : {}),
+    () => versionBuilderSizeChart[versionBuilderChartCoverage] || {},
     [versionBuilderChartCoverage, versionBuilderSizeChart],
   );
 
@@ -5140,19 +5235,23 @@ export default function ProductsPage() {
       if (!versionBuilderBaseDesign) return '';
       const fallbackBase = getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo;
       const structuredBase = buildStructuredDesignNo({
-        styleCode: sanitizeStructuredToken(versionBuilderBaseDesign.designName || '', { preserveSlash: true }).replace(/\//g, '-'),
-        coverageCode: resolveOptionAliasCode(selection.coverage || '', masterOptions.diamondSpreads),
+        designNameCode: sanitizeStructuredToken(versionBuilderBaseDesign.designName || '', { preserveSlash: true }).replace(/\//g, '-'),
+        categoryCode: resolveOptionAliasCode(versionBuilderBaseDesign.jewelryGroup || '', masterOptions.jewelryGroups),
+        coverageCode: isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroup)
+          ? resolveOptionAliasCode(selection.coverage || '', masterOptions.diamondSpreads)
+          : '',
         metalCode: resolveMetalCode(selection.metal || '', masterOptions.metalCaratages),
         diamondQualityCode: resolveOptionAliasCode(selection.caratWeight || '', masterOptions.diamondWeights),
         sizeCode: resolveOptionAliasCode(selection.diamondQuality || '', masterOptions.diamondQualities),
       });
 
-      return buildVersionedDesignNo(structuredBase || fallbackBase, versionLabel);
+      return buildVersionedDesignNo(structuredBase || fallbackBase, selection.size, versionLabel);
     },
     [
       masterOptions.diamondQualities,
       masterOptions.diamondSpreads,
       masterOptions.diamondWeights,
+      masterOptions.jewelryGroups,
       masterOptions.metalCaratages,
       versionBuilderBaseDesign,
     ],
@@ -5326,7 +5425,7 @@ export default function ProductsPage() {
     }
 
     const metals = versionBuilderSelections.metals;
-    const coverages = versionBuilderSelections.coverages;
+    const coverages = isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroup) ? versionBuilderSelections.coverages : [''];
     const qualities = versionBuilderSelections.diamondQualities;
     const weights = versionBuilderSelections.caratWeights.length
       ? versionBuilderSelections.caratWeights
@@ -5416,7 +5515,13 @@ export default function ProductsPage() {
                   caratWeight: weight,
                   size,
                 }),
-                designNo: breakdown.variantSku || buildVersionedDesignNo(getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo, version),
+                designNo:
+                  breakdown.variantSku ||
+                  buildVersionedDesignNo(
+                    getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo,
+                    size,
+                    version,
+                  ),
                 version,
                 metal,
                 coverage,
@@ -5578,14 +5683,17 @@ export default function ProductsPage() {
 
     if (!versionBuilderBaseDesign) missing.push('base style');
     if (!versionBuilderSelections.metals.length) missing.push('metal');
-    if (!versionBuilderSelections.coverages.length) missing.push('diamond spread');
+    if (isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup) && !versionBuilderSelections.coverages.length) missing.push('diamond spread');
     if (!versionBuilderSelections.diamondQualities.length) missing.push('diamond quality');
     if (!versionBuilderSelections.sizes.length) missing.push('size');
     if (!versionBuilderGemRows.length) missing.push('stone group');
 
     let missingMetalWeights = false;
-    if (versionBuilderSelections.coverages.length && versionBuilderSelections.sizes.length && versionBuilderMetalPurityColumns.length) {
-      for (const coverage of versionBuilderSelections.coverages) {
+    const coveragesForValidation = isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup)
+      ? versionBuilderSelections.coverages
+      : [''];
+    if (coveragesForValidation.length && versionBuilderSelections.sizes.length && versionBuilderMetalPurityColumns.length) {
+      for (const coverage of coveragesForValidation) {
         const coverageChart = versionBuilderSizeChart[coverage] || {};
         for (const size of versionBuilderSelections.sizes) {
           const sizeKey = normalizeSizeChartKey(size);
@@ -6408,7 +6516,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     setSourceDesignNo(baseDesignNo);
     setSourceDesignId(row.id);
     const nextVersion = await fetchNextVersionFromServer(baseDesignNo);
-    const versionedDesignNo = buildVersionedDesignNo(baseDesignNo, nextVersion);
+    const versionedDesignNo = buildVersionedDesignNo(baseDesignNo, row.jewelrySize, nextVersion);
     await loadDesignDetail(row, { version: nextVersion, designNo: versionedDesignNo });
   };
   void openNewVersion;
@@ -6452,7 +6560,7 @@ const createDefaultVendorRow = (): VendorRow => ({
       return;
     }
     const resolvedVersion = normalizeVersionInput(options?.overrideVersion ?? form.version);
-    const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, resolvedVersion);
+    const versionedDesignNo = buildVersionedDesignNo(resolvedDesignNo, form.jewelrySize, resolvedVersion);
 
     const requestedDesignName = form.designName.trim();
     if (
@@ -6605,8 +6713,9 @@ const createDefaultVendorRow = (): VendorRow => ({
       stage: form.stage.trim() || null,
       diamondTypeId: getMasterIdByValue(masterOptions.diamondTypes, form.diamondType) ?? null,
       diamondType: form.diamondType.trim() || null,
-      diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, form.diamondSpread) ?? null,
-      diamondSpread: form.diamondSpread.trim() || null,
+      ...(isRingJewelryGroup(form.jewelryGroup)
+        ? { diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, form.diamondSpread) ?? null, diamondSpread: form.diamondSpread.trim() || null }
+        : {}),
       diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, form.diamondWeight) ?? null,
       diamondWeight: form.diamondWeight.trim().length > 0 ? form.diamondWeight.trim() : null,
       diamondQualityId: getMasterIdByValue(masterOptions.diamondQualities, form.diamondQuality) ?? null,
@@ -7380,6 +7489,7 @@ const createDefaultVendorRow = (): VendorRow => ({
     buildIjewelEmbedUrl,
     buildPacketSearchOptions,
     hasUnsavedDesignChanges,
+    isRingJewelryGroup: isRingJewelryGroup(form.jewelryGroup),
     costTotals,
     createDefaultVendorRow,
     confirmDesignFormAction: confirmAppDialog,
@@ -7855,7 +7965,7 @@ const createDefaultVendorRow = (): VendorRow => ({
           <p className="mb-3 text-sm text-red-600">{rowsError}</p>
         ) : null}
 
-        <div className="app-table-shell">
+        <div className="app-table-shell [container-type:inline-size]">
           <div className="app-table-scroll scrollbar-top">
             <table className="app-table app-table-compact">
               <thead>
@@ -8088,7 +8198,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                 {versionsExpanded ? (
                   <tr className="bg-slate-50/70">
                     <td className="app-table-cell w-0 max-w-0 !p-2 sm:!p-3" colSpan={columnCount}>
-                      <div className="w-full min-w-0 max-w-full space-y-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 sm:p-3 [contain:inline-size]">
+                      <div className="sticky left-0 min-w-0 space-y-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 [width:calc(100cqw-1rem)] [max-width:calc(100cqw-1rem)] sm:p-3 sm:[width:calc(100cqw-1.5rem)] sm:[max-width:calc(100cqw-1.5rem)]">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Versions</p>
@@ -8632,8 +8742,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   type="button"
                                   className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
                                   onClick={() =>
-                                    setAllVersionBuilderValues(
-                                      group.id,
+                                    toggleVersionBuilderSizeGroup(
                                       getJewelrySizesByStep(group.values, 'FULL'),
                                     )
                                   }
@@ -8645,8 +8754,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   type="button"
                                   className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
                                   onClick={() =>
-                                    setAllVersionBuilderValues(
-                                      group.id,
+                                    toggleVersionBuilderSizeGroup(
                                       getJewelrySizesByStep(group.values, 'HALF'),
                                     )
                                   }
@@ -8658,8 +8766,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                                   type="button"
                                   className="rounded-lg border border-[#d8c29d] bg-[#faf4e8] px-3 py-1.5 text-[11px] font-semibold text-[#815f29] transition hover:border-[#c59f62] hover:bg-[#f5e8cf]"
                                   onClick={() =>
-                                    setAllVersionBuilderValues(
-                                      group.id,
+                                    toggleVersionBuilderSizeGroup(
                                       getJewelrySizesByStep(group.values, 'QUARTER'),
                                     )
                                   }
@@ -9773,7 +9880,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ))}
                       </select>
                     </div>
-                    <div>
+                    {isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup) ? <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Diamond Spread</label>
                       <select
                         className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
@@ -9788,7 +9895,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </div> : null}
                     <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Carat Weight</label>
                       <select
@@ -9928,7 +10035,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         ))}
                       </select>
                     </div>
-                    <div>
+                    {isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroup) ? <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Diamond Spread</label>
                       <select
                         className="w-full rounded-lg border border-[#ddd2c3] bg-white px-3 py-2 text-sm text-[#2b241d]"
@@ -9944,7 +10051,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </div> : null}
                     <div>
                       <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">Search SKU</label>
                       <input

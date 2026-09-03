@@ -75,6 +75,26 @@ interface BranchOption {
   companyId?: string;
 }
 
+interface OrderPricePreview {
+  baseCost?: number;
+  companyMultiplier?: number;
+  companyPrice?: number;
+  branchMultiplier?: number;
+  branchCost?: number;
+  finalPrice?: number;
+  companyMultiplierSource?: 'COLLECTION_OVERRIDE' | 'COMPANY_SLAB' | 'COMPANY_DEFAULT';
+  branchMultiplierSource?: 'BRANCH_SLAB' | 'BRANCH_DEFAULT';
+}
+
+const pricingRuleLabel = (source: OrderPricePreview['companyMultiplierSource'] | OrderPricePreview['branchMultiplierSource']): string => {
+  if (source === 'COLLECTION_OVERRIDE') return 'Collection override';
+  if (source === 'COMPANY_SLAB') return 'Company slab';
+  if (source === 'COMPANY_DEFAULT') return 'Company default';
+  if (source === 'BRANCH_SLAB') return 'Branch slab';
+  if (source === 'BRANCH_DEFAULT') return 'Branch default';
+  return '';
+};
+
 interface SalesRepOption {
   id: string;
   firstName?: string;
@@ -568,6 +588,7 @@ export default function OrdersPage() {
   const [editingDesignNo, setEditingDesignNo] = useState('');
   const [baseDesignId, setBaseDesignId] = useState('');
   const [priceManuallyEdited, setPriceManuallyEdited] = useState(false);
+  const [orderPricePreview, setOrderPricePreview] = useState<OrderPricePreview | null>(null);
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
@@ -1031,8 +1052,10 @@ export default function OrdersPage() {
   }, [form.branchId, form.assignedUserRole, currentUser?.role, currentUser?.id]);
 
   useEffect(() => {
-    if (!showAddModal) return;
-    if (editingOrderId) return;
+    if (!showAddModal || editingOrderId) {
+      setOrderPricePreview(null);
+      return;
+    }
     loadOrderNumber();
   }, [showAddModal, editingOrderId]);
 
@@ -1040,12 +1063,14 @@ export default function OrdersPage() {
     if (!showAddModal) return;
     if (editingOrderId) return;
     if (!form.designId) {
+      setOrderPricePreview(null);
       if (!priceManuallyEdited) {
         setForm((prev) => ({ ...prev, price: '' }));
       }
       return;
     }
     if (!form.companyId || !form.branchId) {
+      setOrderPricePreview(null);
       if (!priceManuallyEdited) {
         const fallbackPrice = designDetail?.id === form.designId ? toOrderPriceInput(getDesignDefaultPrice(designDetail)) : '';
         if (fallbackPrice) {
@@ -1054,7 +1079,6 @@ export default function OrdersPage() {
       }
       return;
     }
-    if (priceManuallyEdited) return;
     const fetchPrice = async () => {
       try {
         const response = await api.get('/orders/price-preview', {
@@ -1064,11 +1088,13 @@ export default function OrdersPage() {
             branchId: form.branchId,
           },
         });
+        setOrderPricePreview(response.data || null);
         const nextPrice = response.data?.finalPrice;
-        if (nextPrice !== undefined && nextPrice !== null) {
+        if (!priceManuallyEdited && nextPrice !== undefined && nextPrice !== null) {
           setForm((prev) => ({ ...prev, price: toOrderPriceInput(Number(nextPrice)), quantity: prev.quantity || '1' }));
         }
       } catch {
+        setOrderPricePreview(null);
         const fallbackPrice = designDetail?.id === form.designId ? toOrderPriceInput(getDesignDefaultPrice(designDetail)) : '';
         if (fallbackPrice) {
           setForm((prev) => ({ ...prev, price: prev.price || fallbackPrice, quantity: prev.quantity || '1' }));
@@ -1132,10 +1158,16 @@ export default function OrdersPage() {
   };
 
   const submitOrderPayload = async (payload: OrderSavePayload) => {
+    const wasEditing = Boolean(editingOrderId);
+    let savedOrder: OrderRow | null = null;
     if (editingOrderId) {
       await api.put(`/orders/${editingOrderId}`, payload);
     } else {
-      await api.post('/orders', payload);
+      const response = await api.post('/orders', payload);
+      savedOrder = {
+        ...(response.data as OrderRow),
+        id: String(response.data?.id || ''),
+      };
     }
     setShowAddModal(false);
     setEditingOrderId(null);
@@ -1146,6 +1178,9 @@ export default function OrdersPage() {
     setDeliveryDateMin(getExpectedDeliveryMin());
     resetConfiguratorState();
     await loadOrders();
+    if (!wasEditing && savedOrder?.id) {
+      await openViewModal(savedOrder);
+    }
   };
 
   const handleSaveOrder = async () => {
@@ -2953,26 +2988,57 @@ export default function OrdersPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 rounded-xl border border-[#e5dacb] bg-[#faf7f1] p-3 sm:grid-cols-3">
-                      <div className="rounded-lg border border-white/80 bg-white/80 px-3 py-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Unit selling price</p>
-                        <p className="mt-1 text-base font-bold tabular-nums text-slate-900">
-                          {hasSnapshotValue(form.price) ? formatMoney(Number(form.price)) : '—'}
-                        </p>
+                    {isSuperAdmin && orderPricePreview ? (() => {
+                      const companyName = companies.find((company) => String(company.id) === String(form.companyId))?.companyName || '-';
+                      const branchName = branches.find((branch) => String(branch.id) === String(form.branchId))?.name || '-';
+                      const sellingPrice = hasSnapshotValue(form.price) ? Number(form.price) : orderPricePreview.finalPrice;
+                      return (
+                        <div className="overflow-hidden rounded-xl border border-[#dfd3c4] bg-white">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eadfce] bg-[#faf6ef] px-4 py-3">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#735522]">Pricing Breakdown</p>
+                              <p className="mt-1 text-xs text-slate-600">{companyName} · Branch: <span className="font-semibold">{branchName}</span></p>
+                            </div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="min-w-[720px] w-full text-sm">
+                              <thead className="border-b border-slate-200 bg-slate-50 text-left">
+                                <tr>
+                                  <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th>
+                                  <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Base / Previous Price</th>
+                                  <th className="px-3 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th>
+                                  <th className="px-3 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                <tr><td className="px-3 py-2.5 font-semibold">Base Cost</td><td className="px-3 py-2.5 text-right text-slate-500">—</td><td className="px-3 py-2.5 text-center text-slate-500">—</td><td className="px-3 py-2.5 text-right font-bold tabular-nums">{formatSnapshotMoney(orderPricePreview.baseCost)}</td></tr>
+                                <tr><td className="px-3 py-2.5 font-semibold">Company Cost</td><td className="px-3 py-2.5 text-right tabular-nums">{formatSnapshotMoney(orderPricePreview.baseCost)}</td><td className="px-3 py-2.5 text-center"><span className="font-semibold">{formatSnapshotMultiplier(orderPricePreview.companyMultiplier)}</span>{pricingRuleLabel(orderPricePreview.companyMultiplierSource) ? <span className="block text-[10px] text-slate-500">{pricingRuleLabel(orderPricePreview.companyMultiplierSource)}</span> : null}</td><td className="px-3 py-2.5 text-right font-bold tabular-nums">{formatSnapshotMoney(orderPricePreview.companyPrice)}</td></tr>
+                                <tr><td className="px-3 py-2.5 font-semibold">Branch Cost</td><td className="px-3 py-2.5 text-right tabular-nums">{formatSnapshotMoney(orderPricePreview.companyPrice)}</td><td className="px-3 py-2.5 text-center"><span className="font-semibold">{formatSnapshotMultiplier(orderPricePreview.branchMultiplier)}</span>{pricingRuleLabel(orderPricePreview.branchMultiplierSource) ? <span className="block text-[10px] text-slate-500">{pricingRuleLabel(orderPricePreview.branchMultiplierSource)}</span> : null}</td><td className="px-3 py-2.5 text-right font-bold tabular-nums">{formatSnapshotMoney(orderPricePreview.finalPrice)}</td></tr>
+                                <tr className="bg-emerald-50/60"><td className="px-3 py-2.5 font-bold text-emerald-900">Selling Price</td><td className="px-3 py-2.5 text-right tabular-nums text-emerald-800">{formatSnapshotMoney(orderPricePreview.finalPrice)}</td><td className="px-3 py-2.5 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-3 py-2.5 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td></tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      );
+                    })() : null}
+
+                    {isCompanyAdmin ? (
+                      <div className="overflow-hidden rounded-xl border border-[#dfd3c4] bg-white">
+                        <div className="border-b border-[#eadfce] bg-[#faf6ef] px-4 py-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#735522]">Pricing Breakdown</p>
+                          <p className="mt-1 text-xs text-slate-600">Selected Branch: <span className="font-semibold">{branches.find((branch) => String(branch.id) === String(form.branchId))?.name || '-'}</span></p>
+                        </div>
+                        <table className="w-full text-sm">
+                          <thead className="border-b border-slate-200 bg-slate-50 text-left">
+                            <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Cost</td><td className="px-4 py-3 text-center"><span className="font-semibold">{formatSnapshotMultiplier(orderPricePreview?.branchMultiplier)}</span>{pricingRuleLabel(orderPricePreview?.branchMultiplierSource) ? <span className="block text-[10px] text-slate-500">{pricingRuleLabel(orderPricePreview?.branchMultiplierSource)}</span> : null}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(orderPricePreview?.branchCost ?? orderPricePreview?.finalPrice)}</td></tr>
+                            <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(form.price)}</td></tr>
+                          </tbody>
+                        </table>
                       </div>
-                      <div className="rounded-lg border border-white/80 bg-white/80 px-3 py-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Quantity</p>
-                        <p className="mt-1 text-base font-bold tabular-nums text-slate-900">
-                          {Number(form.quantity || 0) > 0 ? Number(form.quantity).toLocaleString() : '—'}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-[#cfe8da] bg-emerald-50/70 px-3 py-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-700">Order total</p>
-                        <p className="mt-1 text-base font-bold tabular-nums text-emerald-900">
-                          {formTotalAmount > 0 ? formatMoney(formTotalAmount) : '—'}
-                        </p>
-                      </div>
-                    </div>
+                    ) : null}
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
@@ -3639,7 +3705,7 @@ export default function OrdersPage() {
                     {formatMoney(calculateTotalAmount(viewOrder?.price, viewOrder?.quantity))}
                   </div>
                 </div>
-                {canViewCostPrice && (
+                {canViewCostPrice && !isSuperAdmin && !isCompanyAdmin && (
                   <div>
                     <label className="text-sm font-medium text-slate-700">Cost Price</label>
                     <div className="mt-1 min-h-[42px] rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -3697,9 +3763,10 @@ export default function OrdersPage() {
                       <div>
                         <h3 className="text-base font-bold text-[#2b241d]">Pricing Breakdown</h3>
                         <p className="mt-0.5 text-xs text-slate-500">Pricing captured when this order was created.</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-700">{viewOrder?.companyName || '-'} · Selected Branch: {viewOrder?.branchName || '-'}</p>
                       </div>
                       <span className="rounded-full border border-[#ead1a5] bg-[#fff8e8] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#9a6d25]">
-                        Historical snapshot
+                        Historical snapshot · USD
                       </span>
                     </div>
 
@@ -3710,8 +3777,9 @@ export default function OrdersPage() {
                             <thead className="border-b border-[#eadfce] bg-[#fcfaf6] text-left">
                               <tr>
                                 <th scope="col" className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Pricing Level</th>
+                                <th scope="col" className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Previous / Base Cost</th>
                                 <th scope="col" className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Multiplier Applied</th>
-                                <th scope="col" className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Captured Amount</th>
+                                <th scope="col" className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">Final Cost</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
@@ -3720,6 +3788,7 @@ export default function OrdersPage() {
                                   <p className="font-semibold text-slate-800">Base Design Cost</p>
                                   <p className="mt-0.5 text-xs text-slate-500">Exact design/version cost at order creation</p>
                                 </td>
+                                <td className="px-4 py-3 text-right text-sm text-slate-500">—</td>
                                 <td className="px-4 py-3 text-sm text-slate-500">—</td>
                                 <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.baseCostSnapshot)}</td>
                               </tr>
@@ -3728,6 +3797,7 @@ export default function OrdersPage() {
                                   <p className="font-semibold text-slate-800">Company Cost</p>
                                   <p className="mt-0.5 text-xs text-slate-500">Base cost after the company pricing rule</p>
                                 </td>
+                                <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-700">{formatSnapshotMoney(viewOrder?.baseCostSnapshot)}</td>
                                 <td className="px-4 py-3">
                                   <span className="inline-flex rounded-md border border-[#ead1a5] bg-[#fff8e8] px-2 py-1 text-xs font-semibold text-[#8a641f]">{formatSnapshotMultiplier(viewOrder?.companyMultiplierSnapshot)}</span>
                                 </td>
@@ -3738,6 +3808,7 @@ export default function OrdersPage() {
                                   <p className="font-semibold text-slate-800">Branch Cost</p>
                                   <p className="mt-0.5 text-xs text-slate-500">Company cost after the branch pricing rule</p>
                                 </td>
+                                <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-700">{formatSnapshotMoney(viewOrder?.companyCostSnapshot)}</td>
                                 <td className="px-4 py-3">
                                   <span className="inline-flex rounded-md border border-[#ead1a5] bg-[#fff8e8] px-2 py-1 text-xs font-semibold text-[#8a641f]">{formatSnapshotMultiplier(viewOrder?.branchMultiplierSnapshot)}</span>
                                 </td>
@@ -3748,6 +3819,7 @@ export default function OrdersPage() {
                                   <p className="font-bold text-emerald-900">Selling Price</p>
                                   <p className="mt-0.5 text-xs text-emerald-700">Final customer-facing price charged on this order</p>
                                 </td>
+                                <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-800">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td>
                                 <td className="px-4 py-3 text-sm text-emerald-800">—</td>
                                 <td className="px-4 py-3 text-right text-base font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td>
                               </tr>
@@ -3771,6 +3843,29 @@ export default function OrdersPage() {
                         </div>
                       </div>
                     )}
+                  </section>
+                );
+              })()}
+
+              {isCompanyAdmin && (() => {
+                const sellingPrice = hasSnapshotValue(viewOrder?.sellingPriceSnapshot)
+                  ? viewOrder?.sellingPriceSnapshot
+                  : viewOrder?.price;
+                return (
+                  <section className="overflow-hidden rounded-xl border border-[#dfd3c4] bg-white shadow-sm">
+                    <div className="border-b border-[#eadfce] bg-[#faf6ef] px-5 py-4">
+                      <h3 className="text-base font-bold text-[#2b241d]">Pricing Breakdown</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">Pricing captured when this order was created.</p>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-left">
+                        <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Cost</td><td className="px-4 py-3 text-center font-semibold">{formatSnapshotMultiplier(viewOrder?.branchMultiplierSnapshot)}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td></tr>
+                        <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td></tr>
+                      </tbody>
+                    </table>
                   </section>
                 );
               })()}

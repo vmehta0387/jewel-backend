@@ -494,6 +494,9 @@ export class ProductsService {
     this.assertDesignCreateAccess(requester);
     const designMasterRefs = await this.resolveDesignMasterRefs(dto);
     const jewelryGroup = designMasterRefs.jewelryGroup.value;
+    if (!this.isRingJewelryGroup(jewelryGroup)) {
+      designMasterRefs.diamondSpread = { id: null, value: null, aliasName: null };
+    }
     if (!jewelryGroup || !designMasterRefs.jewelryGroup.id) {
       throw new BadRequestException('jewelryGroup is required');
     }
@@ -507,12 +510,12 @@ export class ProductsService {
 
     let designNo: string;
     if (requestedDesignNo) {
-      designNo = this.applyVersionToDesignNo(requestedDesignNo, version);
+      designNo = this.applyVersionToDesignNo(requestedDesignNo, version, designMasterRefs.jewelrySize.value);
       await this.assertUniqueDesign(designNo, version, scope.companyId, undefined);
     } else {
       designNo = await this.withDesignNoLock(scope.companyId, prefix, async () => {
         const generatedDesignNo = await this.generateNextDesignNo(prefix, scope.companyId);
-        const versioned = this.applyVersionToDesignNo(generatedDesignNo, version);
+        const versioned = this.applyVersionToDesignNo(generatedDesignNo, version, designMasterRefs.jewelrySize.value);
         await this.assertUniqueDesign(versioned, version, scope.companyId, undefined);
         return versioned;
       });
@@ -520,6 +523,7 @@ export class ProductsService {
 
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
     const familyDesignId = await this.resolveFamilyDesignId(dto.familyDesignId, designNo, scope);
+    await this.assertUniqueFamilyVariantCombination(familyDesignId, designMasterRefs);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
     const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
     await this.assertUniqueDesignName(resolvedDesignName, undefined);
@@ -1109,8 +1113,10 @@ export class ProductsService {
         const designRow = this.normalizeDesignImportRow(designRows[index]);
         const version = this.normalizeVersion(designRow.version || 'V1');
         const scoped = await this.resolveImportDesignScope(designRow, companyMap, branchMap);
-        const finalDesignNo = this.applyVersionToDesignNo(designRow.designNo, version);
-        const designKey = this.createImportDesignKey(finalDesignNo, version);
+        const finalDesignNo = this.applyVersionToDesignNo(designRow.designNo, version, designRow.jewelrySize);
+        // Keep the import lookup key based on the spreadsheet value. Supporting
+        // detail sheets may still contain the pre-size Design No.
+        const designKey = this.createImportDesignKey(designRow.designNo, version);
 
         const payload: CreateProductDto = {
           designNo: finalDesignNo,
@@ -3294,13 +3300,22 @@ export class ProductsService {
     const design = await this.getDesignForWrite(id, requester);
     const designMasterRefs = await this.resolveDesignMasterRefs(dto, design);
     const designJewelryGroup = designMasterRefs.jewelryGroup.value || 'Design';
+    const isRingJewelryGroup = this.isRingJewelryGroup(designJewelryGroup);
+    if (!isRingJewelryGroup) {
+      designMasterRefs.diamondSpread = { id: null, value: null, aliasName: null };
+    }
 
     const targetCompanyId = dto.companyId !== undefined ? dto.companyId : design.companyId || undefined;
     const targetBranchId = dto.branchId !== undefined ? dto.branchId : design.branchId || undefined;
     const scope = await this.resolveScope(targetCompanyId, targetBranchId, requester);
 
     const version = this.normalizeVersion(dto.version || design.version);
-    const designNo = this.applyVersionToDesignNo(dto.designNo || design.designNo, version);
+    const designNo = this.applyVersionToDesignNo(
+      dto.designNo || design.designNo,
+      version,
+      designMasterRefs.jewelrySize.value,
+      design.jewelrySize,
+    );
 
     await this.assertUniqueDesign(designNo, version, scope.companyId, id);
 
@@ -3378,7 +3393,9 @@ export class ProductsService {
     design.collectionId = designMasterRefs.collection.id;
     design.jewelrySizeId = designMasterRefs.jewelrySize.id;
     design.stageId = designMasterRefs.stage.id;
-    design.diamondSpreadId = designMasterRefs.diamondSpread.id;
+    if (isRingJewelryGroup) {
+      design.diamondSpreadId = designMasterRefs.diamondSpread.id;
+    }
     design.diamondTypeId = designMasterRefs.diamondType.id;
     design.diamondWeightId = designMasterRefs.diamondWeight.id;
     design.diamondQualityId = designMasterRefs.diamondQuality.id;
@@ -4231,6 +4248,42 @@ export class ProductsService {
       throw new BadRequestException('Design Name already exists.');
     }
   }
+
+  /**
+   * A version is a unique configuration within a design family. Master IDs are
+   * used rather than display text so aliases, casing, and spacing cannot create
+   * a second copy of the same variant.
+   */
+  private async assertUniqueFamilyVariantCombination(
+    familyDesignId: number | null,
+    refs: DesignMasterRefs,
+  ): Promise<void> {
+    if (!familyDesignId) {
+      return;
+    }
+
+    const existing = await this.designRepo
+      .createQueryBuilder('design')
+      .select('design.id')
+      .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
+      .andWhere('design.metalCaratageId <=> :metalCaratageId', { metalCaratageId: refs.metalCaratage.id })
+      .andWhere(
+        this.isRingJewelryGroup(refs.jewelryGroup.value)
+          ? 'design.diamondSpreadId <=> :diamondSpreadId'
+          : '1 = 1',
+        { diamondSpreadId: refs.diamondSpread.id },
+      )
+      .andWhere('design.diamondTypeId <=> :diamondTypeId', { diamondTypeId: refs.diamondType.id })
+      .andWhere('design.diamondWeightId <=> :diamondWeightId', { diamondWeightId: refs.diamondWeight.id })
+      .andWhere('design.diamondQualityId <=> :diamondQualityId', { diamondQualityId: refs.diamondQuality.id })
+      .andWhere('design.jewelrySizeId <=> :jewelrySizeId', { jewelrySizeId: refs.jewelrySize.id })
+      .getRawOne<{ id: string | number }>();
+
+    if (existing) {
+      throw new BadRequestException('This variant combination already exists for this base design.');
+    }
+  }
+
   private async resolvePrimaryVersionFlag(
     familyDesignId: number | null,
     baseDesignNo: string,
@@ -4281,6 +4334,10 @@ export class ProductsService {
     return (token || 'DSN').slice(0, 5);
   }
 
+  private isRingJewelryGroup(jewelryGroup: string | null | undefined): boolean {
+    return (jewelryGroup || '').trim().toLowerCase() === 'ring';
+  }
+
   private async resolveJewelryGroupPrefix(jewelryGroup: string): Promise<string> {
     const normalizedGroup = jewelryGroup.trim();
     if (!normalizedGroup) {
@@ -4314,11 +4371,12 @@ export class ProductsService {
   private buildAliasDesignIdentity(refs: DesignMasterRefs, designName?: string | null): { designNoPrefix: string; designName: string } {
     const requestedDesignName = this.optionalText(designName);
     const nameCode = this.normalizeDesignIdentityToken(requestedDesignName);
+    const category = this.getDesignIdentityToken(refs.jewelryGroup);
     const diamondSpread = this.getDesignIdentityToken(refs.diamondSpread);
     const metal = this.getDesignIdentityToken(refs.metalCaratage);
     const diamondWeight = this.getDesignIdentityToken(refs.diamondWeight);
     const diamondQuality = this.getDesignIdentityToken(refs.diamondQuality);
-    const segments = [nameCode, diamondSpread, metal, diamondWeight, diamondQuality].filter(Boolean);
+    const segments = [nameCode, category, diamondSpread, metal, diamondWeight, diamondQuality].filter(Boolean);
 
     return {
       designNoPrefix: segments.join('-'),
@@ -5573,12 +5631,28 @@ export class ProductsService {
     await this.designRepo.save(familyRows);
   }
 
-  private applyVersionToDesignNo(designNo: string, version: string): string {
-    const base = this.normalizeBaseDesignNo(designNo);
-    const normalizedVersion = this.normalizeVersion(version);
-    if (normalizedVersion === 'V1') {
-      return base;
+  private applyVersionToDesignNo(
+    designNo: string,
+    version: string,
+    jewelrySize?: string | null,
+    previousJewelrySize?: string | null,
+  ): string {
+    let base = this.normalizeBaseDesignNo(designNo);
+    const previousSize = this.optionalText(previousJewelrySize)?.toUpperCase();
+    const normalizedSize = this.optionalText(jewelrySize)?.toUpperCase();
+    if (previousSize && base.endsWith(`-${previousSize}`)) {
+      base = base.slice(0, -(previousSize.length + 1));
+    } else if (previousSize && normalizedSize && previousSize !== normalizedSize && base.endsWith(`-${previousSize}-${normalizedSize}`)) {
+      // The web form may already have appended the newly selected size. Remove
+      // the old size first so changing 7.00 to 7.50 never produces both.
+      base = `${base.slice(0, -(previousSize.length + normalizedSize.length + 2))}-${normalizedSize}`;
     }
+
+    if (normalizedSize && !base.endsWith(`-${normalizedSize}`)) {
+      base = `${base}-${normalizedSize}`;
+    }
+
+    const normalizedVersion = this.normalizeVersion(version);
     return `${base}-${normalizedVersion}`;
   }
 
@@ -7090,11 +7164,5 @@ export class ProductsService {
   }
 
 }
-
-
-
-
-
-
 
 

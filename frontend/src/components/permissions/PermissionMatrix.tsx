@@ -902,14 +902,25 @@ export default function PermissionMatrix({
     if (!canEdit || loadingRoleDefaults) return;
     setLoadingRoleDefaults(true);
     try {
-      const response = await api.get(`/permissions/role-defaults/${role}`);
+      const response = await api.get(`/users/default-permissions/${role}`);
       const savedDefault = response.data;
-      if (savedDefault && (savedDefault.detailedPermissions?.length || savedDefault.taskPermissions?.length)) {
+      if (savedDefault) {
         applyRoleDefaultSelection(savedDefault.taskPermissions || [], savedDefault.detailedPermissions || []);
         return;
       }
     } catch {
-      // Use the local role defaults when no server-side default is available to this screen.
+      try {
+        // The Default Permissions admin page has direct access to this
+        // endpoint; retain it as a fallback for that existing screen.
+        const response = await api.get(`/permissions/role-defaults/${role}`);
+        const savedDefault = response.data;
+        if (savedDefault) {
+          applyRoleDefaultSelection(savedDefault.taskPermissions || [], savedDefault.detailedPermissions || []);
+          return;
+        }
+      } catch {
+        // Use the local role defaults when server-side defaults are unavailable.
+      }
     } finally {
       setLoadingRoleDefaults(false);
     }

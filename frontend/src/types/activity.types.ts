@@ -35,6 +35,7 @@ export type ActivityEventsQuery = {
   deviceId?: string;
   entityType?: string;
   entityId?: string;
+  record?: string;
 };
 
 export type ActivityEventsResponse = {
@@ -43,4 +44,3 @@ export type ActivityEventsResponse = {
   page: number;
   totalPages: number;
 };
-

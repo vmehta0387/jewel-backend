@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import Pagination from '../../components/common/Pagination';
+import api from '../../services/api';
 import { fetchActivityEvents } from '../../services/activityEvents';
 import type { ActivityEventItem, ActivityEventsQuery } from '../../types/activity.types';
 
@@ -13,7 +14,15 @@ type Filters = {
   event: string;
   deviceId: string;
   entityType: string;
-  entityId: string;
+  record: string;
+};
+
+type UserOption = {
+  id: number;
+  label?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 };
 
 const DEFAULT_LIMIT = 20;
@@ -25,7 +34,7 @@ const emptyFilters: Filters = {
   event: '',
   deviceId: '',
   entityType: '',
-  entityId: '',
+  record: '',
 };
 
 const fieldClassName = 'w-full rounded-lg border border-[#dfd3c4] bg-white px-3 py-2 text-left text-sm text-slate-900 outline-none transition focus:border-[#b98e45] focus:ring-2 focus:ring-[#b98e45]/15';
@@ -140,6 +149,7 @@ export default function ActivityEventsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
 
   const query = useMemo<ActivityEventsQuery>(() => ({
     page,
@@ -151,7 +161,7 @@ export default function ActivityEventsPage() {
     event: appliedFilters.event.trim(),
     deviceId: appliedFilters.deviceId.trim(),
     entityType: appliedFilters.entityType.trim(),
-    entityId: appliedFilters.entityId.trim(),
+    record: appliedFilters.record.trim(),
   }), [appliedFilters, limit, page]);
 
   const loadActivity = useCallback(async () => {
@@ -176,6 +186,20 @@ export default function ActivityEventsPage() {
   useEffect(() => {
     void loadActivity();
   }, [loadActivity]);
+
+  useEffect(() => {
+    let active = true;
+    api.get<UserOption[]>('/users/lookup', { params: { status: 'ALL' } })
+      .then((response) => {
+        if (active) setUserOptions(response.data || []);
+      })
+      .catch(() => {
+        if (active) setUserOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -242,14 +266,23 @@ export default function ActivityEventsPage() {
         }
       >
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <FilterField label="User" placeholder="User ID or staff ID" value={filters.userId} onChange={(value) => updateFilter('userId', value)} />
+          <label className="block">
+            <span className={labelClassName}>User</span>
+            <select className={fieldClassName} value={filters.userId} onChange={(event) => updateFilter('userId', event.target.value)}>
+              <option value="">All users</option>
+              {userOptions.map((user) => {
+                const name = user.label || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || `User ${user.id}`;
+                return <option key={user.id} value={user.id}>{user.email ? `${name} (${user.email})` : name}</option>;
+              })}
+            </select>
+          </label>
           <FilterField label="From date" type="date" value={filters.from} onChange={(value) => updateFilter('from', value)} />
           <FilterField label="To date" type="date" value={filters.to} onChange={(value) => updateFilter('to', value)} />
           <FilterField label="Area" placeholder="Example: Customer" value={filters.module} onChange={(value) => updateFilter('module', value)} />
-          <FilterField label="Action" placeholder="Example: Created" value={filters.event} onChange={(value) => updateFilter('event', value)} />
+          <FilterField label="Action" placeholder="Enter exact action, e.g. Created" value={filters.event} onChange={(value) => updateFilter('event', value)} />
           <FilterField label="Device" placeholder="Phone or tablet ID" value={filters.deviceId} onChange={(value) => updateFilter('deviceId', value)} />
           <FilterField label="Record type" placeholder="Example: Order" value={filters.entityType} onChange={(value) => updateFilter('entityType', value)} />
-          <FilterField label="Record ID" placeholder="Specific record number" value={filters.entityId} onChange={(value) => updateFilter('entityId', value)} />
+          <FilterField label="Record" placeholder="Search record name, number, type, or status" value={filters.record} onChange={(value) => updateFilter('record', value)} />
         </div>
         <div className="mt-4 flex flex-wrap justify-end gap-2">
           <div className="flex flex-wrap justify-start gap-2">
@@ -362,9 +395,6 @@ export default function ActivityEventsPage() {
     </div>
   );
 }
-
-
-
 
 
 

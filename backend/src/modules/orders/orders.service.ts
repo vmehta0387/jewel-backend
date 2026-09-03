@@ -316,6 +316,10 @@ export class OrdersService implements OnModuleInit {
           branchMultiplierSnapshot,
           effectiveMultiplierSnapshot,
           sellingPriceSnapshot,
+          company,
+          branch,
+          design,
+          salesRep,
           ...safeOrder
         } = order;
         const raw = rawById.get(Number(order.id)) || {};
@@ -339,12 +343,22 @@ export class OrdersService implements OnModuleInit {
                 effectiveMultiplierSnapshot,
                 sellingPriceSnapshot,
               }
+            : requester.role === UserRole.COMPANY_ADMIN
+              ? { branchCostSnapshot, branchMultiplierSnapshot, sellingPriceSnapshot }
             : {}),
           companyName: this.optionalText(raw.read_companyName),
           branchName: this.optionalText(raw.read_branchName),
           designNo: this.optionalText(raw.read_designNo),
           designName: this.optionalText(raw.read_designName),
           designVersion: this.optionalText(raw.read_designVersion),
+          company: company ? { id: company.id, companyName: company.companyName } : null,
+          branch: branch ? { id: branch.id, name: branch.name, companyId: branch.companyId } : null,
+          design: design
+            ? { id: design.id, designNo: design.designNo, designName: design.designName, version: design.version }
+            : null,
+          salesRep: salesRep
+            ? { id: salesRep.id, firstName: salesRep.firstName, lastName: salesRep.lastName, email: salesRep.email, role: salesRep.role }
+            : null,
           costPrice: await this.resolveVisibleCostPrice(order, requester),
           salesRepName,
           salesRepEmail: this.optionalText(raw.read_salesRepEmail),
@@ -475,7 +489,7 @@ export class OrdersService implements OnModuleInit {
         await this.recordOrderHistory(saved, 'ADD', requester, [], `Order ${saved.orderNumber} was created`);
         await this.safeTrackOrderCreated(saved);
         await this.safeNotifyOrderCreated(saved, requester);
-        return saved;
+        return this.findOne(saved.id, requester);
       } catch (error: any) {
         const isDuplicate =
           error?.code === 'ER_DUP_ENTRY' ||
@@ -755,7 +769,7 @@ export class OrdersService implements OnModuleInit {
       await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
       await this.safeTrackOrderTransition(saved, previousStatus);
       await this.safeNotifyOrderTransition(saved, previousStatus, requester);
-      return saved;
+      return this.findOne(saved.id, requester);
     } catch (error: any) {
       const isBadField =
         error?.code === 'ER_BAD_FIELD_ERROR' ||
@@ -767,7 +781,7 @@ export class OrdersService implements OnModuleInit {
         await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
         await this.safeTrackOrderTransition(saved, previousStatus);
         await this.safeNotifyOrderTransition(saved, previousStatus, requester);
-        return saved;
+        return this.findOne(saved.id, requester);
       }
       this.logger.error(`Failed to update order: ${error?.message || error}`, error?.stack);
       throw new BadRequestException(error?.message || 'Unable to update order.');
@@ -799,17 +813,33 @@ export class OrdersService implements OnModuleInit {
       branchId: branch?.id || branchId,
     });
 
-    return pricing;
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return pricing;
+    }
+    if (requester.role === UserRole.COMPANY_ADMIN) {
+      return {
+        branchMultiplier: pricing.branchMultiplier,
+        branchMultiplierSource: pricing.branchMultiplierSource,
+        branchCost: pricing.finalPrice,
+        finalPrice: pricing.finalPrice,
+      };
+    }
+    return { finalPrice: pricing.finalPrice };
   }
 
   async updateActiveStatus(id: number, isActive: boolean, requester: AuthUser) {
-    const order = await this.findOne(Number(id), requester);
+    const qb = this.createOrderReadQuery().where('order.id = :id', { id });
+    this.applyScopeFilter(qb, requester);
+    const order = await qb.getOne();
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
     this.assertOrderEditable(order, requester);
     const beforeSnapshot = this.getOrderAuditSnapshot(order);
     order.isActive = isActive;
     const saved = await this.orderRepo.save(order);
     await this.recordOrderUpdateHistory(saved, beforeSnapshot, requester);
-    return saved;
+    return this.findOne(saved.id, requester);
   }
 
   async getHistory(id: number, requester: AuthUser) {
@@ -1878,6 +1908,8 @@ export class OrdersService implements OnModuleInit {
     branchMultiplier: number;
     effectiveMultiplier: number;
     pricingSource: 'COMPANY' | 'BRANCH';
+    companyMultiplierSource: 'COLLECTION_OVERRIDE' | 'COMPANY_SLAB' | 'COMPANY_DEFAULT';
+    branchMultiplierSource: 'BRANCH_SLAB' | 'BRANCH_DEFAULT';
     finalPrice: number;
   }> {
     return this.pricingService.calculateDesignRetailPrice(params);
@@ -1891,8 +1923,8 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (requester.role === UserRole.COMPANY_ADMIN) {
-      if (order.companyCostSnapshot !== null && order.companyCostSnapshot !== undefined) {
-        return this.roundMoney(this.toNumber(order.companyCostSnapshot));
+      if (order.branchCostSnapshot !== null && order.branchCostSnapshot !== undefined) {
+        return this.roundMoney(this.toNumber(order.branchCostSnapshot));
       }
     }
 
@@ -1916,7 +1948,7 @@ export class OrdersService implements OnModuleInit {
       }
 
       if (requester.role === UserRole.COMPANY_ADMIN) {
-        return pricing.companyPrice;
+        return pricing.finalPrice;
       }
 
       if (requester.role === UserRole.BRANCH_MANAGER) {

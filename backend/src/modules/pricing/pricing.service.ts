@@ -46,6 +46,8 @@ export type DesignRetailPriceResult = {
   branchMultiplier: number;
   effectiveMultiplier: number;
   pricingSource: 'COMPANY' | 'BRANCH';
+  companyMultiplierSource: 'COLLECTION_OVERRIDE' | 'COMPANY_SLAB' | 'COMPANY_DEFAULT';
+  branchMultiplierSource: 'BRANCH_SLAB' | 'BRANCH_DEFAULT';
   finalPrice: number;
 };
 
@@ -581,17 +583,25 @@ export class PricingService {
   }): Promise<DesignRetailPriceResult> {
     const baseCost = this.toNumber(params.design?.totalValue ?? 0);
 
-    let companyMultiplier = 1;
-    let branchPricing = { multiplier: 1, applies: false };
+    let companyPricing: { multiplier: number; source: DesignRetailPriceResult['companyMultiplierSource'] } = {
+      multiplier: 1,
+      source: 'COMPANY_DEFAULT',
+    };
+    let branchPricing: { multiplier: number; applies: boolean; source: DesignRetailPriceResult['branchMultiplierSource'] } = {
+      multiplier: 1,
+      applies: false,
+      source: 'BRANCH_DEFAULT',
+    };
 
     if (params.companyId) {
-      companyMultiplier = await this.resolveCompanyMultiplier(
+      companyPricing = await this.resolveCompanyMultiplier(
         params.companyId,
         baseCost,
         params.design?.collection || undefined,
       );
     }
 
+    const companyMultiplier = companyPricing.multiplier;
     const companyPrice = this.roundMoney(baseCost * companyMultiplier);
 
     if (params.branchId) {
@@ -612,6 +622,8 @@ export class PricingService {
       branchMultiplier,
       effectiveMultiplier,
       pricingSource,
+      companyMultiplierSource: companyPricing.source,
+      branchMultiplierSource: branchPricing.source,
       finalPrice,
     };
   }
@@ -906,7 +918,11 @@ export class PricingService {
       .sort((a, b) => a.minCost - b.minCost);
   }
 
-  private async resolveCompanyMultiplier(companyId: number, baseCost: number, collection?: string): Promise<number> {
+  private async resolveCompanyMultiplier(
+    companyId: number,
+    baseCost: number,
+    collection?: string,
+  ): Promise<{ multiplier: number; source: DesignRetailPriceResult['companyMultiplierSource'] }> {
     const company = await this.companyRepo.findOne({
       where: { id: companyId },
       relations: ['pricingSlabs', 'collectionPricingOverrides'],
@@ -920,7 +936,7 @@ export class PricingService {
         (row) => row.isActive && row.collectionType === collection,
       );
       if (override) {
-        return this.toNumber(override.multiplier) || 1;
+        return { multiplier: this.toNumber(override.multiplier) || 1, source: 'COLLECTION_OVERRIDE' };
       }
     }
 
@@ -929,18 +945,18 @@ export class PricingService {
         (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
       );
       if (slab) {
-        return this.toNumber(slab.multiplier) || 1;
+        return { multiplier: this.toNumber(slab.multiplier) || 1, source: 'COMPANY_SLAB' };
       }
     }
 
-    return this.toNumber(company.defaultMultiplier) || 1;
+    return { multiplier: this.toNumber(company.defaultMultiplier) || 1, source: 'COMPANY_DEFAULT' };
   }
 
   private async resolveBranchPricing(
     branchId: number,
     baseCost: number,
     companyId?: number,
-  ): Promise<{ multiplier: number; applies: boolean }> {
+  ): Promise<{ multiplier: number; applies: boolean; source: DesignRetailPriceResult['branchMultiplierSource'] }> {
     const branch = await this.branchRepo.findOne({
       where: { id: branchId },
       relations: ['pricingSlabs'],
@@ -957,13 +973,13 @@ export class PricingService {
         (row) => row.isActive && baseCost >= this.toNumber(row.minCost) && baseCost <= this.toNumber(row.maxCost),
       );
       if (slab) {
-        return { multiplier: this.toNumber(slab.multiplier) || 1, applies: true };
+        return { multiplier: this.toNumber(slab.multiplier) || 1, applies: true, source: 'BRANCH_SLAB' };
       }
-      return { multiplier: this.toNumber(branch.branchMultiplier) || 1, applies: true };
+      return { multiplier: this.toNumber(branch.branchMultiplier) || 1, applies: true, source: 'BRANCH_DEFAULT' };
     }
 
     const multiplier = this.toNumber(branch.branchMultiplier) || 1;
-    return { multiplier, applies: multiplier !== 1 };
+    return { multiplier, applies: multiplier !== 1, source: 'BRANCH_DEFAULT' };
   }
 
   private roundMultiplier(value: number): number {
@@ -983,4 +999,3 @@ export class PricingService {
     return Number.isFinite(parsed) ? parsed : 0;
   }
 }
-

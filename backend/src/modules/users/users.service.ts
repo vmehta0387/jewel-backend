@@ -30,7 +30,6 @@ import {
   PermissionDataScope,
   UserPermissionAction,
 } from '../permissions/entities/user-permission-action.entity';
-import { getRestoredSpiffPermissionsForRole } from '../permissions/spiff-role-permissions';
 
 export interface UserResponse {
   id: number;
@@ -405,6 +404,17 @@ export class UsersService implements OnModuleInit {
     );
   }
 
+  async getNewUserRoleDefaults(role: UserRole, requester: AuthUser): Promise<{
+    taskPermissions: TaskPermission[];
+    detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[];
+  }> {
+    if (requester.role === UserRole.COMPANY_ADMIN && !this.companyAdminManagedRoles.includes(role)) {
+      throw new ForbiddenException('Company admin can only create branch managers or sales reps');
+    }
+
+    return this.resolveNewUserDefaultPermissionAssignment(role);
+  }
+
   async create(dto: CreateUserDto, requester?: AuthUser): Promise<UserResponse> {
     await this.assertCanChangeAssignedPermissions(dto, requester);
 
@@ -428,16 +438,20 @@ export class UsersService implements OnModuleInit {
     const scopedOrg = await this.resolveScope(dto.role, dto.companyId, dto.branchId);
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const defaultAssignment =
-      dto.detailedPermissions === undefined && dto.taskPermissions === undefined
-        ? await this.resolveRoleDefaultPermissionAssignment(dto.role)
-        : null;
+    // New users always begin with the currently configured defaults for their
+    // selected role. Explicit permissions from a creation flow are additive so
+    // they cannot accidentally omit a role default; they can still be refined
+    // later through the normal user-permissions update flow.
+    const defaultAssignment = await this.resolveNewUserDefaultPermissionAssignment(dto.role);
     const normalizedDetailedPermissions =
-      dto.detailedPermissions !== undefined
-        ? dto.role === UserRole.SUPER_ADMIN
-          ? []
-          : this.normalizeDetailedPermissions(dto.detailedPermissions)
-        : defaultAssignment?.detailedPermissions;
+      dto.role === UserRole.SUPER_ADMIN
+        ? []
+        : this.mergeDetailedPermissions(
+          defaultAssignment.detailedPermissions,
+          dto.detailedPermissions !== undefined
+            ? this.normalizeDetailedPermissions(dto.detailedPermissions)
+            : [],
+        );
     const user = this.userRepo.create({
       email: normalizedEmail,
       passwordHash,
@@ -450,19 +464,15 @@ export class UsersService implements OnModuleInit {
       phone: dto.phone?.trim() || null,
       photoUrl: this.normalizePhotoStoragePath(dto.photoUrl?.trim() || null),
       isActive: dto.isActive ?? true,
-      taskPermissions:
-        normalizedDetailedPermissions !== undefined
-          ? this.normalizePermissions([
-            ...this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role),
-            ...(defaultAssignment?.usesBuiltInRoleDefaults ? defaultAssignment.taskPermissions : []),
-          ], dto.role)
-          : this.normalizePermissions(defaultAssignment?.taskPermissions ?? dto.taskPermissions, dto.role),
+      taskPermissions: this.normalizePermissions([
+        ...defaultAssignment.taskPermissions,
+        ...(dto.taskPermissions || []),
+        ...this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, dto.role),
+      ], dto.role),
     });
 
     const saved: any = await this.userRepo.save(user);
-    if (normalizedDetailedPermissions !== undefined) {
-      await this.replaceUserDetailedPermissions(saved.id, normalizedDetailedPermissions);
-    }
+    await this.replaceUserDetailedPermissions(saved.id, normalizedDetailedPermissions);
     const response = await this.findOne(saved.id, requester);
     await this.safeNotifyUserCreated(saved, response, requester);
     return response;
@@ -540,18 +550,24 @@ export class UsersService implements OnModuleInit {
     user.branchId = scopedOrg.branchId;
 
     const defaultAssignment =
-      dto.detailedPermissions === undefined && dto.taskPermissions === undefined && previousRole !== nextRole
-        ? await this.resolveRoleDefaultPermissionAssignment(nextRole)
+      previousRole !== nextRole
+        ? await this.resolveNewUserDefaultPermissionAssignment(nextRole)
         : null;
     const normalizedDetailedPermissions =
       dto.detailedPermissions !== undefined
         ? nextRole === UserRole.SUPER_ADMIN
           ? []
-          : this.normalizeDetailedPermissions(dto.detailedPermissions)
+          : this.mergeDetailedPermissions(
+            defaultAssignment?.detailedPermissions || [],
+            this.normalizeDetailedPermissions(dto.detailedPermissions),
+          )
         : defaultAssignment?.detailedPermissions;
     const permissionsInput =
       dto.taskPermissions !== undefined
-        ? dto.taskPermissions
+        ? [
+          ...(defaultAssignment?.taskPermissions || []),
+          ...dto.taskPermissions,
+        ]
         : defaultAssignment
           ? defaultAssignment.taskPermissions
           : dto.role !== undefined
@@ -561,7 +577,8 @@ export class UsersService implements OnModuleInit {
       normalizedDetailedPermissions !== undefined
         ? this.normalizePermissions([
           ...this.deriveLegacyPermissionsFromDetailed(normalizedDetailedPermissions, nextRole),
-          ...(defaultAssignment?.usesBuiltInRoleDefaults ? defaultAssignment.taskPermissions : []),
+          ...(defaultAssignment?.taskPermissions || []),
+          ...(dto.taskPermissions || []),
         ], nextRole)
         : this.normalizePermissions(permissionsInput, nextRole);
 
@@ -1310,41 +1327,36 @@ export class UsersService implements OnModuleInit {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('user_permission_actions');
   }
 
-  private async resolveRoleDefaultPermissionAssignment(role: UserRole): Promise<{
+  /**
+   * Creation uses only the saved role-default profile. Unlike the legacy
+   * fallback helper above, an absent profile intentionally means no assigned
+   * permissions for the new user.
+   */
+  private async resolveNewUserDefaultPermissionAssignment(role: UserRole): Promise<{
     taskPermissions: TaskPermission[];
-    detailedPermissions?: { actionKey: string; dataScope: PermissionDataScope }[];
-    usesBuiltInRoleDefaults?: boolean;
+    detailedPermissions: { actionKey: string; dataScope: PermissionDataScope }[];
   }> {
     const defaultProfile = await this.permissionsService.getRoleDefault(role);
     if (!defaultProfile) {
-      const restoredSpiffPermissions = getRestoredSpiffPermissionsForRole(role);
-      return {
-        taskPermissions: this.normalizePermissions(undefined, role),
-        detailedPermissions: restoredSpiffPermissions.length > 0 ? restoredSpiffPermissions : undefined,
-        usesBuiltInRoleDefaults: true,
-      };
+      return { taskPermissions: [], detailedPermissions: [] };
     }
 
-    const detailedPermissions = this.normalizeDetailedPermissions(defaultProfile.detailedPermissions || []);
-    const restoredSpiffPermissions = getRestoredSpiffPermissionsForRole(role);
-    const hasOnlyRestoredSpiffPermissions =
-      restoredSpiffPermissions.length > 0 &&
-      detailedPermissions.length === restoredSpiffPermissions.length &&
-      detailedPermissions.every((permission) =>
-        restoredSpiffPermissions.some((restored) => restored.actionKey === permission.actionKey),
-      );
-    const taskPermissions = hasOnlyRestoredSpiffPermissions
-      ? this.normalizePermissions(defaultProfile.taskPermissions, role)
-      : detailedPermissions.length > 0
-        ? this.deriveLegacyPermissionsFromDetailed(detailedPermissions, role)
-        : this.normalizePermissions(defaultProfile.taskPermissions, role);
-
     return {
-      taskPermissions,
-      detailedPermissions: detailedPermissions.length > 0 ? detailedPermissions : undefined,
-      usesBuiltInRoleDefaults: hasOnlyRestoredSpiffPermissions,
+      taskPermissions: this.normalizePermissions(defaultProfile.taskPermissions || [], role),
+      detailedPermissions: this.normalizeDetailedPermissions(defaultProfile.detailedPermissions || []),
     };
   }
+
+  private mergeDetailedPermissions(
+    ...groups: Array<{ actionKey: string; dataScope: PermissionDataScope }[]>
+  ): { actionKey: string; dataScope: PermissionDataScope }[] {
+    const merged = new Map<string, PermissionDataScope>();
+    groups.flat().forEach((permission) => {
+      merged.set(permission.actionKey, permission.dataScope);
+    });
+    return Array.from(merged.entries()).map(([actionKey, dataScope]) => ({ actionKey, dataScope }));
+  }
+
   private normalizePermissions(
     permissions: TaskPermission[] | undefined,
     role: UserRole,

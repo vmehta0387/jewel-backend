@@ -108,6 +108,13 @@ export class UsersController {
     return this.usersService.uploadPhoto(file, req);
   }
 
+  @Get('default-permissions/:role')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COMPANY_ADMIN)
+  @AnyActionPermissions('user.create', 'user.edit')
+  getNewUserRoleDefaults(@Param('role') role: UserRole, @Request() req: { user: AuthUser }) {
+    return this.usersService.getNewUserRoleDefaults(role, req.user);
+  }
+
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.INTERNAL_REP, UserRole.COMPANY_ADMIN)
   @ActionPermissions('user.view')

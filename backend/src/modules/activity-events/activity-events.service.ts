@@ -35,8 +35,8 @@ export class ActivityEventsService {
   }
 
   async findAll(query: FindActivityEventsQueryDto) {
-    const page = query.page || 1;
-    const limit = query.limit || 25;
+    const page = this.positiveInteger(query.page) || 1;
+    const limit = Math.min(this.positiveInteger(query.limit) || 25, 100);
     const skip = (page - 1) * limit;
 
     const qb = this.activityEventRepo
@@ -45,8 +45,9 @@ export class ActivityEventsService {
       .skip(skip)
       .take(limit);
 
-    if (query.userId) {
-      qb.andWhere('activityEvent.user_id = :userId', { userId: query.userId });
+    const userIdFilter = this.positiveInteger(query.userId);
+    if (userIdFilter) {
+      qb.andWhere('activityEvent.user_id = :userId', { userId: userIdFilter });
     }
 
     if (query.from) {
@@ -73,21 +74,50 @@ export class ActivityEventsService {
       qb.andWhere('activityEvent.entity_type = :entityType', { entityType: query.entityType.trim() });
     }
 
-    if (query.entityId != null) {
-      qb.andWhere('activityEvent.entity_id = :entityId', { entityId: query.entityId });
+    const entityIdFilter = this.positiveInteger(query.entityId);
+    if (entityIdFilter) {
+      qb.andWhere('activityEvent.entity_id = :entityId', { entityId: entityIdFilter });
+    }
+
+    if (query.record?.trim()) {
+      const record = `%${query.record.trim()}%`;
+      qb.andWhere(
+        `(
+          activityEvent.entity_type LIKE :record
+          OR CAST(activityEvent.entity_id AS CHAR) LIKE :record
+          OR EXISTS (
+            SELECT 1 FROM orders recordOrder
+            LEFT JOIN designs recordOrderDesign ON recordOrderDesign.id = recordOrder.design_id
+            WHERE UPPER(activityEvent.entity_type) = 'ORDER'
+              AND recordOrder.id = activityEvent.entity_id
+              AND (recordOrder.order_number LIKE :record OR recordOrder.status LIKE :record OR recordOrderDesign.design_no LIKE :record)
+          )
+          OR EXISTS (
+            SELECT 1 FROM designs recordDesign
+            WHERE UPPER(activityEvent.entity_type) = 'DESIGN'
+              AND recordDesign.id = activityEvent.entity_id
+              AND (recordDesign.design_no LIKE :record OR recordDesign.design_name LIKE :record)
+          )
+        )`,
+        { record },
+      );
     }
 
     const [events, total] = await qb.getManyAndCount();
-    const userIds = Array.from(new Set(events.map((event) => event.userId).filter(Boolean)));
+    const userIds = Array.from(new Set(
+      events.map((event) => this.positiveInteger(event.userId)).filter((id): id is number => id !== null),
+    ));
     const orderIds = Array.from(new Set(
       events
         .filter((event) => String(event.entityType || '').toUpperCase() === 'ORDER' && event.entityId)
-        .map((event) => Number(event.entityId)),
+        .map((event) => this.positiveInteger(event.entityId))
+        .filter((id): id is number => id !== null),
     ));
     const designIds = Array.from(new Set(
       events
         .filter((event) => String(event.entityType || '').toUpperCase() === 'DESIGN' && event.entityId)
-        .map((event) => Number(event.entityId)),
+        .map((event) => this.positiveInteger(event.entityId))
+        .filter((id): id is number => id !== null),
     ));
 
     const users: User[] = userIds.length
@@ -165,6 +195,11 @@ export class ActivityEventsService {
     if (!value) return new Date();
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+
+  private positiveInteger(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
   }
 
   private requiredText(value: unknown, field: string, maxLength: number) {

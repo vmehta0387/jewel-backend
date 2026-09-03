@@ -124,4 +124,8 @@ export class FindActivityEventsQueryDto {
   @Type(() => Number)
   @IsInt()
   entityId?: number;
+
+  @IsOptional()
+  @IsString()
+  record?: string;
 }

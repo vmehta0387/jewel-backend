@@ -12,7 +12,6 @@ import { TaskPermission, UserRole } from '../../types/auth.types';
 import {
   ALLOWED_TASK_PERMISSIONS_BY_ROLE,
   DEFAULT_TASK_PERMISSIONS_BY_ROLE,
-  getDefaultDetailedPermissionsByRole,
   USER_ROLE_OPTIONS,
   UserRecord,
 } from '../../types/user.types';
@@ -237,14 +236,37 @@ export default function EditUser() {
     if (isCompanyAdmin && role !== 'BRANCH_MANAGER' && role !== 'SALES_REP') {
       return;
     }
+
+    if (role === formData.role) {
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       role,
       companyId: roleNeedsCompany(role) ? prev.companyId : '',
       branchId: roleNeedsBranch(role) ? prev.branchId : '',
-      taskPermissions: DEFAULT_TASK_PERMISSIONS_BY_ROLE[role],
-      detailedPermissions: [...getDefaultDetailedPermissionsByRole(role)],
+      taskPermissions: [],
+      detailedPermissions: [],
     }));
+
+    void (async () => {
+      try {
+        const response = await api.get(`/users/default-permissions/${role}`);
+        setFormData((prev) => (
+          prev.role === role
+            ? {
+              ...prev,
+              taskPermissions: response.data?.taskPermissions || [],
+              detailedPermissions: response.data?.detailedPermissions || [],
+            }
+            : prev
+        ));
+      } catch {
+        // The backend still applies defaults on save. Keep the role-change
+        // selection empty here if the preview could not be loaded.
+      }
+    })();
   };
 
   const validateUserHandleAvailability = async (focusOnError = false) => {
@@ -604,7 +626,6 @@ export default function EditUser() {
     </div>
   );
 }
-
 
 
 

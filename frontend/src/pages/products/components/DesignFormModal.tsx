@@ -45,6 +45,7 @@ interface DesignFormModalScope {
   galleryUploadInputRef: { current: any };
   galleryUploading: any;
   hasUnsavedDesignChanges: boolean;
+  isRingJewelryGroup: boolean;
   gemRows: any[];
   getGemValue: (...args: any[]) => any;
   getGemWeight: (...args: any[]) => any;
@@ -173,6 +174,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     galleryUploadInputRef,
     galleryUploading,
     hasUnsavedDesignChanges,
+    isRingJewelryGroup,
     gemRows,
     getGemValue,
     getGemWeight,
@@ -402,28 +404,30 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       </button>
                     </div>
                   </div>
-                  <div className="xl:col-span-3">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
-                    <SmartDropdown
-                      value={form.diamondSpread}
-                      onChange={(value, option) => {
-                        mergeMasterOption('DIAMOND_SPREAD', option);
-                        setForm((prev) => ({
-                          ...prev,
-                          diamondSpread: value,
-                          coverageCustom: value === 'Custom' ? prev.coverageCustom : '',
-                        }));
-                      }}
-                      config={{
-                        ...masterDropdownConfig(
-                          'DIAMOND_SPREAD',
-                          'Select Diamond Spread',
-                          toSmartDropdownOptions(masterOptions.diamondSpreads),
-                        ),
-                        disabled: isDesignIdentityLocked,
-                      }}
-                    />
-                  </div>
+                  {isRingJewelryGroup ? (
+                    <div className="xl:col-span-3">
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread</label>
+                      <SmartDropdown
+                        value={form.diamondSpread}
+                        onChange={(value, option) => {
+                          mergeMasterOption('DIAMOND_SPREAD', option);
+                          setForm((prev) => ({
+                            ...prev,
+                            diamondSpread: value,
+                            coverageCustom: value === 'Custom' ? prev.coverageCustom : '',
+                          }));
+                        }}
+                        config={{
+                          ...masterDropdownConfig(
+                            'DIAMOND_SPREAD',
+                            'Select Diamond Spread',
+                            toSmartDropdownOptions(masterOptions.diamondSpreads),
+                          ),
+                          disabled: isDesignIdentityLocked,
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   <div className="xl:col-span-3">
                     <label className="mb-1 block text-sm font-medium text-slate-700">Dia Quality</label>
                     <SmartDropdown
@@ -452,7 +456,7 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
                       }}
                     />
                   </div>
-                  {form.diamondSpread === 'Custom' ? (
+                  {isRingJewelryGroup && form.diamondSpread === 'Custom' ? (
                     <div className="xl:col-span-3">
                       <label className="mb-1 block text-sm font-medium text-slate-700">Diamond Spread Custom Code</label>
                       <input
@@ -1572,8 +1576,6 @@ export default function DesignFormModal({ editingId, showAddModal, onClose, scop
     </ProductsModal>
   );
 }
-
-
 
 
 
