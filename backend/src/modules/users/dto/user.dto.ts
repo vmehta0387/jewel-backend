@@ -29,6 +29,14 @@ export class FindUsersQueryDto {
   @Min(1)
   @IsOptional()
   branchId?: number;
+
+  @IsOptional()
+  @IsString()
+  companyIds?: string;
+
+  @IsOptional()
+  @IsString()
+  branchIds?: string;
 }
 
 export class CheckUserHandleQueryDto {

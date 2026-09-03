@@ -2,16 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { NavigationContainer, DefaultTheme, StackActions, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Constants from 'expo-constants';
-import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { registerPushDevice, unregisterPushDevice } from '../api/notifications';
+import { useNotifications } from '../context/NotificationContext';
+import { configurePushNotificationPresentation, type PushNotificationData } from '../services/pushNotifications';
+import { usePushNotifications } from '../hooks/usePushNotifications';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import CatalogCategoryScreen from '../screens/CatalogCategoryScreen';
@@ -143,17 +142,7 @@ const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const NAVIGATION_STATE_KEY_PREFIX = 'navigation_state';
-const PUSH_REGISTRATION_DEBUG_KEY = 'push_registration_debug';
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+configurePushNotificationPresentation();
 
 const navigationTheme = {
   ...DefaultTheme,
@@ -167,21 +156,7 @@ const navigationTheme = {
   },
 };
 
-const canReceivePushForRole = (role?: UserRole) =>
-  role === 'BRANCH_MANAGER' || role === 'SALES_REP' || role === 'COMPANY_ADMIN';
-
-const recordPushRegistrationDebug = async (status: string, details?: Record<string, unknown>) => {
-  const payload = {
-    status,
-    details: details || {},
-    platform: Platform.OS,
-    at: new Date().toISOString(),
-  };
-  console.warn('[push-registration]', payload);
-  await AsyncStorage.setItem(PUSH_REGISTRATION_DEBUG_KEY, JSON.stringify(payload)).catch(() => undefined);
-};
-
-const routeFromPushNotification = (data: Record<string, unknown> | null | undefined) => {
+const routeFromPushNotification = (data: PushNotificationData | null | undefined) => {
   if (!data || !navigationRef.isReady()) {
     return;
   }
@@ -219,62 +194,6 @@ const routeFromPushNotification = (data: Record<string, unknown> | null | undefi
     });
   }
 };
-
-const registerForPushNotificationsAsync = async (authToken: string, deviceId?: string | null) => {
-  if (!Device.isDevice) {
-    await recordPushRegistrationDebug('skipped_not_physical_device');
-    return null;
-  }
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('blitz-alerts', {
-      name: 'BLITZ alerts',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#A67F3F',
-      sound: 'notification_beep.wav',
-    });
-  }
-
-  const currentPermissions = await Notifications.getPermissionsAsync();
-  let status = currentPermissions.status;
-  if (status !== 'granted') {
-    const requested = await Notifications.requestPermissionsAsync();
-    status = requested.status;
-  }
-
-  if (status !== 'granted') {
-    await recordPushRegistrationDebug('permission_not_granted', { status });
-    return null;
-  }
-
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId
-    || (Constants as any)?.easConfig?.projectId
-    || undefined;
-
-  const tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-  const expoPushToken = tokenResponse.data;
-  if (!expoPushToken) {
-    await recordPushRegistrationDebug('expo_token_empty', { projectId: projectId || null });
-    return null;
-  }
-
-  await registerPushDevice(authToken, {
-    expoPushToken,
-    platform: Platform.OS,
-    deviceId: deviceId || undefined,
-    appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
-  });
-  await recordPushRegistrationDebug('registered', {
-    projectId: projectId || null,
-    deviceId: deviceId || null,
-    tokenPrefix: expoPushToken.slice(0, 22),
-  });
-
-  return expoPushToken;
-};
-
 const AuthNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
     <AuthStack.Screen name="Login" component={LoginScreen} />
@@ -474,7 +393,7 @@ const LoadingScreen = () => (
 
 const RootNavigator = () => {
   const { token, isLoading, user, deviceId } = useAuth();
-  const registeredPushTokenRef = useRef<string | null>(null);
+  const { refreshUnreadCount } = useNotifications();
   const persistedNavigationKeyRef = useRef<string | null>(null);
   const [initialNavigationState, setInitialNavigationState] = useState<any>(undefined);
   const [isNavigationStateLoading, setIsNavigationStateLoading] = useState(true);
@@ -525,72 +444,14 @@ const RootNavigator = () => {
     void AsyncStorage.setItem(storageKey, JSON.stringify(state));
   }, []);
 
-  useEffect(() => {
-    if (!token || !user || !canReceivePushForRole(user.role)) {
-      registeredPushTokenRef.current = null;
-      return undefined;
-    }
-
-    let isMounted = true;
-
-    const registerDevice = async () => {
-      try {
-        const pushToken = await registerForPushNotificationsAsync(token, deviceId);
-        if (!isMounted || !pushToken) {
-          return;
-        }
-        registeredPushTokenRef.current = pushToken;
-      } catch (err: any) {
-        await recordPushRegistrationDebug('failed', { message: err?.message || String(err), status: err?.status || null });
-        // Push registration is best-effort; in-app notifications remain available.
-      }
-    };
-
-    void registerDevice();
-
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = (response.notification.request.content.data || {}) as Record<string, unknown>;
-      routeFromPushNotification(data);
-    });
-
-    const pushTokenSubscription = Notifications.addPushTokenListener((pushToken) => {
-      const expoPushToken = pushToken.data;
-      if (!expoPushToken) return;
-      registeredPushTokenRef.current = expoPushToken;
-      void registerPushDevice(token, {
-        expoPushToken,
-        platform: Platform.OS,
-        deviceId: deviceId || undefined,
-        appVersion: Constants.expoConfig?.version || Constants.manifest2?.extra?.expoClient?.version || '1.0.0',
-      }).catch(() => undefined);
-    });
-
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void registerDevice();
-      }
-    });
-
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!isMounted || !response) {
-        return;
-      }
-      const data = (response.notification.request.content.data || {}) as Record<string, unknown>;
-      routeFromPushNotification(data);
-    });
-
-    return () => {
-      isMounted = false;
-      responseSubscription.remove();
-      pushTokenSubscription.remove();
-      appStateSubscription.remove();
-      const registeredPushToken = registeredPushTokenRef.current;
-      registeredPushTokenRef.current = null;
-      if (registeredPushToken) {
-        void unregisterPushDevice(token, registeredPushToken).catch(() => undefined);
-      }
-    };
-  }, [deviceId, token, user?.id, user?.role]);
+  usePushNotifications({
+    token,
+    userId: user?.id,
+    role: user?.role,
+    deviceId,
+    onNotificationReceived: refreshUnreadCount,
+    onNotificationResponse: routeFromPushNotification,
+  });
 
   if (isLoading || isNavigationStateLoading) {
     return <LoadingScreen />;
@@ -637,6 +498,3 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 252, 245, 0.95)',
   },
 });
-
-
-

@@ -32,6 +32,9 @@ export const markAllNotificationsRead = (token: string) =>
     body: JSON.stringify({}),
   }, token);
 
+export const fetchUnreadNotificationCount = (token: string) =>
+  apiRequest<{ unreadCount: number }>('/notifications/unread-count', { method: 'GET' }, token);
+
 export const registerPushDevice = (
   token: string,
   payload: {

@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import SmartDropdown, { SmartDropdownOption } from '../../components/common/SmartDropdown';
 import { useAppDialog } from '../../components/common/useAppDialog';
 import api from '../../services/api';
 import { getStoredUser, hasActionPermission, hasAnyActionPermission } from '../../utils/auth';
@@ -229,8 +230,6 @@ export default function SpiffPage() {
   const [searchParams] = useSearchParams();
   const { showAlert: showAppAlert, confirm: confirmAppDialog, prompt: promptAppDialog, dialogNode } = useAppDialog();
   const claimCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const salesRepSearchRef = useRef<HTMLInputElement | null>(null);
-  const salesRepDropdownRef = useRef<HTMLDivElement | null>(null);
   const adjustmentNoteRef = useRef<HTMLInputElement | null>(null);
   const user = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
@@ -267,8 +266,6 @@ export default function SpiffPage() {
   const [repCompanyFilters, setRepCompanyFilters] = useState<string[]>([]);
   const [repBranchFilters, setRepBranchFilters] = useState<string[]>([]);
   const [selectedSalesRepId, setSelectedSalesRepId] = useState('');
-  const [salesRepDropdownOpen, setSalesRepDropdownOpen] = useState(false);
-  const [salesRepSearch, setSalesRepSearch] = useState('');
   const [pointAction, setPointAction] = useState<SpiffPointAction>('ADD');
   const [adjustmentPoints, setAdjustmentPoints] = useState('');
   const [adjustmentNote, setAdjustmentNote] = useState('');
@@ -338,25 +335,8 @@ export default function SpiffPage() {
       }),
     [repBranchFilters, repCompanyFilters, salesReps],
   );
-  const searchedSalesReps = useMemo(() => {
-    const search = salesRepSearch.trim().toLowerCase();
-    if (!search) return filteredSalesReps;
-    return filteredSalesReps.filter((rep) => {
-      const haystack = [
-        getSalesRepName(rep),
-        getSalesRepHandle(rep),
-        rep.email,
-        getSalesRepCompanyName(rep),
-        getSalesRepBranchName(rep),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(search);
-    });
-  }, [filteredSalesReps, salesRepSearch]);
   const selectedSalesRep = useMemo(
-    () => salesReps.find((rep) => rep.id === selectedSalesRepId) || null,
+    () => salesReps.find((rep) => String(rep.id) === String(selectedSalesRepId)) || null,
     [salesReps, selectedSalesRepId],
   );
   const adjustmentPointValue = Math.max(0, Math.floor(Number(adjustmentPoints || 0)));
@@ -370,7 +350,32 @@ export default function SpiffPage() {
     : 0;
   const pointActionLabel = pointAction === 'ADD' ? 'add' : pointAction === 'REDEEM' ? 'redeem' : 'remove';
   const selectedFilterCount = repCompanyFilters.length + repBranchFilters.length;
+  const salesRepDropdownParams = useMemo(
+    () => ({
+      role: 'SALES_REP',
+      status: 'ACTIVE',
+      companyIds: repCompanyFilters.length ? repCompanyFilters.join(',') : undefined,
+      branchIds: repBranchFilters.length ? repBranchFilters.join(',') : undefined,
+    }),
+    [repBranchFilters, repCompanyFilters],
+  );
 
+  const renderSalesRepOption = (option: SmartDropdownOption) => {
+    const rep = option as SalesRepOption;
+    const handle = getSalesRepHandle(rep);
+    const meta = [getSalesRepCompanyName(rep), getSalesRepBranchName(rep)].filter(Boolean).join(' / ');
+    return (
+      <span className="block min-w-0">
+        <span className="flex min-w-0 items-center justify-between gap-3">
+          <span className="min-w-0 truncate font-semibold">{getSalesRepPersonName(rep)}</span>
+          <span className="shrink-0 text-xs font-bold text-[#9A6A2F]">{handle}</span>
+        </span>
+        <span className="block truncate text-xs text-slate-500">
+          {[handle || rep.email, meta].filter(Boolean).join(' - ') || '-'}
+        </span>
+      </span>
+    );
+  };
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -429,39 +434,30 @@ export default function SpiffPage() {
     void loadData();
   }, [loadData]);
 
-  useEffect(() => {
+  const loadSalesRepsForFilters = useCallback(async () => {
     if (!canReviewClaim) {
       setSalesReps([]);
       return;
     }
 
-    let isActive = true;
-    const loadSalesReps = async () => {
-      setLoadingSalesReps(true);
-      try {
-        const response = await api.get('/users/lookup', {
-          params: { role: 'SALES_REP', status: 'ACTIVE' },
-        });
-        if (isActive) {
-          setSalesReps((response.data || []) as SalesRepOption[]);
-        }
-      } catch {
-        if (isActive) {
-          setSalesReps([]);
-        }
-      } finally {
-        if (isActive) {
-          setLoadingSalesReps(false);
-        }
-      }
-    };
-
-    void loadSalesReps();
-    return () => {
-      isActive = false;
-    };
+    setLoadingSalesReps(true);
+    try {
+      const response = await api.get('/users/lookup', {
+        params: { role: 'SALES_REP', status: 'ACTIVE' },
+      });
+      setSalesReps((response.data || []) as SalesRepOption[]);
+    } catch {
+      setSalesReps([]);
+    } finally {
+      setLoadingSalesReps(false);
+    }
   }, [canReviewClaim]);
 
+  useEffect(() => {
+    if (!canReviewClaim) {
+      setSalesReps([]);
+    }
+  }, [canReviewClaim]);
   useEffect(() => {
     if (!deepLinkedClaimId && !deepLinkedClaimNumber) {
       return;
@@ -530,34 +526,12 @@ export default function SpiffPage() {
   useEffect(() => {
     if (
       selectedSalesRepId &&
-      !filteredSalesReps.some((rep) => rep.id === selectedSalesRepId)
+      salesReps.length > 0 &&
+      !filteredSalesReps.some((rep) => String(rep.id) === String(selectedSalesRepId))
     ) {
       setSelectedSalesRepId('');
     }
-  }, [filteredSalesReps, selectedSalesRepId]);
-
-  useEffect(() => {
-    if (!salesRepDropdownOpen) return;
-
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && salesRepDropdownRef.current?.contains(target)) return;
-      setSalesRepDropdownOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSalesRepDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', closeOnOutsideClick);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutsideClick);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [salesRepDropdownOpen]);
-
+  }, [filteredSalesReps, salesReps.length, selectedSalesRepId]);
   const toggleCompanyFilter = (companyId: string) => {
     setRepCompanyFilters((current) =>
       current.includes(companyId)
@@ -587,8 +561,6 @@ export default function SpiffPage() {
 
   const resetSalesRepFilter = () => {
     setSelectedSalesRepId('');
-    setSalesRepSearch('');
-    setSalesRepDropdownOpen(false);
     clearRepFilters();
     setAdjustmentErrors((current) => {
       const { salesRep: _salesRep, ...rest } = current;
@@ -598,8 +570,6 @@ export default function SpiffPage() {
 
   const applyRepFilters = () => {
     setShowRepFilters(false);
-    setSalesRepDropdownOpen(true);
-    window.requestAnimationFrame(() => salesRepSearchRef.current?.focus());
   };
 
   useEffect(() => {
@@ -673,8 +643,6 @@ export default function SpiffPage() {
       setAdjustmentErrors({});
       setSelectedSalesRepId('');
       setSelectedRepWallet(null);
-      setSalesRepSearch('');
-      setSalesRepDropdownOpen(false);
       showAppAlert(`Points ${pointAction === 'ADD' ? 'added' : pointAction === 'REDEEM' ? 'redeemed' : 'removed'} successfully.`, {
         variant: 'success',
       });
@@ -935,82 +903,45 @@ export default function SpiffPage() {
                   Sales Rep *
                 </label>
                 <div className="relative flex gap-2">
-                  <div ref={salesRepDropdownRef} className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-left text-sm text-slate-900"
-                      onClick={() => setSalesRepDropdownOpen((value) => !value)}
-                      disabled={loadingSalesReps}
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        {loadingSalesReps
-                          ? 'Loading sales reps...'
-                          : selectedSalesRep
-                          ? getSalesRepHandle(selectedSalesRep) || getSalesRepName(selectedSalesRep)
-                          : 'Select sales rep'}
-                      </span>
-                      <span className="text-xs text-slate-500">{salesRepDropdownOpen ? '▲' : '▼'}</span>
-                    </button>
-
-                    {salesRepDropdownOpen ? (
-                      <div className="absolute left-0 top-[46px] z-40 w-[calc(100%-48px)] rounded-xl border border-slate-200 bg-white shadow-xl">
-                        <div className="border-b border-slate-100 p-2">
-                          <input
-                            ref={salesRepSearchRef}
-                            type="text"
-                            className="h-9 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#1F1A16]"
-                            placeholder="Search sales rep"
-                            value={salesRepSearch}
-                            onChange={(event) => setSalesRepSearch(event.target.value)}
-                          />
-                        </div>
-                        <div className="max-h-64 overflow-y-auto py-1">
-                          {searchedSalesReps.length ? searchedSalesReps.map((rep) => {
-                            const selected = rep.id === selectedSalesRepId;
-                            const meta = [getSalesRepCompanyName(rep), getSalesRepBranchName(rep)].filter(Boolean).join(' / ');
-                            const handle = getSalesRepHandle(rep);
-                            return (
-                              <button
-                                key={rep.id}
-                                type="button"
-                                className={`block w-full px-3 py-2 text-left text-sm transition ${
-                                  selected ? 'bg-slate-900 text-white' : 'text-slate-800 hover:bg-slate-50'
-                                }`}
-                                onClick={() => {
-                                  setSelectedSalesRepId(rep.id);
-                                  setSalesRepDropdownOpen(false);
-                                  setSalesRepSearch('');
-                                  setAdjustmentErrors((current) => {
-                                    const { salesRep: _salesRep, ...rest } = current;
-                                    return rest;
-                                  });
-                                }}
-                              >
-                                <span className="flex min-w-0 items-center justify-between gap-3">
-                                  <span className="min-w-0 truncate font-semibold">{getSalesRepPersonName(rep)}</span>
-                                  <span className={`shrink-0 text-xs font-bold ${selected ? 'text-slate-100' : 'text-[#9A6A2F]'}`}>
-                                    {handle || rep.firstName || 'Sales Rep'}
-                                  </span>
-                                </span>
-                                <span className={`block truncate text-xs ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
-                                  {meta || rep.email || '-'}
-                                </span>
-                              </button>
-                            );
-                          }) : (
-                            <p className="px-3 py-4 text-center text-sm text-slate-500">
-                              No sales reps found.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ) : null}
+                  <div className="min-w-0 flex-1 [&>button]:h-10 [&>button]:rounded-xl">
+                    <SmartDropdown
+                      value={selectedSalesRepId}
+                      onChange={(value, option) => {
+                        setSelectedSalesRepId(String(value || ''));
+                        if (option?.id) {
+                          const selectedRep = option as SalesRepOption;
+                          setSalesReps((current) => {
+                            const exists = current.some((rep) => String(rep.id) === String(selectedRep.id));
+                            return exists
+                              ? current.map((rep) => (String(rep.id) === String(selectedRep.id) ? selectedRep : rep))
+                              : [selectedRep, ...current];
+                          });
+                        }
+                        setAdjustmentErrors((current) => {
+                          const { salesRep: _salesRep, ...rest } = current;
+                          return rest;
+                        });
+                      }}
+                      config={{
+                        apiSubPath: '/users/lookup',
+                        options: salesReps as SmartDropdownOption[],
+                        extraParams: salesRepDropdownParams,
+                        valueKey: 'id',
+                        labelKey: 'label',
+                        placeholder: loadingSalesReps ? 'Loading sales reps...' : 'Select sales rep',
+                        clearLabel: 'Clear sales rep',
+                        showSearch: true,
+                        serverSearch: true,
+                        renderLabel: renderSalesRepOption,
+                        disabled: loadingSalesReps,
+                      }}
+                    />
                   </div>
                   <button
                     type="button"
                     title="Advanced filter"
                     aria-label="Advanced filter"
-                    onClick={() => setShowRepFilters(true)}
+                    onClick={() => { void loadSalesRepsForFilters(); setShowRepFilters(true); }}
                     className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50"
                   >
                     <span className="block h-0 w-0 border-l-[7px] border-r-[7px] border-t-[9px] border-l-transparent border-r-transparent border-t-slate-700" />
@@ -1026,7 +957,7 @@ export default function SpiffPage() {
                     title="Reset sales rep filter"
                     aria-label="Reset sales rep filter"
                     onClick={resetSalesRepFilter}
-                    disabled={!selectedSalesRepId && selectedFilterCount === 0 && !salesRepSearch}
+                    disabled={!selectedSalesRepId && selectedFilterCount === 0}
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-rose-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

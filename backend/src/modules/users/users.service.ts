@@ -320,11 +320,18 @@ export class UsersService implements OnModuleInit {
       }
     }
 
-    if (query.companyId && requester.role === UserRole.SUPER_ADMIN) {
+    const companyIds = this.parseIdList(query.companyIds);
+    const branchIds = this.parseIdList(query.branchIds);
+
+    if (companyIds.length && requester.role === UserRole.SUPER_ADMIN) {
+      usersQuery.andWhere('user.companyId IN (:...companyIds)', { companyIds });
+    } else if (query.companyId && requester.role === UserRole.SUPER_ADMIN) {
       usersQuery.andWhere('user.companyId = :companyId', { companyId: query.companyId });
     }
 
-    if (query.branchId && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
+    if (branchIds.length && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
+      usersQuery.andWhere('user.branchId IN (:...branchIds)', { branchIds });
+    } else if (query.branchId && requester.role !== UserRole.BRANCH_MANAGER && requester.role !== UserRole.SALES_REP) {
       usersQuery.andWhere('user.branchId = :branchId', { branchId: query.branchId });
     }
 
@@ -1368,6 +1375,13 @@ export class UsersService implements OnModuleInit {
       return this.allPermissions;
     }
     return normalized;
+  }
+
+  private parseIdList(value: string | undefined): number[] {
+    return String(value || '')
+      .split(',')
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item > 0);
   }
 
   private normalizeEmail(email: string): string {

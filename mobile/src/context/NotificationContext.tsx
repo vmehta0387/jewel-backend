@@ -1,9 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { createNotificationsSocket, type NotificationUnreadCountPayload } from '../api/notificationSocket';
+import { fetchUnreadNotificationCount } from '../api/notifications';
 import { useAuth } from './AuthContext';
 
 type NotificationContextValue = {
   unreadCount: number;
+  refreshUnreadCount: () => Promise<void>;
 };
 
 const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
@@ -13,6 +15,21 @@ const NOTIFICATION_ROLES = new Set(['BRANCH_MANAGER', 'SALES_REP', 'COMPANY_ADMI
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const refreshUnreadCount = useCallback(async () => {
+    if (!token) {
+      setUnreadCount(0);
+      return;
+    }
+
+    try {
+      const response = await fetchUnreadNotificationCount(token);
+      const nextCount = Number(response?.unreadCount || 0);
+      setUnreadCount(Number.isFinite(nextCount) ? nextCount : 0);
+    } catch {
+      // Socket updates and notification list fetches can still recover the count.
+    }
+  }, [token]);
 
   useEffect(() => {
     const canReceiveUpdates = Boolean(token && user && NOTIFICATION_ROLES.has(user.role));
@@ -28,14 +45,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
 
     socket.on('notification.unread_count_updated', handleUnreadCountUpdate);
+    void refreshUnreadCount();
 
     return () => {
       socket.off('notification.unread_count_updated', handleUnreadCountUpdate);
       socket.disconnect();
     };
-  }, [token, user]);
+  }, [refreshUnreadCount, token, user]);
 
-  const value = useMemo(() => ({ unreadCount }), [unreadCount]);
+  const value = useMemo(() => ({ unreadCount, refreshUnreadCount }), [refreshUnreadCount, unreadCount]);
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 };
