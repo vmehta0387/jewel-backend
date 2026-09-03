@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CreateNotificationInput, NotificationsService } from '../notifications/notifications.service';
 
 export type NotificationActivity =
@@ -83,6 +83,8 @@ export const NotificationChannels = {
 
 @Injectable()
 export class NotificationEventsService {
+  private readonly logger = new Logger(NotificationEventsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   async notify(event: NotificationEventPayload) {
@@ -99,11 +101,15 @@ export class NotificationEventsService {
   }
 
   async notifyUser(input: NotificationEventInput, channels?: NotificationChannelOptions) {
-    return this.notificationsService.createForUser(this.withChannelDefaults(input, channels));
+    const resolved = this.withChannelDefaults(input, channels);
+    this.logger.log('Notification event userId=' + resolved.userId + ' type=' + resolved.type + ' channels=inApp:' + Boolean(resolved.channelInApp) + ' push:' + Boolean(resolved.channelPush) + ' email:' + Boolean(resolved.channelEmail) + ' entity=' + (resolved.entityType || '-') + ':' + (resolved.entityId || '-'));
+    return this.notificationsService.createForUser(resolved);
   }
 
   async notifyUsers(userIds: number[], input: Omit<NotificationEventInput, 'userId'>, channels?: NotificationChannelOptions) {
-    return this.notificationsService.createForUsers(userIds, this.withChannelDefaults(input, channels));
+    const resolved = this.withChannelDefaults(input, channels);
+    this.logger.log('Notification event users=' + userIds.length + ' type=' + resolved.type + ' channels=inApp:' + Boolean(resolved.channelInApp) + ' push:' + Boolean(resolved.channelPush) + ' email:' + Boolean(resolved.channelEmail) + ' entity=' + (resolved.entityType || '-') + ':' + (resolved.entityId || '-'));
+    return this.notificationsService.createForUsers(userIds, resolved);
   }
 
   async createForUser(input: NotificationEventInput) {
@@ -258,4 +264,3 @@ export class NotificationEventsService {
     };
   }
 }
-
