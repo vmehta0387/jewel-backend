@@ -40,7 +40,6 @@ import {
 } from './design-master-tables.entity';
 
 @Entity('designs')
-@Index('uq_designs_design_name', ['designName'], { unique: true })
 export class Design {
   @PrimaryGeneratedColumn({ type: 'int' })
   id: number;
@@ -290,4 +289,3 @@ export class Design {
     this.version = (this.version || 'V1').trim().toUpperCase();
   }
 }
-

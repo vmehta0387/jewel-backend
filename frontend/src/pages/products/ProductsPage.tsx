@@ -861,6 +861,9 @@ const buildVersionedDesignNo = (designNo: string, size: string, version: string)
   const normalizedVersion = normalizeVersionInput(version);
   return `${base}-${normalizedVersion}`;
 };
+
+const buildVersionDesignName = (baseDesignName: string): string => baseDesignName.trim();
+
 const sanitizeStructuredToken = (value: string, options?: { preserveSlash?: boolean }): string => {
   const preserveSlash = options?.preserveSlash === true;
   const matcher = preserveSlash ? /[^A-Z0-9/]+/g : /[^A-Z0-9]+/g;
@@ -1577,6 +1580,7 @@ export default function ProductsPage() {
   const [versionBuilderBaseline, setVersionBuilderBaseline] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalType>(null);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
+  const versionBuilderSpreadSectionRef = useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingDesignIsPrimary, setEditingDesignIsPrimary] = useState(false);
@@ -3656,9 +3660,9 @@ export default function ProductsPage() {
 
   const fetchVersionsForDesign = async (
     designNo: string,
-    options?: { page?: number; search?: string; familyDesignId?: string; filters?: VersionListFilters },
+    options?: { page?: number; search?: string; familyDesignId?: string; filters?: VersionListFilters; cacheKey?: string },
   ): Promise<DesignRow[]> => {
-    const base = getDesignFamilyKey(designNo || '');
+    const base = options?.cacheKey || getDesignFamilyKey(designNo || '');
     if (!base) return [];
     const currentState = versionFamilies[base];
     const nextPage = Math.max(1, options?.page || currentState?.page || 1);
@@ -3705,9 +3709,10 @@ export default function ProductsPage() {
 
       setAllDesignRows((prev) => {
         const loadedIds = new Set(versionRows.map((row) => row.id));
-        const next = prev.filter((row) => getDesignFamilyKey(row.designNo || '', row.designNo || row.id) !== base || loadedIds.has(row.id));
-        const retainedIds = new Set(next.map((row) => row.id));
-        return [...next, ...versionRows.filter((row) => !retainedIds.has(row.id))];
+        const next = prev.filter((row) => getDesignRowFamilyKey(row) !== base || loadedIds.has(row.id));
+        const refreshedIds = new Set(versionRows.map((row) => row.id));
+        const withoutStaleFamilyRows = next.filter((row) => !refreshedIds.has(row.id));
+        return [...withoutStaleFamilyRows, ...versionRows];
       });
       setVersionFamilies((prev) => ({
         ...prev,
@@ -3749,14 +3754,18 @@ export default function ProductsPage() {
 
   const toggleVersionsForDesign = async (row: DesignRow) => {
     const designNo = row.designNo;
-    const base = getDesignFamilyKey(designNo || '');
+    const base = getDesignRowFamilyKey(row);
     if (!base) return;
     if (expandedBaseDesigns.includes(base)) {
       setExpandedBaseDesigns((prev) => prev.filter((item) => item !== base));
       return;
     }
     setExpandedBaseDesigns((prev) => (prev.includes(base) ? prev : [...prev, base]));
-    await fetchVersionsForDesign(designNo, { page: versionFamilies[base]?.page || 1, familyDesignId: row.id });
+    await fetchVersionsForDesign(designNo, {
+      page: versionFamilies[base]?.page || 1,
+      familyDesignId: row.familyDesignId || row.id,
+      cacheKey: base,
+    });
   };
 
   const applyVersionListFilter = (
@@ -3764,7 +3773,7 @@ export default function ProductsPage() {
     key: keyof VersionListFilters,
     value: string,
   ) => {
-    const base = getDesignFamilyKey(row.designNo || '');
+    const base = getDesignRowFamilyKey(row);
     if (!base) return;
     if (versionSearchDebounceRef.current[base]) {
       clearTimeout(versionSearchDebounceRef.current[base]);
@@ -3774,18 +3783,19 @@ export default function ProductsPage() {
     const nextFilters = { ...currentFilters, [key]: value };
     void fetchVersionsForDesign(row.designNo, {
       page: 1,
-      familyDesignId: row.id,
+      familyDesignId: row.familyDesignId || row.id,
+      cacheKey: base,
       filters: nextFilters,
     });
   };
 
-  const isVersionsExpanded = (designNo: string) => {
-    const base = getDesignFamilyKey(designNo || '');
+  const isVersionsExpanded = (row: DesignRow) => {
+    const base = getDesignRowFamilyKey(row);
     return base ? expandedBaseDesigns.includes(base) : false;
   };
 
-  const getVersionsForDesign = (designNo: string): DesignRow[] => {
-    const base = getDesignFamilyKey(designNo || '');
+  const getVersionsForDesign = (row: DesignRow): DesignRow[] => {
+    const base = getDesignRowFamilyKey(row);
     if (!base) return [];
     if (versionFamilies[base]) {
       return versionFamilies[base].rows;
@@ -3809,7 +3819,7 @@ export default function ProductsPage() {
   );
 
   const versionBuilderVersionRows = useMemo(
-    () => (versionBuilderBaseDesign ? getVersionsForDesign(versionBuilderBaseDesign.designNo) : []),
+    () => (versionBuilderBaseDesign ? getVersionsForDesign(versionBuilderBaseDesign) : []),
     [versionBuilderBaseDesign, versionsByBaseDesign, versionFamilies],
   );
 
@@ -3894,7 +3904,10 @@ export default function ProductsPage() {
       const [detailResponse, jewelryGroups] = await Promise.all([
         api.get(`/products/${row.id}`),
         fetchMasterOptions('JEWELRY_GROUP', undefined, true),
-        fetchVersionsForDesign(row.designNo, { familyDesignId: row.id }),
+        fetchVersionsForDesign(row.designNo, {
+          familyDesignId: row.familyDesignId || row.id,
+          cacheKey: getDesignRowFamilyKey(row),
+        }),
       ]);
       if (versionBuilderInitializationSeqRef.current !== initializationSeq) return;
 
@@ -4298,7 +4311,7 @@ export default function ProductsPage() {
           limit: 200,
           status: 'ALL',
           summaryOnly: true,
-          familyDesignId: versionBuilderBaseDesign.id,
+          familyDesignId: versionBuilderBaseDesign.familyDesignId || versionBuilderBaseDesign.id,
         },
       });
       const familyRows = (Array.isArray(familyVersionsResponse.data?.data)
@@ -4309,7 +4322,11 @@ export default function ProductsPage() {
           [...rows, ...familyRows.map(mapApiDesignToRow)].map((familyRow) => [familyRow.id, familyRow]),
         ).values(),
       );
-      const baseDiamondType = String(detail?.diamondType || versionBuilderBaseDesign.diamondType || '').trim();
+      const baseDiamondTypeId =
+        toOptionalMasterId(detail?.diamondTypeId ?? detail?.diamondTypeMaster?.id) ??
+        getMasterIdByValue(masterOptions.diamondTypes, detail?.diamondType);
+      const savedDiamondType = String(detail?.diamondType ?? '').trim();
+      const baseDiamondType = savedDiamondType === '-' ? '' : savedDiamondType;
       const existingFamilyCombinationKeys = new Set(
         knownFamilyRows
           .filter(
@@ -4448,12 +4465,14 @@ export default function ProductsPage() {
           })
           .filter(Boolean);
 
-        const baseDesignName = String(detail?.designName || versionBuilderBaseDesign.designName || '').trim();
-        const generatedDesignName = [baseDesignName, row.size, row.version].filter(Boolean).join(' - ') || row.designNo;
+        const baseDesignName = String(
+          detail?.designName ?? versionBuilderBaseDesign.designName ?? '',
+        );
+        const generatedDesignName = buildVersionDesignName(baseDesignName);
 
         const payload = {
           designNo: row.designNo,
-          familyDesignId: versionBuilderBaseDesign.id,
+          familyDesignId: versionBuilderBaseDesign.familyDesignId || versionBuilderBaseDesign.id,
           designName: generatedDesignName,
           version: row.version,
           companyId: detail?.companyId || undefined,
@@ -4469,7 +4488,7 @@ export default function ProductsPage() {
           ...(isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroupId)
             ? { diamondSpreadId: getMasterIdByValue(masterOptions.diamondSpreads, row.coverage), diamondSpread: row.coverage || undefined }
             : {}),
-          diamondTypeId: toOptionalMasterId(detail?.diamondTypeId) ?? getMasterIdByValue(masterOptions.diamondTypes, detail?.diamondType),
+          diamondTypeId: baseDiamondTypeId,
           diamondType: baseDiamondType || undefined,
           diamondWeightId: getMasterIdByValue(masterOptions.diamondWeights, row.caratWeight),
           diamondWeight: row.caratWeight || undefined,
@@ -5083,14 +5102,21 @@ export default function ProductsPage() {
     () => versionBuilderStepOrder.indexOf(versionBuilderWorkflowStep),
     [versionBuilderStepOrder, versionBuilderWorkflowStep],
   );
+  const versionBuilderSelectedDiamondSpreadIds = useMemo(
+    () => Array.from(new Set(
+      versionBuilderSelections.coverages
+        .map((coverage) => findMasterOptionByValue(masterOptions.diamondSpreads, coverage)?.id)
+        .filter((id): id is string => Boolean(id)),
+    )),
+    [masterOptions.diamondSpreads, versionBuilderSelections.coverages],
+  );
   const versionBuilderSizeChartCoverages = useMemo(
     () => isRingJewelryGroup(versionBuilderBaseDesign?.jewelryGroupId)
-      ? uniqueNonEmptyValues([
-        ...versionBuilderSelections.coverages,
-        versionBuilderBaseDesign?.diamondSpread,
-      ])
+      ? versionBuilderSelectedDiamondSpreadIds
+          .map((spreadId) => masterOptions.diamondSpreads.find((option) => option.id === spreadId)?.value || '')
+          .filter(Boolean)
       : [''],
-    [versionBuilderBaseDesign?.diamondSpread, versionBuilderSelections.coverages],
+    [masterOptions.diamondSpreads, versionBuilderBaseDesign?.jewelryGroupId, versionBuilderSelectedDiamondSpreadIds],
   );
   const versionBuilderMetalPurityColumns = useMemo(
     () =>
@@ -5135,6 +5161,21 @@ export default function ProductsPage() {
       setVersionBuilderChartCoverage(versionBuilderSizeChartCoverages[0]);
     }
   }, [versionBuilderChartCoverage, versionBuilderSizeChartCoverages]);
+
+  const selectVersionBuilderChartCoverage = (coverage: string) => {
+    setVersionBuilderChartCoverage(coverage);
+    window.requestAnimationFrame(() => {
+      const section = versionBuilderSpreadSectionRef.current;
+      if (!section) return;
+      section.focus({ preventScroll: true });
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const versionBuilderChartCoverageId = useMemo(
+    () => findMasterOptionByValue(masterOptions.diamondSpreads, versionBuilderChartCoverage)?.id || '',
+    [masterOptions.diamondSpreads, versionBuilderChartCoverage],
+  );
 
   useEffect(() => {
     if (!versionBuilderBaseDesign || !versionBuilderGemRows.length || !versionBuilderSizeChartCoverages.length) {
@@ -7008,12 +7049,10 @@ const createDefaultVendorRow = (): VendorRow => ({
 
     try {
       await api.post(`/products/${row.id}/primary`);
-      const familyId = row.familyDesignId;
-      const familyKey = getDesignFamilyKey(row.designNo || '');
+      const familyId = row.familyDesignId || row.id;
+      const familyKey = getDesignRowFamilyKey(row);
       const applyPrimaryStatus = (item: DesignRow): DesignRow =>
-        (familyId && item.familyDesignId
-          ? item.familyDesignId === familyId
-          : getDesignFamilyKey(item.designNo || '') === familyKey)
+        getDesignRowFamilyKey(item) === familyKey
           ? { ...item, isPrimary: item.id === row.id }
           : item;
 
@@ -7028,6 +7067,11 @@ const createDefaultVendorRow = (): VendorRow => ({
             rows: familyState.rows.map(applyPrimaryStatus),
           },
         };
+      });
+      await fetchVersionsForDesign(row.designNo, {
+        page: versionFamilies[familyKey]?.page || 1,
+        familyDesignId: familyId,
+        cacheKey: familyKey,
       });
       await fetchDesignRows(row.id);
     } catch (error: any) {
@@ -7203,7 +7247,7 @@ const createDefaultVendorRow = (): VendorRow => ({
   const exportExcel = async () => {
     try {
     const exportIds = filteredBaseRows.flatMap((item) => {
-      const versions = getVersionsForDesign(item.designNo);
+      const versions = getVersionsForDesign(item);
       if (!versions.length) return [item.id];
       return versions.map((row) => row.id);
     });
@@ -8017,14 +8061,14 @@ const createDefaultVendorRow = (): VendorRow => ({
               {rowsLoading ? (
                 <TableLoadingRow colSpan={2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length} label="Loading designs..." />
               ) : pagedRows.map((row, idx) => {
-                const versionBase = getDesignFamilyKey(row.designNo || '');
+                const versionBase = getDesignRowFamilyKey(row);
                 const versionState = versionBase ? versionFamilies[versionBase] : undefined;
-                const versionRows = versionState?.rows || getVersionsForDesign(row.designNo);
+                const versionRows = versionState?.rows || getVersionsForDesign(row);
                 const versionFilters = versionState?.filters || EMPTY_VERSION_LIST_FILTERS;
                 const hasActiveVersionFilters = Object.values(versionFilters).some(Boolean);
                 const preferredImage = getPreferredRowImage(row);
                 const versionCount = Math.max(row.versionCount || 0, versionState?.total || 0, versionRows.length || 0, 1);
-                const versionsExpanded = isVersionsExpanded(row.designNo);
+                const versionsExpanded = isVersionsExpanded(row);
                 const versionsLoading = Boolean(versionState?.loading);
                 const columnCount = 2 + DESIGN_LIST_COLUMNS.filter((column) => isColumnVisible(column.key)).length;
                 const versionsLabel = versionsExpanded ? 'Hide Versions' : 'Versions';
@@ -8237,7 +8281,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 void fetchVersionsForDesign(row.designNo, {
                                   page: 1,
                                   search: '',
-                                  familyDesignId: row.id,
+                                  familyDesignId: row.familyDesignId || row.id,
+                                  cacheKey: versionBase,
                                   filters: EMPTY_VERSION_LIST_FILTERS,
                                 });
                               }}
@@ -8257,7 +8302,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                 void fetchVersionsForDesign(row.designNo, {
                                   page: 1,
                                   search: versionState?.search || '',
-                                  familyDesignId: row.id,
+                                  familyDesignId: row.familyDesignId || row.id,
+                                  cacheKey: versionBase,
                                 });
                               }}
                             >
@@ -8289,7 +8335,8 @@ const createDefaultVendorRow = (): VendorRow => ({
                                     void fetchVersionsForDesign(row.designNo, {
                                       page: 1,
                                       search: nextSearch,
-                                      familyDesignId: row.id,
+                                      familyDesignId: row.familyDesignId || row.id,
+                                      cacheKey: versionBase,
                                     });
                                     delete versionSearchDebounceRef.current[versionBase];
                                   }, 350);
@@ -8432,7 +8479,11 @@ const createDefaultVendorRow = (): VendorRow => ({
                         <Pagination
                           page={versionState?.page || 1}
                           totalPages={versionState?.totalPages || 1}
-                          onPageChange={(nextPage) => fetchVersionsForDesign(row.designNo, { page: nextPage, familyDesignId: row.id })}
+                          onPageChange={(nextPage) => fetchVersionsForDesign(row.designNo, {
+                            page: nextPage,
+                            familyDesignId: row.familyDesignId || row.id,
+                            cacheKey: versionBase,
+                          })}
                           className="mt-2"
                         />
                       </div>
@@ -9330,6 +9381,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                   </p>
                 </div>
 
+                {versionBuilderSizeChartCoverages.length > 0 ? (
                 <div className="rounded-2xl border border-[#e4d8c9] bg-[#fffdfa] p-5">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
@@ -9339,9 +9391,10 @@ const createDefaultVendorRow = (): VendorRow => ({
                           <button
                             key={coverage}
                             type="button"
-                            onClick={() => setVersionBuilderChartCoverage(coverage)}
+                            aria-pressed={active}
+                            onClick={() => selectVersionBuilderChartCoverage(coverage)}
                             className={`rounded-xl border px-4 py-1.5 text-[11px] font-semibold transition ${
-                              active ? 'border-[#e0cfaf] bg-white text-[#1f1914] shadow-sm'
+                              active ? 'border-[#bf944d] bg-[#faf4e6] text-[#6f4f1f] shadow-sm ring-1 ring-[#ead6ad]'
                                 : 'border-transparent bg-[#f7f0e4] text-[#8c7b67] hover:text-[#5f5245]'
                             }`}
                           >
@@ -9357,7 +9410,17 @@ const createDefaultVendorRow = (): VendorRow => ({
                     </p>
                   </div>
 
-                  <div className="space-y-3">
+                  <div
+                    ref={versionBuilderSpreadSectionRef}
+                    tabIndex={-1}
+                    data-spread-id={versionBuilderChartCoverageId}
+                    className="rounded-2xl border border-[#d9b977] bg-[#fffaf0] p-3 shadow-[0_0_0_3px_rgba(191,148,77,0.10)] outline-none transition-colors duration-200"
+                  >
+                    <div className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8f6a2c]">
+                      <span className="h-2 w-2 rounded-full bg-[#bf944d]" aria-hidden="true" />
+                      Editing {versionBuilderChartCoverage || 'selected spread'}
+                    </div>
+                    <div className="space-y-3">
                     {activeVersionBuilderSizeChartGroupSummaries.map(({ row, totalCount, totalCarat, estCost }, index) => {
                       const packet = packetOptions.find((entry) => entry.id === row.packetId);
                       const groupLabel = String.fromCharCode(65 + index);
@@ -9399,7 +9462,7 @@ const createDefaultVendorRow = (): VendorRow => ({
                         </div>
                       );
                     })}
-                  </div>
+                    </div>
 
                   <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full border-separate border-spacing-0 overflow-hidden rounded-2xl border border-[#e4d8c9]">
@@ -9551,7 +9614,9 @@ const createDefaultVendorRow = (): VendorRow => ({
                       </tbody>
                     </table>
                   </div>
+                  </div>
                 </div>
+                ) : null}
               </div>
             ) : null}
 

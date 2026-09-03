@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -527,7 +528,7 @@ export class ProductsService {
     await this.assertUniqueFamilyVariantCombination(familyDesignId, designMasterRefs);
     const isPrimary = await this.resolvePrimaryVersionFlag(familyDesignId, baseDesignNo, version, scope);
     const resolvedDesignName = this.optionalText(dto.designName) || this.buildDefaultDesignName(jewelryGroup, designNo);
-    await this.assertUniqueDesignName(resolvedDesignName, undefined);
+    await this.assertUniqueDesignName(resolvedDesignName, undefined, familyDesignId);
 
     const globalRateMaps = await this.getGlobalRateMaps();
     const metalCaratageRates = await this.getMetalCaratageRateMap();
@@ -612,11 +613,31 @@ export class ProductsService {
     const saved = await this.dataSource.transaction(async (manager) => {
       const designRepo = manager.getRepository(Design);
       const stlFileRepo = manager.getRepository(DesignStlFile);
+      const parentBeforeCreate = familyDesignId
+        ? await designRepo.findOne({
+            where: { id: familyDesignId },
+            select: ['id', 'jewelrySizeId'],
+            lock: { mode: 'pessimistic_write' },
+          })
+        : null;
+      const parentJewelrySizeId = parentBeforeCreate?.jewelrySizeId ?? null;
+
       let transactionSaved = await this.saveDesignWithUniqueBarcode(design, undefined, designRepo);
       if (!transactionSaved.familyDesignId) {
         transactionSaved.familyDesignId = Number(transactionSaved.id);
         transactionSaved = await this.saveDesignWithUniqueBarcode(transactionSaved, transactionSaved.id, designRepo);
       }
+
+      if (parentBeforeCreate) {
+        const parentAfterCreate = await designRepo.findOne({
+          where: { id: parentBeforeCreate.id },
+          select: ['id', 'jewelrySizeId'],
+        });
+        if (!parentAfterCreate || parentAfterCreate.jewelrySizeId !== parentJewelrySizeId) {
+          throw new ConflictException('Base design Jewelry Size changed during version creation.');
+        }
+      }
+
       await this.syncDesignStlFileRecord(transactionSaved.id, transactionSaved.stlFileUrl, null, requester.id, stlFileRepo);
       return transactionSaved;
     });
@@ -3380,12 +3401,12 @@ export class ProductsService {
     const nextRequestedDesignName = dto.designName !== undefined ? this.optionalText(dto.designName) : undefined;
     if (dto.designName !== undefined) {
       if (nextRequestedDesignName) {
-        await this.assertUniqueDesignName(nextRequestedDesignName, id);
+        await this.assertUniqueDesignName(nextRequestedDesignName, id, design.familyDesignId || design.id);
       }
       design.designName = nextRequestedDesignName;
     } else if (!this.optionalText(design.designName)) {
       const fallbackDesignName = this.buildDefaultDesignName(designJewelryGroup, designNo);
-      await this.assertUniqueDesignName(fallbackDesignName, id);
+      await this.assertUniqueDesignName(fallbackDesignName, id, design.familyDesignId || design.id);
       design.designName = fallbackDesignName;
     }
     design.companyId = scope.companyId;
@@ -3432,7 +3453,7 @@ export class ProductsService {
     design.updatedBy = requester.id;
 
     await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(Design).save(design);
+      await this.saveDesignWithUniqueBarcode(design, id, manager.getRepository(Design));
       if (dto.stlFileUrl !== undefined) {
         await this.syncDesignStlFileRecord(
           id,
@@ -4229,6 +4250,7 @@ export class ProductsService {
   private async assertUniqueDesignName(
     designName: string | null,
     excludeId?: string | number,
+    familyDesignId?: string | number | null,
   ): Promise<void> {
     const normalizedDesignName = this.optionalText(designName);
     if (!normalizedDesignName) {
@@ -4242,6 +4264,12 @@ export class ProductsService {
 
     if (excludeId !== undefined && excludeId !== null) {
       qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
+    }
+
+    if (familyDesignId !== undefined && familyDesignId !== null) {
+      qb.andWhere('COALESCE(design.familyDesignId, design.id) != :familyDesignId', {
+        familyDesignId: Number(familyDesignId),
+      });
     }
 
     const existing = await qb.getRawOne<{ id: string | number }>();
@@ -5546,7 +5574,29 @@ export class ProductsService {
   ): Promise<number | null> {
     const rawInputId = Number(inputId);
     if (Number.isFinite(rawInputId) && rawInputId > 0) {
-      return rawInputId;
+      const familySeedQuery = this.designRepo
+        .createQueryBuilder('design')
+        .select(['design.id', 'design.familyDesignId'])
+        .where('design.id = :inputId', { inputId: rawInputId });
+
+      if (scope.companyId) {
+        familySeedQuery.andWhere('design.companyId = :companyId', { companyId: scope.companyId });
+      } else {
+        familySeedQuery.andWhere('design.companyId IS NULL');
+      }
+
+      if (scope.branchId) {
+        familySeedQuery.andWhere('design.branchId = :branchId', { branchId: scope.branchId });
+      } else {
+        familySeedQuery.andWhere('design.branchId IS NULL');
+      }
+
+      const familySeed = await familySeedQuery.getOne();
+      if (!familySeed) {
+        throw new BadRequestException('Base design not found');
+      }
+
+      return Number(familySeed.familyDesignId || familySeed.id);
     }
 
     const baseDesignNo = this.normalizeBaseDesignNo(designNo);
@@ -6589,7 +6639,8 @@ export class ProductsService {
     }
 
     const normalizedValue = this.optionalText(value);
-    if (!normalizedValue) {
+    const hasRealValue = Boolean(normalizedValue && normalizedValue !== '-');
+    if (!hasRealValue) {
       if (required) {
         throw new BadRequestException(`${fieldLabel} is required`);
       }
@@ -7042,6 +7093,9 @@ export class ProductsService {
       try {
         return await repository.save(design);
       } catch (error) {
+        if (this.isDuplicateDesignNameError(error)) {
+          throw new BadRequestException('Design Name already exists.');
+        }
         if (!this.isDuplicateDesignBarcodeError(error) || attempt === 19) {
           throw error;
         }
@@ -7058,6 +7112,18 @@ export class ProductsService {
     return (
       code === 'ER_DUP_ENTRY' &&
       (message.includes('ux_designs_barcode') || message.includes('barcode'))
+    );
+  }
+
+  private isDuplicateDesignNameError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code || '';
+    const message = String((error as { message?: string })?.message || '').toLowerCase();
+    return (
+      code === 'ER_DUP_ENTRY' &&
+      (message.includes('uq_designs_design_name') ||
+        message.includes('uq_designs_primary_design_name') ||
+        message.includes('design_name_unique_key') ||
+        message.includes('design_name'))
     );
   }
 

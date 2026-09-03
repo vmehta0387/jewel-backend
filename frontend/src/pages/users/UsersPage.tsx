@@ -55,6 +55,7 @@ export default function UsersPage() {
   } | null>(null);
   const [savingPermissions, setSavingPermissions] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const usersRequestIdRef = useRef(0);
   const roleOptions = isCompanyAdmin
     ? USER_ROLE_OPTIONS.filter((option) => option.value === 'BRANCH_MANAGER' || option.value === 'SALES_REP')
     : USER_ROLE_OPTIONS;
@@ -88,6 +89,7 @@ export default function UsersPage() {
   }));
 
   const fetchUsers = async () => {
+    const requestId = ++usersRequestIdRef.current;
     setLoading(true);
     try {
       const params: Record<string, string> = {
@@ -103,11 +105,17 @@ export default function UsersPage() {
       }
 
       const response = await api.get('/users', { params });
-      setUsers(response.data || []);
+      if (requestId === usersRequestIdRef.current) {
+        setUsers(response.data || []);
+      }
     } catch {
-      setUsers([]);
+      if (requestId === usersRequestIdRef.current) {
+        setUsers([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === usersRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -497,10 +505,11 @@ export default function UsersPage() {
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Search by name, email, company, or branch"
+              className="h-10 py-2"
             />
           </div>
           <SmartDropdown
-            value={role}
+            value={role === 'ALL' ? '' : role}
             onChange={(value) => setRole((value || 'ALL') as RoleFilter)}
             config={{
               options: roleFilterOptions,
@@ -511,7 +520,7 @@ export default function UsersPage() {
             }}
           />
           <SmartDropdown
-            value={status}
+            value={status === 'ALL' ? '' : status}
             onChange={(value) => setStatus((value || 'ALL') as StatusFilter)}
             config={{
               options: statusFilterOptions,
@@ -521,11 +530,11 @@ export default function UsersPage() {
               showSearch: false,
             }}
           />
-          <div className="flex items-center gap-2">
-            <Button type="submit" size="sm">
+          <div className="flex h-10 items-stretch gap-2">
+            <Button type="submit" size="sm" className="h-10">
               Search
             </Button>
-            <Button type="button" size="sm" variant="secondary" onClick={handleClear}>
+            <Button type="button" size="sm" variant="secondary" className="h-10" onClick={handleClear}>
               Clear
             </Button>
           </div>

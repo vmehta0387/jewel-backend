@@ -127,27 +127,15 @@ const sizeNumber = (value: string | null | undefined): number | null => {
 
 export const calculateVersionBuilderGemRowForSize = (
   row: VersionBuilderGemRow,
-  mode: 'varies' | 'fixed',
-  baseSize: string,
-  targetSize: string,
+  _mode: 'varies' | 'fixed',
+  _baseSize: string,
+  _targetSize: string,
 ): { pcs: number; wtPerPcs: number; wtInCts: number } => {
   const basePcs = Math.max(0, Math.round(numberFromText(row.pcs)));
   const baseWtPerPcs = Math.max(0, numberFromText(row.wtPerPcs));
   const explicitWtInCts = Math.max(0, numberFromText(row.wtInCts));
-  const baseSizeValue = sizeNumber(baseSize);
-  const targetSizeValue = sizeNumber(targetSize);
-  let pcs = basePcs;
-
-  if (mode === 'varies' && basePcs > 0 && baseSizeValue != null && targetSizeValue != null && baseSizeValue > 0) {
-    pcs = Math.max(1, Math.round(basePcs * (targetSizeValue / baseSizeValue)));
-  }
-
-  const wtInCts = baseWtPerPcs > 0 && pcs > 0
-    ? baseWtPerPcs * pcs
-    : explicitWtInCts > 0
-      ? mode === 'varies' && basePcs > 0 && pcs > 0 ? explicitWtInCts * (pcs / basePcs) : explicitWtInCts
-      : 0;
-  return { pcs, wtPerPcs: baseWtPerPcs, wtInCts };
+  const wtInCts = baseWtPerPcs > 0 && basePcs > 0 ? baseWtPerPcs * basePcs : explicitWtInCts;
+  return { pcs: basePcs, wtPerPcs: baseWtPerPcs, wtInCts };
 };
 
 export const buildVersionBuilderSizeChartSizes = (): string[] => {
@@ -189,20 +177,17 @@ export const buildDefaultMetalWeightsForPurities = (
 
 export const getDefaultSizeChartGroupCell = (
   row: VersionBuilderGemRow,
-  mode: 'varies' | 'fixed',
-  baseSize: string,
-  targetSize: string,
-  coverage: string,
+  _mode: 'varies' | 'fixed',
+  _baseSize: string,
+  _targetSize: string,
+  _coverage: string,
 ): VersionBuilderSizeChartGroupCell => {
-  const computed = calculateVersionBuilderGemRowForSize(row, mode, baseSize, targetSize);
-  const normalizedCoverage = lookupKey(coverage);
-  const ratio = normalizedCoverage.includes('1/2') || normalizedCoverage.includes('half')
-    ? 0.5
-    : normalizedCoverage.includes('3/4') ? 0.75 : 1;
-  const count = computed.pcs > 0 ? Math.max(1, Math.round(computed.pcs * ratio)) : 0;
-  const ctPerStone = computed.wtPerPcs > 0
-    ? computed.wtPerPcs
-    : computed.pcs > 0 && computed.wtInCts > 0 ? computed.wtInCts / computed.pcs : 0;
+  const count = Math.max(0, Math.round(numberFromText(row.pcs)));
+  const wtPerStone = Math.max(0, numberFromText(row.wtPerPcs));
+  const totalCarat = Math.max(0, numberFromText(row.wtInCts));
+  const ctPerStone = wtPerStone > 0
+    ? wtPerStone
+    : count > 0 && totalCarat > 0 ? totalCarat / count : 0;
   return { count: count > 0 ? String(count) : '', ctPerStone: ctPerStone > 0 ? ctPerStone.toFixed(3) : '' };
 };
 
@@ -327,5 +312,3 @@ export default function VersionBuilderModal({ title, footer, onClose, children }
     </ProductsModal>
   );
 }
-
-

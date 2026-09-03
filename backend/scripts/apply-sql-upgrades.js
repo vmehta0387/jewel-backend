@@ -53,6 +53,7 @@ function resolveSqlFiles(args) {
     path.resolve(sqlRoot, 'DATABASE_MASTER_ID_RELATION_GAPS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_VENDOR_NAMES_EMAIL_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_DESIGN_BARCODE_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_DESIGN_NAME_FAMILY_UNIQUENESS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DESIGN_LEGACY_UUID_DROP_CLEANUP.sql'),
     path.resolve(sqlRoot, 'DATABASE_USER_LAST_SEEN_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_SPIFF_REWARDS_UPGRADE.sql'),
@@ -297,5 +298,4 @@ main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
 });
-
 

@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Company } from './entities/company.entity';
 import { CompanyPricingSlab } from './entities/company-pricing-slab.entity';
 import { CollectionPricingOverride } from './entities/collection-pricing-override.entity';
@@ -28,6 +28,8 @@ export class CompaniesService {
     private userRepo: Repository<User>,
     @InjectRepository(Branch)
     private branchRepo: Repository<Branch>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
     private readonly notificationEventsService: NotificationEventsService,
   ) { }
 
@@ -358,16 +360,41 @@ export class CompaniesService {
   }
 
   async updateStatus(id: number, isActive: boolean): Promise<Company> {
-    const company = await this.findOne(id);
-    company.isActive = isActive;
-    await this.companyRepo.save(company);
+    await this.dataSource.transaction(async (manager) => {
+      const companyRepo = manager.getRepository(Company);
+      const company = await companyRepo.findOne({ where: { id } });
 
-    if (!isActive) {
-      await this.branchRepo.update({ companyId: id }, { isActive: false, branchManagerId: null });
-      await this.userRepo.update({ companyId: id }, { isActive: false });
-    }
+      if (!company) {
+        throw new NotFoundException('Company not found');
+      }
 
-    return company;
+      await companyRepo.update(id, { isActive });
+
+      const branchUpdate: Partial<Branch> = { isActive };
+      if (!isActive) {
+        branchUpdate.branchManagerId = null;
+      }
+      await manager.getRepository(Branch).update({ companyId: id }, branchUpdate);
+
+      await manager
+        .getRepository(User)
+        .createQueryBuilder()
+        .update(User)
+        .set({ isActive })
+        .where('company_id = :companyId', { companyId: id })
+        .orWhere(
+          `branch_id IN (${manager
+            .getRepository(Branch)
+            .createQueryBuilder('companyBranch')
+            .select('companyBranch.id')
+            .where('companyBranch.companyId = :companyId')
+            .getQuery()})`,
+        )
+        .setParameters({ companyId: id })
+        .execute();
+    });
+
+    return this.findOne(id);
   }
 
   async updatePricingSlabs(companyId: number, slabs: PricingSlabDto[]): Promise<void> {
@@ -493,5 +520,4 @@ export class CompaniesService {
     }
   }
 }
-
 
