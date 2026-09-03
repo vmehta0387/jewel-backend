@@ -16,7 +16,7 @@ import { UserRole } from '../../common/enums/user-role.enum';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { CreateOrderDto, FindOrdersQueryDto, FindPurchaseOrderUsageQueryDto, UpdateOrderDto } from './dto/order.dto';
 import { NotificationPriority } from '../notifications/entities/notification.entity';
-import { NotificationEventsService } from '../notification-events/notification-events.service';
+import { NotificationEventsService, type NotificationChannelOptions } from '../notification-events/notification-events.service';
 import { SpiffService } from '../spiff/spiff.service';
 import { PricingService } from '../pricing/pricing.service';
 
@@ -2254,6 +2254,32 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  private orderNotificationChannelsForRecipient(requester: AuthUser, recipientUserId?: number | null): NotificationChannelOptions {
+    const isSelfRecipient = recipientUserId != null && String(recipientUserId) === String(requester.id);
+    return {
+      inApp: true,
+      push: !isSelfRecipient,
+      email: true,
+    };
+  }
+
+  private async notifyOrderApprovalRequiredWithoutSelfPush(
+    approverIds: number[],
+    input: Parameters<NotificationEventsService['notifyOrderApprovalRequired']>[1],
+    requester: AuthUser,
+  ): Promise<void> {
+    const requesterId = String(requester.id);
+    const selfApproverIds = approverIds.filter((id) => String(id) === requesterId);
+    const otherApproverIds = approverIds.filter((id) => String(id) !== requesterId);
+
+    if (otherApproverIds.length) {
+      await this.notificationEventsService.notifyOrderApprovalRequired(otherApproverIds, input, { inApp: true, push: true, email: true });
+    }
+
+    if (selfApproverIds.length) {
+      await this.notificationEventsService.notifyOrderApprovalRequired(selfApproverIds, input, { inApp: true, push: false, email: true });
+    }
+  }
   private async safeNotifyOrderCreated(order: Order, requester: AuthUser): Promise<void> {
     try {
       const context = await this.loadOrderNotificationContext(order.id);
@@ -2282,14 +2308,16 @@ export class OrdersService implements OnModuleInit {
             orderNumber: context.orderNumber,
             status: context.status,
             designNo: context.design?.designNo ?? null,
+            updatedByUserId: requester.id,
+            requesterUserId: requester.id,
           },
-        });
+        }, this.orderNotificationChannelsForRecipient(requester, context.salesRepId));
       }
 
       if (context.status === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId != null ? context.salesRepId : null]);
         if (approverIds.length) {
-          await this.notificationEventsService.notifyOrderApprovalRequired(approverIds, {
+          await this.notifyOrderApprovalRequiredWithoutSelfPush(approverIds, {
             companyId: context.companyId ?? null,
             branchId: context.branchId ?? null,
             priority: NotificationPriority.P0,
@@ -2303,8 +2331,10 @@ export class OrdersService implements OnModuleInit {
               orderNumber: context.orderNumber,
               status: context.status,
               designNo: context.design?.designNo ?? null,
+              updatedByUserId: requester.id,
+              requesterUserId: requester.id,
             },
-          });
+          }, requester);
         }
       }
     } catch (error: any) {
@@ -2341,7 +2371,7 @@ export class OrdersService implements OnModuleInit {
       if (current === OrderStatus.PENDING_APPROVAL) {
         const approverIds = await this.getApproverUserIdsForOrder(context, [context.salesRepId]);
         if (approverIds.length) {
-          await this.notificationEventsService.notifyOrderApprovalRequired(approverIds, {
+          await this.notifyOrderApprovalRequiredWithoutSelfPush(approverIds, {
             companyId: context.companyId,
             branchId: context.branchId,
             priority: NotificationPriority.P0,
@@ -2351,7 +2381,7 @@ export class OrdersService implements OnModuleInit {
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
             metadata,
-          }, { inApp: true, push: true, email: true });
+          }, requester);
         }
       }
 
@@ -2419,12 +2449,12 @@ export class OrdersService implements OnModuleInit {
     };
 
     if (transition.type === 'ORDER_IN_PRODUCTION') {
-      await this.notificationEventsService.notifyOrderInProduction(input, { inApp: true, push: true, email: true });
+      await this.notificationEventsService.notifyOrderInProduction(input, this.orderNotificationChannelsForRecipient(requester, context.salesRepId));
       return;
     }
 
     if (transition.type === 'ORDER_CANCELLED') {
-      await this.notificationEventsService.notifyOrderCancelled(input);
+      await this.notificationEventsService.notifyOrderCancelled(input, this.orderNotificationChannelsForRecipient(requester, context.salesRepId));
       return;
     }
 
@@ -2433,14 +2463,14 @@ export class OrdersService implements OnModuleInit {
         ...input,
         title: `${context.orderNumber || 'Order'} shipped`,
         message: `Tracking is available for ${context.orderNumber || 'your order'}.`,
-      });
+      }, this.orderNotificationChannelsForRecipient(requester, context.salesRepId));
       return;
     }
 
     await this.notificationEventsService.notifyOrderStatusChanged({
       ...input,
       type: transition.type,
-    }, { inApp: true, push: true, email: true });
+    }, this.orderNotificationChannelsForRecipient(requester, context.salesRepId));
   }
   private async loadOrderNotificationContext(orderId: number): Promise<Order | null> {
     return this.orderRepo.findOne({

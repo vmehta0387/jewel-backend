@@ -11,6 +11,7 @@ export type NotificationFeedEntry = {
   tone: NotificationTone;
   entityType?: string | null;
   entityId?: string | null;
+  actionUrl?: string | null;
   metadata?: Record<string, unknown> | null;
   isRead: boolean;
   createdAt: string;
@@ -68,6 +69,7 @@ export const mapNotificationsToEntries = (items: NotificationItem[]): Notificati
       tone: getTone(item),
       entityType: item.entityType ?? null,
       entityId: item.entityId ?? null,
+      actionUrl: item.actionUrl ?? null,
       metadata: item.metadata ?? null,
       isRead: Boolean(item.isRead),
       createdAt: item.createdAt,
@@ -105,4 +107,45 @@ export const getSpiffClaimTargetFromNotification = (
   }
 
   return { claimId, claimNumber };
+};
+export type NotificationNavigationTarget =
+  | { tab: 'OrdersTab'; screen: 'OrderDetail'; params: { orderId: string } }
+  | { tab: 'DashboardTab'; screen: 'SpiffRewards'; params?: { claimId?: string; claimNumber?: string; initialPanel?: 'ACTIVITY' | 'REDEEM' | 'COMPANY_BOARD' | 'GLOBAL_BOARD' } }
+  | { tab: 'DashboardTab'; screen: 'UserProfile'; params?: undefined }
+  | { tab: 'PricingTab'; screen?: undefined; params?: undefined };
+
+type NotificationNavigationSource = Pick<NotificationFeedEntry, 'entityType' | 'entityId' | 'actionUrl' | 'metadata'>;
+
+const normalizeActionUrl = (value?: string | null) => String(value || '').trim().toLowerCase();
+
+const getOrderIdFromActionUrl = (actionUrl?: string | null) => {
+  const match = normalizeActionUrl(actionUrl).match(/^\/orders\/([^/?#]+)/);
+  return match?.[1] || null;
+};
+
+export const getNotificationNavigationTarget = (entry: NotificationNavigationSource): NotificationNavigationTarget | null => {
+  const orderId = getOrderIdFromNotification(entry) || getOrderIdFromActionUrl(entry.actionUrl);
+  if (orderId) {
+    return { tab: 'OrdersTab', screen: 'OrderDetail', params: { orderId } };
+  }
+
+  const spiffTarget = getSpiffClaimTargetFromNotification(entry);
+  const actionUrl = normalizeActionUrl(entry.actionUrl);
+  if (spiffTarget || actionUrl === '/spiff' || actionUrl.startsWith('/spiff/')) {
+    return {
+      tab: 'DashboardTab',
+      screen: 'SpiffRewards',
+      params: spiffTarget || { initialPanel: 'ACTIVITY' },
+    };
+  }
+
+  if (actionUrl === '/pricing' || actionUrl.startsWith('/pricing/')) {
+    return { tab: 'PricingTab' };
+  }
+
+  if (actionUrl === '/profile' || actionUrl.startsWith('/profile/')) {
+    return { tab: 'DashboardTab', screen: 'UserProfile' };
+  }
+
+  return null;
 };

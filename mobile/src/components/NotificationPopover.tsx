@@ -18,8 +18,7 @@ import { fetchNotifications, markAllNotificationsRead, markNotificationRead } fr
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import {
-  getOrderIdFromNotification,
-  getSpiffClaimTargetFromNotification,
+  getNotificationNavigationTarget,
   mapNotificationsToEntries,
   type NotificationFeedEntry,
   type NotificationTone,
@@ -247,25 +246,18 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
 
   const navigateFromEntry = useCallback(
     (entry: NotificationFeedEntry) => {
-      const orderId = getOrderIdFromNotification(entry);
-      if (orderId) {
-        navigation.navigate('OrdersTab', {
-          screen: 'OrderDetail',
-          params: { orderId },
-        });
-        return true;
-      }
+      const target = getNotificationNavigationTarget(entry);
+      if (!target) return false;
 
-      const spiffTarget = getSpiffClaimTargetFromNotification(entry);
-      if (spiffTarget) {
-        navigation.navigate('DashboardTab', {
-          screen: 'SpiffRewards',
-          params: spiffTarget,
+      if (target.screen) {
+        navigation.navigate(target.tab, {
+          screen: target.screen,
+          params: target.params,
         });
-        return true;
+      } else {
+        navigation.navigate(target.tab);
       }
-
-      return false;
+      return true;
     },
     [navigation],
   );

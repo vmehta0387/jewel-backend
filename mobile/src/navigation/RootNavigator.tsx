@@ -32,7 +32,7 @@ import PricingScreen from '../screens/PricingScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
 import type { BranchEmployee, SelectedDesignOptions, UserRole } from '../types';
 import type { MobileConfiguratorResponse } from '../api/designs';
-import { getOrderIdFromNotification, getSpiffClaimTargetFromNotification } from '../utils/appNotifications';
+import { getNotificationNavigationTarget } from '../utils/appNotifications';
 import { hasActionPermission, hasAnyActionPermission } from '../utils/permissions';
 
 export type RootStackParamList = {
@@ -141,6 +141,7 @@ const OrdersStack = createNativeStackNavigator<OrdersStackParamList>();
 const TeamStack = createNativeStackNavigator<TeamStackParamList>();
 const Tabs = createBottomTabNavigator();
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+let pendingPushNotificationData: PushNotificationData | null = null;
 const NAVIGATION_STATE_KEY_PREFIX = 'navigation_state';
 configurePushNotificationPresentation();
 
@@ -157,42 +158,36 @@ const navigationTheme = {
 };
 
 const routeFromPushNotification = (data: PushNotificationData | null | undefined) => {
-  if (!data || !navigationRef.isReady()) {
+  if (!data) {
     return;
   }
 
-  const orderId = getOrderIdFromNotification({
-    entityType: String(data.entityType || ''),
-    entityId: String(data.entityId || ''),
-    metadata: (data.metadata as Record<string, unknown> | null) || null,
-  });
-
-  if (orderId) {
-    (navigationRef as any).navigate('App', {
-      screen: 'OrdersTab',
-      params: {
-        screen: 'OrderDetail',
-        params: { orderId },
-      },
-    });
+  if (!navigationRef.isReady()) {
+    pendingPushNotificationData = data;
     return;
   }
 
-  const spiffTarget = getSpiffClaimTargetFromNotification({
+  const metadata = (data.metadata as Record<string, unknown> | null) || null;
+  const target = getNotificationNavigationTarget({
     entityType: String(data.entityType || ''),
     entityId: String(data.entityId || ''),
-    metadata: (data.metadata as Record<string, unknown> | null) || null,
+    actionUrl: String(data.actionUrl || ''),
+    metadata,
   });
 
-  if (spiffTarget) {
-    (navigationRef as any).navigate('App', {
-      screen: 'DashboardTab',
-      params: {
-        screen: 'SpiffRewards',
-        params: spiffTarget,
-      },
-    });
-  }
+  if (!target) return;
+
+  const params = target.screen
+    ? {
+        screen: target.screen,
+        params: target.params,
+      }
+    : undefined;
+
+  (navigationRef as any).navigate('App', {
+    screen: target.tab,
+    params,
+  });
 };
 const AuthNavigator = () => (
   <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -440,6 +435,13 @@ const RootNavigator = () => {
     void AsyncStorage.setItem(storageKey, JSON.stringify(state));
   }, []);
 
+  const handleNavigationReady = useCallback(() => {
+    if (!pendingPushNotificationData) return;
+    const nextData = pendingPushNotificationData;
+    pendingPushNotificationData = null;
+    routeFromPushNotification(nextData);
+  }, []);
+
   usePushNotifications({
     token,
     userId: user?.id,
@@ -459,6 +461,7 @@ const RootNavigator = () => {
       ref={navigationRef}
       theme={navigationTheme}
       onStateChange={handleNavigationStateChange}
+      onReady={handleNavigationReady}
     >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {token ? (

@@ -101,8 +101,20 @@ export class PushNotificationsService {
     return { success: true };
   }
 
+  private getNotificationActorId(notification: Notification): string | null {
+    const metadata = notification.metadata || {};
+    const actorId = metadata.updatedByUserId ?? metadata.generatedByUserId ?? metadata.requesterUserId ?? metadata.performedBy;
+    const normalized = String(actorId || '').trim();
+    return normalized || null;
+  }
+
+  private isSelfActionNotification(notification: Notification): boolean {
+    const actorId = this.getNotificationActorId(notification);
+    return Boolean(actorId && String(notification.recipientUserId) === actorId);
+  }
+
   async sendForNotifications(notifications: Notification[]) {
-    const candidateNotifications = notifications.filter((item) => item.channelPush && !item.isRead && item.recipientUserId);
+    const candidateNotifications = notifications.filter((item) => item.channelPush && !item.isRead && item.recipientUserId && !this.isSelfActionNotification(item));
     this.logger.log('Push fanout start total=' + notifications.length + ' candidates=' + candidateNotifications.length);
     if (!candidateNotifications.length) {
       return;
