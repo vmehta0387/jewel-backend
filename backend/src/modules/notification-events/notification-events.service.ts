@@ -137,7 +137,7 @@ export class NotificationEventsService {
   }
 
   async notifyOrderInProduction(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'ORDER_IN_PRODUCTION' }, channels ?? NotificationChannels.inAppOnly);
+    return this.notifyUser({ ...input, type: 'ORDER_IN_PRODUCTION' }, channels ?? NotificationChannels.inAppPush);
   }
 
   async notifyOrderShipped(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {

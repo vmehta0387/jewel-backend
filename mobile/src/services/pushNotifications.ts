@@ -132,3 +132,34 @@ export const unregisterLastPushToken = async (authToken: string, fallbackPushTok
   await unregisterPushDevice(authToken, expoPushToken).catch(() => undefined);
   await clearLastRegisteredPushToken();
 };
+const getPushNotificationId = (data: Notifications.NotificationContent['data']) =>
+  String(
+    data?.notificationId
+      ?? data?.id
+      ?? (data?.metadata as Record<string, unknown> | null | undefined)?.notificationId
+      ?? '',
+  ).trim();
+
+export const dismissPresentedPushNotification = async (notificationId: string | number) => {
+  const targetId = String(notificationId || '').trim();
+  if (!targetId) return;
+
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    await Promise.all(
+      presented
+        .filter((notification) => getPushNotificationId(notification.request.content.data) === targetId)
+        .map((notification) => Notifications.dismissNotificationAsync(notification.request.identifier)),
+    );
+  } catch {
+    // Tray cleanup is best-effort; server read state remains the source of truth.
+  }
+};
+
+export const dismissAllPresentedPushNotifications = async () => {
+  try {
+    await Notifications.dismissAllNotificationsAsync();
+  } catch {
+    // Tray cleanup is best-effort.
+  }
+};

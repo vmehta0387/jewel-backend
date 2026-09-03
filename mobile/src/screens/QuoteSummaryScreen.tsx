@@ -911,7 +911,7 @@ const QuoteSummaryScreen = () => {
         </View>
       ) : null}
 
-      <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(0, bottomInset * 0.3) }]}>
         {showManagerPendingActions ? (
           <View style={styles.managerDecisionRow}>
             <TouchableOpacity

@@ -2351,7 +2351,7 @@ export class OrdersService implements OnModuleInit {
             entityId: context.id,
             actionUrl: `/orders/${context.id}`,
             metadata,
-          });
+          }, { inApp: true, push: true, email: true });
         }
       }
 
@@ -2419,7 +2419,7 @@ export class OrdersService implements OnModuleInit {
     };
 
     if (transition.type === 'ORDER_IN_PRODUCTION') {
-      await this.notificationEventsService.notifyOrderInProduction(input);
+      await this.notificationEventsService.notifyOrderInProduction(input, { inApp: true, push: true, email: true });
       return;
     }
 
@@ -2440,7 +2440,7 @@ export class OrdersService implements OnModuleInit {
     await this.notificationEventsService.notifyOrderStatusChanged({
       ...input,
       type: transition.type,
-    }, { inApp: true, push: true, email: false });
+    }, { inApp: true, push: true, email: true });
   }
   private async loadOrderNotificationContext(orderId: number): Promise<Order | null> {
     return this.orderRepo.findOne({

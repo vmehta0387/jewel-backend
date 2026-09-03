@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../api/notifications';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import {
   getOrderIdFromNotification,
   getSpiffClaimTargetFromNotification,
@@ -28,6 +29,7 @@ import {
   trackNotificationListViewed,
   trackNotificationViewed,
 } from '../utils/activityEvents';
+import { dismissAllPresentedPushNotifications, dismissPresentedPushNotification } from '../services/pushNotifications';
 
 type Props = {
   visible: boolean;
@@ -64,7 +66,7 @@ type NotificationCardProps = {
 const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRead }) => {
   const card = (
     <TouchableOpacity
-      style={[getNotificationCardStyle(entry.tone), entry.isRead && styles.notificationCardRead]}
+      style={[getNotificationCardStyle(entry.tone), styles.notificationCardContent, entry.isRead && styles.notificationCardRead]}
       onPress={() => onOpen(entry)}
       activeOpacity={0.88}
     >
@@ -83,16 +85,37 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
     </TouchableOpacity>
   );
 
-
   const renderSwipeReadAction = useCallback(
-    (progress: any) => {
+    (progress: any, side: 'left' | 'right') => {
       const opacity = progress.interpolate({
-        inputRange: [0, 0.25, 1],
-        outputRange: [0, 0.01, 0.01],
+        inputRange: [0, 0.35, 1],
+        outputRange: [0, 0.55, 1],
+        extrapolate: 'clamp',
+      });
+      const translateX = progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: side === 'left' ? [-62, 0] : [62, 0],
+        extrapolate: 'clamp',
+      });
+      const scaleX = progress.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.08, 1],
         extrapolate: 'clamp',
       });
 
-      return <Animated.View style={[styles.swipeReadActionSpacer, { opacity }]} />;
+      return (
+        <Animated.View
+          style={[
+            styles.swipeReadActionBack,
+            side === 'left' ? styles.swipeReadActionBackLeft : styles.swipeReadActionBackRight,
+            { opacity, transform: [{ translateX }, { scaleX }] },
+          ]}
+        >
+          {side === 'right' ? <Text style={styles.swipeReadActionText}>Read</Text> : null}
+          <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
+          {side === 'left' ? <Text style={styles.swipeReadActionText}>Read</Text> : null}
+        </Animated.View>
+      );
     },
     [],
   );
@@ -103,16 +126,6 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
 
   return (
     <View style={styles.notificationSwipeShell}>
-      <View style={styles.swipeReadFullBack}>
-        <View style={styles.swipeReadFullSide}>
-          <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
-          <Text style={styles.swipeReadActionText}>Read</Text>
-        </View>
-        <View style={styles.swipeReadFullSide}>
-          <Text style={styles.swipeReadActionText}>Read</Text>
-          <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
-        </View>
-      </View>
       <Swipeable
         overshootLeft={false}
         overshootRight={false}
@@ -122,8 +135,8 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
         onSwipeableOpen={() => {
           onMarkRead(entry);
         }}
-        renderLeftActions={renderSwipeReadAction}
-        renderRightActions={renderSwipeReadAction}
+        renderLeftActions={(progress) => renderSwipeReadAction(progress, 'left')}
+        renderRightActions={(progress) => renderSwipeReadAction(progress, 'right')}
       >
         {card}
       </Swipeable>
@@ -133,6 +146,7 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
 
 const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotification }) => {
   const { token } = useAuth();
+  const { adjustUnreadCount, refreshUnreadCount } = useNotifications();
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
@@ -212,6 +226,8 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     if (!token) return;
     try {
       await markAllNotificationsRead(token);
+      await dismissAllPresentedPushNotifications();
+      await refreshUnreadCount();
       trackNotificationAction('all', 'MARK_ALL_READ', {
         filter: activeFilter,
         unreadCount,
@@ -220,7 +236,7 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     } catch {
       // Keep the sheet usable even if mark-all fails.
     }
-  }, [loadNotifications, token]);
+  }, [activeFilter, loadNotifications, refreshUnreadCount, token, unreadCount]);
 
   const handleSelectFilter = useCallback((nextFilter: NotificationFilter) => {
     setEntries([]);
@@ -261,9 +277,14 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
           current.map((item) => (item.notificationId === entry.notificationId ? { ...item, isRead: true } : item)),
         );
         setUnreadCount((current) => Math.max(0, current - 1));
-        void markNotificationRead(token, entry.notificationId, true).catch(() => {
-          // Keep navigation responsive even if the read-state update fails.
-        });
+        adjustUnreadCount(-1);
+        void dismissPresentedPushNotification(entry.notificationId);
+        void markNotificationRead(token, entry.notificationId, true)
+          .then(() => refreshUnreadCount())
+          .catch(() => {
+            adjustUnreadCount(1);
+            void refreshUnreadCount();
+          });
         trackNotificationAction(entry.notificationId, 'MARK_READ', {
           source: 'NotificationPopover',
         });
@@ -283,7 +304,7 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
         onOpenNotification?.(entry);
       }
     },
-    [navigateFromEntry, onClose, onOpenNotification, token],
+    [adjustUnreadCount, navigateFromEntry, onClose, onOpenNotification, refreshUnreadCount, token],
   );
 
   const handleSwipeMarkRead = useCallback(async (entry: NotificationFeedEntry) => {
@@ -300,9 +321,12 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
           ),
     );
     setUnreadCount((current) => Math.max(0, current - 1));
+    adjustUnreadCount(-1);
 
     try {
       await markNotificationRead(token, entry.notificationId, true);
+      await dismissPresentedPushNotification(entry.notificationId);
+      await refreshUnreadCount();
       trackNotificationAction(entry.notificationId, 'MARK_READ', {
         source: 'NotificationPopover',
         gesture: 'swipe',
@@ -312,7 +336,7 @@ const NotificationPopover: React.FC<Props> = ({ visible, onClose, onOpenNotifica
     } finally {
       markingReadIds.current.delete(entry.notificationId);
     }
-  }, [activeFilter, loadNotifications, token]);
+  }, [activeFilter, adjustUnreadCount, loadNotifications, refreshUnreadCount, token]);
 
   const handleRetry = useCallback(() => {
     void loadNotifications();
@@ -525,32 +549,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
+  notificationCardContent: {
+    minHeight: 72,
+  },
   notificationCardSpacing: {
     marginBottom: 8,
   },
   notificationSwipeShell: {
-    position: 'relative',
     marginBottom: 8,
     borderRadius: 12,
     overflow: 'hidden',
   },
-  swipeReadFullBack: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 12,
-    backgroundColor: '#2F9B63',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-  },
-  swipeReadFullSide: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  swipeReadActionSpacer: {
+  swipeReadActionBack: {
     width: '100%',
     minHeight: 72,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    borderRadius: 12,
+    backgroundColor: '#2F9B63',
+    overflow: 'hidden',
+  },
+  swipeReadActionBackLeft: {
+    marginRight: 6,
+  },
+  swipeReadActionBackRight: {
+    marginLeft: 6,
   },
   swipeReadActionText: {
     color: '#FFFFFF',

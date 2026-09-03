@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 type NotificationContextValue = {
   unreadCount: number;
   refreshUnreadCount: () => Promise<void>;
+  adjustUnreadCount: (delta: number) => void;
 };
 
 const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
@@ -15,6 +16,10 @@ const NOTIFICATION_ROLES = new Set(['BRANCH_MANAGER', 'SALES_REP', 'COMPANY_ADMI
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const adjustUnreadCount = useCallback((delta: number) => {
+    setUnreadCount((current) => Math.max(0, current + delta));
+  }, []);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!token) {
@@ -53,7 +58,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [refreshUnreadCount, token, user]);
 
-  const value = useMemo(() => ({ unreadCount, refreshUnreadCount }), [refreshUnreadCount, unreadCount]);
+  const value = useMemo(() => ({ unreadCount, refreshUnreadCount, adjustUnreadCount }), [adjustUnreadCount, refreshUnreadCount, unreadCount]);
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 };
