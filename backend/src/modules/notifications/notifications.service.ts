@@ -192,6 +192,7 @@ export class NotificationsService {
     });
 
     const saved = await this.notificationRepo.save(record);
+    this.logger.log('Notification saved id=' + saved.id + ' userId=' + saved.recipientUserId + ' type=' + saved.type + ' channels=inApp:' + saved.channelInApp + ' push:' + saved.channelPush + ' email:' + saved.channelEmail + ' entity=' + (saved.entityType || '-') + ':' + (saved.entityId || '-'));
     await this.emitUnreadCountUpdate(saved.recipientUserId);
     await this.pushNotificationsService.sendForNotifications([saved]);
     await this.sendEmailForNotifications([saved]);
@@ -234,6 +235,7 @@ export class NotificationsService {
     );
 
     const saved = await this.notificationRepo.save(rows);
+    this.logger.log('Notifications saved count=' + saved.length + ' users=' + uniqueUserIds.join(',') + ' type=' + input.type + ' channels=inApp:' + Boolean(input.channelInApp ?? true) + ' push:' + Boolean(input.channelPush) + ' email:' + Boolean(input.channelEmail) + ' entity=' + (input.entityType || '-') + ':' + (input.entityId || '-'));
     await Promise.all(uniqueUserIds.map((userId) => this.emitUnreadCountUpdate(userId)));
     await this.pushNotificationsService.sendForNotifications(saved);
     await this.sendEmailForNotifications(saved);
@@ -332,6 +334,7 @@ export class NotificationsService {
   }
   private async sendEmailForNotifications(notifications: Notification[]) {
     const emailNotifications = notifications.filter((item) => item.channelEmail && item.recipientUserId);
+    this.logger.log('Email notification fanout candidates=' + emailNotifications.length + ' total=' + notifications.length);
     if (!emailNotifications.length) {
       return;
     }
@@ -346,7 +349,10 @@ export class NotificationsService {
     await Promise.all(
       emailNotifications.map(async (notification) => {
         const user = usersById.get(notification.recipientUserId);
-        if (!user?.email) return;
+        if (!user?.email) {
+          this.logger.warn('Email notification skipped notificationId=' + notification.id + ' userId=' + notification.recipientUserId + ' reason=no_email');
+          return;
+        }
 
         const recipientName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || undefined;
         const variables = {
@@ -372,6 +378,7 @@ export class NotificationsService {
             html: rendered.html,
             text: rendered.text,
           });
+          this.logger.log('Email notification sent notificationId=' + notification.id + ' userId=' + notification.recipientUserId + ' to=' + user.email + ' template=custom actionType=' + notification.type);
           return;
         }
 
@@ -386,6 +393,7 @@ export class NotificationsService {
           type: notification.type,
           metadata: notification.metadata,
         });
+        this.logger.log('Email notification sent notificationId=' + notification.id + ' userId=' + notification.recipientUserId + ' to=' + user.email + ' template=fallback actionType=' + notification.type);
       }),
     );
   }
@@ -400,7 +408,9 @@ export class NotificationsService {
         },
       });
       this.notificationsGateway.emitUnreadCount(userId, unreadCount);
-    } catch {
+      this.logger.log('In-app notification socket unread_count userId=' + userId + ' unreadCount=' + unreadCount);
+    } catch (error: any) {
+      this.logger.warn('In-app notification socket emit failed userId=' + userId + ': ' + (error?.message || String(error)));
       // Socket delivery is best-effort; the database remains the source of truth.
     }
   }
@@ -415,6 +425,3 @@ export class NotificationsService {
     return normalized.length ? normalized : null;
   }
 }
-
-
-

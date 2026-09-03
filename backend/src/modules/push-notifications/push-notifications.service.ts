@@ -56,9 +56,10 @@ export class PushNotificationsService {
       });
 
     const saved = await this.pushDeviceRepo.save(record);
+    this.logger.log('Push device registered id=' + saved.id + ' userId=' + saved.userId + ' platform=' + (saved.platform || '-') + ' deviceId=' + (saved.deviceId || '-') + ' tokenPrefix=' + saved.expoPushToken.slice(0, 24) + ' active=' + saved.isActive);
 
     if (deviceId) {
-      await this.pushDeviceRepo
+      const deactivateResult = await this.pushDeviceRepo
         .createQueryBuilder()
         .update(NotificationPushDevice)
         .set({ isActive: false })
@@ -66,6 +67,9 @@ export class PushNotificationsService {
         .andWhere('device_id = :deviceId', { deviceId })
         .andWhere('id != :id', { id: saved.id })
         .execute();
+      if (deactivateResult.affected) {
+        this.logger.log('Push device old registrations deactivated userId=' + requester.id + ' deviceId=' + deviceId + ' count=' + deactivateResult.affected);
+      }
     }
 
     return {
@@ -87,22 +91,26 @@ export class PushNotificationsService {
     });
 
     if (!record) {
+      this.logger.log('Push device unregister skipped userId=' + requester.id + ' reason=not_found tokenPrefix=' + expoPushToken.slice(0, 24));
       return { success: true };
     }
 
     record.isActive = false;
     await this.pushDeviceRepo.save(record);
+    this.logger.log('Push device unregistered id=' + record.id + ' userId=' + record.userId + ' tokenPrefix=' + record.expoPushToken.slice(0, 24));
     return { success: true };
   }
 
   async sendForNotifications(notifications: Notification[]) {
     const candidateNotifications = notifications.filter((item) => item.channelPush && !item.isRead && item.recipientUserId);
+    this.logger.log('Push fanout start total=' + notifications.length + ' candidates=' + candidateNotifications.length);
     if (!candidateNotifications.length) {
       return;
     }
 
     const userIds = Array.from(new Set(candidateNotifications.map((item) => item.recipientUserId).filter(Boolean)));
     if (!userIds.length) {
+      this.logger.warn('Push fanout skipped reason=no_recipient_user_ids');
       return;
     }
 
@@ -113,7 +121,10 @@ export class PushNotificationsService {
       },
     });
 
+    this.logger.log('Push fanout devices active=' + devices.length + ' users=' + userIds.join(','));
+
     if (!devices.length) {
+      this.logger.warn('Push fanout skipped reason=no_active_devices users=' + userIds.join(','));
       return;
     }
 
@@ -121,14 +132,15 @@ export class PushNotificationsService {
       const userDevices = devices.filter(
         (device) => device.userId === notification.recipientUserId && this.isValidExpoPushToken(device.expoPushToken),
       );
+      const isSpiffReward = this.isSpiffRewardNotification(notification);
 
       return userDevices.map((device) => ({
         to: device.expoPushToken,
         title: notification.title,
         body: notification.message,
-        sound: 'notification_beep.wav',
-        channelId: 'blitz-alerts',
-        priority: notification.priority === NotificationPriority.P0 ? 'high' : 'default',
+        sound: isSpiffReward ? 'spiff_coin.wav' : 'default',
+        channelId: isSpiffReward ? 'spiff-rewards' : 'blitz-alerts',
+        priority: isSpiffReward || notification.priority === NotificationPriority.P0 ? 'high' : 'default',
         data: {
           notificationId: notification.id,
           type: notification.type,
@@ -137,11 +149,16 @@ export class PushNotificationsService {
           entityId: notification.entityId,
           actionUrl: notification.actionUrl,
           metadata: notification.metadata ?? null,
+          notificationSound: isSpiffReward ? 'spiff_coin.wav' : 'default',
+          notificationChannelId: isSpiffReward ? 'spiff-rewards' : 'blitz-alerts',
         },
       }));
     });
 
+    this.logger.log('Push fanout messages=' + messages.length + ' notifications=' + candidateNotifications.map((item) => item.id).join(','));
+
     if (!messages.length) {
+      this.logger.warn('Push fanout skipped reason=no_valid_expo_tokens users=' + userIds.join(','));
       return;
     }
 
@@ -152,6 +169,7 @@ export class PushNotificationsService {
 
     for (const chunk of chunks) {
       try {
+        this.logger.log('Push Expo request chunkSize=' + chunk.length + ' url=' + this.expoPushUrl);
         const response = await fetch(this.expoPushUrl, {
           method: 'POST',
           headers: {
@@ -177,6 +195,7 @@ export class PushNotificationsService {
         }
 
         const tickets = payload?.data || [];
+        this.logger.log('Push Expo response status=' + response.status + ' tickets=' + tickets.length);
         await Promise.all(
           chunk.map(async (message, index) => {
             const ticket = tickets[index];
@@ -185,6 +204,7 @@ export class PushNotificationsService {
 
             if (ticket?.status === 'error') {
               const errorText = ticket?.details?.error || 'Expo push rejected the token';
+              this.logger.warn('Push ticket error deviceId=' + device.id + ' userId=' + device.userId + ' tokenPrefix=' + device.expoPushToken.slice(0, 24) + ' error=' + errorText);
               device.lastError = errorText;
               if (errorText === 'DeviceNotRegistered') {
                 device.isActive = false;
@@ -193,6 +213,7 @@ export class PushNotificationsService {
               return;
             }
 
+            this.logger.log('Push ticket ok deviceId=' + device.id + ' userId=' + device.userId + ' tokenPrefix=' + device.expoPushToken.slice(0, 24) + ' notificationTo=' + message.to.slice(0, 24));
             device.lastDeliveredAt = new Date();
             device.lastError = null;
             await this.pushDeviceRepo.save(device);
@@ -202,6 +223,16 @@ export class PushNotificationsService {
         this.logger.warn(`Push delivery failed: ${error?.message || 'unknown error'}`);
       }
     }
+  }
+
+  private isSpiffRewardNotification(notification: Notification): boolean {
+    const type = String(notification.type || '').toUpperCase();
+    const entityType = String(notification.entityType || '').toUpperCase();
+    return [
+      'SPIFF_POINTS_GIVEN',
+      'SPIFF_EARNED',
+      'SPIFF_CLAIM_APPROVED',
+    ].includes(type) || entityType === 'SPIFF_LEDGER';
   }
 
   private normalizePushToken(value: string | null | undefined): string | null {
@@ -219,4 +250,3 @@ export class PushNotificationsService {
     return normalized.length ? normalized : null;
   }
 }
-
