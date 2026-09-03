@@ -1,16 +1,21 @@
-import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class DesignChatDto {
   @IsString()
   message: string;
 
   @IsOptional()
-  @IsUUID()
-  companyId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  companyId?: number;
 
   @IsOptional()
-  @IsUUID()
-  branchId?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  branchId?: number;
 
   @IsOptional()
   @IsInt()

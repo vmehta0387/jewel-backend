@@ -444,10 +444,13 @@ export class OrdersService implements OnModuleInit {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      const assignedUserRole = dto.salesRepId
+        ? 'SALES_REP'
+        : dto.assignedUserRole;
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
-      }, dto.assignedUserRole);
+      }, assignedUserRole);
       const { orderNumber } = await this.getNextOrderNumber();
       const requestedStatus = dto.orderType === 'ORDER' ? undefined : dto.status;
       const createStatusUser = requester.role === UserRole.BRANCH_MANAGER ? requester : selectedSalesRep || requester;
@@ -693,10 +696,13 @@ export class OrdersService implements OnModuleInit {
       order.branch = branch;
     }
     if (dto.salesRepId !== undefined) {
+      const assignedUserRole = dto.salesRepId
+        ? 'SALES_REP'
+        : dto.assignedUserRole;
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
-      }, dto.assignedUserRole);
+      }, assignedUserRole);
       order.salesRepId = selectedSalesRep?.id || null;
       order.salesRep = selectedSalesRep;
     }

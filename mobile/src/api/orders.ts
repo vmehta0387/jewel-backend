@@ -119,6 +119,7 @@ export type CreateOrderPayload = {
   branchId: number | string;
   designId: number | string;
   salesRepId?: number | string;
+  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER';
   quantity: number;
   price: number;
   deliveryDate?: string;
@@ -161,5 +162,3 @@ export const updateOrderActiveStatus = (token: string, id: string, isActive: boo
     method: 'PATCH',
     body: JSON.stringify({ isActive }),
   }, token);
-
-

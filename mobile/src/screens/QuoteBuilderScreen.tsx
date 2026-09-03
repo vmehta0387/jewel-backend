@@ -393,7 +393,6 @@ const QuoteBuilderScreen = () => {
       .then((rows) => {
         if (!active) return;
         setSalesReps(rows);
-        setSelectedSalesRepId((current) => current || rows[0]?.id || '');
       })
       .catch((err: any) => {
         if (!active) return;
@@ -915,11 +914,7 @@ const QuoteBuilderScreen = () => {
     return true;
   }, [customerEmail, customerName, customerPhone, purchaseOrderNumber]);
 
-  const validateSalesRepSelection = useCallback(() => {
-    if (!requiresSalesRepSelection || selectedSalesRepId) return true;
-    setError(salesReps.length ? 'Select a sales rep before saving this quote.' : 'No active sales reps found for this branch.');
-    return false;
-  }, [requiresSalesRepSelection, salesReps.length, selectedSalesRepId]);
+  const validateSalesRepSelection = useCallback(() => true, []);
 
   const resolvePoReuseConfirmation = useCallback((confirmed: boolean) => {
     const resolve = poReuseResolveRef.current;
@@ -976,6 +971,12 @@ const QuoteBuilderScreen = () => {
       }
       const effectiveStatus = getOrderSubmitStatus(nextStatus, user?.role);
 
+      const assignedUserRole: 'SALES_REP' | 'BRANCH_MANAGER' | undefined = requiresSalesRepSelection && selectedSalesRepId
+        ? 'SALES_REP'
+        : user?.role === 'BRANCH_MANAGER'
+          ? 'BRANCH_MANAGER'
+          : undefined;
+
       const payload = {
         designId: activeDesign?.id || draft.designId,
         price: Number(displayPrice || draft.unitPrice || 0),
@@ -986,7 +987,8 @@ const QuoteBuilderScreen = () => {
         customerPhone: customerPhone.trim() || undefined,
         customerEmail: customerEmail.trim() || undefined,
         notes: notes.trim() || undefined,
-        salesRepId: requiresSalesRepSelection ? selectedSalesRepId : undefined,
+        salesRepId: requiresSalesRepSelection && selectedSalesRepId ? selectedSalesRepId : undefined,
+        assignedUserRole,
         status: effectiveStatus,
       };
 
@@ -1042,6 +1044,7 @@ const QuoteBuilderScreen = () => {
         customerEmail: payload.customerEmail,
         notes: payload.notes,
         salesRepId: payload.salesRepId,
+        assignedUserRole: payload.assignedUserRole,
         status: payload.status,
       });
       if (String(created.status || '').toUpperCase() !== effectiveStatus) {
@@ -1154,24 +1157,36 @@ const QuoteBuilderScreen = () => {
     fieldKey: FilterKey,
     value: string,
     options: string[],
-  ) => (
-    <View
-      ref={(node) => {
-        dropdownFieldRefs.current[fieldKey] = node;
-      }}
-      style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === fieldKey ? styles.dropdownFieldWrapActive : null]}
-    >
-      <Text style={styles.specLabel}>{label}</Text>
-      <TouchableOpacity style={styles.dropdownFieldCard} activeOpacity={0.9} onPress={() => openDropdown(fieldKey, options, value)}>
-        <View style={styles.dropdownValueRow}>
-          <Text style={styles.dropdownValueText} numberOfLines={1}>
-            {value || '-'}
-          </Text>
-          <Ionicons name="chevron-down" size={14} color="#7D746A" />
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
+  ) => {
+    const hasOptions = options.length > 0;
+
+    return (
+      <View
+        ref={(node) => {
+          dropdownFieldRefs.current[fieldKey] = node;
+        }}
+        style={[styles.dropdownFieldWrap, dropdownVisible && dropdownKey === fieldKey ? styles.dropdownFieldWrapActive : null]}
+      >
+        <Text style={styles.specLabel}>{label}</Text>
+        {hasOptions ? (
+          <TouchableOpacity style={styles.dropdownFieldCard} activeOpacity={0.9} onPress={() => openDropdown(fieldKey, options, value)}>
+            <View style={styles.dropdownValueRow}>
+              <Text style={styles.dropdownValueText} numberOfLines={1}>
+                {value || '-'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color="#7D746A" />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.dropdownFieldCard, styles.dropdownUnavailableCard]}>
+            <Text style={[styles.dropdownValueText, styles.dropdownValueUnavailable]} numberOfLines={1}>
+              N/A
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView ref={screenRef} style={styles.screen} edges={['top']}>
@@ -1262,9 +1277,6 @@ const QuoteBuilderScreen = () => {
             <View style={styles.salesRepSection}>
               <View style={styles.fieldLabelRow}>
                 <Text style={styles.blockLabel}>SALES REP</Text>
-                <View style={styles.requiredPill}>
-                  <Text style={styles.requiredPillText}>REQUIRED</Text>
-                </View>
               </View>
               <TouchableOpacity
                 style={styles.salesRepSelect}
@@ -1277,13 +1289,10 @@ const QuoteBuilderScreen = () => {
                     ? 'Loading sales reps...'
                     : selectedSalesRep
                       ? getUserDisplayName(selectedSalesRep)
-                      : 'Select sales rep'}
+                      : 'Assign to branch manager'}
                 </Text>
                 <Ionicons name="chevron-down" size={16} color="#7D746A" />
               </TouchableOpacity>
-              {!loadingSalesReps && !salesReps.length ? (
-                <Text style={styles.poErrorText}>No active sales reps found for this branch.</Text>
-              ) : null}
             </View>
           ) : null}
 
@@ -1425,7 +1434,7 @@ const QuoteBuilderScreen = () => {
         <View style={{ height: keyboardHeight ? keyboardHeight + bottomInset + 28 : footerScrollClearance }} />
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: bottomInset + 12 }]}>
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(0, bottomInset * 0.3) }]}>
         {isOrderLocked ? (
           <View style={styles.lockedOrderNotice}>
             <Ionicons name="lock-closed-outline" size={14} color="#8A7C6B" />
@@ -1882,6 +1891,16 @@ const styles = StyleSheet.create({
     color: '#2C2620',
     fontWeight: '700',
   },
+  dropdownUnavailableCard: {
+    alignItems: 'stretch',
+  },
+  dropdownValueUnavailable: {
+    color: '#8F8378',
+    marginRight: 0,
+    textAlign: 'left',
+    textAlignVertical: 'center',
+    width: '100%',
+  },
   inlineDropdownMenu: {
     position: 'absolute',
     backgroundColor: '#FFFFFF',
@@ -2235,4 +2254,3 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteBuilderScreen;
-

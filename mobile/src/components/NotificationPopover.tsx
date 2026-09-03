@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   ScrollView,
   StyleSheet,
@@ -82,35 +83,51 @@ const NotificationCard = memo<NotificationCardProps>(({ entry, onOpen, onMarkRea
     </TouchableOpacity>
   );
 
+
+  const renderSwipeReadAction = useCallback(
+    (progress: any) => {
+      const opacity = progress.interpolate({
+        inputRange: [0, 0.25, 1],
+        outputRange: [0, 0.01, 0.01],
+        extrapolate: 'clamp',
+      });
+
+      return <Animated.View style={[styles.swipeReadActionSpacer, { opacity }]} />;
+    },
+    [],
+  );
+
   if (entry.isRead) {
-    return card;
+    return <View style={styles.notificationCardSpacing}>{card}</View>;
   }
 
   return (
-    <Swipeable
-      overshootLeft={false}
-      overshootRight={false}
-      friction={1.5}
-      leftThreshold={40}
-      rightThreshold={40}
-      onSwipeableOpen={() => {
-        onMarkRead(entry);
-      }}
-      renderLeftActions={() => (
-        <View style={styles.swipeReadActionLeft}>
-          <Ionicons name="checkmark-circle-outline" size={19} color="#FFFFFF" />
-          <Text style={styles.swipeReadActionText}>Mark read</Text>
+    <View style={styles.notificationSwipeShell}>
+      <View style={styles.swipeReadFullBack}>
+        <View style={styles.swipeReadFullSide}>
+          <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
+          <Text style={styles.swipeReadActionText}>Read</Text>
         </View>
-      )}
-      renderRightActions={() => (
-        <View style={styles.swipeReadActionRight}>
-          <Ionicons name="checkmark-circle-outline" size={19} color="#FFFFFF" />
-          <Text style={styles.swipeReadActionText}>Mark read</Text>
+        <View style={styles.swipeReadFullSide}>
+          <Text style={styles.swipeReadActionText}>Read</Text>
+          <Ionicons name="checkmark-done" size={20} color="#FFFFFF" />
         </View>
-      )}
-    >
-      {card}
-    </Swipeable>
+      </View>
+      <Swipeable
+        overshootLeft={false}
+        overshootRight={false}
+        friction={1.5}
+        leftThreshold={40}
+        rightThreshold={40}
+        onSwipeableOpen={() => {
+          onMarkRead(entry);
+        }}
+        renderLeftActions={renderSwipeReadAction}
+        renderRightActions={renderSwipeReadAction}
+      >
+        {card}
+      </Swipeable>
+    </View>
   );
 });
 
@@ -507,33 +524,33 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 9,
+  },
+  notificationCardSpacing: {
     marginBottom: 8,
   },
-  swipeReadActionLeft: {
-    width: 96,
-    minHeight: 72,
+  notificationSwipeShell: {
+    position: 'relative',
     marginBottom: 8,
-    marginRight: 6,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
     borderRadius: 12,
-    backgroundColor: '#3E8B5B',
+    overflow: 'hidden',
   },
-  swipeReadActionRight: {
-    width: 96,
-    minHeight: 72,
-    marginBottom: 8,
-    marginLeft: 6,
-    paddingHorizontal: 10,
+  swipeReadFullBack: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 12,
+    backgroundColor: '#2F9B63',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+  },
+  swipeReadFullSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 5,
-    borderRadius: 12,
-    backgroundColor: '#3E8B5B',
+  },
+  swipeReadActionSpacer: {
+    width: '100%',
+    minHeight: 72,
   },
   swipeReadActionText: {
     color: '#FFFFFF',

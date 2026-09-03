@@ -16,13 +16,21 @@ export class AiService {
     private readonly ordersService: OrdersService,
   ) {
     this.openai = new OpenAI({
-      apiKey: process.env.TOGETHER_API_KEY || 'MISSING_KEY',
+      apiKey: (process.env.TOGETHER_API_KEY || '').trim(),
       baseURL: 'https://api.together.xyz/v1',
     });
   }
 
   async chatDesigns(dto: DesignChatDto, requester: AuthUser) {
     const limit = dto.limit ?? 5;
+    const togetherApiKey = (process.env.TOGETHER_API_KEY || '').trim();
+    if (!togetherApiKey) {
+      this.logger.error('TOGETHER_API_KEY is not configured. Set a valid Together API key in the backend environment.');
+      return {
+        reply: 'AI chat is not configured yet. Please contact an administrator.',
+        designs: [],
+      };
+    }
     const defaultModel = 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
     const model = process.env.TOGETHER_MODEL || defaultModel;
 
@@ -251,7 +259,17 @@ Your job is to assist sales reps and branch managers in closing deals. You can s
         designs: contextCards,
       };
     } catch (err: any) {
-      this.logger.error('Error with LLM agent inference: ' + err.message);
+      const status = Number(err?.status || err?.code || 0);
+      const message = String(err?.message || '');
+      if (status === 401 || /invalid api key/i.test(message)) {
+        this.logger.error('Together AI rejected TOGETHER_API_KEY. Replace it with a valid key in the backend environment.');
+        return {
+          reply: 'AI chat credentials are invalid. Please contact an administrator.',
+          designs: [],
+        };
+      }
+
+      this.logger.error('Error with LLM agent inference: ' + message);
       return {
         reply: 'Sorry, I encountered a communication error. Be right back!',
         designs: [],

@@ -283,6 +283,7 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
 
   return (
     <Tabs.Navigator
+      initialRouteName="DesignsTab"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarHideOnKeyboard: true,
@@ -355,16 +356,15 @@ const AppTabs: React.FC<{ role?: UserRole }> = ({ role }) => {
         />
       ) : null}
 
+      <Tabs.Screen
+        name="DesignsTab"
+        component={DesignsNavigator}
+        options={{ title: 'Catalog' }}
+        listeners={resetStackTab('DesignsTab', 'CatalogCategories')}
+      />
       {isCompanyAdmin && canOpenSpiff ? (
         <Tabs.Screen name="SpiffTab" component={SpiffRewardsScreen} options={{ title: 'SPIFF' }} />
-      ) : (
-        <Tabs.Screen
-          name="DesignsTab"
-          component={DesignsNavigator}
-          options={{ title: 'Catalog' }}
-          listeners={resetStackTab('DesignsTab', 'CatalogCategories')}
-        />
-      )}
+      ) : null}
       <Tabs.Screen
         name="OrdersTab"
         component={OrdersNavigator}
@@ -395,7 +395,6 @@ const RootNavigator = () => {
   const { token, isLoading, user, deviceId } = useAuth();
   const { refreshUnreadCount } = useNotifications();
   const persistedNavigationKeyRef = useRef<string | null>(null);
-  const [initialNavigationState, setInitialNavigationState] = useState<any>(undefined);
   const [isNavigationStateLoading, setIsNavigationStateLoading] = useState(true);
 
   useEffect(() => {
@@ -406,7 +405,6 @@ const RootNavigator = () => {
       if (!token || !user?.id) {
         const previousKey = persistedNavigationKeyRef.current;
         persistedNavigationKeyRef.current = null;
-        setInitialNavigationState(undefined);
         setIsNavigationStateLoading(false);
         if (previousKey) {
           await AsyncStorage.removeItem(previousKey);
@@ -418,12 +416,10 @@ const RootNavigator = () => {
       persistedNavigationKeyRef.current = storageKey;
       setIsNavigationStateLoading(true);
       try {
-        const savedState = await AsyncStorage.getItem(storageKey);
         if (!active) return;
-        setInitialNavigationState(savedState ? JSON.parse(savedState) : undefined);
+        await AsyncStorage.removeItem(storageKey);
       } catch {
         if (!active) return;
-        setInitialNavigationState(undefined);
         await AsyncStorage.removeItem(storageKey);
       } finally {
         if (active) {
@@ -462,7 +458,6 @@ const RootNavigator = () => {
       key={token && user?.id ? `app-navigation-${user.id}` : 'auth-navigation'}
       ref={navigationRef}
       theme={navigationTheme}
-      initialState={token ? initialNavigationState : undefined}
       onStateChange={handleNavigationStateChange}
     >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>

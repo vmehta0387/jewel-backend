@@ -42,6 +42,7 @@ const INITIAL_THREAD: ChatMessage[] = [];
 const DEFAULT_SUGGESTIONS: SuggestionCard[] = [];
 const SALES_AGENT_PHONE_DISPLAY = '646-821-4040';
 const SALES_AGENT_PHONE_URL = 'tel:6468214040';
+const AI_CHAT_AVAILABLE = false;
 
 const getFirstName = (value?: string | null) => {
   const trimmed = String(value || '').trim();
@@ -82,6 +83,12 @@ const formatRelativeTime = (date?: string | null) => {
   return parsed.toLocaleDateString();
 };
 
+const toNumericId = (value?: string | number | null) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : value;
+};
+
 const AiChatScreen = () => {
   const { token, user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
@@ -91,7 +98,7 @@ const AiChatScreen = () => {
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 0);
   const firstName = useMemo(() => getFirstName(user?.firstName), [user?.firstName]);
 
-  const [thread, setThread] = useState<ChatMessage[]>(() => [buildWelcomeMessage(getFirstName(user?.firstName))]);
+  const [thread, setThread] = useState<ChatMessage[]>(() => (AI_CHAT_AVAILABLE ? [buildWelcomeMessage(getFirstName(user?.firstName))] : INITIAL_THREAD));
   const [suggestions, setSuggestions] = useState<SuggestionCard[]>(DEFAULT_SUGGESTIONS);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -99,10 +106,12 @@ const AiChatScreen = () => {
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const [callAgentVisible, setCallAgentVisible] = useState(false);
 
-  const canSend = input.trim().length > 0 && !loading;
+  const canSend = AI_CHAT_AVAILABLE && input.trim().length > 0 && !loading;
   const hasSuggestionResults = suggestions.length > 0;
 
   useEffect(() => {
+    if (!AI_CHAT_AVAILABLE) return;
+
     setThread((prev) => {
       if (!prev.length) return [buildWelcomeMessage(firstName)];
       if (prev[0].id !== 'welcome-assistant') return prev;
@@ -134,8 +143,8 @@ const AiChatScreen = () => {
     try {
       const response = await chatDesigns(token, {
         message: content,
-        companyId: user?.companyId || undefined,
-        branchId: user?.branchId || undefined,
+        companyId: toNumericId(user?.companyId),
+        branchId: toNumericId(user?.branchId),
         limit: 5,
       });
 
@@ -283,28 +292,40 @@ const AiChatScreen = () => {
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => chatRef.current?.scrollToEnd({ animated: true })}
           >
-            {thread.map((item) => {
-              const isAssistant = item.role === 'assistant';
-              return (
-                <View key={item.id} style={[styles.messageRow, isAssistant ? styles.messageRowLeft : styles.messageRowRight]}>
-                  {isAssistant ? (
-                    <View style={styles.assistantBoltBadge}>
-                      <Image source={require('../../assets/icon.png')} style={{ width: 13, height: 13, resizeMode: 'contain' }} />
-                    </View>
-                  ) : null}
-
-                  <View style={[styles.messageBubble, isAssistant ? styles.assistantBubble : styles.userBubble]}>
-                    <Text style={[styles.messageText, isAssistant ? styles.assistantText : styles.userText]}>{item.text}</Text>
-                    {item.accentLine ? (
-                      <View style={styles.accentLineRow}>
-                        <Ionicons name="diamond" size={10} color="#4D8CD6" />
-                        <Text style={styles.accentLineText}>{item.accentLine}</Text>
+            {!AI_CHAT_AVAILABLE ? (
+              <View style={styles.comingSoonCenter}>
+                <View style={styles.comingSoonIconWrap}>
+                  <Ionicons name="sparkles" size={30} color="#B2874A" />
+                </View>
+                <Text style={styles.comingSoonTitle}>AI Sales Assistant</Text>
+                <Text style={styles.comingSoonMessage}>
+                  Smart catalog search and guided quote help are coming soon.
+                </Text>
+              </View>
+            ) : (
+              thread.map((item) => {
+                const isAssistant = item.role === 'assistant';
+                return (
+                  <View key={item.id} style={[styles.messageRow, isAssistant ? styles.messageRowLeft : styles.messageRowRight]}>
+                    {isAssistant ? (
+                      <View style={styles.assistantBoltBadge}>
+                        <Image source={require('../../assets/icon.png')} style={{ width: 13, height: 13, resizeMode: 'contain' }} />
                       </View>
                     ) : null}
+
+                    <View style={[styles.messageBubble, isAssistant ? styles.assistantBubble : styles.userBubble]}>
+                      <Text style={[styles.messageText, isAssistant ? styles.assistantText : styles.userText]}>{item.text}</Text>
+                      {item.accentLine ? (
+                        <View style={styles.accentLineRow}>
+                          <Ionicons name="diamond" size={10} color="#4D8CD6" />
+                          <Text style={styles.accentLineText}>{item.accentLine}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })
+            )}
 
             {hasSuggestionResults ? (
               <>
@@ -357,16 +378,22 @@ const AiChatScreen = () => {
           </ScrollView>
 
           <View style={[styles.inputArea, { paddingBottom: bottomInset + 10 }]}>
-            <View style={styles.inputShell}>
+            <View style={[styles.inputShell, !AI_CHAT_AVAILABLE ? styles.inputShellDisabled : null]}>
+              <Ionicons name="sparkles-outline" size={15} color="#A88952" style={styles.inputLeadingIcon} />
               <TextInput
-                style={styles.input}
-                placeholder="Ask me anything - I never sleep"
-                placeholderTextColor="#A59D96"
-                value={input}
+                style={[styles.input, !AI_CHAT_AVAILABLE ? styles.inputDisabled : null]}
+                placeholder={AI_CHAT_AVAILABLE ? 'Ask me anything - I never sleep' : 'Coming soon...'}
+                placeholderTextColor={AI_CHAT_AVAILABLE ? '#A59D96' : '#7B7168'}
+                value={AI_CHAT_AVAILABLE ? input : ''}
                 onChangeText={setInput}
-                onFocus={handleInputFocus}
+                onFocus={AI_CHAT_AVAILABLE ? handleInputFocus : undefined}
                 multiline
+                editable={AI_CHAT_AVAILABLE}
+                selectTextOnFocus={AI_CHAT_AVAILABLE}
               />
+              {!AI_CHAT_AVAILABLE ? (
+                <Text style={styles.comingSoonPill}>COMING SOON</Text>
+              ) : null}
             </View>
             <TouchableOpacity
               style={[styles.sendBtn, !canSend ? styles.sendBtnDisabled : null]}
@@ -374,7 +401,7 @@ const AiChatScreen = () => {
               activeOpacity={0.88}
               disabled={!canSend}
             >
-              <Ionicons name="flash-sharp" size={18} color="#D8AB52" />
+              <Ionicons name="flash-sharp" size={18} color={canSend ? '#D8AB52' : '#A79F96'} />
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -520,9 +547,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   chatContent: {
+    flexGrow: 1,
     paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 14,
+  },
+  comingSoonCenter: {
+    flex: 1,
+    minHeight: 360,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  comingSoonIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#E8D8BC',
+    backgroundColor: '#FFF9EF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  comingSoonTitle: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: '#241F1A',
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  comingSoonMessage: {
+    maxWidth: 280,
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#756B61',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   messageRow: {
     width: '100%',
@@ -696,14 +758,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputShellDisabled: {
+    borderColor: '#E1D6C6',
+    backgroundColor: '#F1ECE5',
+  },
+  inputLeadingIcon: {
+    marginRight: 8,
   },
   input: {
+    flex: 1,
     fontSize: 13,
     lineHeight: 18,
     color: '#2D261F',
     padding: 0,
     margin: 0,
     includeFontPadding: false,
+  },
+  inputDisabled: {
+    color: '#7B7168',
+    fontWeight: '700',
+  },
+  comingSoonPill: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#E5D8C3',
+    color: '#6F5A34',
+    fontSize: 9,
+    fontWeight: '800',
   },
   sendBtn: {
     width: 40,

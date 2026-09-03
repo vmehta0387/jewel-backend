@@ -19,8 +19,8 @@ export type AiChatResponse = {
 
 export type AiChatPayload = {
   message: string;
-  companyId?: string;
-  branchId?: string;
+  companyId?: number | string;
+  branchId?: number | string;
   limit?: number;
 };
 

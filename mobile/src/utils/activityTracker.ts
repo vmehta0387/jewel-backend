@@ -118,13 +118,12 @@ export const flushActivityEvents = async () => {
 
   try {
     await recordActivityEvents(token, events);
-  } catch {
+  } catch (err: any) {
+    const statusCode = Number(err?.statusCode || err?.status || err?.response?.status || 0);
+    if (statusCode >= 400 && statusCode < 500) return;
     queue = [...events, ...queue].slice(0, MAX_QUEUE);
   } finally {
     flushing = false;
     if (queue.length > 0) scheduleFlush();
   }
 };
-
-
-
