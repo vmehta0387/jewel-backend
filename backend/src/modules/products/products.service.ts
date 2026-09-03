@@ -64,6 +64,7 @@ import { NotificationEventsService } from '../notification-events/notification-e
 import { NotificationPriority } from '../notifications/entities/notification.entity';
 import { PricingService } from '../pricing/pricing.service';
 import { MasterTablesService } from './master-tables.service';
+import { JEWELRY_GROUP_IDS } from './constants/product-master.constants';
 
 
 interface ScopeResult {
@@ -494,7 +495,7 @@ export class ProductsService {
     this.assertDesignCreateAccess(requester);
     const designMasterRefs = await this.resolveDesignMasterRefs(dto);
     const jewelryGroup = designMasterRefs.jewelryGroup.value;
-    if (!this.isRingJewelryGroup(jewelryGroup)) {
+    if (!this.isRingJewelryGroup(designMasterRefs.jewelryGroup.id)) {
       designMasterRefs.diamondSpread = { id: null, value: null, aliasName: null };
     }
     if (!jewelryGroup || !designMasterRefs.jewelryGroup.id) {
@@ -3300,7 +3301,7 @@ export class ProductsService {
     const design = await this.getDesignForWrite(id, requester);
     const designMasterRefs = await this.resolveDesignMasterRefs(dto, design);
     const designJewelryGroup = designMasterRefs.jewelryGroup.value || 'Design';
-    const isRingJewelryGroup = this.isRingJewelryGroup(designJewelryGroup);
+    const isRingJewelryGroup = this.isRingJewelryGroup(designMasterRefs.jewelryGroup.id);
     if (!isRingJewelryGroup) {
       designMasterRefs.diamondSpread = { id: null, value: null, aliasName: null };
     }
@@ -4268,7 +4269,7 @@ export class ProductsService {
       .where('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', { familyDesignId })
       .andWhere('design.metalCaratageId <=> :metalCaratageId', { metalCaratageId: refs.metalCaratage.id })
       .andWhere(
-        this.isRingJewelryGroup(refs.jewelryGroup.value)
+        this.isRingJewelryGroup(refs.jewelryGroup.id)
           ? 'design.diamondSpreadId <=> :diamondSpreadId'
           : '1 = 1',
         { diamondSpreadId: refs.diamondSpread.id },
@@ -4334,8 +4335,8 @@ export class ProductsService {
     return (token || 'DSN').slice(0, 5);
   }
 
-  private isRingJewelryGroup(jewelryGroup: string | null | undefined): boolean {
-    return (jewelryGroup || '').trim().toLowerCase() === 'ring';
+  private isRingJewelryGroup(jewelryGroupId: number | null | undefined): boolean {
+    return Number(jewelryGroupId) === JEWELRY_GROUP_IDS.RING;
   }
 
   private async resolveJewelryGroupPrefix(jewelryGroup: string): Promise<string> {
@@ -7164,5 +7165,3 @@ export class ProductsService {
   }
 
 }
-
-

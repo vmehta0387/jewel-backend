@@ -260,7 +260,7 @@ export class OrdersService implements OnModuleInit {
       .limit(limit)
       .getRawAndEntities();
     const total = await qb.clone().offset(undefined).limit(undefined).getCount();
-    const enriched = await this.buildOrderReadRows(entities, raw, requester);
+    const enriched = await this.buildOrderReadRows(entities, raw, requester, false);
 
     return {
       data: enriched,
@@ -282,7 +282,7 @@ export class OrdersService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
-    return (await this.buildOrderReadRows([order], raw, requester))[0];
+    return (await this.buildOrderReadRows([order], raw, requester, true))[0];
   }
 
   private createOrderReadQuery(): SelectQueryBuilder<Order> {
@@ -304,7 +304,12 @@ export class OrdersService implements OnModuleInit {
       .addSelect("NULLIF(TRIM(CONCAT(COALESCE(branchManager.firstName, ''), ' ', COALESCE(branchManager.lastName, ''))), '')", 'read_branchManagerName');
   }
 
-  private async buildOrderReadRows(orders: Order[], rawRows: Record<string, unknown>[], requester: AuthUser) {
+  private async buildOrderReadRows(
+    orders: Order[],
+    rawRows: Record<string, unknown>[],
+    requester: AuthUser,
+    includePricingMultipliers: boolean,
+  ) {
     const rawById = new Map(rawRows.map((row) => [Number(row.order_id), row]));
     return Promise.all(
       orders.map(async (order) => {
@@ -337,14 +342,18 @@ export class OrdersService implements OnModuleInit {
             ? {
                 baseCostSnapshot,
                 companyCostSnapshot,
-                companyMultiplierSnapshot,
                 branchCostSnapshot,
-                branchMultiplierSnapshot,
-                effectiveMultiplierSnapshot,
                 sellingPriceSnapshot,
+                ...(includePricingMultipliers
+                  ? { companyMultiplierSnapshot, branchMultiplierSnapshot, effectiveMultiplierSnapshot }
+                  : {}),
               }
             : requester.role === UserRole.COMPANY_ADMIN
-              ? { branchCostSnapshot, branchMultiplierSnapshot, sellingPriceSnapshot }
+              ? {
+                  branchCostSnapshot,
+                  sellingPriceSnapshot,
+                  ...(includePricingMultipliers ? { branchMultiplierSnapshot } : {}),
+                }
             : {}),
           companyName: this.optionalText(raw.read_companyName),
           branchName: this.optionalText(raw.read_branchName),
