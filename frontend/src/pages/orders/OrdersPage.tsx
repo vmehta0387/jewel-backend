@@ -677,7 +677,13 @@ export default function OrdersPage() {
   const previousDesignFiltersRef = useRef(designFilters);
 
   const isEditing = Boolean(editingOrderId);
-  const listTableColumnCount = isSuperAdmin || (!isCompanyAdmin && canViewCostPrice) ? 14 : 13;
+  const listTableColumnCount = isSuperAdmin
+    ? 14
+    : isCompanyAdmin
+      ? 12
+      : canViewCostPrice
+        ? 14
+        : 13;
   const canSelectOrderCompany = isSuperAdmin;
   const canSelectOrderBranch = isSuperAdmin || isCompanyAdmin;
   const effectiveCompanyFilterId = filters.companyId || (isCompanyAdmin ? currentUser?.companyId || '' : '');
@@ -2227,10 +2233,7 @@ export default function OrdersPage() {
                       <th className="app-table-head-cell">Branch / Selling Price</th>
                     </>
                   ) : isCompanyAdmin ? (
-                    <>
-                      <th className="app-table-head-cell">Branch Cost</th>
-                      <th className="app-table-head-cell">Selling Price</th>
-                    </>
+                    <th className="app-table-head-cell">Selling Price</th>
                   ) : (
                     <>
                       {canViewCostPrice && <th className="app-table-head-cell">Cost Price</th>}
@@ -2280,10 +2283,7 @@ export default function OrdersPage() {
                         <td className="app-table-cell whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800">{formatSnapshotMoney(order.sellingPriceSnapshot ?? order.price)}</td>
                       </>
                     ) : isCompanyAdmin ? (
-                      <>
-                        <td className="app-table-cell whitespace-nowrap text-sm tabular-nums text-slate-700">{formatSnapshotMoney(order.branchCostSnapshot)}</td>
-                        <td className="app-table-cell whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800">{formatSnapshotMoney(order.sellingPriceSnapshot ?? order.price)}</td>
-                      </>
+                      <td className="app-table-cell whitespace-nowrap text-sm font-semibold tabular-nums text-slate-800">{formatSnapshotMoney(order.sellingPriceSnapshot ?? order.price)}</td>
                     ) : (
                       <>
                         {canViewCostPrice && (
