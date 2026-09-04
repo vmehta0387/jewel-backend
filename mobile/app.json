@@ -20,7 +20,7 @@
     },
     "android": {
       "version": "1.0.1",
-      "softwareKeyboardLayoutMode": "resize",
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -46,6 +46,7 @@
       }
     },
     "plugins": [
+      "./plugins/withFastBuild",
       "./plugins/with-ios-privacy-permissions",
       [
         "expo-image-picker",

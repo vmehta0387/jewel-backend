@@ -34,6 +34,37 @@ export class PushNotificationsService {
       where: { expoPushToken },
     });
 
+    if (existing) {
+      const duplicateTokenResult = await this.pushDeviceRepo
+        .createQueryBuilder()
+        .update(NotificationPushDevice)
+        .set({ isActive: false })
+        .where('expo_push_token = :expoPushToken', { expoPushToken })
+        .andWhere('id != :id', { id: existing.id })
+        .execute();
+      if (duplicateTokenResult.affected) {
+        this.logger.log('Push device duplicate token registrations deactivated tokenPrefix=' + expoPushToken.slice(0, 24) + ' count=' + duplicateTokenResult.affected);
+      }
+    }
+
+    if (deviceId) {
+      let cleanupQuery = this.pushDeviceRepo
+        .createQueryBuilder()
+        .update(NotificationPushDevice)
+        .set({ isActive: false })
+        .where('user_id = :userId', { userId: requester.id })
+        .andWhere('device_id = :deviceId', { deviceId });
+
+      if (existing) {
+        cleanupQuery = cleanupQuery.andWhere('id != :id', { id: existing.id });
+      }
+
+      const sameDeviceResult = await cleanupQuery.execute();
+      if (sameDeviceResult.affected) {
+        this.logger.log('Push device old same-device registrations deactivated userId=' + requester.id + ' deviceId=' + deviceId + ' count=' + sameDeviceResult.affected);
+      }
+    }
+
     const record = existing
       ? Object.assign(existing, {
         userId: requester.id,
@@ -57,20 +88,6 @@ export class PushNotificationsService {
 
     const saved = await this.pushDeviceRepo.save(record);
     this.logger.log('Push device registered id=' + saved.id + ' userId=' + saved.userId + ' platform=' + (saved.platform || '-') + ' deviceId=' + (saved.deviceId || '-') + ' tokenPrefix=' + saved.expoPushToken.slice(0, 24) + ' active=' + saved.isActive);
-
-    if (deviceId) {
-      const deactivateResult = await this.pushDeviceRepo
-        .createQueryBuilder()
-        .update(NotificationPushDevice)
-        .set({ isActive: false })
-        .where('user_id = :userId', { userId: requester.id })
-        .andWhere('device_id = :deviceId', { deviceId })
-        .andWhere('id != :id', { id: saved.id })
-        .execute();
-      if (deactivateResult.affected) {
-        this.logger.log('Push device old registrations deactivated userId=' + requester.id + ' deviceId=' + deviceId + ' count=' + deactivateResult.affected);
-      }
-    }
 
     return {
       success: true,

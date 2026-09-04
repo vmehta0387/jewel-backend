@@ -1,9 +1,11 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  findNodeHandle,
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -130,7 +132,7 @@ const isNearScrollBottom = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEv
 const SpiffRewardsScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<DashboardStackParamList, 'SpiffRewards'>>();
-  const { token, user } = useAuth();
+  const { token, user, refresh } = useAuth();
   const isSalesRep = user?.role === 'SALES_REP';
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const isCompanyAdmin = user?.role === 'COMPANY_ADMIN';
@@ -141,6 +143,15 @@ const SpiffRewardsScreen = () => {
   const canViewLeaderboard = hasAnyActionPermission(user, ['mobile.spiff.leaderboard.view', 'spiff.view']);
   const canAdjustPoints = canReviewClaim;
 
+  const salesRepScrollRef = useRef<ScrollView>(null);
+  const companyAdminScrollRef = useRef<ScrollView>(null);
+  const defaultScrollRef = useRef<ScrollView>(null);
+  const salesRepPointsInputRef = useRef<TextInput>(null);
+  const salesRepNoteInputRef = useRef<TextInput>(null);
+  const companyAdminPointsInputRef = useRef<TextInput>(null);
+  const companyAdminNoteInputRef = useRef<TextInput>(null);
+  const defaultPointsInputRef = useRef<TextInput>(null);
+  const defaultNoteInputRef = useRef<TextInput>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -271,16 +282,32 @@ const SpiffRewardsScreen = () => {
     }, [load]),
   );
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    try {
+      await refresh();
+    } catch {
+      // Keep the refresh gesture usable if the profile call is temporarily unavailable.
+    }
     load(true);
-  }, [load]);
+  }, [load, refresh]);
 
   const refreshSpiff = useCallback(() => {
     if (refreshing || loading) return;
     onRefresh();
   }, [loading, onRefresh, refreshing]);
 
+  const focusSpiffInput = useCallback((target: 'salesRep' | 'companyAdmin' | 'default', inputRef: React.RefObject<TextInput | null>) => {
+    const scrollRef = target === 'salesRep' ? salesRepScrollRef : target === 'companyAdmin' ? companyAdminScrollRef : defaultScrollRef;
+    const inputHandle = findNodeHandle(inputRef.current);
+    if (!inputHandle) return;
+
+    setTimeout(() => {
+      scrollRef.current
+        ?.getScrollResponder()
+        ?.scrollResponderScrollNativeHandleToKeyboard(inputHandle, 18, true);
+    }, Platform.OS === 'android' ? 280 : 80);
+  }, []);
   const loadMoreClaims = useCallback(async () => {
     if (!token || claimsLoadingRef.current || claimsPage >= claimsTotalPages) return;
     claimsLoadingRef.current = true;
@@ -860,9 +887,11 @@ const SpiffRewardsScreen = () => {
             </View>
           </View>
 
-          <ScrollView
+            <ScrollView
+            ref={salesRepScrollRef}
             style={styles.scroll}
             contentContainerStyle={styles.srContent}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             onScroll={handleSalesRepScroll}
             scrollEventThrottle={16}
@@ -1044,7 +1073,9 @@ const SpiffRewardsScreen = () => {
                     keyboardType="decimal-pad"
                     placeholder="Points to redeem"
                     placeholderTextColor="#9F978F"
+                    ref={salesRepPointsInputRef}
                     value={requestedPoints}
+                    onFocus={() => focusSpiffInput('salesRep', salesRepPointsInputRef)}
                     onChangeText={handleRequestedPointsChange}
                   />
                   {claimError ? <Text style={styles.claimErrorText}>{claimError}</Text> : null}
@@ -1052,7 +1083,9 @@ const SpiffRewardsScreen = () => {
                     style={styles.input}
                     placeholder="Notes (optional)"
                     placeholderTextColor="#9F978F"
+                    ref={salesRepNoteInputRef}
                     value={note}
+                    onFocus={() => focusSpiffInput('salesRep', salesRepNoteInputRef)}
                     onChangeText={setNote}
                   />
                   <Text style={styles.conversionText}>{config?.conversionDisplay || '100 points = $1'}</Text>
@@ -1151,7 +1184,7 @@ const SpiffRewardsScreen = () => {
             </View>
           </View>
 
-          <ScrollView
+            <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
@@ -1217,8 +1250,10 @@ const SpiffRewardsScreen = () => {
       <View style={styles.caScreen}>
         <SafeAreaView style={styles.caSafe} edges={['top']}>
           <ScrollView
+            ref={companyAdminScrollRef}
             style={styles.scroll}
             contentContainerStyle={styles.caContent}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             onScroll={handleClaimsScroll}
             scrollEventThrottle={16}
@@ -1417,8 +1452,10 @@ const SpiffRewardsScreen = () => {
         </View>
 
         <ScrollView
+          ref={defaultScrollRef}
           style={styles.scroll}
           contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           onScroll={handleClaimsScroll}
           scrollEventThrottle={16}
@@ -1454,7 +1491,9 @@ const SpiffRewardsScreen = () => {
               keyboardType="decimal-pad"
               placeholder="Points to redeem"
               placeholderTextColor="#9F978F"
+              ref={defaultPointsInputRef}
               value={requestedPoints}
+              onFocus={() => focusSpiffInput('default', defaultPointsInputRef)}
               onChangeText={handleRequestedPointsChange}
             />
             {claimError ? <Text style={styles.claimErrorText}>{claimError}</Text> : null}
@@ -1463,7 +1502,9 @@ const SpiffRewardsScreen = () => {
               style={styles.input}
               placeholder="Notes (optional)"
               placeholderTextColor="#9F978F"
+              ref={defaultNoteInputRef}
               value={note}
+              onFocus={() => focusSpiffInput('default', defaultNoteInputRef)}
               onChangeText={setNote}
             />
 
@@ -1908,7 +1949,7 @@ const styles = StyleSheet.create({
   srContent: {
     paddingHorizontal: 14,
     paddingTop: 14,
-    paddingBottom: 28,
+    paddingBottom: 26,
     gap: 12,
   },
   srHeroCard: {
@@ -2625,6 +2666,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8B8179',
     fontWeight: '500',
+  },
+  refreshPermissionBtn: {
+    marginTop: 18,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E6DED3',
+    backgroundColor: '#FAF8F5',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  refreshBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7A6E61',
   },
   loadMoreText: {
     marginTop: 10,

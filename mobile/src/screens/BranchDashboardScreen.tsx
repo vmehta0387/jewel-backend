@@ -399,11 +399,16 @@ const BranchDashboardScreen = () => {
     setNotificationsVisible(true);
   }, []);
 
-  const refreshDashboard = useCallback(() => {
+  const refreshDashboard = useCallback(async () => {
     if (refreshing || statsLoading) return;
     setRefreshing(true);
-    loadDashboard();
-  }, [loadDashboard, refreshing, statsLoading]);
+    try {
+      await refresh();
+    } catch {
+      // Dashboard data can still refresh even if profile permissions fail briefly.
+    }
+    await loadDashboard();
+  }, [loadDashboard, refresh, refreshing, statsLoading]);
 
   const handlePickPhoto = useCallback(async (source: 'camera' | 'library') => {
     if (!token) return;
