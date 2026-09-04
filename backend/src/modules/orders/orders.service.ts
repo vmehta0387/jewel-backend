@@ -350,6 +350,7 @@ export class OrdersService implements OnModuleInit {
               }
             : requester.role === UserRole.COMPANY_ADMIN
               ? {
+                  companyCostSnapshot,
                   branchCostSnapshot,
                   sellingPriceSnapshot,
                   ...(includePricingMultipliers ? { branchMultiplierSnapshot } : {}),
@@ -444,9 +445,7 @@ export class OrdersService implements OnModuleInit {
     });
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const assignedUserRole = dto.salesRepId
-        ? 'SALES_REP'
-        : dto.assignedUserRole;
+      const assignedUserRole = dto.assignedUserRole || UserRole.SALES_REP;
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
@@ -475,7 +474,11 @@ export class OrdersService implements OnModuleInit {
         salesRepId: selectedSalesRep?.id || requester.id,
         deliveryDate: this.normalizeFutureDeliveryDate(dto.deliveryDate, new Date(), { defaultOffsetDays: 28 }),
         quantity: dto.quantity ?? 1,
-        price: dto.price !== undefined ? this.roundMoney(this.toNumber(dto.price)) : pricing.finalPrice,
+        price: requester.role === UserRole.COMPANY_ADMIN
+          ? pricing.finalPrice
+          : dto.price !== undefined
+            ? this.roundMoney(this.toNumber(dto.price))
+            : pricing.finalPrice,
         baseCostSnapshot: this.roundMoney(pricing.baseCost),
         companyCostSnapshot: this.roundMoney(pricing.companyPrice),
         companyMultiplierSnapshot: this.roundMultiplierForSnapshot(pricing.companyMultiplier),
@@ -696,9 +699,7 @@ export class OrdersService implements OnModuleInit {
       order.branch = branch;
     }
     if (dto.salesRepId !== undefined) {
-      const assignedUserRole = dto.salesRepId
-        ? 'SALES_REP'
-        : dto.assignedUserRole;
+      const assignedUserRole = dto.assignedUserRole || UserRole.SALES_REP;
       const selectedSalesRep = await this.resolveCreateOrderSalesRep(dto.salesRepId, requester, {
         companyId: effectiveCompanyId,
         branchId: effectiveBranchId,
@@ -833,10 +834,13 @@ export class OrdersService implements OnModuleInit {
     }
     if (requester.role === UserRole.COMPANY_ADMIN) {
       return {
+        companyPrice: pricing.companyPrice,
         branchMultiplier: pricing.branchMultiplier,
         branchMultiplierSource: pricing.branchMultiplierSource,
         branchCost: pricing.finalPrice,
         finalPrice: pricing.finalPrice,
+        branchId: branch?.id || null,
+        branchName: branch?.name || null,
       };
     }
     return { finalPrice: pricing.finalPrice };

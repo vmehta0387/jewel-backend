@@ -4400,12 +4400,11 @@ export class ProductsService {
   private buildAliasDesignIdentity(refs: DesignMasterRefs, designName?: string | null): { designNoPrefix: string; designName: string } {
     const requestedDesignName = this.optionalText(designName);
     const nameCode = this.normalizeDesignIdentityToken(requestedDesignName);
-    const category = this.getDesignIdentityToken(refs.jewelryGroup);
     const diamondSpread = this.getDesignIdentityToken(refs.diamondSpread);
     const metal = this.getDesignIdentityToken(refs.metalCaratage);
     const diamondWeight = this.getDesignIdentityToken(refs.diamondWeight);
     const diamondQuality = this.getDesignIdentityToken(refs.diamondQuality);
-    const segments = [nameCode, category, diamondSpread, metal, diamondWeight, diamondQuality].filter(Boolean);
+    const segments = [nameCode, diamondSpread, metal, diamondWeight, diamondQuality].filter(Boolean);
 
     return {
       designNoPrefix: segments.join('-'),

@@ -84,6 +84,8 @@ interface OrderPricePreview {
   finalPrice?: number;
   companyMultiplierSource?: 'COLLECTION_OVERRIDE' | 'COMPANY_SLAB' | 'COMPANY_DEFAULT';
   branchMultiplierSource?: 'BRANCH_SLAB' | 'BRANCH_DEFAULT';
+  branchId?: string | number | null;
+  branchName?: string | null;
 }
 
 const pricingRuleLabel = (source: OrderPricePreview['companyMultiplierSource'] | OrderPricePreview['branchMultiplierSource']): string => {
@@ -842,9 +844,7 @@ export default function OrdersPage() {
     const packets = response.data?.data || [];
     const mapped: Record<string, string> = {};
     packets.forEach((packet: any) => {
-      if (packet?.id && packet?.packetName) {
-        mapped[String(packet.id)] = String(packet.packetName);
-      }
+      if (packet?.id && packet?.packetName) mapped[String(packet.id)] = String(packet.packetName);
     });
     return mapped;
   };
@@ -956,7 +956,7 @@ export default function OrdersPage() {
     setForm((prev) => {
       const generatedDescription = buildSelectionDescription(normalized.selectedOptions);
       const defaultPrice = toOrderPriceInput(getDesignDefaultPrice(normalized.selectedDesign));
-      const shouldSyncPrice = !editingOrderId && !priceManuallyEdited && defaultPrice;
+      const shouldSyncPrice = !editingOrderId && !priceManuallyEdited && defaultPrice && !orderPricePreview;
       return {
         ...prev,
         designId: normalized.selectedDesign.id,
@@ -1118,7 +1118,7 @@ export default function OrdersPage() {
         setOrderPricePreview(response.data || null);
         const nextPrice = response.data?.finalPrice;
         if (!priceManuallyEdited && nextPrice !== undefined && nextPrice !== null) {
-          setForm((prev) => ({ ...prev, price: toOrderPriceInput(Number(nextPrice)), quantity: prev.quantity || '1' }));
+          setForm((prev) => ({ ...prev, price: formatNumberInput(Number(nextPrice)), quantity: prev.quantity || '1' }));
         }
       } catch {
         setOrderPricePreview(null);
@@ -1860,102 +1860,57 @@ export default function OrdersPage() {
   const buildPrintHtml = (order: OrderRow, design: DesignDetail | null, packetNames: Record<string, string>) => {
     const stones = design?.gemstones || [];
     const metals = design?.metals || [];
-
     const stoneRows = stones.length
-      ? stones.map((gem) => `
-          <tr>
-            <td>${packetNames[gem.packetId || ''] || '-'}</td>
-            <td>${gem.stone || '-'}</td>
-            <td>${gem.shape || '-'}</td>
-            <td>${gem.size || '-'}</td>
-            <td>${gem.color || '-'}</td>
-            <td>${gem.quality || '-'}</td>
-            <td>${formatWeight(gem.wtPerPcs)}</td>
-            <td>${gem.pcs ?? '-'}</td>
-            <td>${formatWeight(gem.wtInCts)}</td>
-          </tr>
-        `).join('')
+      ? stones.map((gem) => `<tr><td>${packetNames[gem.packetId || ''] || '-'}</td><td>${gem.stone || '-'}</td><td>${gem.shape || '-'}</td><td>${gem.size || '-'}</td><td>${gem.color || '-'}</td><td>${gem.quality || '-'}</td><td>${formatWeight(gem.wtPerPcs)}</td><td>${gem.pcs ?? '-'}</td><td>${formatWeight(gem.wtInCts)}</td></tr>`).join('')
       : '<tr><td colspan="9">No stone information</td></tr>';
-
     const metalRows = metals.length
-      ? metals.map((metal) => `
-          <tr>
-            <td>${metal.metalCaratage || '-'}</td>
-            <td>${formatWeight(metal.netWt)}</td>
-            <td>${formatWeight(metal.totalWt)}</td>
-            <td>${Number(metal.value || 0).toFixed(2)}</td>
-          </tr>
-        `).join('')
+      ? metals.map((metal) => `<tr><td>${metal.metalCaratage || '-'}</td><td>${formatWeight(metal.netWt)}</td><td>${formatWeight(metal.totalWt)}</td><td>${Number(metal.value || 0).toFixed(2)}</td></tr>`).join('')
       : '<tr><td colspan="4">No metal information</td></tr>';
+    const internalDetails = isSuperAdmin ? `
+      <div class="section"><h2>Metal Information</h2><table><thead><tr><th>Metal</th><th>Net Wt.</th><th>Total Wt.</th><th>Value</th></tr></thead><tbody>${metalRows}</tbody></table></div>
+      <div class="section"><h2>Stone Information</h2><table><thead><tr><th>Packet</th><th>Stone</th><th>Shape</th><th>Size</th><th>Color</th><th>Quality</th><th>Wt/Pcs</th><th>Pcs</th><th>Wt (Cts)</th></tr></thead><tbody>${stoneRows}</tbody></table></div>` : '';
 
-    return `
-      <html>
-        <head>
-          <title>${order.orderNumber}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
-            h1, h2 { margin: 0 0 12px; }
-            .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin-bottom: 24px; }
-            .meta div { padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
-            .label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 4px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 24px; }
-            th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 12px; }
-            th { background: #f8fafc; }
-            .section { margin-top: 24px; }
-          </style>
-        </head>
-        <body>
-          <h1>Order Details</h1>
-          <div class="meta">
-            <div><span class="label">Order No</span>${order.orderNumber}</div>
-            <div><span class="label">Status</span>${order.status}${order.isActive ? '' : ' (Suspended)'}</div>
-            <div><span class="label">Company</span>${order.companyName || '-'}</div>
-            <div><span class="label">Branch</span>${order.branchName || '-'}</div>
-            <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
-            <div><span class="label">Expected Delivery Date</span>${order.deliveryDate || '-'}</div>
-            <div><span class="label">Ship Date</span>${order.shipDate || '-'}</div>
-            <div><span class="label">Ship Via</span>${formatShipVia(order.shipVia)}</div>
-            <div><span class="label">Tracking No.</span>${order.trackingNo || '-'}</div>
-            <div><span class="label">Invoice No.</span>${order.invoiceNo || '-'}</div>
-            <div><span class="label">Quantity</span>${order.quantity}</div>
-            ${canViewCostPrice ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
-            <div><span class="label">Sale Price</span>${formatMoney(Number(order.price || 0))}</div>
-            <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
-            <div><span class="label">Customer Name</span>${order.customerName || '-'}</div>
-            <div><span class="label">Customer Phone</span>${order.customerPhone || '-'}</div>
-            <div><span class="label">Customer Email</span>${order.customerEmail || '-'}</div>
-            <div><span class="label">PO Number</span>${order.purchaseOrderNumber || '-'}</div>
-            <div><span class="label">Short Description</span>${order.shortDescription || '-'}</div>
-            <div><span class="label">Notes</span>${order.notes || '-'}</div>
-          </div>
-          <div class="section">
-            <h2>Metal Information</h2>
-            <table>
-              <thead>
-                <tr><th>Metal</th><th>Net Wt.</th><th>Total Wt.</th><th>Value</th></tr>
-              </thead>
-              <tbody>${metalRows}</tbody>
-            </table>
-          </div>
-          <div class="section">
-            <h2>Stone Information</h2>
-            <table>
-              <thead>
-                <tr><th>Packet</th><th>Stone</th><th>Shape</th><th>Size</th><th>Color</th><th>Quality</th><th>Wt/Pcs</th><th>Pcs</th><th>Wt (Cts)</th></tr>
-              </thead>
-              <tbody>${stoneRows}</tbody>
-            </table>
-          </div>
-        </body>
-      </html>
-    `;
+    return `<html><head><title>${order.orderNumber}</title><style>
+      body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
+      h1, h2 { margin: 0 0 12px; }
+      .meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin-bottom: 24px; }
+      .meta div { padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+      .label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; margin-bottom: 24px; }
+      th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; font-size: 12px; }
+      th { background: #f8fafc; }
+      .section { margin-top: 24px; }
+    </style></head><body>
+      <h1>Order Details</h1>
+      <div class="meta">
+        <div><span class="label">Order No</span>${order.orderNumber}</div>
+        <div><span class="label">Status</span>${order.status}${order.isActive ? '' : ' (Suspended)'}</div>
+        <div><span class="label">Company</span>${order.companyName || '-'}</div>
+        <div><span class="label">Branch</span>${order.branchName || '-'}</div>
+        <div><span class="label">Design</span>${design ? formatDesignLabel(design.designNo, design.version) : '-'}</div>
+        <div><span class="label">Expected Delivery Date</span>${order.deliveryDate || '-'}</div>
+        <div><span class="label">Ship Date</span>${order.shipDate || '-'}</div>
+        <div><span class="label">Ship Via</span>${formatShipVia(order.shipVia)}</div>
+        <div><span class="label">Tracking No.</span>${order.trackingNo || '-'}</div>
+        <div><span class="label">Invoice No.</span>${order.invoiceNo || '-'}</div>
+        <div><span class="label">Quantity</span>${order.quantity}</div>
+        ${canViewCostPrice ? `<div><span class="label">Cost Price</span>${order.costPrice !== undefined && order.costPrice !== null ? formatMoney(Number(order.costPrice || 0)) : '-'}</div>` : ''}
+        <div><span class="label">Sale Price</span>${formatMoney(Number(order.price || 0))}</div>
+        <div><span class="label">Sales Rep</span>${order.salesRepName || order.salesRepEmail || '-'}</div>
+        <div><span class="label">Customer Name</span>${order.customerName || '-'}</div>
+        <div><span class="label">Customer Phone</span>${order.customerPhone || '-'}</div>
+        <div><span class="label">Customer Email</span>${order.customerEmail || '-'}</div>
+        <div><span class="label">PO Number</span>${order.purchaseOrderNumber || '-'}</div>
+        <div><span class="label">Short Description</span>${order.shortDescription || '-'}</div>
+        <div><span class="label">Notes</span>${order.notes || '-'}</div>
+      </div>${internalDetails}</body></html>`;
   };
 
   const printOrder = async (order: OrderRow) => {
     try {
       setPrintingOrderId(order.id);
       const [packetNames, { detail, design }] = await Promise.all([
-        loadPackets(),
+        isSuperAdmin ? loadPackets() : Promise.resolve({}),
         fetchOrderWithDesign(order.id),
       ]);
       const iframe = document.createElement('iframe');
@@ -3120,17 +3075,20 @@ export default function OrdersPage() {
                       <div className="overflow-hidden rounded-xl border border-[#dfd3c4] bg-white">
                         <div className="border-b border-[#eadfce] bg-[#faf6ef] px-4 py-3">
                           <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#735522]">Pricing Breakdown</p>
-                          <p className="mt-1 text-xs text-slate-600">Selected Branch: <span className="font-semibold">{branches.find((branch) => String(branch.id) === String(form.branchId))?.name || '-'}</span></p>
+                          <p className="mt-1 text-xs text-slate-600">Selected Branch: <span className="font-semibold">{branches.find((branch) => String(branch.id) === String(form.branchId))?.name || orderPricePreview?.branchName || '-'}</span></p>
                         </div>
-                        <table className="w-full text-sm">
+                        <div className="overflow-x-auto">
+                        <table className="min-w-[720px] w-full text-sm">
                           <thead className="border-b border-slate-200 bg-slate-50 text-left">
-                            <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
+                            <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Base / Previous Price</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Cost</td><td className="px-4 py-3 text-center"><span className="font-semibold">{formatSnapshotMultiplier(orderPricePreview?.branchMultiplier)}</span>{pricingRuleLabel(orderPricePreview?.branchMultiplierSource) ? <span className="block text-[10px] text-slate-500">{pricingRuleLabel(orderPricePreview?.branchMultiplierSource)}</span> : null}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(orderPricePreview?.branchCost ?? orderPricePreview?.finalPrice)}</td></tr>
-                            <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(form.price)}</td></tr>
+                            <tr><td className="px-4 py-3 font-semibold text-slate-800">Company Price</td><td className="px-4 py-3 text-right text-slate-500">—</td><td className="px-4 py-3 text-center text-slate-500">—</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(orderPricePreview?.companyPrice)}</td></tr>
+                            <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Price</td><td className="px-4 py-3 text-right tabular-nums text-slate-700">{formatSnapshotMoney(orderPricePreview?.companyPrice)}</td><td className="px-4 py-3 text-center"><span className="font-semibold">{formatSnapshotMultiplier(orderPricePreview?.branchMultiplier)}</span>{pricingRuleLabel(orderPricePreview?.branchMultiplierSource) ? <span className="block text-[10px] text-slate-500">{pricingRuleLabel(orderPricePreview?.branchMultiplierSource)}</span> : null}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(orderPricePreview?.branchCost ?? orderPricePreview?.finalPrice)}</td></tr>
+                            <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-right tabular-nums text-emerald-800">{formatSnapshotMoney(orderPricePreview?.branchCost ?? orderPricePreview?.finalPrice)}</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(form.price)}</td></tr>
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     ) : null}
 
@@ -3946,15 +3904,18 @@ export default function OrdersPage() {
                       <h3 className="text-base font-bold text-[#2b241d]">Pricing Breakdown</h3>
                       <p className="mt-0.5 text-xs text-slate-500">Pricing captured when this order was created.</p>
                     </div>
-                    <table className="w-full text-sm">
+                    <div className="overflow-x-auto">
+                    <table className="min-w-[720px] w-full text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 text-left">
-                        <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
+                        <tr><th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Pricing Stage</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Base / Previous Price</th><th className="px-4 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500">Multiplier</th><th className="px-4 py-2 text-right text-[10px] font-bold uppercase tracking-wide text-slate-500">Calculated Price</th></tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Cost</td><td className="px-4 py-3 text-center font-semibold">{formatSnapshotMultiplier(viewOrder?.branchMultiplierSnapshot)}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td></tr>
-                        <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td></tr>
+                        <tr><td className="px-4 py-3 font-semibold text-slate-800">Company Price</td><td className="px-4 py-3 text-right text-slate-500">—</td><td className="px-4 py-3 text-center text-slate-500">—</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.companyCostSnapshot)}</td></tr>
+                        <tr><td className="px-4 py-3 font-semibold text-slate-800">Branch Price</td><td className="px-4 py-3 text-right tabular-nums text-slate-700">{formatSnapshotMoney(viewOrder?.companyCostSnapshot)}</td><td className="px-4 py-3 text-center font-semibold">{formatSnapshotMultiplier(viewOrder?.branchMultiplierSnapshot)}</td><td className="px-4 py-3 text-right font-bold tabular-nums text-slate-900">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td></tr>
+                        <tr className="bg-emerald-50/60"><td className="px-4 py-3 font-bold text-emerald-900">Selling Price</td><td className="px-4 py-3 text-right tabular-nums text-emerald-800">{formatSnapshotMoney(viewOrder?.branchCostSnapshot)}</td><td className="px-4 py-3 text-center text-xs font-medium text-emerald-700">Saved order price</td><td className="px-4 py-3 text-right font-bold tabular-nums text-emerald-900">{formatSnapshotMoney(sellingPrice)}</td></tr>
                       </tbody>
                     </table>
+                    </div>
                   </section>
                 );
               })()}

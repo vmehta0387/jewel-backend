@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsObject, IsString, IsUUID, Max, Min } from 'class-validator';
 import { OrderStatus } from '../../../common/enums/order-status.enum';
+import { UserRole } from '../../../common/enums/user-role.enum';
 
 export class CreateOrderDto {
   @Type(() => Number)
@@ -23,8 +24,8 @@ export class CreateOrderDto {
   salesRepId?: number;
 
   @IsOptional()
-  @IsIn(['SALES_REP', 'BRANCH_MANAGER'])
-  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER';
+  @IsIn([UserRole.SALES_REP, UserRole.BRANCH_MANAGER])
+  assignedUserRole?: UserRole.SALES_REP | UserRole.BRANCH_MANAGER;
 
   @IsOptional()
   @IsString()
@@ -119,8 +120,8 @@ export class UpdateOrderDto {
   salesRepId?: number;
 
   @IsOptional()
-  @IsIn(['SALES_REP', 'BRANCH_MANAGER'])
-  assignedUserRole?: 'SALES_REP' | 'BRANCH_MANAGER';
+  @IsIn([UserRole.SALES_REP, UserRole.BRANCH_MANAGER])
+  assignedUserRole?: UserRole.SALES_REP | UserRole.BRANCH_MANAGER;
 
   @IsOptional()
   @IsString()
@@ -323,6 +324,5 @@ export class UpdateOrderActiveStatusDto {
   @IsBoolean()
   isActive: boolean;
 }
-
 
 

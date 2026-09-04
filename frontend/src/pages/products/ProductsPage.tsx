@@ -904,20 +904,18 @@ const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string =
 
 const buildStructuredDesignNo = ({
   designNameCode,
-  categoryCode,
   coverageCode,
   metalCode,
   diamondQualityCode,
   sizeCode,
 }: {
   designNameCode: string;
-  categoryCode: string;
   coverageCode: string;
   metalCode: string;
   diamondQualityCode: string;
   sizeCode: string;
 }): string => {
-  const segments = [designNameCode, categoryCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
+  const segments = [designNameCode, coverageCode, metalCode, diamondQualityCode, sizeCode].filter(Boolean);
   return segments.join('-');
 };
 
@@ -1828,10 +1826,6 @@ export default function ProductsPage() {
     () => sanitizeStructuredToken(form.designName, { preserveSlash: true }).replace(/\//g, '-'),
     [form.designName],
   );
-  const structuredCategoryCode = useMemo(
-    () => resolveOptionAliasCode(form.jewelryGroup, masterOptions.jewelryGroups),
-    [form.jewelryGroup, masterOptions.jewelryGroups],
-  );
   const selectedJewelryGroupMasterId = useMemo(
     () =>
       masterOptions.jewelryGroups.find(
@@ -1879,7 +1873,6 @@ export default function ProductsPage() {
     () => {
       const base = buildStructuredDesignNo({
         designNameCode: structuredDesignNameCode,
-        categoryCode: structuredCategoryCode,
         coverageCode: structuredDiamondSpreadCode,
         metalCode: structuredMetalCode,
         diamondQualityCode: structuredDiamondWeightCode,
@@ -1891,7 +1884,6 @@ export default function ProductsPage() {
       form.jewelrySize,
       form.version,
       structuredDesignNameCode,
-      structuredCategoryCode,
       structuredDiamondSpreadCode,
       structuredDiamondQualityCode,
       structuredDiamondWeightCode,
@@ -5290,7 +5282,6 @@ export default function ProductsPage() {
       const fallbackBase = getBaseDesignNo(versionBuilderBaseDesign.designNo) || versionBuilderBaseDesign.designNo;
       const structuredBase = buildStructuredDesignNo({
         designNameCode: sanitizeStructuredToken(versionBuilderBaseDesign.designName || '', { preserveSlash: true }).replace(/\//g, '-'),
-        categoryCode: resolveOptionAliasCode(versionBuilderBaseDesign.jewelryGroup || '', masterOptions.jewelryGroups),
         coverageCode: isRingJewelryGroup(versionBuilderBaseDesign.jewelryGroupId)
           ? resolveOptionAliasCode(selection.coverage || '', masterOptions.diamondSpreads)
           : '',
@@ -5305,7 +5296,6 @@ export default function ProductsPage() {
       masterOptions.diamondQualities,
       masterOptions.diamondSpreads,
       masterOptions.diamondWeights,
-      masterOptions.jewelryGroups,
       masterOptions.metalCaratages,
       versionBuilderBaseDesign,
     ],
