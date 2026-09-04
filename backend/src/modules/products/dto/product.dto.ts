@@ -1008,6 +1008,30 @@ export class FindProductsQueryDto {
   @IsOptional()
   jewelrySize?: string;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  jewelrySizeId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  metalCaratageId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondSpreadId?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  diamondQualityId?: number;
+
   @IsString()
   @IsOptional()
   tags?: string;

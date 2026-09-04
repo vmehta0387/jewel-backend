@@ -1623,13 +1623,20 @@ export class ProductsService {
       designName: design.designName,
       version: design.version,
       jewelryGroup: design.jewelryGroup,
+      jewelryGroupId: design.jewelryGroupId,
       jewelrySize: design.jewelrySize,
+      jewelrySizeId: design.jewelrySizeId,
       collection: design.collection,
       stage: design.stage,
       diamondSpread: design.diamondSpread,
+      diamondSpreadId: design.diamondSpreadId,
       diamondType: design.diamondType,
+      diamondTypeId: design.diamondTypeId,
       diamondWeight: design.diamondWeight,
+      diamondWeightId: design.diamondWeightId,
       diamondQuality: design.diamondQuality,
+      diamondQualityId: design.diamondQualityId,
+      metalCaratageId: design.metalCaratageId,
       designStatus: design.designStatus,
       tags: Array.isArray(design.tags) ? design.tags : [],
       metalCaratage: summary?.metalInfo || design.metalCaratage || null,
@@ -2907,14 +2914,7 @@ export class ProductsService {
 
     const familyStatsQb = this.designRepo
       .createQueryBuilder('design')
-      .select(
-        `COUNT(DISTINCT CASE
-          WHEN UPPER(TRIM(design.version)) REGEXP '^V[0-9]+$'
-          THEN CAST(SUBSTRING(UPPER(TRIM(design.version)), 2) AS UNSIGNED)
-          ELSE NULL
-        END)`,
-        'familyVersionCount',
-      )
+      .select('COUNT(*)', 'familyVersionCount')
       .addSelect(
         `MAX(CASE
           WHEN UPPER(TRIM(design.version)) REGEXP '^V[0-9]+$'
@@ -3004,6 +3004,36 @@ export class ProductsService {
     if (query.jewelrySize?.trim()) {
       qb.andWhere('familyJewelrySizeMaster.value LIKE :jewelrySize', {
         jewelrySize: `%${query.jewelrySize.trim()}%`,
+      });
+    }
+
+    if (query.jewelrySizeId) {
+      qb.andWhere('design.jewelrySizeId = :jewelrySizeId', {
+        jewelrySizeId: query.jewelrySizeId,
+      });
+    }
+
+    if (query.metalCaratageId) {
+      qb.andWhere(
+        `(design.metalCaratageId = :metalCaratageId OR EXISTS (
+          SELECT 1
+          FROM design_metals family_filter_dm
+          WHERE family_filter_dm.design_id = design.id
+            AND family_filter_dm.metal_caratage_id = :metalCaratageId
+        ))`,
+        { metalCaratageId: query.metalCaratageId },
+      );
+    }
+
+    if (query.diamondSpreadId) {
+      qb.andWhere('design.diamondSpreadId = :diamondSpreadId', {
+        diamondSpreadId: query.diamondSpreadId,
+      });
+    }
+
+    if (query.diamondQualityId) {
+      qb.andWhere('design.diamondQualityId = :diamondQualityId', {
+        diamondQualityId: query.diamondQualityId,
       });
     }
 

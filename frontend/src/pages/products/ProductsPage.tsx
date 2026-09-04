@@ -125,20 +125,35 @@ const getMasterRelationValue = (value: unknown): string => {
   return '';
 };
 
-const masterOptionMatchesValue = (option: MasterOption, value: string | null | undefined): boolean => {
+export const masterOptionMatchesValue = (option: MasterOption, value: string | null | undefined): boolean => {
   const lookup = normalizeLookupKey(value);
   if (!lookup) return false;
   return (
     normalizeLookupKey(option.value) === lookup ||
-    normalizeLookupKey(option.aliasName || '') === lookup ||
-    normalizeLookupKey(option.id) === lookup
+    normalizeLookupKey(option.aliasName || '') === lookup
   );
+};
+
+const findMasterOptionMatch = (
+  options: MasterOption[],
+  value: string | null | undefined,
+): MasterOption | undefined => {
+  const lookup = normalizeLookupKey(value);
+  if (!lookup) return undefined;
+  return options.find((option) => normalizeLookupKey(option.value) === lookup)
+    || options.find((option) => normalizeLookupKey(option.aliasName || '') === lookup);
 };
 
 interface DesignRow {
   id: string;
   familyDesignId?: string;
   jewelryGroupId?: string;
+  jewelrySizeId?: string;
+  diamondSpreadId?: string;
+  diamondTypeId?: string;
+  diamondWeightId?: string;
+  diamondQualityId?: string;
+  metalCaratageId?: string;
   designNo: string;
   barcode?: string;
   designName: string;
@@ -194,6 +209,12 @@ interface ApiDesignRow {
   id: string;
   familyDesignId?: string | number | null;
   jewelryGroupId?: string | number | null;
+  jewelrySizeId?: string | number | null;
+  diamondSpreadId?: string | number | null;
+  diamondTypeId?: string | number | null;
+  diamondWeightId?: string | number | null;
+  diamondQualityId?: string | number | null;
+  metalCaratageId?: string | number | null;
   designNo?: string;
   barcode?: string | null;
   designName?: string | null;
@@ -475,17 +496,17 @@ const VERSION_LIST_PAGE_SIZE = 15;
 const DESIGN_LIST_COLUMNS_STORAGE_KEY = 'design-list-visible-columns-v5';
 
 interface VersionListFilters {
-  jewelrySize: string;
-  status: string;
-  metalCaratage: string;
-  diamondShape: string;
+  jewelrySizeId: string;
+  metalCaratageId: string;
+  diamondSpreadId: string;
+  diamondQualityId: string;
 }
 
 const EMPTY_VERSION_LIST_FILTERS: VersionListFilters = {
-  jewelrySize: '',
-  status: '',
-  metalCaratage: '',
-  diamondShape: '',
+  jewelrySizeId: '',
+  metalCaratageId: '',
+  diamondSpreadId: '',
+  diamondQualityId: '',
 };
 
 interface VersionFamilyListState {
@@ -775,6 +796,12 @@ const mapApiDesignToRow = (design: ApiDesignRow): DesignRow => {
     id: String(design.id),
     familyDesignId: design.familyDesignId != null ? String(design.familyDesignId) : undefined,
     jewelryGroupId: design.jewelryGroupId != null ? String(design.jewelryGroupId) : undefined,
+    jewelrySizeId: design.jewelrySizeId != null ? String(design.jewelrySizeId) : undefined,
+    diamondSpreadId: design.diamondSpreadId != null ? String(design.diamondSpreadId) : undefined,
+    diamondTypeId: design.diamondTypeId != null ? String(design.diamondTypeId) : undefined,
+    diamondWeightId: design.diamondWeightId != null ? String(design.diamondWeightId) : undefined,
+    diamondQualityId: design.diamondQualityId != null ? String(design.diamondQualityId) : undefined,
+    metalCaratageId: design.metalCaratageId != null ? String(design.metalCaratageId) : undefined,
     designNo: design.designNo || '',
     barcode: design.barcode || '',
     designName: design.designName || design.designNo || '',
@@ -873,14 +900,14 @@ const sanitizeStructuredToken = (value: string, options?: { preserveSlash?: bool
 const resolveDiamondQualityCode = (diamondQuality: string, customDiamondQuality: string, options: MasterOption[] = []): string => {
   const normalized = normalizeLookupKey(diamondQuality);
   const rawValue = normalized === 'custom' ? customDiamondQuality : diamondQuality;
-  const match = options.find((option) => masterOptionMatchesValue(option, rawValue));
+  const match = findMasterOptionMatch(options, rawValue);
   return sanitizeStructuredToken(match?.aliasName || rawValue, { preserveSlash: true }).replace(/\//g, '-');
 };
 
 const resolveOptionAliasCode = (value: string, options: MasterOption[], customValue = ''): string => {
   const normalized = normalizeLookupKey(value);
   const rawValue = normalized === 'custom' ? customValue : value;
-  const match = options.find((option) => masterOptionMatchesValue(option, rawValue));
+  const match = findMasterOptionMatch(options, rawValue);
   return sanitizeStructuredToken(match?.aliasName || rawValue, { preserveSlash: true }).replace(/\//g, '-');
 };
 const resolveMetalCode = (metal: string, metalOptions: MasterOption[]): string => {
@@ -2318,13 +2345,19 @@ export default function ProductsPage() {
     options: MasterOption[],
     value: string | null | undefined,
   ): MasterOption | undefined => {
-    return options.find((option) => masterOptionMatchesValue(option, value));
+    return findMasterOptionMatch(options, value);
   };
 
   const getMasterIdByValue = (
     options: MasterOption[],
     value: string | null | undefined,
   ): number | undefined => toOptionalMasterId(findMasterOptionByValue(options, value)?.id);
+
+  const getMasterIdentity = (
+    options: MasterOption[],
+    value: string | null | undefined,
+    explicitId?: string | number | null,
+  ): string => String(toOptionalMasterId(explicitId) ?? getMasterIdByValue(options, value) ?? normalizeLookupKey(value));
 
   const getMetalDefaultWastage = (metalCaratage: string): string => {
     const option = getMetalMasterOption(metalCaratage);
@@ -3685,10 +3718,10 @@ export default function ProductsPage() {
           summaryOnly: true,
           familyDesignId: options?.familyDesignId,
           search: nextSearch.trim() || undefined,
-          jewelrySize: nextFilters.jewelrySize || undefined,
-          designStatus: nextFilters.status || undefined,
-          metalCaratage: nextFilters.metalCaratage || undefined,
-          shape: nextFilters.diamondShape || undefined,
+          jewelrySizeId: nextFilters.jewelrySizeId || undefined,
+          metalCaratageId: nextFilters.metalCaratageId || undefined,
+          diamondSpreadId: nextFilters.diamondSpreadId || undefined,
+          diamondQualityId: nextFilters.diamondQualityId || undefined,
         },
       });
       const versionRows = (((response.data?.data || []) as ApiDesignRow[]).map(mapApiDesignToRow));
@@ -4329,12 +4362,12 @@ export default function ProductsPage() {
           .map((existingRow) =>
             buildVersionBuilderCombinationKey({
               designNo: existingRow.designNo || '',
-              metal: existingRow.metalCaratage || '',
-              coverage: existingRow.diamondSpread || '',
-              diamondType: existingRow.diamondType || '',
-              diamondQuality: existingRow.diamondQuality || '',
-              caratWeight: existingRow.diamondWeight || '',
-              size: existingRow.jewelrySize || '',
+              metal: getMasterIdentity(masterOptions.metalCaratages, existingRow.metalCaratage, existingRow.metalCaratageId),
+              coverage: getMasterIdentity(masterOptions.diamondSpreads, existingRow.diamondSpread, existingRow.diamondSpreadId),
+              diamondType: getMasterIdentity(masterOptions.diamondTypes, existingRow.diamondType, existingRow.diamondTypeId),
+              diamondQuality: getMasterIdentity(masterOptions.diamondQualities, existingRow.diamondQuality, existingRow.diamondQualityId),
+              caratWeight: getMasterIdentity(masterOptions.diamondWeights, existingRow.diamondWeight, existingRow.diamondWeightId),
+              size: getMasterIdentity(masterOptions.jewelrySizes, existingRow.jewelrySize, existingRow.jewelrySizeId),
             }),
           ),
       );
@@ -4347,12 +4380,12 @@ export default function ProductsPage() {
         const row = rowsToCreate[index];
         const combinationKey = buildVersionBuilderCombinationKey({
           designNo: row.designNo,
-          metal: row.metal,
-          coverage: row.coverage,
-          diamondType: baseDiamondType,
-          diamondQuality: row.diamondQuality,
-          caratWeight: row.caratWeight,
-          size: row.size,
+          metal: getMasterIdentity(masterOptions.metalCaratages, row.metal),
+          coverage: getMasterIdentity(masterOptions.diamondSpreads, row.coverage),
+          diamondType: getMasterIdentity(masterOptions.diamondTypes, baseDiamondType, baseDiamondTypeId),
+          diamondQuality: getMasterIdentity(masterOptions.diamondQualities, row.diamondQuality),
+          caratWeight: getMasterIdentity(masterOptions.diamondWeights, row.caratWeight),
+          size: getMasterIdentity(masterOptions.jewelrySizes, row.size),
         });
 
         if (existingFamilyCombinationKeys.has(combinationKey)) {
@@ -4589,22 +4622,10 @@ export default function ProductsPage() {
 
       if (createdRows.length > 0) {
         setAllDesignRows((prev) => [...createdRows, ...prev]);
-        const familyKey = getDesignFamilyKey(versionBuilderBaseDesign.designNo || '');
-        const latestCreatedVersion = createdRows.reduce(
-          (max, item) => Math.max(max, getVersionNumber(item.version)),
-          0,
-        );
-        setVersionFamilies((prev) => {
-          const familyState = prev[familyKey];
-          if (!familyState) return prev;
-          return {
-            ...prev,
-            [familyKey]: {
-              ...familyState,
-              familyVersionCount: familyState.familyVersionCount + createdRows.length,
-              latestVersionNumber: Math.max(familyState.latestVersionNumber, latestCreatedVersion),
-            },
-          };
+        await fetchVersionsForDesign(versionBuilderBaseDesign.designNo, {
+          page: 1,
+          familyDesignId: versionBuilderBaseDesign.familyDesignId || versionBuilderBaseDesign.id,
+          cacheKey: getDesignRowFamilyKey(versionBuilderBaseDesign),
         });
         const createdPrimaryRows = createdRows.filter((item) => item.isPrimary);
         if (createdPrimaryRows.length > 0) {
@@ -5074,8 +5095,11 @@ export default function ProductsPage() {
     return groups.reduce((total, count) => total * count, 1);
   }, [versionBuilderOptionGroups, versionBuilderSelections]);
 
-  const versionBuilderFamilyState = versionBuilderBaseDesign
-    ? versionFamilies[getDesignFamilyKey(versionBuilderBaseDesign.designNo || '')]
+  const versionBuilderFamilyKey = versionBuilderBaseDesign
+    ? getDesignRowFamilyKey(versionBuilderBaseDesign)
+    : '';
+  const versionBuilderFamilyState = versionBuilderFamilyKey
+    ? versionFamilies[versionBuilderFamilyKey]
     : undefined;
   const versionBuilderCounts = useMemo(
     () => resolveVersionCounts(
@@ -5553,11 +5577,11 @@ export default function ProductsPage() {
               rows.push({
                 resultKey: buildVersionBuilderCombinationKey({
                   designNo: versionBuilderBaseDesign.designNo,
-                  metal,
-                  coverage,
-                  diamondQuality: quality,
-                  caratWeight: weight,
-                  size,
+                  metal: getMasterIdentity(masterOptions.metalCaratages, metal),
+                  coverage: getMasterIdentity(masterOptions.diamondSpreads, coverage),
+                  diamondQuality: getMasterIdentity(masterOptions.diamondQualities, quality),
+                  caratWeight: getMasterIdentity(masterOptions.diamondWeights, weight),
+                  size: getMasterIdentity(masterOptions.jewelrySizes, size),
                 }),
                 designNo:
                   breakdown.variantSku ||
@@ -8348,49 +8372,59 @@ const createDefaultVendorRow = (): VendorRow => ({
                               </button>
                             </form>
                             <SmartDropdown
-                              value={versionFilters.jewelrySize}
+                              value={versionFilters.jewelrySizeId}
                               onChange={(value, option) => {
                                 mergeMasterOption('JEWELRY_SIZE', option);
-                                applyVersionListFilter(row, 'jewelrySize', value);
+                                applyVersionListFilter(row, 'jewelrySizeId', value);
                               }}
-                              className="min-w-0"
-                              config={masterDropdownConfig('JEWELRY_SIZE', 'All Sizes', toSmartDropdownOptions(masterOptions.jewelrySizes))}
-                            />
-                            <SmartDropdown
-                              value={versionFilters.metalCaratage}
-                              onChange={(value, option) => {
-                                mergeMasterOption('METAL_CARATAGE', option);
-                                applyVersionListFilter(row, 'metalCaratage', value);
-                              }}
-                              className="min-w-0"
-                              config={masterDropdownConfig(
-                                'METAL_CARATAGE',
-                                'All Metals',
-                                toSmartDropdownOptions(masterOptions.metalCaratages),
-                              )}
-                            />
-                            <SmartDropdown
-                              value={versionFilters.diamondShape}
-                              onChange={(value, option) => {
-                                mergeMasterOption('PACKET_SHAPE', option);
-                                applyVersionListFilter(row, 'diamondShape', value);
-                              }}
-                              className="min-w-0"
-                              config={masterDropdownConfig('PACKET_SHAPE', 'All Shapes', toSmartDropdownOptions(masterOptions.packetShapes))}
-                            />
-                            <SmartDropdown
-                              value={versionFilters.status}
-                              onChange={(value) => applyVersionListFilter(row, 'status', value)}
                               className="min-w-0"
                               config={{
-                                options: [
-                                  { value: 'Active', label: 'Active' },
-                                  { value: 'Inactive', label: 'Inactive' },
-                                ],
-                                valueKey: 'value',
+                                ...masterDropdownConfig('JEWELRY_SIZE', 'All Sizes', toSmartDropdownOptions(masterOptions.jewelrySizes)),
+                                valueKey: 'id',
                                 labelKey: 'value',
-                                placeholder: 'All Statuses',
-                                showSearch: false,
+                              }}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.metalCaratageId}
+                              onChange={(value, option) => {
+                                mergeMasterOption('METAL_CARATAGE', option);
+                                applyVersionListFilter(row, 'metalCaratageId', value);
+                              }}
+                              className="min-w-0"
+                              config={{
+                                ...masterDropdownConfig(
+                                  'METAL_CARATAGE',
+                                  'All Metals',
+                                  toSmartDropdownOptions(masterOptions.metalCaratages),
+                                ),
+                                valueKey: 'id',
+                                labelKey: 'value',
+                              }}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.diamondSpreadId}
+                              onChange={(value, option) => {
+                                mergeMasterOption('DIAMOND_SPREAD', option);
+                                applyVersionListFilter(row, 'diamondSpreadId', value);
+                              }}
+                              className="min-w-0"
+                              config={{
+                                ...masterDropdownConfig('DIAMOND_SPREAD', 'All Diamond Spreads', toSmartDropdownOptions(masterOptions.diamondSpreads)),
+                                valueKey: 'id',
+                                labelKey: 'value',
+                              }}
+                            />
+                            <SmartDropdown
+                              value={versionFilters.diamondQualityId}
+                              onChange={(value, option) => {
+                                mergeMasterOption('DIAMOND_QUALITY', option);
+                                applyVersionListFilter(row, 'diamondQualityId', value);
+                              }}
+                              className="min-w-0"
+                              config={{
+                                ...masterDropdownConfig('DIAMOND_QUALITY', 'All Diamond Qualities', toSmartDropdownOptions(masterOptions.diamondQualities)),
+                                valueKey: 'id',
+                                labelKey: 'value',
                               }}
                             />
                           </div>
