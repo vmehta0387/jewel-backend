@@ -7,6 +7,7 @@ import type { AuthUser } from '../types';
 import { login as loginApi, me as meApi, signup as signupApi } from '../api/auth';
 import { setUnauthorizedHandler } from '../api/client';
 import { configureActivityContext, configureActivityTracker, flushActivityEvents } from '../utils/activityTracker';
+import { unregisterLastPushToken } from '../services/pushNotifications';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
@@ -284,6 +285,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [assertMobileAccessRole, checkBiometricAvailable]);
 
   const signOut = useCallback(async (options?: { clearBiometric?: boolean }) => {
+    const currentToken = token || (await AsyncStorage.getItem(TOKEN_KEY));
+    if (currentToken) {
+      await unregisterLastPushToken(currentToken).catch(() => undefined);
+    }
+
     setUser(null);
     setToken(null);
     const shouldClearBiometric = options?.clearBiometric === true;
@@ -297,7 +303,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await AsyncStorage.removeItem(BIOMETRIC_PROMPTED_KEY);
       await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
     }
-  }, [biometricEnabled]);
+  }, [biometricEnabled, token]);
 
   useEffect(() => {
     setUnauthorizedHandler(signOut);

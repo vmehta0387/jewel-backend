@@ -11,6 +11,8 @@ import { RegisterPushDeviceDto, UnregisterPushDeviceDto } from '../notifications
 export class PushNotificationsService {
   private readonly logger = new Logger(PushNotificationsService.name);
   private readonly expoPushUrl: string;
+  private readonly expoReceiptsUrl: string;
+  private readonly receiptCheckDelayMs: number;
 
   constructor(
     @InjectRepository(NotificationPushDevice)
@@ -18,6 +20,8 @@ export class PushNotificationsService {
     private readonly configService: ConfigService,
   ) {
     this.expoPushUrl = this.configService.get<string>('EXPO_PUSH_URL') || 'https://exp.host/--/api/v2/push/send';
+    this.expoReceiptsUrl = this.configService.get<string>('EXPO_PUSH_RECEIPTS_URL') || 'https://exp.host/--/api/v2/push/getReceipts';
+    this.receiptCheckDelayMs = this.toPositiveInt(this.configService.get<string>('EXPO_PUSH_RECEIPT_DELAY_MS'), 15 * 60 * 1000);
   }
 
   async registerDevice(requester: AuthUser, dto: RegisterPushDeviceDto) {
@@ -210,7 +214,7 @@ export class PushNotificationsService {
 
         const payload = (await response.json().catch(() => null)) as
           | {
-            data?: Array<{ status?: string; details?: { error?: string } }>;
+            data?: Array<{ status?: string; id?: string; message?: string; details?: { error?: string } }>;
             errors?: Array<{ message?: string }>;
           }
           | null;
@@ -224,6 +228,7 @@ export class PushNotificationsService {
         }
 
         const tickets = payload?.data || [];
+        const receiptDeviceMap = new Map<string, number>();
         this.logger.log('Push Expo response status=' + response.status + ' tickets=' + tickets.length);
         await Promise.all(
           chunk.map(async (message, index) => {
@@ -232,13 +237,7 @@ export class PushNotificationsService {
             if (!device) return;
 
             if (ticket?.status === 'error') {
-              const errorText = ticket?.details?.error || 'Expo push rejected the token';
-              this.logger.warn('Push ticket error deviceId=' + device.id + ' userId=' + device.userId + ' tokenPrefix=' + device.expoPushToken.slice(0, 24) + ' error=' + errorText);
-              device.lastError = errorText;
-              if (errorText === 'DeviceNotRegistered') {
-                device.isActive = false;
-              }
-              await this.pushDeviceRepo.save(device);
+              await this.applyPushDeliveryError(device, ticket?.details?.error || ticket?.message || 'Expo push rejected the token', 'ticket');
               return;
             }
 
@@ -246,14 +245,96 @@ export class PushNotificationsService {
             device.lastDeliveredAt = new Date();
             device.lastError = null;
             await this.pushDeviceRepo.save(device);
+
+            if (ticket?.id) {
+              receiptDeviceMap.set(ticket.id, device.id);
+            }
           }),
         );
+
+        this.scheduleReceiptCleanup(receiptDeviceMap);
       } catch (error: any) {
         this.logger.warn(`Push delivery failed: ${error?.message || 'unknown error'}`);
       }
     }
   }
 
+  private scheduleReceiptCleanup(receiptDeviceMap: Map<string, number>) {
+    if (!receiptDeviceMap.size) return;
+
+    const timeout = setTimeout(() => {
+      void this.checkPushReceipts(receiptDeviceMap);
+    }, this.receiptCheckDelayMs);
+
+    timeout.unref?.();
+  }
+
+  private async checkPushReceipts(receiptDeviceMap: Map<string, number>) {
+    const receiptIds = Array.from(receiptDeviceMap.keys());
+    const chunks: string[][] = [];
+    for (let i = 0; i < receiptIds.length; i += 300) {
+      chunks.push(receiptIds.slice(i, i + 300));
+    }
+
+    for (const ids of chunks) {
+      try {
+        const response = await fetch(this.expoReceiptsUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ ids }),
+        });
+
+        const payload = (await response.json().catch(() => null)) as
+          | {
+            data?: Record<string, { status?: string; message?: string; details?: { error?: string } }>;
+            errors?: Array<{ message?: string }>;
+          }
+          | null;
+
+        if (!response.ok) {
+          const message =
+            payload?.errors?.map((item) => item?.message).filter(Boolean).join(', ')
+            || `Expo push receipt request failed with status ${response.status}`;
+          this.logger.warn(`Push receipt check failed: ${message}`);
+          continue;
+        }
+
+        const receipts = payload?.data || {};
+        await Promise.all(
+          Object.entries(receipts).map(async ([receiptId, receipt]) => {
+            if (receipt?.status !== 'error') return;
+
+            const deviceId = receiptDeviceMap.get(receiptId);
+            if (!deviceId) return;
+
+            const device = await this.pushDeviceRepo.findOne({ where: { id: deviceId } });
+            if (!device) return;
+
+            await this.applyPushDeliveryError(device, receipt?.details?.error || receipt?.message || 'Expo push receipt error', 'receipt');
+          }),
+        );
+      } catch (error: any) {
+        this.logger.warn(`Push receipt check failed: ${error?.message || 'unknown error'}`);
+      }
+    }
+  }
+
+  private async applyPushDeliveryError(device: NotificationPushDevice, errorText: string, source: 'ticket' | 'receipt') {
+    this.logger.warn('Push ' + source + ' error deviceId=' + device.id + ' userId=' + device.userId + ' tokenPrefix=' + device.expoPushToken.slice(0, 24) + ' error=' + errorText);
+    device.lastError = errorText;
+    if (errorText === 'DeviceNotRegistered') {
+      device.isActive = false;
+    }
+    await this.pushDeviceRepo.save(device);
+  }
+
+  private toPositiveInt(value: string | number | null | undefined, fallback: number): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  }
   private isSpiffRewardNotification(notification: Notification): boolean {
     const type = String(notification.type || '').toUpperCase();
     const entityType = String(notification.entityType || '').toUpperCase();
