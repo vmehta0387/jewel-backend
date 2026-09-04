@@ -108,6 +108,23 @@ export const getSpiffClaimTargetFromNotification = (
 
   return { claimId, claimNumber };
 };
+export const isSpiffNotification = (
+  entry: Pick<NotificationFeedEntry, 'entityType' | 'actionUrl' | 'metadata'>,
+) => {
+  const entityType = String(entry.entityType || '').trim().toUpperCase();
+  const actionUrl = normalizeActionUrl(entry.actionUrl);
+  const metadata = (entry.metadata as Record<string, unknown> | null) || null;
+  const metadataType = String(metadata?.type || metadata?.entityType || '').trim().toUpperCase();
+
+  return (
+    entityType.startsWith('SPIFF') ||
+    metadataType.startsWith('SPIFF') ||
+    actionUrl === 'spiff' ||
+    actionUrl === '/spiff' ||
+    actionUrl.startsWith('spiff/') ||
+    actionUrl.startsWith('/spiff/')
+  );
+};
 export type NotificationNavigationTarget =
   | { tab: 'OrdersTab'; screen: 'OrderDetail'; params: { orderId: string } }
   | { tab: 'DashboardTab'; screen: 'SpiffRewards'; params?: { claimId?: string; claimNumber?: string; initialPanel?: 'ACTIVITY' | 'REDEEM' | 'COMPANY_BOARD' | 'GLOBAL_BOARD' } }
@@ -131,7 +148,7 @@ export const getNotificationNavigationTarget = (entry: NotificationNavigationSou
 
   const spiffTarget = getSpiffClaimTargetFromNotification(entry);
   const actionUrl = normalizeActionUrl(entry.actionUrl);
-  if (spiffTarget || actionUrl === '/spiff' || actionUrl.startsWith('/spiff/')) {
+  if (spiffTarget || isSpiffNotification(entry)) {
     return {
       tab: 'DashboardTab',
       screen: 'SpiffRewards',

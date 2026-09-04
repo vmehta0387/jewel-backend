@@ -1415,7 +1415,7 @@ export class SpiffService {
         message: `${actorName} gave you ${points.toLocaleString('en-US', { maximumFractionDigits: 2 })} SPIFF points.`,
         entityType: 'SPIFF_LEDGER',
         entityId: Number(ledgerEntry.id) || null,
-        actionUrl: null,
+        actionUrl: '/spiff',
         metadata: {
           ledgerId: ledgerEntry.id,
           points,

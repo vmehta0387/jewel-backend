@@ -193,19 +193,19 @@ export class NotificationEventsService {
   }
 
   async notifySpiffClaimSubmitted(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUser({ ...input, type: 'SPIFF_CLAIM_SUBMITTED' }, channels ?? NotificationChannels.inAppPush);
+    return this.notifyUser({ ...input, type: 'SPIFF_CLAIM_SUBMITTED' }, channels ?? NotificationChannels.inAppPushEmail);
   }
 
   async notifySpiffClaimReviewRequired(userIds: number[], input: Omit<NotificationEventInput, 'userId' | 'type'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_CLAIM_REVIEW_REQUIRED' }, channels ?? NotificationChannels.inAppPush);
+    return this.notifyUsers(userIds, { ...input, type: 'SPIFF_CLAIM_REVIEW_REQUIRED' }, channels ?? NotificationChannels.inAppPushEmail);
   }
 
   async notifySpiffClaimUpdated(input: NotificationEventInput, channels?: NotificationChannelOptions) {
-    return this.notifyUser(input, channels ?? NotificationChannels.inAppPush);
+    return this.notifyUser(input, channels ?? NotificationChannels.inAppPushEmail);
   }
 
   async notifySpiffClaimUpdatedForManagers(userIds: number[], input: Omit<NotificationEventInput, 'userId'>, channels?: NotificationChannelOptions) {
-    return this.notifyUsers(userIds, input, channels ?? NotificationChannels.inAppPush);
+    return this.notifyUsers(userIds, input, channels ?? NotificationChannels.inAppPushEmail);
   }
 
   async notifySpiffPointsGiven(input: Omit<NotificationEventInput, 'type'>, channels?: NotificationChannelOptions) {
