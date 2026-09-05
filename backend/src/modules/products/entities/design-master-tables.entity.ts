@@ -188,6 +188,12 @@ export class MetalPurityMaster extends MasterTableEntity {
 
 @Entity('metal_caratages')
 export class MetalCaratageMaster extends MasterTableEntity {
+  @Column({ name: 'display_color', type: 'varchar', length: 7, nullable: true })
+  displayColor: string | null;
+
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder: number;
+
   @Column({ name: 'metal_id', type: 'int', width: 11, nullable: true })
   metalId: number | null;
 

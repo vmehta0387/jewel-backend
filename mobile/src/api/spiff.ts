@@ -11,6 +11,7 @@ export type SpiffConfig = {
 };
 
 export type SpiffSummary = {
+  userHandle?: string | null;
   wallet: {
     totalEarnedPoints: number;
     unlockedPoints: number;

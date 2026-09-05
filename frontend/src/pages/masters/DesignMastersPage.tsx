@@ -56,6 +56,8 @@ interface JoinedMasterRef {
   marketPricePerGm?: number | null;
   livePricePerGm?: number | null;
   defaultWastagePercent?: number | null;
+  displayColor?: string | null;
+  sortOrder?: number | null;
 }
 
 interface MasterOption extends SmartDropdownOption {
@@ -106,6 +108,8 @@ interface MasterRow {
   marketPricePerGm?: number | null;
   livePricePerGm?: number | null;
   defaultWastagePercent?: number | null;
+  displayColor?: string | null;
+  sortOrder?: number | null;
   laborApplyMode?: LaborApplyMode | null;
   flatCost?: number | null;
   ratePerStone?: number | null;
@@ -571,6 +575,8 @@ export default function DesignMastersPage() {
   const [formMarketPricePerGm, setFormMarketPricePerGm] = useState('');
   const [formLivePricePerGm, setFormLivePricePerGm] = useState('');
   const [formDefaultWastage, setFormDefaultWastage] = useState('');
+  const [formDisplayColor, setFormDisplayColor] = useState('');
+  const [formSortOrder, setFormSortOrder] = useState('');
   const [formPriceIn, setFormPriceIn] = useState<FindingPriceIn>('PIECES');
   const [formPricePerUnit, setFormPricePerUnit] = useState('');
   const [formDimensions, setFormDimensions] = useState('');
@@ -851,6 +857,8 @@ export default function DesignMastersPage() {
     setFormMarketPricePerGm('');
     setFormLivePricePerGm('');
     setFormDefaultWastage('');
+    setFormDisplayColor('');
+    setFormSortOrder('');
     setFormPriceIn('PIECES');
     setFormPricePerUnit('');
     setFormDimensions('');
@@ -899,6 +907,8 @@ export default function DesignMastersPage() {
     );
     setSelectedJewelryGroupOption(masterRefOption(row.jewelryGroupId, row.jewelryGroup));
     setFormMetalCaratage(row.metalCaratage || '');
+    setFormDisplayColor(row.displayColor || '');
+    setFormSortOrder(Number(row.sortOrder) > 0 ? String(row.sortOrder) : '');
     setFormMetalName(optionId(row.metalId) || masterRefId(row.metal) || '');
     setFormMetalColor(optionId(row.metalColorId) || masterRefId(row.metalColor) || '');
     setFormMetalPurity(optionId(row.metalPurityId) || masterRefId(row.metalPurity) || '');
@@ -1142,6 +1152,8 @@ export default function DesignMastersPage() {
                   purityPercentage: resolvedPurityPercentage,
                   livePricePerGm: parseOptionalNum(formLivePricePerGm),
                   defaultWastagePercent: parseOptionalNum(formDefaultWastage) ?? 0,
+                  displayColor: formDisplayColor.trim() || null,
+                  sortOrder: parseOptionalNum(formSortOrder) ?? 0,
                 }
               : null;
     const categoryScopedPayload =
@@ -1929,6 +1941,7 @@ export default function DesignMastersPage() {
                     <th className="app-table-head-cell">Metal Color</th>
                     <th className="app-table-head-cell">Price/Gms</th>
                     <th className="app-table-head-cell">Default Wastage (%)</th>
+                    <th className="app-table-head-cell">Sort Order</th>
                     <th className="app-table-head-cell">Description</th>
                     <th className="app-table-head-cell">Created</th>
                     <th className="app-table-head-cell">Modified</th>
@@ -1937,10 +1950,10 @@ export default function DesignMastersPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableLoadingRow colSpan={13} />
+                    <TableLoadingRow colSpan={14} />
                   ) : rowsCount === 0 ? (
                     <tr>
-                      <td colSpan={13} className="app-table-empty">No records found.</td>
+                      <td colSpan={14} className="app-table-empty">No records found.</td>
                     </tr>
                   ) : (
                     pagedMasterRows.map((row, index) => (
@@ -1963,6 +1976,9 @@ export default function DesignMastersPage() {
                           {row.defaultWastagePercent !== null && row.defaultWastagePercent !== undefined
                             ? Number(row.defaultWastagePercent).toFixed(2)
                             : '-'}
+                        </td>
+                        <td className="app-table-cell text-sm text-slate-700">
+                          {Number(row.sortOrder) > 0 ? row.sortOrder : '-'}
                         </td>
                         <td className="app-table-cell max-w-sm text-sm text-slate-600">{row.description || '-'}</td>
                         <td className="app-table-cell whitespace-nowrap text-sm text-slate-600">{new Date(row.createdAt).toLocaleString()}</td>
@@ -2349,6 +2365,8 @@ export default function DesignMastersPage() {
           marketPricePerGm={formMarketPricePerGm}
           livePricePerGm={formLivePricePerGm}
           defaultWastage={formDefaultWastage}
+          displayColor={formDisplayColor}
+          sortOrder={formSortOrder}
           metalNameOptions={selectedMetalOption ? [selectedMetalOption] : []}
           metalColorOptions={selectedMetalColorOption ? [selectedMetalColorOption] : []}
           metalPurityOptions={selectedMetalPurityOption ? [selectedMetalPurityOption] : []}
@@ -2385,6 +2403,8 @@ export default function DesignMastersPage() {
           onChangeMarketPricePerGm={setFormMarketPricePerGm}
           onChangeLivePricePerGm={setFormLivePricePerGm}
           onChangeDefaultWastage={setFormDefaultWastage}
+          onChangeDisplayColor={setFormDisplayColor}
+          onChangeSortOrder={setFormSortOrder}
           onChangePriceIn={setFormPriceIn}
           onChangePricePerUnit={setFormPricePerUnit}
           onChangeDimensions={setFormDimensions}
@@ -2410,6 +2430,3 @@ export default function DesignMastersPage() {
     </div>
   );
 }
-
-
-

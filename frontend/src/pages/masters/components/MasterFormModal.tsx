@@ -74,6 +74,8 @@ export interface MasterFormModalProps {
   marketPricePerGm: string;
   livePricePerGm: string;
   defaultWastage: string;
+  displayColor: string;
+  sortOrder: string;
   metalNameOptions: MasterOption[];
   metalColorOptions: MasterOption[];
   metalPurityOptions: MasterOption[];
@@ -108,6 +110,8 @@ export interface MasterFormModalProps {
   onChangeMarketPricePerGm: (value: string) => void;
   onChangeLivePricePerGm: (value: string) => void;
   onChangeDefaultWastage: (value: string) => void;
+  onChangeDisplayColor: (value: string) => void;
+  onChangeSortOrder: (value: string) => void;
   onChangePriceIn: (value: FindingPriceIn) => void;
   onChangePricePerUnit: (value: string) => void;
   onChangeDimensions: (value: string) => void;
@@ -307,6 +311,8 @@ export function MasterFormModal({
   marketPricePerGm,
   livePricePerGm,
   defaultWastage,
+  displayColor,
+  sortOrder,
   metalNameOptions,
   metalColorOptions,
   metalPurityOptions,
@@ -341,6 +347,8 @@ export function MasterFormModal({
   onChangeMarketPricePerGm,
   onChangeLivePricePerGm,
   onChangeDefaultWastage,
+  onChangeDisplayColor,
+  onChangeSortOrder,
   onChangePriceIn,
   onChangePricePerUnit,
   onChangeDimensions,
@@ -958,7 +966,7 @@ export function MasterFormModal({
                       }}
                     />
                 </div>
-                <div>
+                  <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Metal Caratage Name*</label>
                     <input
                       className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
@@ -967,6 +975,17 @@ export function MasterFormModal({
                       placeholder="Metal Caratage Name"
                       required
                     />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Display Color</label>
+                    <div className="flex gap-2">
+                      <input type="color" className="h-10 w-14 rounded border border-slate-300 bg-white p-1" value={displayColor || '#E5E7EB'} onChange={(event) => onChangeDisplayColor(event.target.value)} />
+                      <input className="w-full rounded border border-slate-300 px-3 py-2 text-sm uppercase" value={displayColor} onChange={(event) => onChangeDisplayColor(event.target.value)} placeholder="#E5E7EB" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Sort Order</label>
+                    <input type="number" min="1" step="1" className="w-full rounded border border-slate-300 px-3 py-2 text-sm" value={sortOrder} onChange={(event) => onChangeSortOrder(event.target.value)} placeholder="Optional" />
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">Alias Name*</label>
@@ -1333,7 +1352,5 @@ export function PacketFormModal({
     document.body,
   );
 }
-
-
 
 

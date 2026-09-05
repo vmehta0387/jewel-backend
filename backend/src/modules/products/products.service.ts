@@ -86,6 +86,8 @@ type MobileConfiguratorKey =
 interface MobileConfiguratorOption {
   id: number | null;
   label: string;
+  displayColor?: string | null;
+  sortOrder?: number;
 }
 
 interface NormalizedMetalRow {
@@ -341,8 +343,6 @@ export class ProductsService {
   private s3Client: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
   private signedUrlInflightCache = new Map<string, Promise<string>>();
-  private mobileConfiguratorFamilyCache = new Map<string, { family: Design[]; expiresAt: number }>();
-  private readonly mobileConfiguratorFamilyCacheTtlMs = 30 * 1000;
   private metalNameSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly signedUrlCacheSkewMs = 2 * 60 * 1000;
   private readonly masterImportHeaders = [
@@ -2337,11 +2337,6 @@ export class ProductsService {
   private async loadMobileConfiguratorFamily(id: number, requester: AuthUser, selectedSeed?: Design, knownFamilyDesignId?: number): Promise<Design[]> {
     const selected = selectedSeed || await this.loadMobileConfiguratorSeed(id, requester);
     const familyDesignId = knownFamilyDesignId || selected.familyDesignId || selected.id;
-    const cacheKey = this.getMobileConfiguratorFamilyCacheKey(familyDesignId, requester);
-    const cached = this.getCachedMobileConfiguratorFamily(cacheKey);
-    if (cached) {
-      return cached;
-    }
     const qb = this.designRepo
       .createQueryBuilder('design')
       .leftJoinAndSelect('design.jewelryGroupMaster', 'configJewelryGroupMaster')
@@ -2403,54 +2398,9 @@ export class ProductsService {
       design.metals = (metalsByDesign.get(designKey) || []).map((metal) => this.hydrateMetalDisplayLabels(metal));
       design.gemstones = (gemstonesByDesign.get(designKey) || []).map((gemstone) => this.hydrateGemstoneDisplayLabels(gemstone));
     }
-    this.setCachedMobileConfiguratorFamily(cacheKey, family);
     return family;
   }
 
-  private getMobileConfiguratorFamilyCacheKey(familyDesignId: number, requester: AuthUser): string {
-    return [
-      familyDesignId,
-      requester.role || '',
-      requester.companyId || '',
-      requester.branchId || '',
-      requester.id || '',
-      this.masterTablesService.getActiveStatusVersion(),
-    ].join(':');
-  }
-
-  private invalidateMobileConfiguratorFamilyCache(familyDesignId: number): void {
-    const familyPrefix = `${familyDesignId}:`;
-    for (const cacheKey of this.mobileConfiguratorFamilyCache.keys()) {
-      if (cacheKey.startsWith(familyPrefix)) {
-        this.mobileConfiguratorFamilyCache.delete(cacheKey);
-      }
-    }
-  }
-
-  private getCachedMobileConfiguratorFamily(cacheKey: string): Design[] | null {
-    const cached = this.mobileConfiguratorFamilyCache.get(cacheKey);
-    if (!cached) return null;
-    if (Date.now() >= cached.expiresAt) {
-      this.mobileConfiguratorFamilyCache.delete(cacheKey);
-      return null;
-    }
-    return cached.family;
-  }
-
-  private setCachedMobileConfiguratorFamily(cacheKey: string, family: Design[]): void {
-    this.mobileConfiguratorFamilyCache.set(cacheKey, {
-      family,
-      expiresAt: Date.now() + this.mobileConfiguratorFamilyCacheTtlMs,
-    });
-    if (this.mobileConfiguratorFamilyCache.size > 500) {
-      const now = Date.now();
-      for (const [key, entry] of this.mobileConfiguratorFamilyCache.entries()) {
-        if (entry.expiresAt <= now || this.mobileConfiguratorFamilyCache.size > 400) {
-          this.mobileConfiguratorFamilyCache.delete(key);
-        }
-      }
-    }
-  }
 
   private async toMobileConfiguratorResponse(
     family: Design[],
@@ -2666,11 +2616,34 @@ export class ProductsService {
     return Object.fromEntries(
       Object.entries(groups).map(([key, map]) => [
         key,
-        Array.from(map.values()).sort((a, b) =>
-          a.label.localeCompare(b.label, undefined, { numeric: key !== 'ringSize', sensitivity: 'base' }),
-        ),
+        Array.from(map.values()).sort((a, b) => key === 'metalCaratage'
+          ? this.compareMobileMetalOptions(a, b)
+          : a.label.localeCompare(b.label, undefined, { numeric: key !== 'ringSize', sensitivity: 'base' })),
       ]),
     ) as Record<MobileConfiguratorKey, MobileConfiguratorOption[]>;
+  }
+
+  private compareMobileMetalOptions(a: MobileConfiguratorOption, b: MobileConfiguratorOption): number {
+    const aOrder = Number(a.sortOrder || 0);
+    const bOrder = Number(b.sortOrder || 0);
+    if (aOrder > 0 || bOrder > 0) {
+      if (aOrder <= 0) return 1;
+      if (bOrder <= 0) return -1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+    }
+
+    // Backward-compatible presentation fallback for legacy masters without sort_order.
+    const fallbackKey = (option: MobileConfiguratorOption): [number, number, number, string] => {
+      const label = option.label.trim();
+      const isGold = /gold/i.test(label);
+      const carat = Number(label.match(/\d+(?:\.\d+)?/)?.[0] || Number.MAX_SAFE_INTEGER);
+      const colorRank = /white/i.test(label) ? 1 : /yellow/i.test(label) ? 2 : /rose/i.test(label) ? 3 : 9;
+      return [isGold ? 0 : 1, Number.isFinite(carat) ? carat : Number.MAX_SAFE_INTEGER, colorRank, label];
+    };
+    const left = fallbackKey(a);
+    const right = fallbackKey(b);
+    return left[0] - right[0] || left[1] - right[1] || left[2] - right[2]
+      || left[3].localeCompare(right[3], undefined, { numeric: true, sensitivity: 'base' });
   }
 
   private resolveMobileConfiguratorDiamondType(design: Design): string {
@@ -2762,7 +2735,7 @@ export class ProductsService {
         caratLabel.split(',').forEach((part) => {
           const trimmed = part.trim();
           if (trimmed && !metalCaratage.some((m) => (metalCaratId !== null && m.id === metalCaratId) || m.label.toLowerCase() === trimmed.toLowerCase())) {
-            metalCaratage.push({ id: metalCaratId, label: trimmed });
+            metalCaratage.push({ id: metalCaratId, label: trimmed, displayColor: metal.metalCaratageMaster?.displayColor || null, sortOrder: metal.metalCaratageMaster?.sortOrder ?? 0 });
           }
         });
       }
@@ -2773,7 +2746,7 @@ export class ProductsService {
       if (fallback && this.isMobileConfiguratorActiveMaster(design.metalCaratageId, design.metalCaratageMaster)) {
         fallback.split(',').forEach((part) => {
           const trimmed = part.trim();
-          if (trimmed) metalCaratage.push({ id: designMetalCaratId, label: trimmed });
+          if (trimmed) metalCaratage.push({ id: designMetalCaratId, label: trimmed, displayColor: design.metalCaratageMaster?.displayColor || null, sortOrder: design.metalCaratageMaster?.sortOrder ?? 0 });
         });
       }
     }
@@ -3571,7 +3544,6 @@ export class ProductsService {
         { isPrimary: true, updatedBy: requester.id },
       );
     });
-    this.invalidateMobileConfiguratorFamilyCache(familyDesignId);
 
     await this.addHistory(id, 'PRIMARY_UPDATED', 'Design version set as primary.', requester.id);
     return this.findOne(id, requester);
@@ -4287,6 +4259,29 @@ export class ProductsService {
       return;
     }
 
+    const normalizedFamilyDesignId = familyDesignId !== undefined && familyDesignId !== null
+      ? Number(familyDesignId)
+      : null;
+
+    // A design name belongs to the family, not to an individual version. If
+    // this family already owns the name, creating or editing one of its
+    // versions must not be rejected because a legacy family also has that
+    // name. New family names are still checked against every other family.
+    if (normalizedFamilyDesignId !== null) {
+      const familyOwnsName = await this.designRepo
+        .createQueryBuilder('design')
+        .select('design.id')
+        .where('LOWER(TRIM(design.designName)) = LOWER(TRIM(:designName))', { designName: normalizedDesignName })
+        .andWhere('(design.familyDesignId = :familyDesignId OR design.id = :familyDesignId)', {
+          familyDesignId: normalizedFamilyDesignId,
+        })
+        .getRawOne<{ id: string | number }>();
+
+      if (familyOwnsName) {
+        return;
+      }
+    }
+
     const qb = this.designRepo
       .createQueryBuilder('design')
       .select('design.id')
@@ -4296,9 +4291,9 @@ export class ProductsService {
       qb.andWhere('design.id != :excludeId', { excludeId: Number(excludeId) });
     }
 
-    if (familyDesignId !== undefined && familyDesignId !== null) {
+    if (normalizedFamilyDesignId !== null) {
       qb.andWhere('COALESCE(design.familyDesignId, design.id) != :familyDesignId', {
-        familyDesignId: Number(familyDesignId),
+        familyDesignId: normalizedFamilyDesignId,
       });
     }
 

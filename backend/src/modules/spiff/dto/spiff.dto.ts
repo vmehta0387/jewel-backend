@@ -168,10 +168,17 @@ export class FulfillSpiffClaimDto {
 }
 
 export class UpdateSpiffConfigDto {
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100000)
-  pointsPerDollar: number;
-}
+  pointsPerDollar?: number;
 
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  orderValuePerPoint?: number;
+}

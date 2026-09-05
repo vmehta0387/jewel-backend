@@ -49,6 +49,8 @@ const TYPE_WRITE_FIELDS: Partial<Record<DesignMasterType, readonly string[]>> = 
   [DesignMasterType.METAL_COLOR]: ['metalId'],
   [DesignMasterType.METAL_PURITY]: ['metalId', 'purityPercentage'],
   [DesignMasterType.METAL_CARATAGE]: [
+    'displayColor',
+    'sortOrder',
     'metalId',
     'metalColorId',
     'metalPurityId',
@@ -248,7 +250,14 @@ export class MasterTablesService {
       qb.andWhere(`${alias}.metalId = :metalId`, { metalId: query.metalId });
     }
 
-    const rows = await qb.orderBy(`${alias}.createdAt`, 'DESC').getMany();
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      qb.orderBy(`CASE WHEN ${alias}.sortOrder > 0 THEN 0 ELSE 1 END`, 'ASC')
+        .addOrderBy(`${alias}.sortOrder`, 'ASC')
+        .addOrderBy(`${alias}.createdAt`, 'DESC');
+    } else {
+      qb.orderBy(`${alias}.createdAt`, 'DESC');
+    }
+    const rows = await qb.getMany();
     return rows.map((row) => this.serialize(row));
   }
 
@@ -290,6 +299,8 @@ export class MasterTablesService {
       qb.leftJoin(`${alias}.metalColorMaster`, 'metalColorMaster');
       qb.leftJoin(`${alias}.metalPurityMaster`, 'metalPurityMaster');
       qb.addSelect([
+        `${alias}.displayColor`,
+        `${alias}.sortOrder`,
         `${alias}.metalId`,
         `${alias}.metalColorId`,
         `${alias}.metalPurityId`,
@@ -419,10 +430,15 @@ export class MasterTablesService {
       qb.andWhere(`${alias}.metalId = :metalId`, { metalId: query.metalId });
     }
 
-    const rows = await qb.orderBy(`${alias}.value`, 'ASC').getMany();
-    return rows
-      .sort((a, b) => a.value.localeCompare(b.value))
-      .map((row): DropdownMaster => {
+    if (masterType === DesignMasterType.METAL_CARATAGE) {
+      qb.orderBy(`CASE WHEN ${alias}.sortOrder > 0 THEN 0 ELSE 1 END`, 'ASC')
+        .addOrderBy(`${alias}.sortOrder`, 'ASC')
+        .addOrderBy(`${alias}.value`, 'ASC');
+    } else {
+      qb.orderBy(`${alias}.value`, 'ASC');
+    }
+    const rows = await qb.getMany();
+    return rows.map((row): DropdownMaster => {
         const value = String((row as MasterTableEntity).value ?? '');
         const aliasName = typeof (row as MasterTableEntity).aliasName === 'string'
           ? (row as MasterTableEntity).aliasName
@@ -438,6 +454,8 @@ export class MasterTablesService {
         };
 
         if (masterType === DesignMasterType.METAL_CARATAGE) {
+          option.displayColor = row.displayColor ?? null;
+          option.sortOrder = row.sortOrder ?? 0;
           option.metalId = row.metalId ?? null;
           option.metalColorId = row.metalColorId ?? null;
           option.metalPurityId = row.metalPurityId ?? null;
@@ -606,6 +624,7 @@ export class MasterTablesService {
     const repo = this.getRepository(masterType);
     const data = this.pickWritable(masterType, dto);
     await this.validateBeforeSave(masterType, data);
+    await this.assertUniqueMetalCaratageSortOrder(masterType, data);
     await this.assertUnique(repo, masterType, data);
     const row = repo.create(data);
     (row as any).createdBy = this.toOptionalInt(requester?.id);
@@ -628,6 +647,7 @@ export class MasterTablesService {
     const data = this.pickWritable(masterType, dto);
     const nextRow = { ...row, ...data };
     await this.validateBeforeSave(masterType, nextRow);
+    await this.assertUniqueMetalCaratageSortOrder(masterType, nextRow, id);
     await this.assertUnique(repo, masterType, nextRow, id);
     if (masterType === DesignMasterType.METAL_CARATAGE) {
       data.value = nextRow.value;
@@ -1258,6 +1278,7 @@ export class MasterTablesService {
       base['Metal Purity'] = '';
       base['Live Price/Gms'] = '';
       base['Default Wastage Percent'] = '';
+      base['Sort Order'] = '';
     }
     if (masterType === DesignMasterType.METAL_PURITY || masterType === DesignMasterType.METAL_CARATAGE) {
       base['Purity Percentage'] = '';
@@ -1333,6 +1354,7 @@ export class MasterTablesService {
       output['Purity Percentage'] = row.purityPercentage ?? '';
       output['Live Price/Gms'] = row.livePricePerGm ?? '';
       output['Default Wastage Percent'] = row.defaultWastagePercent ?? '';
+      output['Sort Order'] = Number(row.sortOrder) > 0 ? row.sortOrder : '';
     }
 
     if (masterType === DesignMasterType.VENDOR_NAME) {
@@ -1388,6 +1410,7 @@ export class MasterTablesService {
     payload.marketPricePerGm = this.toOptionalNumber(this.readCell(row, 'Market Price/Gms'));
     payload.livePricePerGm = this.toOptionalNumber(this.readCell(row, 'Live Price/Gms'));
     payload.defaultWastagePercent = this.toOptionalNumber(this.readCell(row, 'Default Wastage Percent'));
+    payload.sortOrder = this.toOptionalNumber(this.readCell(row, 'Sort Order')) ?? 0;
     payload.laborApplyMode = this.readCell(row, 'Apply Mode') || undefined;
     payload.flatCost = this.toOptionalNumber(this.readCell(row, 'Flat Cost'));
     payload.ratePerStone = this.toOptionalNumber(this.readCell(row, 'Rate Per Stone'));
@@ -1510,6 +1533,11 @@ export class MasterTablesService {
     }
 
     if (masterType === DesignMasterType.METAL_CARATAGE && data.metalId) {
+      const sortOrder = Number(data.sortOrder ?? 0);
+      if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+        throw new BadRequestException('Sort Order must be a non-negative whole number.');
+      }
+      data.sortOrder = sortOrder;
       await this.assertScopedMaster(
         DesignMasterType.METAL_COLOR,
         Number(data.metalColorId),
@@ -1522,6 +1550,28 @@ export class MasterTablesService {
         { metalId: Number(data.metalId) },
         'metalPurityId',
       );
+    }
+  }
+
+  private async assertUniqueMetalCaratageSortOrder(
+    masterType: DesignMasterType,
+    data: Record<string, unknown>,
+    excludeId?: number,
+  ): Promise<void> {
+    if (masterType !== DesignMasterType.METAL_CARATAGE) return;
+
+    const sortOrder = Number(data.sortOrder ?? 0);
+    // Zero represents an unconfigured legacy/empty position and may repeat.
+    if (!Number.isInteger(sortOrder) || sortOrder <= 0) return;
+
+    const qb = this.getRepository(masterType)
+      .createQueryBuilder('master')
+      .where('master.sortOrder = :sortOrder', { sortOrder });
+    if (excludeId !== undefined) {
+      qb.andWhere('master.id != :excludeId', { excludeId });
+    }
+    if (await qb.getExists()) {
+      throw new ConflictException('Sort Order already exists.');
     }
   }
 
@@ -1602,6 +1652,11 @@ export class MasterTablesService {
   private normalizeWritableValue(field: string, value: unknown) {
     if (field.endsWith('Id')) {
       return this.toOptionalInt(value);
+    }
+    if (field === 'sortOrder') {
+      if (value === undefined || value === null || value === '') return 0;
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed >= 0 ? parsed : value;
     }
     if (typeof value === 'string') {
       const trimmed = value.trim();
@@ -1706,5 +1761,3 @@ export class MasterTablesService {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
   }
 }
-
-

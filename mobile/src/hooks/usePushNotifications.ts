@@ -29,8 +29,15 @@ export const usePushNotifications = ({
   onNotificationResponse,
 }: UsePushNotificationsOptions) => {
   const registeredPushTokenRef = useRef<string | null>(null);
+  const registeredSessionRef = useRef<{ authToken: string; userId: string; pushToken: string | null } | null>(null);
 
   useEffect(() => {
+    const previousSession = registeredSessionRef.current;
+    if (previousSession && (!token || !userId || !canReceivePushForRole(role) || previousSession.userId !== String(userId))) {
+      registeredSessionRef.current = null;
+      void unregisterLastPushToken(previousSession.authToken, previousSession.pushToken);
+    }
+
     if (!token || !userId || !canReceivePushForRole(role)) {
       registeredPushTokenRef.current = null;
       return undefined;
@@ -50,6 +57,7 @@ export const usePushNotifications = ({
           return;
         }
         registeredPushTokenRef.current = pushToken;
+        registeredSessionRef.current = { authToken: token, userId: String(userId), pushToken };
       } catch (err: any) {
         await recordPushRegistrationDebug('failed', { message: err?.message || String(err), status: err?.status || null });
       }
@@ -71,7 +79,14 @@ export const usePushNotifications = ({
       const expoPushToken = pushToken.data;
       if (!expoPushToken) return;
       registeredPushTokenRef.current = expoPushToken;
-      void registerRotatedPushToken(token, expoPushToken, deviceId).catch(() => undefined);
+      registeredSessionRef.current = { authToken: token, userId: String(userId), pushToken: expoPushToken };
+      void registerRotatedPushToken(token, expoPushToken, deviceId).catch((err: any) => {
+        void recordPushRegistrationDebug('rotated_token_registration_failed', {
+          message: err?.message || String(err),
+          status: err?.status || null,
+          tokenSuffix: expoPushToken.slice(-8),
+        });
+      });
     });
 
     const appStateSubscription = AppState.addEventListener('change', (state) => {
@@ -94,9 +109,7 @@ export const usePushNotifications = ({
       responseSubscription.remove();
       pushTokenSubscription.remove();
       appStateSubscription.remove();
-      const registeredPushToken = registeredPushTokenRef.current;
       registeredPushTokenRef.current = null;
-      void unregisterLastPushToken(token, registeredPushToken);
     };
   }, [deviceId, onNotificationReceived, onNotificationResponse, role, token, userId]);
 };

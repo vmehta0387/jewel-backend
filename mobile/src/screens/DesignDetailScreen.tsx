@@ -165,12 +165,7 @@ const toCtwLabel = (value?: string | number | null) => {
   return `${normalized} ctw`;
 };
 
-const metalCaratageSwatchByValue = (value: string) => {
-  const palette = ['#B8A46A', '#A7AEB8', '#B98D7E', '#8EA8A1', '#9B8CB6', '#AF9A86'];
-  const normalized = compact(value).toLowerCase();
-  const hash = Array.from(normalized).reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  return palette[hash % palette.length];
-};
+const FALLBACK_METAL_COLOR = '#D1D5DB';
 
 const toMetalCaratageLabel = (value?: string | null) => {
   return compact(value).replace(/\s+/g, ' ');
@@ -216,11 +211,13 @@ const MediaVideo = ({
   style,
   nativeControls,
   autoPlay,
+  onPlayingChange,
 }: {
   uri: string;
   style: any;
   nativeControls?: boolean;
   autoPlay?: boolean;
+  onPlayingChange?: (isPlaying: boolean) => void;
 }) => {
   const player = useVideoPlayer(uri, (nextPlayer) => {
     nextPlayer.loop = !nativeControls;
@@ -236,6 +233,15 @@ const MediaVideo = ({
     }
     player.pause();
   }, [autoPlay, player]);
+
+  useEffect(() => {
+    if (!onPlayingChange) return;
+    onPlayingChange(player.playing);
+    const subscription = player.addListener('playingChange', ({ isPlaying }) => {
+      onPlayingChange(isPlaying);
+    });
+    return () => subscription.remove();
+  }, [onPlayingChange, player]);
 
   return (
     <VideoView
@@ -332,12 +338,14 @@ const OptionSection = ({
   selected,
   onSelect,
   variant = 'default',
+  metalColors = {},
 }: {
   title: string;
   options: string[];
   selected: string;
   onSelect: (value: string) => void;
   variant?: OptionVariant;
+  metalColors?: Record<string, string>;
 }) => {
   const visibleOptions = cleanOptions(options);
   if (!visibleOptions.length) return null;
@@ -352,11 +360,11 @@ const OptionSection = ({
             return (
               <TouchableOpacity
                 key={`${title}-${option}`}
-                style={[styles.metalChip, active ? styles.metalChipActive : null]}
+                style={[styles.metalChip, { backgroundColor: `${metalColors[option] || FALLBACK_METAL_COLOR}22` }, active ? styles.metalChipActive : null]}
                 onPress={() => onSelect(option)}
                 activeOpacity={0.9}
               >
-                <View style={[styles.metalDot, { backgroundColor: metalCaratageSwatchByValue(option) }]} />
+                <View style={[styles.metalDot, { backgroundColor: metalColors[option] || FALLBACK_METAL_COLOR }]} />
                 <Text style={[styles.metalChipText, active ? styles.metalChipTextActive : null]} numberOfLines={1}>
                   {toMetalShortCode(option)}
                 </Text>
@@ -507,6 +515,7 @@ const DesignDetailScreen = ({
   const [error, setError] = useState<string | null>(null);
   const [resolvingSelection, setResolvingSelection] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [isActiveVideoPlaying, setIsActiveVideoPlaying] = useState(false);
   const [mediaViewportWidth, setMediaViewportWidth] = useState(0);
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(() => new Set());
   const [imageViewerUri, setImageViewerUri] = useState<string | null>(null);
@@ -677,6 +686,7 @@ const DesignDetailScreen = ({
 
   useEffect(() => {
     setSelectedImageIndex(0);
+    setIsActiveVideoPlaying(false);
     setFailedMediaUrls(new Set());
   }, [activeDesignId]);
 
@@ -684,6 +694,7 @@ const DesignDetailScreen = ({
   const mediaFallbackWidth = Math.max(1, width - 28);
   const mediaFrameWidth = mediaViewportWidth || mediaFallbackWidth;
   const activeImage = gallery[selectedImageIndex] || gallery[0];
+  const isActiveMediaVideo = isVideoMedia(activeImage);
   const hasPreviousMedia = selectedImageIndex > 0;
   const hasNextMedia = selectedImageIndex < gallery.length - 1;
 
@@ -699,6 +710,7 @@ const DesignDetailScreen = ({
       const nextIndex = Math.round(offsetX / mediaFrameWidth);
       const boundedIndex = Math.max(0, Math.min(gallery.length - 1, nextIndex));
       if (boundedIndex !== selectedImageIndex) {
+        setIsActiveVideoPlaying(false);
         setSelectedImageIndex(boundedIndex);
       }
     },
@@ -709,6 +721,7 @@ const DesignDetailScreen = ({
     (index: number) => {
       if (!gallery.length || mediaViewportWidth <= 0) return;
       const boundedIndex = Math.max(0, Math.min(gallery.length - 1, index));
+      setIsActiveVideoPlaying(false);
       setSelectedImageIndex(boundedIndex);
       mediaListRef.current?.scrollToIndex({
         index: boundedIndex,
@@ -1356,7 +1369,6 @@ const DesignDetailScreen = ({
     () =>
       [
         { label: 'Design No.', value: compact(activeDesign?.designNo), wide: true },
-        { label: 'QR Code No.', value: compact(activeDesign?.barcode) },
         { label: 'Metal', value: toMetalCaratageLabel(selectedMetalCaratage) },
         { label: 'Size', value: compact(selectedRingSize || activeDesign?.jewelrySize) },
         { label: 'Diamond Type', value: compact(activeDesign?.diamondType || selectedDiamondType) },
@@ -1378,7 +1390,6 @@ const DesignDetailScreen = ({
         },
       ].filter((row) => hasDisplayValue(row.value)),
     [
-      activeDesign?.barcode,
       activeDesign?.designNo,
       activeDesign?.diamondType,
       activeDesign?.diamondWeight,
@@ -1546,12 +1557,15 @@ const DesignDetailScreen = ({
                               uri={item}
                               style={styles.mediaVideo}
                               autoPlay={index === selectedImageIndex}
+                              onPlayingChange={index === selectedImageIndex ? setIsActiveVideoPlaying : undefined}
                             />
-                            <View style={styles.mediaVideoOverlay}>
-                              <View style={styles.mediaVideoPlayBtn}>
-                                <Ionicons name="play" size={22} color="#FFFFFF" />
+                            {!isActiveVideoPlaying ? (
+                              <View style={styles.mediaVideoOverlay}>
+                                <View style={styles.mediaVideoPlayBtn}>
+                                  <Ionicons name="play" size={22} color="#FFFFFF" />
+                                </View>
                               </View>
-                            </View>
+                            ) : null}
                           </TouchableOpacity>
                         ) : (
                           <View style={styles.mediaFileFallback}>
@@ -1573,7 +1587,7 @@ const DesignDetailScreen = ({
                   <Text style={styles.placeholderText}>Image coming soon</Text>
                 </View>
               )}
-              {!resolvingSelection && gallery.length > 1 ? (
+              {!resolvingSelection && gallery.length > 1 && !(isActiveMediaVideo && isActiveVideoPlaying) ? (
                 <TouchableOpacity
                   style={[styles.mediaNavButton, styles.mediaNavButtonLeft, !hasPreviousMedia ? styles.mediaNavButtonDisabled : null]}
                   onPress={() => goToMediaIndex(selectedImageIndex - 1)}
@@ -1584,7 +1598,7 @@ const DesignDetailScreen = ({
                   <Ionicons name="chevron-back" size={20} color={hasPreviousMedia ? '#2A241F' : '#9C948B'} />
                 </TouchableOpacity>
               ) : null}
-              {!resolvingSelection && gallery.length > 1 ? (
+              {!resolvingSelection && gallery.length > 1 && !(isActiveMediaVideo && isActiveVideoPlaying) ? (
                 <TouchableOpacity
                   style={[styles.mediaNavButton, styles.mediaNavButtonRight, !hasNextMedia ? styles.mediaNavButtonDisabled : null]}
                   onPress={() => goToMediaIndex(selectedImageIndex + 1)}
@@ -1648,6 +1662,7 @@ const DesignDetailScreen = ({
                 resolveVersionSelection('metalCaratage', value);
               }}
               variant="metal"
+              metalColors={Object.fromEntries(rawOptionGroups.metalCaratage.map((option) => [option.label, option.displayColor || FALLBACK_METAL_COLOR]))}
             />
 
             {showStyleDropdown || showQualityDropdown ? (
@@ -2469,11 +2484,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   specRowWide: {
-    minHeight: 48,
-    flexDirection: 'column',
-    alignItems: 'stretch',
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 7,
+    paddingVertical: 9,
   },
   specLabel: {
     flex: 0.9,
@@ -2481,7 +2496,7 @@ const styles = StyleSheet.create({
     color: '#6D665D',
   },
   specLabelWide: {
-    flex: 0,
+    flex: 0.9,
   },
   specValue: {
     flex: 1.15,
@@ -2495,12 +2510,11 @@ const styles = StyleSheet.create({
     color: '#B2874A',
   },
   specValueWide: {
-    flex: 0,
-    marginLeft: 0,
-    marginTop: 3,
+    flex: 1.15,
+    marginLeft: 10,
+    marginTop: 0,
     lineHeight: 17,
     textAlign: 'right',
-    alignSelf: 'stretch',
   },
   specValueMultiline: {
     lineHeight: 16,
@@ -2708,4 +2722,3 @@ const styles = StyleSheet.create({
 });
 
 export default DesignDetailScreen;
-

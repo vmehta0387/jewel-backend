@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Image,
-  Linking,
-  PermissionsAndroid,
   Platform,
   ScrollView,
   StyleSheet,
@@ -31,7 +29,6 @@ import { trackOrderChanged, trackOrderCreated } from '../utils/activityEvents';
 
 type SummaryRoute = RouteProp<{ QuoteSummary: { summary: QuoteSummaryPayload } }, 'QuoteSummary'>;
 type SummaryNav = NativeStackNavigationProp<any>;
-type PdfWriteTarget = string | null | undefined;
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-US', {
@@ -80,68 +77,6 @@ const statusLabel = (status?: string) => {
 const normalizeStatus = (status?: string | null) => String(status || 'QUOTE').trim().toUpperCase();
 const compact = (value?: string | number | null) => String(value ?? '').trim();
 
-const requestAndroidPdfWritePermission = async () => {
-  if (Platform.OS !== 'android') {
-    return true;
-  }
-
-  const androidVersion = Number(Platform.Version);
-  if (Number.isFinite(androidVersion) && androidVersion >= 29) {
-    return true;
-  }
-
-  const permission = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
-  const hasPermission = await PermissionsAndroid.check(permission);
-  if (hasPermission) {
-    return true;
-  }
-
-  const result = await PermissionsAndroid.request(permission, {
-    title: 'Storage Permission',
-    message: 'Allow BLITZ NYC to save order PDFs on this device.',
-    buttonPositive: 'Allow',
-    buttonNegative: 'Cancel',
-  });
-
-  if (result === PermissionsAndroid.RESULTS.GRANTED) {
-    return true;
-  }
-
-  Alert.alert('Permission required', 'Storage permission is required to save the order PDF.');
-  return false;
-};
-
-const requestPdfWriteTarget = async (): Promise<PdfWriteTarget> => {
-  if (Platform.OS !== 'android') {
-    return null;
-  }
-
-  const hasWritePermission = await requestAndroidPdfWritePermission();
-  if (!hasWritePermission) {
-    return undefined;
-  }
-
-  const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
-  if (!permissions.granted) {
-    Alert.alert('Permission required', 'Please allow a save location to download the order PDF.');
-    return undefined;
-  }
-
-  return permissions.directoryUri;
-};
-
-const openSavedPdfLocation = async (folderUri: string, fileUri?: string) => {
-  try {
-    await Linking.openURL(folderUri);
-  } catch {
-    if (!fileUri) return;
-    try {
-      await Linking.openURL(fileUri);
-    } catch {
-      // Some Android file providers do not expose saved document URIs back to apps.
-    }
-  }
-};
 const parseVersion = (version?: string | null) => {
   const match = /V(\d+)/i.exec(compact(version));
   return match ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
@@ -573,52 +508,96 @@ const QuoteSummaryScreen = () => {
       .replace(/[^a-z0-9_-]+/gi, '-')
       .replace(/^-+|-+$/g, '') || 'order';
     const fileName = `${safeOrderNo}-summary.pdf`;
-    const localUri = `${FileSystem.cacheDirectory}${fileName}`;
+
+    if (!FileSystem.cacheDirectory) {
+      Alert.alert('File save failed', 'Temporary file storage is unavailable on this device.');
+      return;
+    }
+
+    const pdfUrl = getOrderPdfUrl(String(orderId));
+    const localUri = `${FileSystem.cacheDirectory}${Date.now()}-${fileName}`;
+    console.info('[Order PDF] Request', {
+      url: pdfUrl,
+      orderId: String(orderId),
+      hasAuthToken: Boolean(token),
+      localUri,
+    });
 
     setDownloadingPdf(true);
+    let result: FileSystem.FileSystemDownloadResult;
     try {
-      const writeTarget = await requestPdfWriteTarget();
-      if (writeTarget === undefined) {
-        return;
-      }
-
-      const result = await FileSystem.downloadAsync(getOrderPdfUrl(orderId), localUri, {
-        headers: { Authorization: `Bearer ${token}` },
+      result = await FileSystem.downloadAsync(pdfUrl, localUri, {
+        headers: {
+          Accept: 'application/pdf',
+          Authorization: `Bearer ${token}`,
+        },
       });
-      if (result.status !== 200) {
-        throw new Error('Unable to download PDF.');
-      }
+    } catch (err: any) {
+      const message = String(err?.message || 'The device could not reach the PDF endpoint.');
+      console.error('[Order PDF] Request/file download failed', { url: pdfUrl, orderId: String(orderId), message });
+      Alert.alert('PDF request failed', message);
+      setDownloadingPdf(false);
+      return;
+    }
 
-      if (writeTarget) {
-        const base64 = await FileSystem.readAsStringAsync(result.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(
-          writeTarget,
-          fileName,
-          'application/pdf',
-        );
-        await FileSystem.writeAsStringAsync(targetUri, base64, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        showToast('File downloaded successfully.');
-        await openSavedPdfLocation(writeTarget, targetUri);
-        return;
-      }
+    const contentType = String(result.headers?.['content-type'] || result.headers?.['Content-Type'] || '').toLowerCase();
+    const contentLength = String(result.headers?.['content-length'] || result.headers?.['Content-Length'] || '');
+    console.info('[Order PDF] Response', {
+      status: result.status,
+      contentType,
+      contentLength,
+      uri: result.uri,
+    });
 
-      if (await Sharing.isAvailableAsync()) {
+    if (result.status < 200 || result.status >= 300 || !contentType.includes('application/pdf')) {
+      let responsePreview = '';
+      try {
+        responsePreview = (await FileSystem.readAsStringAsync(result.uri)).trim().slice(0, 300);
+      } catch {
+        // The status and response headers still identify the failed request.
+      }
+      const detail = responsePreview || `HTTP ${result.status}; content-type: ${contentType || 'missing'}`;
+      console.error('[Order PDF] Backend returned non-PDF response', { status: result.status, contentType, contentLength, responsePreview });
+      Alert.alert(
+        result.status === 401 || result.status === 403 ? 'PDF authentication failed' : 'Backend returned non-PDF response',
+        detail,
+      );
+      setDownloadingPdf(false);
+      return;
+    }
+
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(result.uri);
+      const fileSize = fileInfo.exists && 'size' in fileInfo ? Number(fileInfo.size || 0) : 0;
+      console.info('[Order PDF] Local file', { uri: result.uri, exists: fileInfo.exists, size: fileSize });
+      if (!fileInfo.exists || fileSize <= 0) {
+        throw new Error('The downloaded PDF file is empty or was not saved.');
+      }
+    } catch (err: any) {
+      const message = String(err?.message || 'The PDF could not be saved to temporary storage.');
+      console.error('[Order PDF] File validation failed', { uri: result.uri, message });
+      Alert.alert('File save failed', message);
+      setDownloadingPdf(false);
+      return;
+    }
+
+    try {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      console.info('[Order PDF] Sharing availability', { available: sharingAvailable });
+      if (sharingAvailable) {
         await Sharing.shareAsync(result.uri, {
           mimeType: 'application/pdf',
           UTI: 'com.adobe.pdf',
-          dialogTitle: 'Save or share order PDF',
+          dialogTitle: 'Open or share order PDF',
         });
-        showToast('File downloaded successfully.');
+        showToast('PDF ready.');
       } else {
-        showToast('File downloaded successfully.');
-        Alert.alert('Downloaded', `PDF saved at ${result.uri}`);
+        Alert.alert('PDF downloaded', `The PDF was saved temporarily at ${result.uri}.`);
       }
     } catch (err: any) {
-      Alert.alert('Download failed', err?.message || 'Unable to download order PDF.');
+      const message = String(err?.message || 'The PDF downloaded, but the share sheet could not be opened.');
+      console.error('[Order PDF] Share/open failed', { uri: result.uri, message });
+      Alert.alert('PDF downloaded but share/open failed', message);
     } finally {
       setDownloadingPdf(false);
     }
@@ -761,8 +740,8 @@ const QuoteSummaryScreen = () => {
           onPress={handleDownloadPdf}
           disabled={downloadingPdf}
         >
-          <Ionicons name="print-outline" size={14} color="#8A7C6B" />
-          <Text style={styles.printText}>{downloadingPdf ? 'PDF...' : 'Print'}</Text>
+          <Ionicons name="document-text-outline" size={14} color="#8A7C6B" />
+          <Text style={styles.printText}>{downloadingPdf ? 'PDF...' : 'PDF'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -1427,5 +1406,3 @@ const styles = StyleSheet.create({
 });
 
 export default QuoteSummaryScreen;
-
-

@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   DesignMasterType,
@@ -152,6 +152,16 @@ export class FindOneMasterTableDto {
 }
 
 export class SaveMasterTableDto {
+  @IsOptional()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'displayColor must be a 6-digit HEX color' })
+  displayColor?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  sortOrder?: number;
+
   @IsOptional()
   @IsString()
   value?: string;

@@ -88,6 +88,7 @@ export const registerForPushNotificationsAsync = async (authToken: string, devic
     await recordPushRegistrationDebug('permission_not_granted', { status });
     return null;
   }
+  await recordPushRegistrationDebug('permission_granted', { status });
 
   const projectId = getExpoProjectId();
   const tokenResponse = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
@@ -97,30 +98,43 @@ export const registerForPushNotificationsAsync = async (authToken: string, devic
     return null;
   }
 
-  await registerPushDevice(authToken, {
+  await setLastRegisteredPushToken(expoPushToken);
+  await recordPushRegistrationDebug('expo_token_generated', {
+    projectId: projectId || null,
+    deviceId,
+    tokenSuffix: expoPushToken.slice(-8),
+  });
+  const registration = await registerPushDevice(authToken, {
     expoPushToken,
     platform: Platform.OS,
     deviceId,
     appVersion: getAppVersion(),
   });
-  await setLastRegisteredPushToken(expoPushToken);
   await recordPushRegistrationDebug('registered', {
     projectId: projectId || null,
     deviceId,
-    tokenPrefix: expoPushToken.slice(0, 22),
+    tokenSuffix: expoPushToken.slice(-8),
+    registrationId: registration?.id || null,
+    active: registration?.isActive ?? null,
   });
 
   return expoPushToken;
 };
 
 export const registerRotatedPushToken = async (authToken: string, expoPushToken: string, deviceId: string) => {
-  await registerPushDevice(authToken, {
+  await setLastRegisteredPushToken(expoPushToken);
+  const registration = await registerPushDevice(authToken, {
     expoPushToken,
     platform: Platform.OS,
     deviceId,
     appVersion: getAppVersion(),
   });
-  await setLastRegisteredPushToken(expoPushToken);
+  await recordPushRegistrationDebug('rotated_token_registered', {
+    deviceId,
+    tokenSuffix: expoPushToken.slice(-8),
+    registrationId: registration?.id || null,
+    active: registration?.isActive ?? null,
+  });
 };
 
 export const unregisterLastPushToken = async (authToken: string, fallbackPushToken?: string | null) => {

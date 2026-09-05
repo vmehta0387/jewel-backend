@@ -56,6 +56,8 @@ export type MobileCatalogQuery = {
 export type MobileConfiguratorOption = {
   id: number | null;
   label: string;
+  displayColor?: string | null;
+  sortOrder?: number;
 };
 
 export type MobileConfiguratorOptions = {
@@ -100,7 +102,7 @@ const toOption = (raw: unknown): MobileConfiguratorOption => {
     const rawId = value.id ?? null;
     const id = rawId !== null && rawId !== undefined && rawId !== '' && Number.isFinite(Number(rawId)) ? Number(rawId) : null;
     const label = String(value.label ?? value.name ?? value.value ?? '').trim();
-    return { id, label };
+    return { id, label, displayColor: value.displayColor || null, sortOrder: Number(value.sortOrder || 0) };
   }
   return { id: null, label: String(raw || '').trim() };
 };
@@ -291,4 +293,3 @@ export const fetchAllDesigns = async (token: string, limit = 500) => {
 
   return rows;
 };
-

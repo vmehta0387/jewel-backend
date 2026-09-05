@@ -1,7 +1,8 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   findNodeHandle,
+  KeyboardAvoidingView,
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -181,6 +182,8 @@ const SpiffRewardsScreen = () => {
   const [requestedPoints, setRequestedPoints] = useState('');
   const [note, setNote] = useState('');
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimSuccessVisible, setClaimSuccessVisible] = useState(false);
+  const claimSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [salesRepPanel, setSalesRepPanel] = useState<SalesRepPanel>('REDEEM');
   const [branchManagerPanel, setBranchManagerPanel] = useState<BranchManagerPanel>('BRANCH_BOARD');
   const [companyFilter, setCompanyFilter] = useState<CompanyAdminClaimFilter>('ALL');
@@ -418,7 +421,12 @@ const SpiffRewardsScreen = () => {
       setNote('');
       setClaimError(null);
       await load(true);
-      Alert.alert('Claim submitted', 'Your redemption claim is now in review queue.');
+      setClaimSuccessVisible(true);
+      if (claimSuccessTimerRef.current) clearTimeout(claimSuccessTimerRef.current);
+      claimSuccessTimerRef.current = setTimeout(() => {
+        setClaimSuccessVisible(false);
+        claimSuccessTimerRef.current = null;
+      }, 2800);
     } catch (error: any) {
       const message = error?.message || 'Unable to submit claim right now.';
       setClaimError(message);
@@ -427,6 +435,10 @@ const SpiffRewardsScreen = () => {
       setSubmitting(false);
     }
   }, [token, canCreateClaim, requestedPoints, minRedeemPoints, note, load]);
+
+  useEffect(() => () => {
+    if (claimSuccessTimerRef.current) clearTimeout(claimSuccessTimerRef.current);
+  }, []);
 
   const submitPointAdjustment = useCallback(async () => {
     if (!token || !canAdjustPoints) return;
@@ -448,9 +460,7 @@ const SpiffRewardsScreen = () => {
     const selectedRepForConfirm = salesReps.find((rep) => rep.id === selectedSalesRepId);
     const repName =
       String(selectedRepForConfirm?.userHandle || '').trim() ||
-      String(selectedRepForConfirm?.firstName || '').trim() ||
-      selectedRepForConfirm?.email ||
-      'selected sales rep';
+      (selectedRepForConfirm?.id ? `User #${selectedRepForConfirm.id}` : 'User handle not set');
     Alert.alert(
       'Confirm update',
       `Confirm ${selectedPointAction} ${formatPoints(points)} points for ${repName}?`,
@@ -495,18 +505,14 @@ const SpiffRewardsScreen = () => {
     return `${formatPoints(nextTierAt - totalEarned)} pts to next tier`;
   }, [summary?.tier?.nextTierAt, summary?.wallet?.totalEarnedPoints]);
 
-  const fullName = useMemo(() => {
-    const value = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-    return value || 'Sales Rep';
-  }, [user?.firstName, user?.lastName]);
+  const spiffDisplayName = useMemo(() => {
+    return String(summary?.userHandle || user?.userHandle || '').trim()
+      || (user?.id ? `User #${user.id}` : 'User handle not set');
+  }, [summary?.userHandle, user?.id, user?.userHandle]);
 
   const initials = useMemo(() => {
-    const first = user?.firstName?.charAt(0) || '';
-    const last = user?.lastName?.charAt(0) || '';
-    const value = `${first}${last}`.toUpperCase();
-    if (value) return value;
-    return (user?.email?.charAt(0) || 'SR').toUpperCase();
-  }, [user?.firstName, user?.lastName, user?.email]);
+    return spiffDisplayName.slice(0, 2).toUpperCase();
+  }, [spiffDisplayName]);
 
   const totalPoints = Number(summary?.wallet?.totalEarnedPoints || 0);
   const lockedPoints = Number(summary?.wallet?.lockedPoints || 0);
@@ -596,10 +602,10 @@ const SpiffRewardsScreen = () => {
   );
   const getRepHandle = useCallback((rep: any) => String(rep?.userHandle || '').trim(), []);
   const getRepPersonName = useCallback((rep: any) => {
-    return [rep?.firstName, rep?.lastName].filter(Boolean).join(' ').trim() || rep?.email || 'Sales Rep';
-  }, []);
+    return getRepHandle(rep) || (rep?.id ? `User #${rep.id}` : 'User handle not set');
+  }, [getRepHandle]);
   const getRepSpiffName = useCallback((rep: any) => {
-    return getRepHandle(rep) || String(rep?.firstName || '').trim() || rep?.email || 'Sales Rep';
+    return getRepHandle(rep) || (rep?.id ? `User #${rep.id}` : 'User handle not set');
   }, [getRepHandle]);
 
   React.useEffect(() => {
@@ -701,7 +707,7 @@ const SpiffRewardsScreen = () => {
               filteredSalesReps.map((rep) => {
                 const selected = rep.id === selectedSalesRepId;
                 const name = getRepPersonName(rep);
-                const handle = getRepHandle(rep) || String(rep.firstName || '').trim() || 'Sales Rep';
+                const handle = getRepHandle(rep) || 'User handle not set';
                 const meta = [rep.company?.companyName || rep.companyName, rep.branch?.name || rep.branchName].filter(Boolean).join(' - ');
                 return (
                   <TouchableOpacity
@@ -887,23 +893,28 @@ const SpiffRewardsScreen = () => {
             </View>
           </View>
 
-            <ScrollView
-            ref={salesRepScrollRef}
-            style={styles.scroll}
-            contentContainerStyle={styles.srContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            onScroll={handleSalesRepScroll}
-            scrollEventThrottle={16}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#A67F3F" />}
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoider}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
+            <ScrollView
+              ref={salesRepScrollRef}
+              style={styles.scroll}
+              contentContainerStyle={styles.srContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+              showsVerticalScrollIndicator={false}
+              onScroll={handleSalesRepScroll}
+              scrollEventThrottle={16}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#A67F3F" />}
+            >
             <View style={styles.srHeroCard}>
               <Text allowFontScaling={false} style={styles.srHeroEyebrow}>YOUR SPIFF PROFILE</Text>
               <View style={styles.srHeroTitleRow}>
                 <Text allowFontScaling={false} style={styles.srHeroBadge}>{tierBadge}</Text>
                 <Text allowFontScaling={false} numberOfLines={1} style={styles.srHeroTitle}>{tierLabel}</Text>
               </View>
-              <Text allowFontScaling={false} numberOfLines={1} style={styles.srHeroName}>{`${fullName} · ${user?.branchName || user?.companyName || '-'}`}</Text>
+              <Text allowFontScaling={false} numberOfLines={1} style={styles.srHeroName}>{`${spiffDisplayName} · ${user?.branchName || user?.companyName || '-'}`}</Text>
 
               <View style={styles.srHeroStatsRow}>
                 <View style={styles.srHeroStatBox}>
@@ -1153,7 +1164,17 @@ const SpiffRewardsScreen = () => {
                 )
               ) : null}
             </View>
-          </ScrollView>
+            </ScrollView>
+          </KeyboardAvoidingView>
+          {claimSuccessVisible ? (
+            <View style={styles.claimSuccessToast} accessibilityRole="alert">
+              <Ionicons name="checkmark-circle" size={22} color="#2F7D57" />
+              <View style={styles.claimSuccessCopy}>
+                <Text style={styles.claimSuccessTitle}>Claim submitted</Text>
+                <Text style={styles.claimSuccessMessage}>Your redemption claim is now in the review queue.</Text>
+              </View>
+            </View>
+          ) : null}
         </SafeAreaView>
       </View>
     );
@@ -2264,6 +2285,44 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+  },
+  keyboardAvoider: {
+    flex: 1,
+  },
+  claimSuccessToast: {
+    position: 'absolute',
+    top: 66,
+    left: 14,
+    right: 14,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#CFE7DA',
+    backgroundColor: '#F2FBF6',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    shadowColor: '#1E3A2D',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  claimSuccessCopy: {
+    flex: 1,
+  },
+  claimSuccessTitle: {
+    color: '#205D40',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  claimSuccessMessage: {
+    marginTop: 2,
+    color: '#527060',
+    fontSize: 12,
+    lineHeight: 16,
   },
   content: {
     paddingHorizontal: 14,

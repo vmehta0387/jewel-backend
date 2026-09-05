@@ -10,6 +10,7 @@ import { getStoredUser, hasActionPermission, hasAnyActionPermission } from '../.
 type SpiffConfig = {
   minRedeemPoints: number;
   pointsPerDollar: number;
+  orderValuePerPoint: number;
   conversionDisplay: string;
   giftCardOptions: string[];
   giftbitConfigured: boolean;
@@ -158,12 +159,8 @@ const formatDate = (value: string | null | undefined) => {
 };
 
 const getSalesRepName = (rep: SalesRepOption) => {
-  return rep.name?.trim() || rep.firstName?.trim() || rep.email?.trim() || 'Sales Rep';
-};
-
-const getSalesRepPersonName = (rep: SalesRepOption) => {
-  const fullName = [rep.firstName, rep.lastName].filter(Boolean).join(' ').trim();
-  return fullName || rep.email?.trim() || 'Sales Rep';
+  return String(rep.userHandle || '').trim()
+    || `User #${rep.id}`;
 };
 
 const getSalesRepHandle = (rep: SalesRepOption) => {
@@ -260,6 +257,7 @@ export default function SpiffPage() {
   const [claimLimit, setClaimLimit] = useState(20);
 
   const [pointsPerDollarInput, setPointsPerDollarInput] = useState('');
+  const [orderValuePerPointInput, setOrderValuePerPointInput] = useState('');
   const [salesReps, setSalesReps] = useState<SalesRepOption[]>([]);
   const [loadingSalesReps, setLoadingSalesReps] = useState(false);
   const [showRepFilters, setShowRepFilters] = useState(false);
@@ -362,16 +360,14 @@ export default function SpiffPage() {
 
   const renderSalesRepOption = (option: SmartDropdownOption) => {
     const rep = option as SalesRepOption;
-    const handle = getSalesRepHandle(rep);
     const meta = [getSalesRepCompanyName(rep), getSalesRepBranchName(rep)].filter(Boolean).join(' / ');
     return (
       <span className="block min-w-0">
         <span className="flex min-w-0 items-center justify-between gap-3">
-          <span className="min-w-0 truncate font-semibold">{getSalesRepPersonName(rep)}</span>
-          <span className="shrink-0 text-xs font-bold text-[#9A6A2F]">{handle}</span>
+          <span className="min-w-0 truncate font-semibold">{getSalesRepName(rep)}</span>
         </span>
         <span className="block truncate text-xs text-slate-500">
-          {[handle || rep.email, meta].filter(Boolean).join(' - ') || '-'}
+          {meta || 'User handle not set'}
         </span>
       </span>
     );
@@ -406,6 +402,7 @@ export default function SpiffPage() {
       const nextConfig = configRes.data as SpiffConfig;
       setConfig(nextConfig);
       setPointsPerDollarInput(String(nextConfig.pointsPerDollar || 100));
+      setOrderValuePerPointInput(String(nextConfig.orderValuePerPoint || 100));
       setSummary(summaryRes.data as SpiffSummary);
       setLeaderboard(leaderboardRes.data as LeaderboardResponse);
       const claimsPayload = claimsRes.data as ClaimsResponse;
@@ -679,6 +676,31 @@ export default function SpiffPage() {
     }
   };
 
+  const saveOrderValuePerPoint = async () => {
+    if (!canEditConfig) return;
+    const nextValue = Math.floor(Number(orderValuePerPointInput || 0));
+    if (!Number.isFinite(nextValue) || nextValue <= 0) {
+      showAppAlert('Enter a valid positive order value per point.', { variant: 'warning' });
+      return;
+    }
+
+    setSavingConfig(true);
+    try {
+      const response = await api.patch('/spiff/config', {
+        orderValuePerPoint: nextValue,
+      });
+      const nextConfig = response.data as SpiffConfig;
+      setConfig(nextConfig);
+      setOrderValuePerPointInput(String(nextConfig.orderValuePerPoint || nextValue));
+      showAppAlert('Order-value earning rate updated successfully.', { variant: 'success' });
+      await loadData();
+    } catch (err: any) {
+      showAppAlert(err?.response?.data?.message || 'Failed to update earning rate', { variant: 'error' });
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   const reviewClaim = async (claimId: string, action: 'APPROVE' | 'REJECT' | 'HOLD') => {
     if (!canReviewClaim) return;
     const reason =
@@ -780,6 +802,7 @@ export default function SpiffPage() {
       </div>
 
       {canEditConfig ? (
+        <>
         <Card title="SPIFF Conversion Settings">
           <div className="rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 px-4 py-4">
             <label className="mb-1 block text-sm font-semibold text-slate-700">
@@ -820,6 +843,40 @@ export default function SpiffPage() {
             </div>
           </div>
         </Card>
+
+        <Card title="SPIFF Order Earning Settings">
+          <div className="rounded-2xl border border-amber-100 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/30 px-4 py-4">
+            <label className="mb-1 block text-sm font-semibold text-slate-700">
+              Order Value Per Point
+            </label>
+
+            <div className="flex max-w-[620px] flex-nowrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900"
+                  value={orderValuePerPointInput}
+                  onChange={(event) => setOrderValuePerPointInput(event.target.value)}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  Current earning: every {formatMoney(config?.orderValuePerPoint || 100)} of order value earns 1 point before the existing tier rate.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={saveOrderValuePerPoint}
+                disabled={savingConfig || loading}
+                className="inline-flex h-11 min-w-[132px] shrink-0 items-center justify-center rounded-xl bg-[#1F1A16] px-4 text-sm font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingConfig ? 'Saving...' : 'Update Rate'}
+              </button>
+            </div>
+          </div>
+        </Card>
+        </>
       ) : null}
 
       {error ? (

@@ -157,6 +157,12 @@ export const updateOrder = (token: string, id: string, payload: Partial<CreateOr
     body: JSON.stringify(normalizeOrderPayload(payload)),
   }, token);
 
+export const updateOrderStatus = (token: string, id: string, status: string) =>
+  apiRequest<Order>(`/orders/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  }, token);
+
 export const updateOrderActiveStatus = (token: string, id: string, isActive: boolean) =>
   apiRequest<Order>(`/orders/${id}/active`, {
     method: 'PATCH',

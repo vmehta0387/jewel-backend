@@ -1682,6 +1682,7 @@ export default function ProductsPage() {
   const [inlineMetalColor, setInlineMetalColor] = useState('');
   const [inlineMetalPurity, setInlineMetalPurity] = useState('');
   const [inlineDefaultWastagePercent, setInlineDefaultWastagePercent] = useState('');
+  const [inlineSortOrder, setInlineSortOrder] = useState('');
   const [inlineOverheadApplyMode, setInlineOverheadApplyMode] = useState<'PERCENT_MATERIALS' | 'PERCENT_BOM_SUBTOTAL' | 'FLAT'>('PERCENT_MATERIALS');
   const [inlineRatePercent, setInlineRatePercent] = useState('');
   const [inlineFlatAmount, setInlineFlatAmount] = useState('');
@@ -3028,6 +3029,7 @@ export default function ProductsPage() {
     setInlineMetalColor('');
     setInlineMetalPurity('');
     setInlineDefaultWastagePercent('');
+    setInlineSortOrder('');
     setInlineOverheadApplyMode('PERCENT_MATERIALS');
     setInlineRatePercent('');
     setInlineFlatAmount('');
@@ -3166,6 +3168,7 @@ export default function ProductsPage() {
     setInlineMetalColor('');
     setInlineMetalPurity('');
     setInlineDefaultWastagePercent('');
+    setInlineSortOrder('');
     setInlineOverheadApplyMode('PERCENT_MATERIALS');
     setInlineRatePercent('');
     setInlineFlatAmount('');
@@ -3259,6 +3262,7 @@ export default function ProductsPage() {
               inlineDefaultWastagePercent.trim().length > 0
                 ? parseNum(inlineDefaultWastagePercent)
                 : null,
+            sortOrder: inlineSortOrder.trim().length > 0 ? parseNum(inlineSortOrder) : 0,
           }
         : null;
     const vendorPayload =
@@ -10514,6 +10518,8 @@ const createDefaultVendorRow = (): VendorRow => ({
           marketPricePerGm=""
           livePricePerGm={inlinePricePerUnit}
           defaultWastage={inlineDefaultWastagePercent}
+          displayColor=""
+          sortOrder={inlineSortOrder}
           metalNameOptions={masterOptions.metalNames as any}
           metalColorOptions={inlineMetalColorOptions as any}
           metalPurityOptions={inlineMetalPurityOptions as any}
@@ -10553,6 +10559,8 @@ const createDefaultVendorRow = (): VendorRow => ({
           onChangeMarketPricePerGm={() => undefined}
           onChangeLivePricePerGm={setInlinePricePerUnit}
           onChangeDefaultWastage={setInlineDefaultWastagePercent}
+          onChangeDisplayColor={() => undefined}
+          onChangeSortOrder={setInlineSortOrder}
           onChangePriceIn={setInlinePriceIn}
           onChangePricePerUnit={setInlinePricePerUnit}
           onChangeDimensions={setInlineDimensions}

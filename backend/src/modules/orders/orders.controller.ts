@@ -5,7 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { TaskPermissionsGuard } from '../auth/guards/task-permissions.guard';
 import { ActionPermissionsGuard } from '../auth/guards/action-permissions.guard';
 import { TaskPermissions } from '../auth/decorators/task-permissions.decorator';
-import { ActionPermissions } from '../auth/decorators/action-permissions.decorator';
+import { ActionPermissions, AnyActionPermissions } from '../auth/decorators/action-permissions.decorator';
 import { AuthUser } from '../auth/interfaces/auth-user.interface';
 import { UserRole } from '../../common/enums/user-role.enum';
 import {
@@ -107,7 +107,7 @@ export class OrdersController {
   }
 
   @Patch(':id/status')
-  @ActionPermissions('order.status_update')
+  @AnyActionPermissions('order.status_update', 'mobile.order.status_update')
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,

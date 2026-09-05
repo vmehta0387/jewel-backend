@@ -569,6 +569,7 @@ export default function OrdersPage() {
   const currentUser = useMemo(() => getStoredUser(), []);
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
   const isCompanyAdmin = currentUser?.role === 'COMPANY_ADMIN';
+  const areOrderPricingFieldsReadOnly = isSuperAdmin || isCompanyAdmin;
   const canViewCostPrice = isSuperAdmin || isCompanyAdmin || currentUser?.role === 'BRANCH_MANAGER';
   const isBranchScopedUser = currentUser?.role === 'BRANCH_MANAGER' || currentUser?.role === 'SALES_REP';
   const currentUserRole = currentUser?.role;
@@ -2781,18 +2782,24 @@ export default function OrdersPage() {
                                       <div className="mt-1 flex flex-wrap gap-1.5">
                                         {options.map((option) => {
                                           const active = option === value;
+                                          const masterOption = (configuratorRawOptionGroups[key] || []).find((item: any) => item?.label === option);
+                                          const metalColor = key === 'metalCaratage' ? masterOption?.displayColor || '#D1D5DB' : null;
                                           return (
                                             <button
                                               key={option}
                                               type="button"
                                               disabled={resolvingConfigurator}
                                               onClick={() => handleConfiguratorOptionChange(key, option)}
+                                              style={metalColor ? { backgroundColor: `${metalColor}22` } : undefined}
                                               className={`min-h-[24px] max-w-full rounded-full border px-2 py-0.5 text-[10px] font-bold leading-tight transition ${active
                                                 ? 'border-[#c9954f] bg-[#fff8ed] text-slate-950 ring-2 ring-[#ead7b5]'
                                                 : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                                                 } disabled:cursor-wait disabled:opacity-70`}
                                             >
-                                              <span className="block truncate">{option}</span>
+                                              <span className="flex items-center gap-1 truncate">
+                                                {metalColor ? <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: metalColor }} /> : null}
+                                                {option}
+                                              </span>
                                             </button>
                                           );
                                         })}
@@ -2948,8 +2955,8 @@ export default function OrdersPage() {
                         <label className="text-sm font-medium text-slate-700">Selling Price (per piece)*</label>
                         <div className="mt-1 flex">
                           <input
-                            type="number"
-                            className={`w-full rounded-l border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${formErrors.price
+                            type={areOrderPricingFieldsReadOnly ? 'text' : 'number'}
+                            className={`w-full rounded-l border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${areOrderPricingFieldsReadOnly ? 'cursor-default bg-transparent text-slate-600' : ''} ${formErrors.price
                               ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
                               : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                               }`}
@@ -2957,9 +2964,12 @@ export default function OrdersPage() {
                             placeholder="Enter sale price"
                             required
                             min="0.01"
+                            readOnly={areOrderPricingFieldsReadOnly}
+                            aria-readonly={areOrderPricingFieldsReadOnly}
                             aria-invalid={Boolean(formErrors.price)}
                             aria-describedby={formErrors.price ? 'price-error' : undefined}
                             onChange={(event) => {
+                              if (areOrderPricingFieldsReadOnly) return;
                               const value = event.target.value;
                               setPriceManuallyEdited(true);
                               setForm((prev) => ({ ...prev, price: value }));
@@ -2980,8 +2990,8 @@ export default function OrdersPage() {
                       <div>
                         <label className="text-sm font-medium text-slate-700">No. of Pcs*</label>
                         <input
-                          type="number"
-                          className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${formErrors.quantity
+                          type={areOrderPricingFieldsReadOnly ? 'text' : 'number'}
+                          className={`mt-1 w-full rounded border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${areOrderPricingFieldsReadOnly ? 'cursor-default bg-transparent text-slate-600' : ''} ${formErrors.quantity
                             ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
                             : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                             }`}
@@ -2989,9 +2999,12 @@ export default function OrdersPage() {
                           placeholder="Enter no. of pcs"
                           required
                           min="1"
+                          readOnly={areOrderPricingFieldsReadOnly}
+                          aria-readonly={areOrderPricingFieldsReadOnly}
                           aria-invalid={Boolean(formErrors.quantity)}
                           aria-describedby={formErrors.quantity ? 'quantity-error' : undefined}
                           onChange={(event) => {
+                            if (areOrderPricingFieldsReadOnly) return;
                             const value = event.target.value;
                             setForm((prev) => ({ ...prev, quantity: value }));
                             if (Number(value || 0) > 0) {
@@ -3009,8 +3022,8 @@ export default function OrdersPage() {
                         <label className="text-sm font-medium text-slate-700">Order Total*</label>
                         <div className="mt-1 flex">
                           <input
-                            type="number"
-                            className={`w-full rounded-l border px-3 py-2 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-1 ${formErrors.totalAmount
+                            type={areOrderPricingFieldsReadOnly ? 'text' : 'number'}
+                            className={`w-full rounded-l border px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-1 ${areOrderPricingFieldsReadOnly ? 'cursor-default bg-transparent text-slate-600' : 'text-slate-800'} ${formErrors.totalAmount
                               ? '!border-rose-400 focus:!border-rose-500 focus:!ring-rose-500'
                               : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500'
                               }`}
@@ -3018,9 +3031,12 @@ export default function OrdersPage() {
                             placeholder="Total amount"
                             required
                             min="0.01"
+                            readOnly={areOrderPricingFieldsReadOnly}
+                            aria-readonly={areOrderPricingFieldsReadOnly}
                             aria-invalid={Boolean(formErrors.totalAmount)}
                             aria-describedby={formErrors.totalAmount ? 'total-amount-error' : undefined}
                             onChange={(event) => {
+                              if (areOrderPricingFieldsReadOnly) return;
                               updatePriceFromTotalAmount(event.target.value);
                               if (Number(event.target.value || 0) > 0) {
                                 setFormErrors((prev) => ({ ...prev, price: undefined, totalAmount: undefined }));

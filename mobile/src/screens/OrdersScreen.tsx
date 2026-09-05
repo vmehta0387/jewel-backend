@@ -27,7 +27,7 @@ import {
 } from '../api/notifications';
 import NotificationPopover from '../components/NotificationPopover';
 import { fetchBranchEmployees } from '../api/branchEmployees';
-import { fetchOrders, updateOrder, updateOrderActiveStatus } from '../api/orders';
+import { fetchOrders, updateOrderActiveStatus, updateOrderStatus } from '../api/orders';
 import type { BranchEmployee, Order } from '../types';
 import type { OrdersStackParamList, QuoteSummaryPayload } from '../navigation/RootNavigator';
 import {
@@ -36,6 +36,7 @@ import {
   type NotificationFeedEntry,
 } from '../utils/appNotifications';
 import { canApproveOrderByStatus } from '../utils/orderLifecycle';
+import { hasActionPermission } from '../utils/permissions';
 import {
   trackNotificationAction,
   trackNotificationViewed,
@@ -290,6 +291,8 @@ const OrdersScreen = () => {
   });
   const isBranchManager = user?.role === 'BRANCH_MANAGER';
   const canSeeSalesRepFilter = Boolean(user && user.role !== 'SALES_REP');
+  const canUpdateOrderStatus = !isBranchManager || hasActionPermission(user, 'mobile.order.status_update');
+  const canEditOrder = !isBranchManager || hasActionPermission(user, 'mobile.order.edit');
 
   useEffect(() => {
     const timeoutId = setTimeout(() => setDebouncedSearch(search.trim()), 300);
@@ -518,7 +521,7 @@ const OrdersScreen = () => {
       if (!token) return;
       setActingOrderId(order.id);
       try {
-        await updateOrder(token, order.id, { status: 'CANCELLED' });
+        await updateOrderStatus(token, order.id, 'CANCELLED');
         trackOrderChanged(order.id, [
           { field: 'status', oldValue: order.status, newValue: 'CANCELLED' },
         ]);
@@ -591,7 +594,7 @@ const OrdersScreen = () => {
       if (!canApproveOrderByStatus(order.status, user?.role)) return;
       setActingOrderId(order.id);
       try {
-        await updateOrder(token, order.id, { status: 'APPROVED' });
+        await updateOrderStatus(token, order.id, 'APPROVED');
         trackOrderChanged(order.id, [
           { field: 'status', oldValue: order.status, newValue: 'APPROVED' },
         ]);
@@ -681,7 +684,7 @@ const OrdersScreen = () => {
     }
 
     if (status === 'PENDING_APPROVAL') {
-      if (canApproveOrderByStatus(order.status, user?.role)) {
+      if (canApproveOrderByStatus(order.status, user?.role) && canUpdateOrderStatus) {
         return (
           <View style={styles.actionRowThree}>
             <TouchableOpacity
@@ -699,14 +702,16 @@ const OrdersScreen = () => {
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.actionBtnGhostCompact]}
-              onPress={() => handleContinueEditing(order)}
-              activeOpacity={0.9}
-            >
-              <Ionicons name="pencil-outline" size={12} color="#7B7268" />
-              <Text style={styles.actionBtnGhostTextCompact}>Edit</Text>
-            </TouchableOpacity>
+            {canEditOrder ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnGhostCompact]}
+                onPress={() => handleContinueEditing(order)}
+                activeOpacity={0.9}
+              >
+                <Ionicons name="pencil-outline" size={12} color="#7B7268" />
+                <Text style={styles.actionBtnGhostTextCompact}>Edit</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.actionBtn, styles.actionBtnApproveCompact]}
@@ -720,6 +725,18 @@ const OrdersScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
+        );
+      }
+
+      if (isBranchManager) {
+        return (
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnGhost, styles.quoteManagerViewButton]}
+            onPress={() => openOrderSummary(order)}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.actionBtnGhostText}>View Details -&gt;</Text>
+          </TouchableOpacity>
         );
       }
 
@@ -1950,5 +1967,4 @@ const styles = StyleSheet.create({
 });
 
 export default OrdersScreen;
-
 

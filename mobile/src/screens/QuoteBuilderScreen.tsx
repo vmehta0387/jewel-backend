@@ -994,10 +994,7 @@ const QuoteBuilderScreen = () => {
 
       const targetOrderId = order?.id || editingOrderId;
       if (targetOrderId) {
-        let updated = await updateOrder(token, targetOrderId, payload);
-        if (String(updated.status || '').toUpperCase() !== effectiveStatus) {
-          updated = await updateOrder(token, targetOrderId, { status: effectiveStatus });
-        }
+        const updated = await updateOrder(token, targetOrderId, payload);
         trackOrderChanged(
           updated.id,
           diffChanges(
@@ -1030,7 +1027,7 @@ const QuoteBuilderScreen = () => {
         return updated;
       }
 
-      let created = await createOrder(token, {
+      const created = await createOrder(token, {
         companyId,
         branchId,
         designId: payload.designId,
@@ -1047,9 +1044,6 @@ const QuoteBuilderScreen = () => {
         assignedUserRole: payload.assignedUserRole,
         status: payload.status,
       });
-      if (String(created.status || '').toUpperCase() !== effectiveStatus) {
-        created = await updateOrder(token, created.id, { status: effectiveStatus });
-      }
       trackOrderCreated(created.id, {
         orderNumber: created.orderNumber,
         designId: created.designId,

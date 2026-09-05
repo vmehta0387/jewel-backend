@@ -575,14 +575,17 @@ export class OrdersService implements OnModuleInit {
       return OrderStatus.QUOTE;
     }
 
-    if (requestedStatus) {
-      return requestedStatus;
-    }
-
     if (requester.role === UserRole.SALES_REP || requester.role === UserRole.BRANCH_MANAGER) {
+      if (requestedStatus && requestedStatus !== OrderStatus.PENDING_APPROVAL) {
+        return requestedStatus;
+      }
       return await this.hasAutoApprovalPermission(requester.id)
         ? OrderStatus.APPROVED
         : OrderStatus.PENDING_APPROVAL;
+    }
+
+    if (requestedStatus) {
+      return requestedStatus;
     }
 
     if (this.isOrderApprover(requester)) {
@@ -625,6 +628,22 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  private async assertOrderStatusUpdatePermission(requester: AuthUser): Promise<void> {
+    if (requester.role === UserRole.SUPER_ADMIN) {
+      return;
+    }
+    if (await this.hasOrderActionPermission(requester.id, 'order.status_update')) {
+      return;
+    }
+    if (
+      requester.role === UserRole.BRANCH_MANAGER
+      && await this.hasMobileStatusUpdatePermission(requester.id)
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Missing required permission: order.status_update');
+  }
+
   async update(id: number, dto: UpdateOrderDto, requester: AuthUser) {
     const order = await this.orderRepo.findOne({
       where: { id },
@@ -643,7 +662,7 @@ export class OrdersService implements OnModuleInit {
       this.assertOrderEditable(order, requester);
     }
     if (hasStatusChange) {
-      await this.assertOrderActionPermission(requester, 'order.status_update');
+      await this.assertOrderStatusUpdatePermission(requester);
     }
     const requestedBranchId = dto.branchId !== undefined
       ? dto.branchId
@@ -768,14 +787,24 @@ export class OrdersService implements OnModuleInit {
       order.status = nextStatus;
       order.completedAt = order.status === OrderStatus.COMPLETED ? new Date() : null;
     } else if (dto.status !== undefined) {
-      await this.assertOrderStatusChangeAllowed(order, requester, dto.status);
-      if (dto.status === OrderStatus.COMPLETED) {
+      let nextStatus = dto.status;
+      if (dto.status === OrderStatus.PENDING_APPROVAL && order.status === OrderStatus.QUOTE) {
+        const selectedSalesRep = order.salesRepId
+          ? await this.userRepo.findOne({ where: { id: order.salesRepId } })
+          : null;
+        const createStatusUser = requester.role === UserRole.BRANCH_MANAGER ? requester : selectedSalesRep || requester;
+        nextStatus = await this.resolveCreateStatus(dto.status, createStatusUser);
+      }
+      if (!this.isAutoApprovedCreateStatus(nextStatus, requester)) {
+        await this.assertOrderStatusChangeAllowed(order, requester, nextStatus);
+      }
+      if (nextStatus === OrderStatus.COMPLETED) {
         this.assertCompletedShippingFields(order);
       }
-      order.status = dto.status;
-      if (dto.status === OrderStatus.COMPLETED && previousStatus !== OrderStatus.COMPLETED) {
+      order.status = nextStatus;
+      if (nextStatus === OrderStatus.COMPLETED && previousStatus !== OrderStatus.COMPLETED) {
         order.completedAt = new Date();
-      } else if (dto.status !== OrderStatus.COMPLETED) {
+      } else if (nextStatus !== OrderStatus.COMPLETED) {
         order.completedAt = null;
       }
     }

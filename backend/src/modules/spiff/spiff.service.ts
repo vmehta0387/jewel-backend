@@ -50,6 +50,7 @@ type WalletSummary = {
 @Injectable()
 export class SpiffService {
   private static readonly SETTINGS_KEY_POINTS_PER_DOLLAR = 'POINTS_PER_DOLLAR';
+  private static readonly SETTINGS_KEY_ORDER_VALUE_PER_POINT = 'ORDER_VALUE_PER_POINT';
   private readonly logger = new Logger(SpiffService.name);
   private readonly activeLedgerOrderCondition =
     '(ledger.orderId IS NULL OR ord.id IS NULL OR ord.status != :spiffCancelledStatus)';
@@ -74,10 +75,14 @@ export class SpiffService {
   ) { }
 
   async getConfig() {
-    const pointsPerDollar = await this.getPointsPerDollar();
+    const [pointsPerDollar, orderValuePerPoint] = await Promise.all([
+      this.getPointsPerDollar(),
+      this.getOrderValuePerPoint(),
+    ]);
     return {
       minRedeemPoints: this.getMinRedeemPoints(),
       pointsPerDollar,
+      orderValuePerPoint,
       conversionDisplay: `${pointsPerDollar} points = $1`,
       giftCardOptions: this.getGiftCardOptions(),
       giftbitConfigured: this.giftogramService.isConfigured(),
@@ -87,22 +92,34 @@ export class SpiffService {
   }
 
   async updateConfig(dto: UpdateSpiffConfigDto, requester: AuthUser) {
-    const normalizedPointsPerDollar = Math.max(1, Math.floor(Number(dto.pointsPerDollar || 0)));
-    if (!Number.isFinite(normalizedPointsPerDollar)) {
-      throw new BadRequestException('pointsPerDollar must be a valid positive integer');
+    if (dto.pointsPerDollar === undefined && dto.orderValuePerPoint === undefined) {
+      throw new BadRequestException('At least one SPIFF setting must be provided');
     }
 
-    await this.upsertSetting(
-      SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
-      String(normalizedPointsPerDollar),
-      requester.id,
-    );
+    if (dto.pointsPerDollar !== undefined) {
+      await this.upsertSetting(
+        SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
+        String(dto.pointsPerDollar),
+        requester.id,
+      );
+    }
+
+    if (dto.orderValuePerPoint !== undefined) {
+      await this.upsertSetting(
+        SpiffService.SETTINGS_KEY_ORDER_VALUE_PER_POINT,
+        String(dto.orderValuePerPoint),
+        requester.id,
+      );
+    }
 
     return this.getConfig();
   }
 
   async getMySummary(requester: AuthUser) {
-    const wallet = await this.computeWallet(requester.id);
+    const [wallet, profileUser] = await Promise.all([
+      this.computeWallet(requester.id),
+      this.userRepo.findOne({ where: { id: requester.id } }),
+    ]);
     const claimStats = await this.claimRepo
       .createQueryBuilder('claim')
       .select('COUNT(*)', 'totalClaims')
@@ -128,6 +145,7 @@ export class SpiffService {
 
     const tier = this.resolveTier(wallet.totalEarnedPoints);
     return {
+      userHandle: this.optionalText(profileUser?.userHandle),
       wallet,
       tier,
       stats: {
@@ -721,8 +739,8 @@ export class SpiffService {
     }
 
     const signedPoints = isDebitAction ? -absolutePoints : absolutePoints;
-    const actorName = [requester.firstName, requester.lastName].filter(Boolean).join(' ').trim();
-    const targetName = [targetUser.firstName, targetUser.lastName].filter(Boolean).join(' ').trim();
+    const actorName = 'Admin';
+    const targetName = this.getSpiffUserDisplayName(targetUser);
     const actionLabel = action === 'ADD' ? 'Added' : action === 'REDEEM' ? 'Redeemed' : 'Removed';
     const note = this.optionalText(dto.note) || `${actionLabel} by ${actorName || requester.email || 'admin'}`;
 
@@ -838,10 +856,7 @@ export class SpiffService {
 
     if (this.isAutoFulfillEnabled() && this.giftogramService.isConfigured()) {
       try {
-        const userName = [claim.user?.firstName, claim.user?.lastName]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+        const userName = this.getSpiffUserDisplayName(claim.user);
 
         const giftogramResult = await this.giftogramService.createOrderReward({
           requestId: claim.claimNumber,
@@ -936,9 +951,7 @@ export class SpiffService {
 
       const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
       if (managerIds.length) {
-        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
-          || context.user?.email
-          || 'A user';
+        const requestorName = this.getSpiffUserDisplayName(context.user) || 'User handle not set';
         await this.notificationEventsService.notifySpiffClaimReviewRequired(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
@@ -1035,9 +1048,7 @@ export class SpiffService {
 
       const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
       if (managerIds.length) {
-        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
-          || context.user?.email
-          || 'A user';
+        const requestorName = this.getSpiffUserDisplayName(context.user) || 'User handle not set';
         await this.notificationEventsService.notifySpiffClaimUpdatedForManagers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
@@ -1093,9 +1104,7 @@ export class SpiffService {
 
       const managerIds = await this.getClaimManagerUserIds(context, [requester.id, context.userId]);
       if (managerIds.length) {
-        const requestorName = [context.user?.firstName, context.user?.lastName].filter(Boolean).join(' ').trim()
-          || context.user?.email
-          || 'A user';
+        const requestorName = this.getSpiffUserDisplayName(context.user) || 'User handle not set';
         await this.notificationEventsService.notifySpiffClaimUpdatedForManagers(managerIds, {
           companyId: context.companyId,
           branchId: context.branchId,
@@ -1253,7 +1262,7 @@ export class SpiffService {
   private async recordOrderPlacedRewards(order: Order, includeFastClose: boolean): Promise<void> {
     const awardRate = await this.getUserAwardRate(order.salesRepId!);
     const basePoints = this.applyAwardRate(this.getOrderPlacedBasePoints(), awardRate);
-    const valueBonus = this.applyAwardRate(this.getOrderValueBonus(order.price), awardRate);
+    const valueBonus = this.applyAwardRate(await this.getOrderValueBonus(order.price), awardRate);
 
     await this.createLedgerEntryIfMissing({
       userId: order.salesRepId!,
@@ -1402,9 +1411,7 @@ export class SpiffService {
       const points = this.roundPoints(this.toNumber(ledgerEntry.points));
       if (points <= 0 || targetUser.role !== UserRole.SALES_REP) return;
 
-      const actorName = [requester.firstName, requester.lastName].filter(Boolean).join(' ').trim()
-        || requester.email
-        || 'Admin';
+      const actorName = 'Admin';
 
       await this.notificationEventsService.notifySpiffPointsGiven({
         userId: targetUser.id,
@@ -1877,17 +1884,10 @@ export class SpiffService {
     const userHandle = this.optionalText(user?.userHandle);
     if (userHandle) return userHandle;
 
-    const firstName = this.optionalText(user?.firstName);
-    if (firstName) return firstName;
-
-    return this.optionalText(user?.email);
+    return user?.id ? `User #${user.id}` : null;
   }
 
   private serializeClaim(claim: SpiffRedemptionClaim) {
-    const reviewerName = [claim.approvedBy?.firstName, claim.approvedBy?.lastName]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
     const rewardLink = claim.giftbitLinkUrl || this.extractRewardLinkFromResponse(claim.giftbitResponse);
 
     return {
@@ -1895,7 +1895,7 @@ export class SpiffService {
       giftbitLinkUrl: rewardLink,
       requestedAmount: this.roundMoney(claim.requestedAmountCents / 100),
       requestorName: this.getSpiffUserDisplayName(claim.user),
-      reviewerName: reviewerName || claim.approvedBy?.email || null,
+      reviewerName: this.getSpiffUserDisplayName(claim.approvedBy),
       companyName: claim.company?.companyName || null,
       branchName: claim.branch?.name || null,
     };
@@ -1982,16 +1982,13 @@ export class SpiffService {
     return this.toIntEnv(process.env.SPIFF_ORDER_PLACED_POINTS, 50);
   }
 
-  private getOrderValuePointsPerHundred(): number {
-    return this.toIntEnv(process.env.SPIFF_ORDER_VALUE_POINTS_PER_100, 1);
-  }
-
-  private getOrderValueBonus(price: number): number {
+  private async getOrderValueBonus(price: number): Promise<number> {
     const normalized = this.toNumber(price);
     if (normalized <= 0) {
       return 0;
     }
-    return Math.floor(normalized / 100) * this.getOrderValuePointsPerHundred();
+    const orderValuePerPoint = await this.getOrderValuePerPoint();
+    return Math.floor(normalized / orderValuePerPoint);
   }
 
   private getFastClosePoints(): number {
@@ -2018,6 +2015,13 @@ export class SpiffService {
     return this.getSettingInt(
       SpiffService.SETTINGS_KEY_POINTS_PER_DOLLAR,
       this.toIntEnv(process.env.SPIFF_POINTS_PER_DOLLAR, 100),
+    );
+  }
+
+  private async getOrderValuePerPoint(): Promise<number> {
+    return this.getSettingInt(
+      SpiffService.SETTINGS_KEY_ORDER_VALUE_PER_POINT,
+      100,
     );
   }
 
@@ -2144,9 +2148,5 @@ export class SpiffService {
     return Math.round(value * 100) / 100;
   }
 }
-
-
-
-
 
 

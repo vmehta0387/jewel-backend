@@ -378,6 +378,7 @@ export class AuthService implements OnModuleInit {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      userHandle: user.userHandle || null,
       role: user.role,
       companyId: this.resolveCompanyId(user),
       branchId: user.branchId || null,
@@ -598,4 +599,3 @@ export class AuthService implements OnModuleInit {
     return url;
   }
 }
-

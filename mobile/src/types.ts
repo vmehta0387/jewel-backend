@@ -73,6 +73,8 @@ export type Design = {
 export type SelectedMasterOption = {
   id: number | null;
   label: string;
+  displayColor?: string | null;
+  sortOrder?: number;
 };
 
 export type SelectedDesignOptions = Partial<{
@@ -254,4 +256,3 @@ export type GroupedMastersResponse = {
   packetColors: MasterOption[];
   packetQualities: MasterOption[];
 };
-

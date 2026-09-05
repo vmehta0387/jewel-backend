@@ -50,6 +50,7 @@ function resolveSqlFiles(args) {
     path.resolve(sqlRoot, 'DATABASE_STONE_PACKETS_INT_ID_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_DESIGN_MASTERS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_MASTER_TABLE_COLUMNS_UPGRADE.sql'),
+    path.resolve(sqlRoot, 'DATABASE_METAL_CARATAGE_DISPLAY_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_MASTER_ID_RELATION_GAPS_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_VENDOR_NAMES_EMAIL_UPGRADE.sql'),
     path.resolve(sqlRoot, 'DATABASE_DESIGN_BARCODE_UPGRADE.sql'),
@@ -298,4 +299,3 @@ main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
 });
-
