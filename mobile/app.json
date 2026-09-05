@@ -2,7 +2,7 @@
   "expo": {
     "name": "BLITZ NYC",
     "slug": "blitz-nyc",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,12 +14,12 @@
       "imageHeight": 180
     },
     "ios": {
-      "version": "1.0.1",
+      "version": "1.0.2",
       "supportsTablet": true,
       "bundleIdentifier": "com.clariondiamonds.blitznyc"
     },
     "android": {
-      "version": "1.0.1",
+      "version": "1.0.2",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

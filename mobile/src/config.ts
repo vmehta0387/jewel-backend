@@ -22,7 +22,7 @@ const resolved = getWebApiBaseUrl() || envUrl || extraUrl || liveApiUrl;
 
 export const API_BASE_URL = resolved.replace(/\/$/, '');
 
-export const APP_VERSION = Platform.OS === 'ios' ? '1.0.1' : '1.0.1';
+export const APP_VERSION = Platform.OS === 'ios' ? '1.0.2' : '1.0.2';
 
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.clariondiamonds.blitznyc';
 export const APP_STORE_URL = 'https://apps.apple.com/app/id6470000000'; // Replace with real App ID when published
